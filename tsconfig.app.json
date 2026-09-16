@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./core/frontend/*"],
+      "@campaigns/*": ["./campaigns/frontend/*"],
+      "@accounts/*": ["./accounts/frontend/*"],
+      "@dashboard/*": ["./dashboard/frontend/*"],
+      "@leads/*": ["./leads/frontend/*"],
+      "@inbox/*": ["./inbox/frontend/*"],
+      "@knowledge/*": ["./knowledge/frontend/*"],
+      "@admin/*": ["./admin/frontend/*"],
+      "@integrations/*": ["./integrations/frontend/*"]
+    }
+  },
+  "include": ["core/frontend", "campaigns/frontend", "accounts/frontend", "dashboard/frontend", "leads/frontend", "inbox/frontend", "knowledge/frontend", "admin/frontend", "integrations/frontend"]
+}

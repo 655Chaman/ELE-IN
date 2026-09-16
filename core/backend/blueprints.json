@@ -1,0 +1,43 @@
+{
+    "markets": {
+        "hipaa": {
+            "name": "HIPAA Compliance & Breach",
+            "demand": {
+                "keywords": ["breach", "hipaa", "hhs", "ransomware", "protected health information", "phi"],
+                "target_titles": ["CISO", "Compliance Officer", "Privacy Officer", "IT Director"],
+                "vetting_criteria": "The target must be a healthcare entity, clinic, or hospital that has recently suffered a data breach, ransomware attack, or compliance audit failure. Pass only if they actively need security or compliance remediation."
+            },
+            "supply": {
+                "keywords": ["managed security service provider", "mssp", "hipaa compliance consultant", "cybersecurity firm"],
+                "target_titles": ["CEO", "Founder", "VP of Sales", "Partnerships Manager"],
+                "vetting_criteria": "The target must be a B2B cybersecurity or compliance firm that specifically provides HIPAA audits, remediation, or incident response services."
+            }
+        },
+        "dental": {
+            "name": "Dental Practice Expansion",
+            "demand": {
+                "keywords": ["dental clinic", "orthodontics", "pediatric dentistry"],
+                "target_titles": ["Practice Owner", "Dentist", "Office Manager"],
+                "vetting_criteria": "The target must be a dental practice with 1-5 locations looking to hire or expand."
+            },
+            "supply": {
+                "keywords": ["dental hygienist", "dental assistant", "dentist seeking job"],
+                "target_titles": ["Registered Dental Hygienist", "DDS"],
+                "vetting_criteria": "The target must be an actively licensed dental professional seeking employment or contract work."
+            }
+        },
+        "msp": {
+            "name": "MSP Lead Generation",
+            "demand": {
+                "keywords": ["manufacturing", "logistics", "law firm", "accounting"],
+                "target_titles": ["CEO", "Owner", "Operations Manager"],
+                "vetting_criteria": "The target must be a small to medium business (10-200 employees) that relies heavily on IT but likely lacks an internal robust IT department."
+            },
+            "supply": {
+                "keywords": ["managed service provider", "it support", "msp"],
+                "target_titles": ["CEO", "Founder", "Sales Director"],
+                "vetting_criteria": "The target must be an established Managed Service Provider looking for new clients."
+            }
+        }
+    }
+}

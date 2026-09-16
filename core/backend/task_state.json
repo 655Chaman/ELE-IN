@@ -1,0 +1,80 @@
+{
+  "hipaa_demand_enrich": {
+    "status": "completed",
+    "started_at": "2026-07-07T17:02:09Z",
+    "finished_at": "2026-07-07T17:26:07Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/hipaa_demand_enrich.log",
+    "output": ""
+  },
+  "hipaa_demand_scrape": {
+    "status": "failed",
+    "started_at": "2026-07-07T17:04:44Z",
+    "finished_at": "2026-07-07T17:04:45Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/hipaa_demand_scrape.log",
+    "output": ""
+  },
+  "hipaa_demand_scrape_1": {
+    "status": "failed",
+    "started_at": "2026-07-24T12:20:15Z",
+    "finished_at": "2026-07-24T12:20:58Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/hipaa_demand_scrape_1.log",
+    "output": "",
+    "pid": 12663
+  },
+  "hipaa_supply_scrape_1": {
+    "status": "failed",
+    "started_at": "2026-07-09T15:31:53Z",
+    "finished_at": "2026-07-09T15:31:54Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/hipaa_supply_scrape_1.log",
+    "output": ""
+  },
+  "dental_demand_scrape_1": {
+    "status": "completed",
+    "started_at": "2026-07-13T16:01:44Z",
+    "finished_at": "2026-07-13T16:01:45Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/dental_demand_scrape_1.log",
+    "output": ""
+  },
+  "msp_demand_scrape_1": {
+    "status": "completed",
+    "started_at": "2026-07-15T04:51:55Z",
+    "finished_at": "2026-07-15T04:51:55Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/msp_demand_scrape_1.log",
+    "output": ""
+  },
+  "msp_demand_scrape_2": {
+    "status": "completed",
+    "started_at": "2026-07-16T03:26:13Z",
+    "finished_at": "2026-07-16T03:26:29Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/msp_demand_scrape_2.log",
+    "output": ""
+  },
+  "msp_demand_enrich_2": {
+    "status": "completed",
+    "started_at": "2026-07-16T03:32:37Z",
+    "finished_at": "2026-07-16T03:32:39Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/msp_demand_enrich_2.log",
+    "output": ""
+  },
+  "rd_tax_demand_scrape_1": {
+    "status": "completed",
+    "started_at": "2026-07-18T04:19:14Z",
+    "finished_at": "2026-07-18T04:19:23Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/rd_tax_demand_scrape_1.log",
+    "output": ""
+  },
+  "rd_tax_demand_enrich_1": {
+    "status": "completed",
+    "started_at": "2026-07-18T04:19:24Z",
+    "finished_at": "2026-07-18T04:19:27Z",
+    "log_file": "/Users/krdeeksha/HQ/dashboard_backend/app/task_logs/rd_tax_demand_enrich_1.log",
+    "output": ""
+  },
+  "dental_supply_scrape_51578": {
+    "status": "cancelled",
+    "started_at": "2026-08-22T16:04:10Z",
+    "finished_at": "2026-08-22T16:17:58Z",
+    "log_file": "/Users/krdeeksha/HQ/Ele-in/backend/app/task_logs/dental_supply_scrape_51578.log",
+    "output": ""
+  }
+}

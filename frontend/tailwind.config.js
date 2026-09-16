@@ -1,0 +1,38 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Outfit', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
+      },
+      colors: {
+        background: '#0a0a0a',
+        foreground: '#ffffff',
+        muted: '#171717',
+        border: '#262626',
+        surface: '#18181b',
+        accent: '#3f3f46',
+      },
+      animation: {
+        'star-movement-bottom': 'star-movement-bottom linear infinite alternate',
+        'star-movement-top': 'star-movement-top linear infinite alternate',
+      },
+      keyframes: {
+        'star-movement-bottom': {
+          '0%': { transform: 'translate(0%, 0%)', opacity: '1' },
+          '100%': { transform: 'translate(-100%, 0%)', opacity: '0' },
+        },
+        'star-movement-top': {
+          '0%': { transform: 'translate(0%, 0%)', opacity: '1' },
+          '100%': { transform: 'translate(100%, 0%)', opacity: '0' },
+        },
+      }
+    },
+  },
+  plugins: [],
+}

@@ -1,0 +1,10 @@
+{
+  "hipaa_scrape": {
+    "status": "degraded",
+    "diagnosis": "Pipeline failed or returned 0 leads. AI diagnosis unavailable."
+  },
+  "healthcare_hipaa": {
+    "status": "degraded",
+    "diagnosis": "Pipeline failed. AI diagnosis error: Connection error."
+  }
+}

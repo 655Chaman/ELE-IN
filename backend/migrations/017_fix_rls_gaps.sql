@@ -1,0 +1,3 @@
+-- Migration: 017_fix_rls_gaps.sql
+-- Fix: account_limit_overrides had RLS enabled but no policies (deny-all lockout)
+-- NOTE: Policy has been moved to 023_unified_rate_limits.sql because the table does not exist yet.

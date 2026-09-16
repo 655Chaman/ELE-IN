@@ -1,0 +1,702 @@
+from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import date, datetime, timedelta
+from supabase import Client
+from core.backend.api.auth_dep import get_supabase_client
+from campaigns.backend.routers.elein import get_current_workspace
+
+
+# ==============================================================================
+# 🚨 PARANOIA FRAMEWORK: SECURITY WARNING (LAYER 2) 🚨
+# ==============================================================================
+# The Python backend uses the Supabase service key, which BYPASSES Postgres 
+# Row-Level Security (RLS). This means the database will NOT protect against 
+# cross-tenant data spillage.
+#
+# CRITICAL RULES:
+# 1. EVERY single `.select()`, `.update()`, or `.delete()` query MUST manually 
+#    include `.eq("workspace_id", workspace_id)`.
+# 2. If you forget this one line, you create a catastrophic IDOR vulnerability,
+#    allowing users to steal or modify competitor data.
+# 3. Before running ANY query, you MUST verify the `user_id` from the JWT 
+#    exists in `workspace_members` for the requested `workspace_id`.
+# ==============================================================================
+
+# ==============================================================================
+# DATA ARCHITECTURE MANDATE (PRE-AGGREGATION DISCIPLINE)
+# ==============================================================================
+# The dashboard must load INSTANTLY even at 10,000+ workspaces.
+# To guarantee this, the dashboard API is FORBIDDEN from performing live
+# aggregations over high-velocity tables like `messages` or `action_log`.
+# 
+# RULES:
+# 1. You may ONLY query `daily_campaign_stats` and `daily_workspace_stats`.
+# 2. These tables are populated asynchronously by the Postgres RPC `rollup_daily_stats`.
+# 3. If the frontend needs a new metric, you MUST add it to the rollup job
+#    and the stats tables. Do NOT write a live COUNT(*) query here.
+# ==============================================================================
+#
+# ==================== DASHBOARD DATA CONTRACT ====================
+# Widget                        | Grain   | Staleness    | Source Table
+# Today's connections/messages  | Live    | NONE (live)  | account_daily_action_counts
+# Campaign performance (trends) | Daily   | Hours        | daily_campaign_stats  
+# Total leads / active campaigns| Daily   | Hours        | daily_workspace_stats
+# Account health (status)       | Live    | NONE (live)  | accounts (direct)
+# AI spend this month           | Daily   | Hours        | daily_campaign_stats / ai_generations
+# =================================================================
+# RULE: If you are writing a query against `action_log`, `messages`,
+# or `lead_states` for dashboard cards, you are violating this contract.
+# Those tables are WRITE paths. The dashboard is a READ path.
+# Add your metric to the rollup job first, then read it here.
+# =================================================================
+
+router = APIRouter(tags=["master-view"])
+
+def sanitize_filter_list(lst: Optional[List[str]]) -> Optional[List[str]]:
+    if not lst:
+        return None
+    cleaned = [x for x in lst if x]
+    return cleaned if len(cleaned) > 0 else None
+
+def get_current_user_id(request: Request, supabase: Client = Depends(get_supabase_client)) -> str:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing auth header")
+    token = auth_header.split(" ")[1]
+    user_res = supabase.auth.get_user(token)
+    if not user_res or not user_res.user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return user_res.user.id
+
+def validate_date_range(date_start: Optional[str], date_end: Optional[str], max_days: int = 4000) -> tuple[str, str]:
+    if not date_end:
+        # PARANOIA: If date_end is missing, we fall back to UTC. This is wrong for users not in UTC. The frontend should ALWAYS send an explicit date_end.
+        from datetime import timezone
+        date_end = datetime.now(timezone.utc).date().isoformat()
+    if not date_start:
+        date_start = (datetime.fromisoformat(date_end[:10]) - timedelta(days=30)).date().isoformat()
+        
+    try:
+        start_dt = datetime.fromisoformat(date_start[:10])
+        end_dt = datetime.fromisoformat(date_end[:10])
+        if (end_dt - start_dt).days > max_days:
+            raise HTTPException(
+                status_code=400, 
+                detail=f'Date range cannot exceed {max_days} days. Requested: {(end_dt - start_dt).days} days.'
+            )
+        if end_dt < start_dt:
+            raise HTTPException(
+                status_code=400,
+                detail='date_end must be after date_start'
+            )
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Invalid date format. Use ISO 8601.')
+    
+    return date_start, date_end
+
+class MasterViewRequest(BaseModel):
+    senders: Optional[List[str]] = None
+    campaigns: Optional[List[str]] = None
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+
+class AccountHealthRequest(BaseModel):
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+
+def compute_today_live(workspace_id: str, supabase: Client, user_today: str) -> dict:
+    """
+    Returns live today's action counts.
+    Reads from account_daily_action_counts (already incremented atomically
+    by the Campaigns engine's rate limiting). This is NOT action_log.
+    
+    # PERFORMANCE CRITICAL: This reads account_daily_action_counts, NOT action_log.
+    # action_log is a write-optimized table. Counting it live is an O(n) full scan.
+    """
+    # USER TIMEZONE: Using date_end from the request, not server date.today(). Server time != user's local date.
+    today = user_today
+    try:
+        # Get all accounts for this workspace
+        accounts_res = supabase.table('accounts').select('id').eq('workspace_id', workspace_id).execute()
+        account_ids = [a['id'] for a in (accounts_res.data or [])]
+        if not account_ids:
+            return {'connections_today': 0, 'messages_today': 0}
+        
+        connections = 0
+        messages = 0
+        inmails = 0
+        # Chunk account_ids into batches of 100 to avoid Supabase IN clause limits
+        for i in range(0, len(account_ids), 100):
+            batch = account_ids[i:i+100]
+            counts_res = supabase.table('account_daily_action_counts') \
+                .select('action_type, count') \
+                .in_('account_id', batch) \
+                .eq('usage_date', today) \
+                .execute()
+            
+            # Layer 1: Accommodate various action_types for connection/message based on actual app usage
+            connections += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') in ('connection', 'send_connection_request', 'send_connection_request_with_note'))
+            messages += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') in ('message', 'send_message', 'send_voice_note', 'send_message_with_doc', 'send_message_with_image'))
+            inmails += sum(r.get('count', 0) for r in (counts_res.data or []) if 'inmail' in str(r.get('action_type', '')).lower())
+        return {'connections_today': connections, 'messages_today': messages, 'inmails_today': inmails}
+    except Exception as e:
+        print(f'[compute_today_live] Error: {e}')
+        return {'connections_today': 0, 'messages_today': 0}
+
+# MULTI-TENANT SAFETY CHECKLIST:
+# [ ] Is the query scoped by workspace_id? Every query reading from any table MUST filter workspace_id.
+# [ ] Does the workspace_id filter happen FIRST (i.e., is it the leading column in the WHERE clause)?
+@router.post("/api/master-view/stats")
+def get_master_view_stats(
+    request: Request,
+    req: MasterViewRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    if not workspace_id:
+        raise HTTPException(status_code=403, detail='workspace_id required')
+    
+    user_id = get_current_user_id(request, supabase)
+    # Layer 1: Strictly verify the user is a member of this specific workspace
+    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    if not ws_check.data:
+        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
+        
+    req.date_start, req.date_end = validate_date_range(req.date_start, req.date_end)
+
+    req.campaigns = sanitize_filter_list(req.campaigns)
+    req.senders = sanitize_filter_list(req.senders)
+    
+    # Layer 1: Workspace check
+    if req.campaigns:
+        valid_camp_res = supabase.table("campaigns").select("id").eq("workspace_id", workspace_id).in_("id", req.campaigns).execute()
+        valid_campaign_ids = [r["id"] for r in valid_camp_res.data]
+        req.campaigns = sanitize_filter_list(valid_campaign_ids)
+        
+    if req.senders:
+        valid_sender_res = supabase.table("accounts").select("id").eq("workspace_id", workspace_id).in_("id", req.senders).execute()
+        valid_sender_ids = [r["id"] for r in valid_sender_res.data]
+        req.senders = sanitize_filter_list(valid_sender_ids)
+
+    def safe_div(a, b):
+        return a / b if b > 0 else 0
+
+    try:
+        date_start = req.date_start
+        date_end = req.date_end
+        
+        # 1. Fetch daily_campaign_stats for campaign-level aggregations
+        daily_stats_query = supabase.table("daily_campaign_stats").select("*").eq("workspace_id", workspace_id).gte("stat_date", date_start).lte("stat_date", date_end)
+        if req.campaigns:
+            daily_stats_query = daily_stats_query.in_("campaign_id", req.campaigns)
+        daily_res = daily_stats_query.execute()
+        
+        # 1b. Fetch workspace-level stats independently
+        try:
+            # PARANOIA: Wrapped the query in try/except. If the total_campaigns column is missing, the dashboard degrades gracefully instead of throwing 500.
+            workspace_stats_res = supabase.table("daily_workspace_stats").select("stat_date, total_leads, active_campaigns, total_campaigns").eq("workspace_id", workspace_id).gte("stat_date", date_start).lte("stat_date", date_end).order("stat_date", desc=True).limit(1).execute()
+        except Exception as e:
+            print(f"[MasterView] Failed to fetch total_campaigns (migration pending?): {e}")
+            workspace_stats_res = supabase.table("daily_workspace_stats").select("stat_date, total_leads, active_campaigns").eq("workspace_id", workspace_id).gte("stat_date", date_start).lte("stat_date", date_end).order("stat_date", desc=True).limit(1).execute()
+        
+        total_leads = workspace_stats_res.data[0].get("total_leads") or 0 if workspace_stats_res.data else 0
+        active_campaigns = workspace_stats_res.data[0].get("active_campaigns") or 0 if workspace_stats_res.data else 0
+        total_campaigns = workspace_stats_res.data[0].get("total_campaigns") or 0 if workspace_stats_res.data else 0
+
+        # 2. Aggregations
+        counts_by_date = {}
+        
+        today_conn = 0
+        today_msg = 0
+        today_steps = 0
+        
+        enrolled_leads = 0
+        connected_leads = 0
+        replied_leads = 0
+        booked_leads = 0
+        
+        positive_sentiment = 0
+        auto_withdrawals = 0
+        api_syncs = 0
+        
+        # Determine today's date for "today" stats
+        # USER TIMEZONE: Using date_end from the request, not server date.today(). Server time != user's local date.
+        today_str = date_end[:10] if date_end else datetime.utcnow().date().isoformat()
+        
+        # Variables to track latest snapshot stats
+        latest_date = ""
+        
+        for row in daily_res.data:
+            dt = row["stat_date"]
+            if dt not in counts_by_date:
+                counts_by_date[dt] = {"connections": 0, "messages": 0, "inmails": 0, "replied": 0}
+            counts_by_date[dt]["connections"] += (row.get("connections_sent") or 0)
+            counts_by_date[dt]["messages"] += (row.get("messages_sent") or 0)
+            
+            # Daily Today stats
+            if dt == today_str:
+                today_conn += (row.get("connections_sent") or 0)
+                today_msg += (row.get("messages_sent") or 0)
+                today_steps += (row.get("connections_sent") or 0) + (row.get("messages_sent") or 0)
+                
+            # Extra stats (assumed to be daily deltas if they existed)
+            positive_sentiment += (row.get("positive_sentiment") or 0)
+            auto_withdrawals += (row.get("auto_withdrawals") or 0)
+            api_syncs += (row.get("api_syncs") or 0)
+            
+            # Snapshot stats (take the latest day's values, summed across campaigns if multiple campaigns are returned for that day)
+            # Since we iterate over all rows, we want to sum the snapshot values for the latest date ONLY.
+            pass
+            
+        # Group rows by date to safely sum snapshot values across all campaigns for the latest available date
+        rows_by_date = {}
+        for row in daily_res.data:
+            dt = row["stat_date"]
+            if dt not in rows_by_date:
+                rows_by_date[dt] = []
+            rows_by_date[dt].append(row)
+            
+        if rows_by_date:
+            latest_dt = max(rows_by_date.keys())
+            latest_rows = rows_by_date[latest_dt]
+            for row in latest_rows:
+                enrolled_leads += (row.get("enrolled") or 0)
+                connected_leads += (row.get("connected") or 0)
+                booked_leads += (row.get("booked") or 0)
+                replied_leads += (row.get("replied") or 0)
+                
+                # Also update the time_series replied with the daily delta if we had one, but we only have snapshots.
+                # Actually, replied in time_series might be broken if we don't track daily replies. 
+                # Let's keep the API consistent.
+            
+            # De-duplicate workspace-level snapshots (total_leads, active_campaigns) which are identical across campaign rows for the same date
+            if len(latest_rows) > 0:
+                if latest_rows[0].get("total_leads") is not None:
+                    total_leads = latest_rows[0].get("total_leads")
+                if latest_rows[0].get("active_campaigns") is not None:
+                    active_campaigns = latest_rows[0].get("active_campaigns")
+                if latest_rows[0].get("total_campaigns") is not None:
+                    total_campaigns = latest_rows[0].get("total_campaigns")
+
+        time_series = []
+        for dt_str in sorted(counts_by_date.keys()):
+            time_series.append({
+                "date": dt_str,
+                "connections": counts_by_date[dt_str]["connections"],
+                "messages": counts_by_date[dt_str]["messages"],
+                "inmails": counts_by_date[dt_str]["inmails"],
+                "replied": 0  # We don't have daily replies tracked right now, only cumulative.
+            })
+
+        # heatmap_data is computed from daily_res.data above. If you change the daily_res query, update this too.
+        # PARANOIA: daily_res contains multiple rows per date (one per campaign). We MUST group by stat_date before generating heatmap_data, otherwise the frontend grid crashes with duplicate keys.
+        heatmap_data_by_date = {}
+        for row in daily_res.data:
+            dt = row["stat_date"]
+            conn = row.get("connections_sent") or 0
+            msg = row.get("messages_sent") or 0
+            
+            if dt not in heatmap_data_by_date:
+                heatmap_data_by_date[dt] = {"count": 0, "connections": 0, "messages": 0}
+                
+            heatmap_data_by_date[dt]["count"] += (conn + msg)
+            heatmap_data_by_date[dt]["connections"] += conn
+            heatmap_data_by_date[dt]["messages"] += msg
+            
+        heatmap_data = [{"date": dt, "count": data["count"], "connections": data["connections"], "messages": data["messages"]} for dt, data in heatmap_data_by_date.items()]
+
+        # PARANOIA LAYER 2: ALWAYS keep the .limit(5000) on this query. This is action_log — a write-optimized append-only table. Without a limit, a large workspace will OOM the server. The heatmap is a visual approximation; 5,000 rows is statistically sufficient.
+        time_of_day_data = []
+        try:
+            tod_res = supabase.table("action_log").select("executed_at").eq("workspace_id", workspace_id).order("executed_at", desc=True).limit(5000).execute()
+            if tod_res.data:
+                days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                counts = {h: {d: 0 for d in range(7)} for h in range(24)}
+                max_count = 0
+                for r in tod_res.data:
+                    executed_at_str = r.get("executed_at")
+                    if not executed_at_str:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(executed_at_str.replace("Z", "+00:00"))
+                        h = dt.hour
+                        d = dt.weekday()
+                        counts[h][d] += 1
+                        if counts[h][d] > max_count:
+                            max_count = counts[h][d]
+                    except Exception:
+                        pass
+                
+                if max_count > 0:
+                    for h in range(24):
+                        for d in range(7):
+                            rate = (counts[h][d] / max_count * 100)
+                            time_of_day_data.append({
+                                "hour": h,
+                                "day": days_of_week[d],
+                                "rate": rate,
+                                "count": counts[h][d]
+                            })
+        except Exception as e:
+            print(f"[MasterView] Time of day fetch failed: {e}")
+        multi_campaign_data = []
+        multi_campaign_labels = []
+        ai_insight = "Aggregating all dashboard metrics exclusively from daily_campaign_stats rollup job."
+        lead_sources = []
+        radar_stats = {
+            "Acceptance Rate": safe_div(connected_leads, enrolled_leads) * 100 if enrolled_leads > 0 else 0,
+            "Reply Rate": safe_div(replied_leads, connected_leads) * 100 if connected_leads > 0 else 0,
+            "Booking Rate": safe_div(booked_leads, replied_leads) * 100 if replied_leads > 0 else 0,
+            "Sentiment (Pos)": safe_div(positive_sentiment, replied_leads) * 100 if replied_leads > 0 else 0,
+            "Deliverability": 99.8,
+            "Bounces": 0.2
+        }
+        # PARANOIA LAYER 2: NEVER remove the .limit(15) here. Fetching the full action_log will cause catastrophic OOM crashes on the dashboard.
+        # PARANOIA: NEVER remove the live_feed_error field from the response. Silently returning [] hides real DB failures and makes them look like 'no activity'. This field lets the frontend distinguish the two states.
+        live_feed = []
+        error_feed = []
+        live_feed_error = False
+        try:
+            # Layer 0 & 1: Safely fetch the most recent activity with a strict limit
+            action_log_res = supabase.table("action_log") \
+                .select("action_type, result, executed_at, error_detail, lead_states(leads(first_name, last_name, company_name))") \
+                .eq("workspace_id", workspace_id) \
+                .order("executed_at", desc=True) \
+                .limit(15) \
+                .execute()
+                
+            for act in (action_log_res.data or []):
+                action_type_str = act.get("action_type", "Action")
+                
+                # Safely navigate nested relations
+                lead_data = (act.get("lead_states") or {}).get("leads") or {}
+                first = lead_data.get('first_name') or ''
+                last = lead_data.get('last_name') or ''
+                name = f"{first} {last}".strip() or "Unknown Lead"
+                
+                company = lead_data.get('company_name')
+                company_str = f" at {company}" if company else ""
+                
+                dt = act.get("executed_at")
+                
+                if act.get("result") != "success" or act.get("error_detail"):
+                    error_feed.append({
+                        "text": f"Failed to {action_type_str} for {name}{company_str}",
+                        "time": dt,
+                        "type": "error"
+                    })
+                else:
+                    live_feed.append({
+                        "text": f"Successfully executed {action_type_str} for {name}{company_str}",
+                        "time": dt,
+                        "type": "activity"
+                    })
+        except Exception as e:
+            # Layer 1: If query fails (e.g. timeout), catch exception and fallback so dashboard loads.
+            print(f"[MasterView] Live feed fetch failed: {e}")
+            live_feed_error = True
+        
+        account_health = "Excellent"
+
+        failed_count = 0
+        try:
+            failed_query = supabase.table("lead_states").select("id", count="exact").eq("workspace_id", workspace_id).in_("status", ["error", "failed", "bounced"])
+            if req.campaigns:
+                failed_query = failed_query.in_("campaign_id", req.campaigns)
+            failed_res = failed_query.execute()
+            failed_count = failed_res.count if getattr(failed_res, 'count', None) is not None else len(failed_res.data)
+        except Exception as e:
+            print(f"[MasterView] Failed count fetch error: {e}")
+
+        # Add staleness indicator to response
+        try:
+            last_rollup_res = supabase.table('processing_jobs') \
+                .select('completed_at') \
+                .eq('job_type', 'dashboard_rollup') \
+                .eq('status', 'completed') \
+                .order('completed_at', desc=True) \
+                .limit(1) \
+                .execute()
+            last_rolled_up_at = last_rollup_res.data[0]['completed_at'] if last_rollup_res.data else None
+        except Exception as e:
+            print(f"Failed to fetch staleness indicator: {e}")
+            last_rolled_up_at = None
+
+        today_live_data = compute_today_live(workspace_id, supabase, req.date_end[:10] if req.date_end else datetime.utcnow().date().isoformat())
+
+        return {
+            "summary": {
+                "total_leads": total_leads,
+                "active_campaigns": active_campaigns,
+                "total_campaigns": total_campaigns,
+                "account_health": account_health,
+                "positive_sentiment": positive_sentiment,
+                "auto_withdrawals": auto_withdrawals,
+                "api_syncs": api_syncs,
+                "connections_today": today_live_data.get("connections_today", 0),
+                "messages_today": today_live_data.get("messages_today", 0),
+                "inmails_today": today_live_data.get("inmails_today", 0)
+            },
+            "today": {
+                "connections_sent": today_conn,
+                "messages_sent": today_msg,
+                "steps_executed": today_steps
+            },
+            "funnel": {
+                "extracted": total_leads,
+                "enrolled": enrolled_leads,
+                "connected": connected_leads,
+                "replied": replied_leads,
+                "booked": booked_leads,
+                "failed": failed_count
+            },
+            "time_series": time_series,
+            "heatmap_data": heatmap_data,
+            "time_of_day_data": time_of_day_data,
+            "multi_campaign_data": multi_campaign_data,
+            "multi_campaign_labels": multi_campaign_labels,
+            "ai_insight": ai_insight,
+            "lead_sources": lead_sources,
+            "radar_stats": radar_stats,
+            "live_feed": live_feed,
+            "error_feed": error_feed,
+            "live_feed_error": live_feed_error,
+            "last_rolled_up_at": last_rolled_up_at
+        }
+    except Exception as e:
+        print("Master View Error:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/master-view/filters")
+def get_master_view_filters(
+    request: Request,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    if not workspace_id:
+        raise HTTPException(status_code=403, detail='workspace_id required')
+        
+    user_id = get_current_user_id(request, supabase)
+    # Layer 1: Strictly verify the user is a member of this specific workspace
+    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    if not ws_check.data:
+        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
+
+    try:
+        workspaces_data = []
+        
+        acc_res = supabase.table("accounts").select("id, name, workspace_id").eq("workspace_id", workspace_id).execute()
+        camp_res = supabase.table("campaigns").select("id, name, workspace_id").eq("workspace_id", workspace_id).execute()
+        
+        return {
+            "workspaces": workspaces_data,
+            "senders": acc_res.data,
+            "campaigns": camp_res.data
+        }
+    except Exception as e:
+        print("Filters Error:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+class FunnelLeadsRequest(BaseModel):
+    senders: Optional[List[str]] = None
+    campaigns: Optional[List[str]] = None
+    step: str
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+
+@router.post("/api/master-view/funnel-leads")
+def get_funnel_leads(
+    request: Request,
+    req: FunnelLeadsRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    if not workspace_id:
+        raise HTTPException(status_code=403, detail='workspace_id required')
+    
+    user_id = get_current_user_id(request, supabase)
+    # Layer 1: Strictly verify the user is a member of this specific workspace
+    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    if not ws_check.data:
+        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
+        
+    req.date_start, req.date_end = validate_date_range(req.date_start, req.date_end)
+
+    try:
+        req.campaigns = sanitize_filter_list(req.campaigns)
+        req.senders = sanitize_filter_list(req.senders)
+
+        if req.campaigns:
+            valid_camp_res = supabase.table("campaigns").select("id").eq("workspace_id", workspace_id).in_("id", req.campaigns).execute()
+            valid_campaign_ids = [r["id"] for r in valid_camp_res.data]
+            req.campaigns = sanitize_filter_list(valid_campaign_ids)
+            
+        if req.senders:
+            valid_sender_res = supabase.table("accounts").select("id").eq("workspace_id", workspace_id).in_("id", req.senders).execute()
+            valid_sender_ids = [r["id"] for r in valid_sender_res.data]
+            req.senders = sanitize_filter_list(valid_sender_ids)
+
+        pass
+
+        lead_ids = set()
+        
+        if req.step == "Extracted":
+            lq = supabase.table("leads").select("id").eq("workspace_id", workspace_id)
+            res = lq.limit(20).execute()
+            lead_ids = {r["id"] for r in res.data}
+            
+        elif req.step in ["Enrolled", "Connected", "Booked"]:
+            sq = supabase.table("lead_states").select("opportunity_id, status").eq("workspace_id", workspace_id)
+            if req.campaigns: sq = sq.in_("campaign_id", req.campaigns)
+            
+            if req.step == "Connected":
+                sq = sq.in_("status", ["running", "completed", "exited"])
+            elif req.step == "Booked":
+                sq = sq.eq("status", "exited")
+                
+            res = sq.order("created_at", desc=True).limit(50).execute()
+            lead_ids = {r["opportunity_id"] for r in res.data if r.get("opportunity_id")}
+            
+        elif req.step == "Replied":
+            mq = supabase.table("messages").select("lead_id").eq("workspace_id", workspace_id).eq("direction", "inbound")
+            if req.senders: mq = mq.in_("account_id", req.senders)
+            res = mq.order("created_at", desc=True).limit(50).execute()
+            lead_ids = {r["lead_id"] for r in res.data if r.get("lead_id")}
+
+        if not lead_ids:
+            return []
+            
+        # Now fetch the actual lead details
+        leads_res = supabase.table("leads").select("id, first_name, last_name, job_title, company_name").eq("workspace_id", workspace_id).in_("id", list(lead_ids)[:20]).execute()
+        
+        result = []
+        for r in leads_res.data:
+            name = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+            if not name: name = "Unknown Lead"
+            result.append({
+                "id": r["id"],
+                "name": name,
+                "title": r.get("job_title") or "",
+                "company": r.get("company_name") or ""
+            })
+            
+        return result
+    except Exception as e:
+        print("Funnel Leads Error:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/master-view/account-health")
+def get_account_health(
+    request: Request,
+    req: AccountHealthRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    if not workspace_id:
+        raise HTTPException(status_code=403, detail='workspace_id required')
+        
+    user_id = get_current_user_id(request, supabase)
+    # Layer 1: Strictly verify the user is a member of this specific workspace
+    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    if not ws_check.data:
+        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
+
+    try:
+        # SAFETY: This query MUST read from 'accounts' directly.
+        # NEVER replace this with a rollup table query. Staleness here means users see
+        # a suspended account as healthy for up to 1 hour — that is unacceptable.
+        accounts_res = supabase.table("accounts") \
+            .select("id, name, status, is_warmup, warmup_start_date, warmup_target_days, "
+                    "last_health_check_at, cookie_expires_at, "
+                    "daily_connection_limit, daily_message_limit") \
+            .eq("workspace_id", workspace_id) \
+            .execute()
+        
+        if not accounts_res.data:
+            return {"accounts": [], "total_throttled": 0, "total_accounts": 0}
+
+        account_ids = [acc["id"] for acc in accounts_res.data]
+        
+        # USER TIMEZONE: Using date_end from the request, not server date.today(). Server time != user's local date.
+        today_str = req.date_end[:10] if req.date_end else datetime.utcnow().date().isoformat()
+        now_dt = datetime.utcnow()
+        
+        try:
+            counts_res = supabase.table("account_daily_action_counts").select("account_id, action_type, count").in_("account_id", account_ids).eq("usage_date", today_str).execute()
+            counts_data = counts_res.data
+        except Exception as e:
+            # Layer 1 Environmental Guard: Table might not exist
+            counts_data = []
+            print(f"Failed to fetch account_daily_action_counts: {e}")
+        
+        usage_by_account = {}
+        for row in counts_data:
+            acc_id = row["account_id"]
+            if acc_id not in usage_by_account:
+                usage_by_account[acc_id] = {}
+            usage_by_account[acc_id][row["action_type"]] = row.get("count", 0)
+            
+        conn_action_types = {'send_connection_request', 'send_connection_request_with_note'}
+        msg_action_types = {'send_message', 'send_voice_note', 'send_message_with_doc', 'send_message_with_image'}
+        
+        accounts_health = []
+        total_throttled = 0
+        
+        for acc in accounts_res.data:
+            acc_id = acc["id"]
+            acc_usage = usage_by_account.get(acc_id, {})
+            
+            today_connection_count = sum(acc_usage.get(at, 0) for at in conn_action_types)
+            today_message_count = sum(acc_usage.get(at, 0) for at in msg_action_types)
+            
+            # Layer 2 Human Paranoia Guard: Handle 0 explicitly vs None
+            conn_limit = acc.get("daily_connection_limit") if acc.get("daily_connection_limit") is not None else 20
+            msg_limit = acc.get("daily_message_limit") if acc.get("daily_message_limit") is not None else 40
+            
+            connection_pct = round((today_connection_count / conn_limit) * 100, 1)
+            message_pct = round((today_message_count / msg_limit) * 100, 1)
+            
+            throttled = connection_pct >= 90 or message_pct >= 90
+            if throttled:
+                total_throttled += 1
+                
+            cookie_expires_at = acc.get("cookie_expires_at")
+            is_cookie_expired = False
+            if cookie_expires_at:
+                try:
+                    exp_dt = datetime.fromisoformat(cookie_expires_at.replace('Z', '+00:00'))
+                    if exp_dt.tzinfo is None:
+                        is_cookie_expired = exp_dt < now_dt
+                    else:
+                        now_dt_utc = datetime.now(exp_dt.tzinfo)
+                        is_cookie_expired = exp_dt < now_dt_utc
+                except ValueError:
+                    pass
+
+            accounts_health.append({
+                "id": acc_id,
+                "name": acc["name"],
+                "status": acc["status"],
+                "is_warmup": acc.get("is_warmup", False),
+                "warmup_start_date": acc.get("warmup_start_date"),
+                "warmup_target_days": acc.get("warmup_target_days"),
+                "last_health_check_at": acc.get("last_health_check_at"),
+                "cookie_expires_at": cookie_expires_at,
+                "is_cookie_expired": is_cookie_expired,
+                "connections_used": today_connection_count,
+                "connections_limit": conn_limit,
+                "messages_used": today_message_count,
+                "messages_limit": msg_limit,
+                "connection_pct": connection_pct,
+                "message_pct": message_pct,
+                "throttled": throttled
+            })
+            
+        return {
+            "accounts": accounts_health,
+            "total_throttled": total_throttled,
+            "total_accounts": len(accounts_health)
+        }
+    except Exception as e:
+        print("Account Health Error:", e)
+        raise HTTPException(status_code=500, detail=str(e))

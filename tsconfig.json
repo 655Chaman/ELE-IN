@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./core/frontend/*"],
+      "@dashboard/*": ["./dashboard/frontend/*"],
+      "@accounts/*": ["./accounts/frontend/*"],
+      "@leads/*": ["./leads/frontend/*"],
+      "@campaigns/*": ["./campaigns/frontend/*"],
+      "@inbox/*": ["./inbox/frontend/*"],
+      "@knowledge/*": ["./knowledge/frontend/*"],
+      "@admin/*": ["./admin/frontend/*"],
+      "@integrations/*": ["./integrations/frontend/*"],
+      "@core/*": ["./core/frontend/*"]
+    }
+  }
+}

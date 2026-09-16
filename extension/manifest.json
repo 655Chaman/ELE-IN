@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Ele-In LinkedIn Execution Engine",
+  "version": "1.0.0",
+  "description": "Securely automates LinkedIn outreach in the background.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "cookies"
+  ],
+  "host_permissions": [
+    "*://*.linkedin.com/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

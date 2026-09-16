@@ -1,0 +1,8 @@
+python-json-logger
+sentry-sdk
+httpx
+python-dotenv==1.2.1
+supabase==2.31.0
+fastapi==0.128.8
+playwright==1.60.0
+openai==2.48.0

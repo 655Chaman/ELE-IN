@@ -1,0 +1,3 @@
+target-version = "py39"
+[lint]
+select = ["E", "F", "UP"]
