@@ -57,10 +57,10 @@ async def process_single_job(job, sync_supabase):
                     loop.run_until_complete(KnowledgeService.process_pdf_bg(sync_supabase, workspace_id, payload['filename'], file_bytes, asset_id))
                 elif job_type == 'csv':
                     from campaigns.backend.routers.elein import process_csv_background
-                    process_csv_background(payload['list_id'], payload['temp_file'], payload['mapping_dict'], payload['clean_data'], workspace_id)
+                    process_csv_background(payload['list_id'], payload['temp_file'], payload['mapping_dict'], payload['clean_data'], workspace_id, payload.get('target_timezone'))
                 elif job_type == 'voyager_search':
                     from campaigns.backend.routers.elein import process_voyager_search_background
-                    process_voyager_search_background(payload['list_id'], payload['url'], workspace_id, payload.get('account_id'), payload['max_results'])
+                    process_voyager_search_background(payload['list_id'], payload['url'], workspace_id, payload.get('account_id'), payload['max_results'], payload.get('target_timezone'))
                 elif job_type == 'synthesis':
                     pass # update_synthesis runs automatically for this below
                 elif job_type == 'hubspot_import':
