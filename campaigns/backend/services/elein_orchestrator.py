@@ -335,9 +335,13 @@ class EleInOrchestrator:
         active_campaign_ids = []
         for c in campaigns_res.data:
             meta = c.get("metadata") or {}
-            tz_str = meta.get("timezone", "UTC")
-            if is_working_hours(tz_str):
+            mode = meta.get("scheduling_mode", "campaign_timezone")
+            if mode == "lead_local_time":
                 active_campaign_ids.append(c["id"])
+            else:
+                tz_str = meta.get("timezone", "UTC")
+                if is_working_hours(tz_str):
+                    active_campaign_ids.append(c["id"])
 
         if not active_campaign_ids:
             return []
@@ -353,6 +357,10 @@ class EleInOrchestrator:
             enrollment_ids = [s["enrollment_id"] for s in states]
             enrollments_res = self.supabase.table("campaign_enrollments").select("*").in_("id", enrollment_ids).execute()
             enrollment_map = {r["id"]: r for r in (enrollments_res.data or [])}
+            
+            lead_ids = list({r["lead_id"] for r in enrollment_map.values()})
+            leads_res = self.supabase.table("leads").select("id, timezone").in_("id", lead_ids).execute()
+            leads_map = {l["id"]: l for l in (leads_res.data or [])}
             
             version_ids = list({r["campaign_version_id"] for r in enrollment_map.values()})
             nodes_res = self.supabase.table("campaign_nodes").select("*").in_("campaign_version_id", version_ids).execute()
@@ -377,8 +385,20 @@ class EleInOrchestrator:
                 if not campaign:
                     continue
                 
-                tz_str = (campaign.get("metadata") or {}).get("timezone", "UTC")
+                lead = leads_map.get(enrollment["lead_id"], {})
+                from campaigns.backend.services.timezone_utils import resolve_target_timezone, calculate_next_run_at
+                import pytz
+                
+                tz_str = resolve_target_timezone(campaign, lead)
                 enforce_working_hours = (campaign.get("metadata") or {}).get("enforce_working_hours", True)
+                
+                if enforce_working_hours and not is_working_hours(tz_str):
+                    next_run = calculate_next_run_at(datetime.utcnow().replace(tzinfo=pytz.UTC), tz_str)
+                    self.supabase.table("campaign_execution_states").update({
+                        "status": "pending",
+                        "next_run_at": next_run.isoformat(),
+                    }).eq("id", state["id"]).execute()
+                    continue
                 
                 vid = enrollment["campaign_version_id"]
                 graph = version_graphs.get(vid, {"nodes": [], "edges": []})
