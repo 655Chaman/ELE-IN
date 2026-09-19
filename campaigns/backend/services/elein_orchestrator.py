@@ -407,6 +407,7 @@ class EleInOrchestrator:
                     "id":                      state["id"],
                     "campaign_id":             enrollment["campaign_id"],
                     "opportunity_id":          enrollment["lead_id"],
+                    "updated_at":              state["updated_at"],
                     "current_node_id":         state["current_node_id"],
                     "status":                  state["status"],
                     "next_run_at":             state["next_run_at"],
@@ -513,7 +514,7 @@ class EleInOrchestrator:
                 return
             current_node = start_nodes[0]
         else:
-            current_node = self.get_node(nodes, current_node_id)
+            current_node = next((n for n in nodes if n["id"] == current_node_id), None)
 
         if not current_node:
             self.mark_error(state["id"], f"Node {current_node_id} not found in graph", lease_token=lease_token)
@@ -1015,7 +1016,7 @@ class EleInOrchestrator:
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator"})
 
-    def mark_error(self, state_id: str, error_msg: str, attempts: int = 0, max_attempts: int = 5, hard_error: bool = False, lease_token: str = None, node_id: str = None, tz_str: str = "UTC"):
+    def mark_error(self, state_id: str, error_msg: str, attempts: int = 0, max_attempts: int = 5, hard_error: bool = False, lease_token: str = None, node_id: str = None, tz_str: str = "UTC", enforce_working_hours: bool = True):
         logger.error(f"Lead state {state_id} errored: {error_msg} (Attempt {attempts + 1}/{max_attempts})")
         new_attempts = max_attempts if hard_error else attempts + 1
         
@@ -1026,7 +1027,7 @@ class EleInOrchestrator:
             # Exponential backoff (e.g. 15m, 1h, 4h, etc) -> back to pending
             backoff_minutes = 15 * (4 ** attempts)
             next_run = (datetime.utcnow() + timedelta(minutes=backoff_minutes))
-            self.update_state(state_id, node_id, "pending", next_run, lease_token, error_reason=error_msg, attempts=new_attempts, tz_str=tz_str)
+            self.update_state(state_id, node_id, "pending", next_run, lease_token, error_reason=error_msg, attempts=new_attempts, tz_str=tz_str, enforce_working_hours=enforce_working_hours)
 
 
 def _build_proxy_url(account_row: dict):
