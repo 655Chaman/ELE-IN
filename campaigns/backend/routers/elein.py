@@ -1767,8 +1767,7 @@ def create_campaign(
             supabase.table("campaign_versions").insert({
                 "id": version_id,
                 "campaign_id": campaign_id,
-                "version_number": 1,
-                "name": "Initial Version"
+                "version": 1,
             }).execute()
 
             # 2. Map React Flow String IDs to UUIDs for nodes
@@ -1874,16 +1873,16 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
         client.table("campaigns").update(update_data).eq("id", campaign_id).execute()
 
         # Create new version
-        ver_res = client.table("campaign_versions").select("version_number").eq("campaign_id", campaign_id).order("version_number", desc=True).limit(1).execute()
+        ver_res = client.table("campaign_versions").select("version").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
         next_version = 1
         if ver_res.data:
-            next_version = ver_res.data[0]["version_number"] + 1
+            next_version = ver_res.data[0]["version"] + 1
 
         version_id = str(uuid.uuid4())
         client.table("campaign_versions").insert({
             "id": version_id,
             "campaign_id": campaign_id,
-            "version_number": next_version,
+            "version": next_version,
             "name": f"Version {next_version}"
         }).execute()
 
@@ -1977,20 +1976,39 @@ def enroll_leads(campaign_id: str, body: EnrollLeadsRequest, supabase: Client = 
         enrolled = 0
         skipped = 0
         
-        # Bulk lookup to check which leads exist
-        check_res = supabase.table("campaign_enrollments").select("lead_id").eq("campaign_id", campaign_id).in_("lead_id", body.opportunity_ids).execute()
-        existing_opp_ids = {row["lead_id"] for row in (check_res.data or [])}
+        # Bulk lookup to check which leads exist (chunked)
+        existing_opp_ids = set()
+        for i in range(0, len(body.opportunity_ids), 200):
+            chunk = body.opportunity_ids[i:i+200]
+            check_res = supabase.table("campaign_enrollments").select("lead_id").eq("campaign_id", campaign_id).in_("lead_id", chunk).execute()
+            existing_opp_ids.update(row["lead_id"] for row in (check_res.data or []))
+            
         new_opp_ids = [opp_id for opp_id in body.opportunity_ids if opp_id not in existing_opp_ids]
         
         # --- PHASE 1: SUPPRESSION CHECK ---
-        # Query leads to get emails/linkedin_urls
-        leads_res = supabase.table("leads").select("id, linkedin_url, email").in_("id", new_opp_ids).execute()
-        leads_map = {row["id"]: row for row in (leads_res.data or [])}
+        # Query leads to get emails/linkedin_urls (chunked)
+        leads_map = {}
+        for i in range(0, len(new_opp_ids), 200):
+            chunk = new_opp_ids[i:i+200]
+            leads_res = supabase.table("leads").select("id, linkedin_url, email").in_("id", chunk).execute()
+            for row in (leads_res.data or []):
+                leads_map[row["id"]] = row
+                
+        all_linkedins = list({l.get("linkedin_url") for l in leads_map.values() if l.get("linkedin_url")})
+        all_emails = list({l.get("email") for l in leads_map.values() if l.get("email")})
         
-        # Query workspace suppression list
-        supp_res = supabase.table("suppression_list").select("linkedin_url, email").eq("workspace_id", workspace_id).execute()
-        supp_linkedin = {row["linkedin_url"] for row in (supp_res.data or []) if row.get("linkedin_url")}
-        supp_email = {row["email"] for row in (supp_res.data or []) if row.get("email")}
+        # Query workspace suppression list only for matching candidates (chunked)
+        supp_linkedin = set()
+        for i in range(0, len(all_linkedins), 200):
+            chunk = all_linkedins[i:i+200]
+            res = supabase.table("suppression_list").select("linkedin_url").eq("workspace_id", workspace_id).in_("linkedin_url", chunk).execute()
+            supp_linkedin.update(r.get("linkedin_url") for r in (res.data or []))
+            
+        supp_email = set()
+        for i in range(0, len(all_emails), 200):
+            chunk = all_emails[i:i+200]
+            res = supabase.table("suppression_list").select("email").eq("workspace_id", workspace_id).in_("email", chunk).execute()
+            supp_email.update(r.get("email") for r in (res.data or []))
         
         final_opp_ids = []
         suppressed_count = 0
@@ -2007,7 +2025,7 @@ def enroll_leads(campaign_id: str, body: EnrollLeadsRequest, supabase: Client = 
 
         if new_opp_ids:
             # Get active version
-            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version_number", desc=True).limit(1).execute()
+            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
             if not ver_res.data:
                 raise HTTPException(status_code=400, detail="Campaign has no versions")
             version_id = ver_res.data[0]["id"]
@@ -2189,12 +2207,27 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
         opp_ids = [row["opportunity_id"] for row in opps_res.data]
         
         # --- PHASE 1: SUPPRESSION CHECK ---
-        leads_res = supabase.table("leads").select("id, linkedin_url, email").in_("id", opp_ids).execute()
-        leads_map = {row["id"]: row for row in (leads_res.data or [])}
+        leads_map = {}
+        for i in range(0, len(opp_ids), 200):
+            chunk = opp_ids[i:i+200]
+            leads_res = supabase.table("leads").select("id, linkedin_url, email").in_("id", chunk).execute()
+            for row in (leads_res.data or []):
+                leads_map[row["id"]] = row
+                
+        all_linkedins = list({l.get("linkedin_url") for l in leads_map.values() if l.get("linkedin_url")})
+        all_emails = list({l.get("email") for l in leads_map.values() if l.get("email")})
         
-        supp_res = supabase.table("suppression_list").select("linkedin_url, email").eq("workspace_id", workspace_id).execute()
-        supp_linkedin = {row["linkedin_url"] for row in (supp_res.data or []) if row.get("linkedin_url")}
-        supp_email = {row["email"] for row in (supp_res.data or []) if row.get("email")}
+        supp_linkedin = set()
+        for i in range(0, len(all_linkedins), 200):
+            chunk = all_linkedins[i:i+200]
+            res = supabase.table("suppression_list").select("linkedin_url").eq("workspace_id", workspace_id).in_("linkedin_url", chunk).execute()
+            supp_linkedin.update(r.get("linkedin_url") for r in (res.data or []))
+            
+        supp_email = set()
+        for i in range(0, len(all_emails), 200):
+            chunk = all_emails[i:i+200]
+            res = supabase.table("suppression_list").select("email").eq("workspace_id", workspace_id).in_("email", chunk).execute()
+            supp_email.update(r.get("email") for r in (res.data or []))
         
         valid_opp_ids = []
         for opp_id in opp_ids:
@@ -2257,7 +2290,7 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
         
         if final_opp_ids:
             # Get active version
-            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version_number", desc=True).limit(1).execute()
+            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
             if not ver_res.data:
                 raise HTTPException(status_code=400, detail="Campaign has no versions")
             version_id = ver_res.data[0]["id"]
