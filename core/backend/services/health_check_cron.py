@@ -256,7 +256,7 @@ def _disconnect_account(supabase: Client, acc_id: str, acc_name: str, workspace_
     
     # c. Find campaigns using this account to see if they need pausing
     camps_res = supabase.table("campaigns").select(
-        "id, name, sender_account_ids_json"
+        "id, name"
     ).eq("status", "ACTIVE").execute()
     
     for camp in (camps_res.data or []):
@@ -264,10 +264,7 @@ def _disconnect_account(supabase: Client, acc_id: str, acc_name: str, workspace_
             acc_res = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", camp["id"]).execute()
             senders = [r["account_id"] for r in acc_res.data]
         except Exception:
-            try:
-                senders = json.loads(camp.get("sender_account_ids_json", "[]"))
-            except:
-                continue
+            continue
             
         if acc_id in senders:
             # Check if there are any remaining ACTIVE senders for this campaign

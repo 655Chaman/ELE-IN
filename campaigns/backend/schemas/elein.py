@@ -30,7 +30,6 @@ class CampaignResponse(BaseModel):
     edges_json: str
 
 class CampaignVersionCreate(BaseModel):
-    version_number: int
     name: str
 
 class CampaignNodeCreate(BaseModel):

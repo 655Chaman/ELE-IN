@@ -105,7 +105,7 @@ class AccountHealthRequest(BaseModel):
     date_start: Optional[str] = None
     date_end: Optional[str] = None
 
-def compute_today_live(workspace_id: str, supabase: Client, user_today: str) -> dict:
+def compute_today_live(workspace_id: str, supabase: Client, user_today: str, senders: list = None) -> dict:
     """
     Returns live today's action counts.
     Reads from account_daily_action_counts (already incremented atomically
@@ -117,11 +117,14 @@ def compute_today_live(workspace_id: str, supabase: Client, user_today: str) -> 
     # USER TIMEZONE: Using date_end from the request, not server date.today(). Server time != user's local date.
     today = user_today
     try:
-        # Get all accounts for this workspace
-        accounts_res = supabase.table('accounts').select('id').eq('workspace_id', workspace_id).execute()
-        account_ids = [a['id'] for a in (accounts_res.data or [])]
+        if senders:
+            account_ids = senders
+        else:
+            # Get all accounts for this workspace
+            accounts_res = supabase.table('accounts').select('id').eq('workspace_id', workspace_id).execute()
+            account_ids = [a['id'] for a in (accounts_res.data or [])]
         if not account_ids:
-            return {'connections_today': 0, 'messages_today': 0}
+            return {'connections_today': 0, 'messages_today': 0, 'inmails_today': 0}
         
         connections = 0
         messages = 0
@@ -136,9 +139,9 @@ def compute_today_live(workspace_id: str, supabase: Client, user_today: str) -> 
                 .execute()
             
             # Layer 1: Accommodate various action_types for connection/message based on actual app usage
-            connections += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') in ('connection', 'send_connection_request', 'send_connection_request_with_note'))
-            messages += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') in ('message', 'send_message', 'send_voice_note', 'send_message_with_doc', 'send_message_with_image'))
-            inmails += sum(r.get('count', 0) for r in (counts_res.data or []) if 'inmail' in str(r.get('action_type', '')).lower())
+            connections += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') == 'connection_request')
+            messages += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') == 'message')
+            inmails += sum(r.get('count', 0) for r in (counts_res.data or []) if r.get('action_type') in ('inmail', 'paid_inmail'))
         return {'connections_today': connections, 'messages_today': messages, 'inmails_today': inmails}
     except Exception as e:
         print(f'[compute_today_live] Error: {e}')
@@ -219,6 +222,7 @@ def get_master_view_stats(
         positive_sentiment = 0
         auto_withdrawals = 0
         api_syncs = 0
+        period_replied = 0  # delta counter: same time-scale as positive_sentiment for Sentiment ratio
         
         # Determine today's date for "today" stats
         # USER TIMEZONE: Using date_end from the request, not server date.today(). Server time != user's local date.
@@ -242,6 +246,7 @@ def get_master_view_stats(
                 
             # Extra stats (assumed to be daily deltas if they existed)
             positive_sentiment += (row.get("positive_sentiment") or 0)
+            period_replied += (row.get("replied") or 0)  # delta for same-scale Sentiment ratio
             auto_withdrawals += (row.get("auto_withdrawals") or 0)
             api_syncs += (row.get("api_syncs") or 0)
             
@@ -344,14 +349,6 @@ def get_master_view_stats(
         multi_campaign_labels = []
         ai_insight = "Aggregating all dashboard metrics exclusively from daily_campaign_stats rollup job."
         lead_sources = []
-        radar_stats = {
-            "Acceptance Rate": safe_div(connected_leads, enrolled_leads) * 100 if enrolled_leads > 0 else 0,
-            "Reply Rate": safe_div(replied_leads, connected_leads) * 100 if connected_leads > 0 else 0,
-            "Booking Rate": safe_div(booked_leads, replied_leads) * 100 if replied_leads > 0 else 0,
-            "Sentiment (Pos)": safe_div(positive_sentiment, replied_leads) * 100 if replied_leads > 0 else 0,
-            "Deliverability": 99.8,
-            "Bounces": 0.2
-        }
         # PARANOIA LAYER 2: NEVER remove the .limit(15) here. Fetching the full action_log will cause catastrophic OOM crashes on the dashboard.
         # PARANOIA: NEVER remove the live_feed_error field from the response. Silently returning [] hides real DB failures and makes them look like 'no activity'. This field lets the frontend distinguish the two states.
         live_feed = []
@@ -409,6 +406,17 @@ def get_master_view_stats(
         except Exception as e:
             print(f"[MasterView] Failed count fetch error: {e}")
 
+        # RADAR STATS: Defined here (after failed_count) so Deliverability and Bounces use real data.
+        # Sentiment (Pos) uses period_replied (delta) not the snapshot replied_leads to ensure same time-scale division.
+        radar_stats = {
+            "Acceptance Rate": min(safe_div(connected_leads, enrolled_leads) * 100, 100) if enrolled_leads > 0 else 0,
+            "Reply Rate": min(safe_div(replied_leads, connected_leads) * 100, 100) if connected_leads > 0 else 0,
+            "Booking Rate": min(safe_div(booked_leads, replied_leads) * 100, 100) if replied_leads > 0 else 0,
+            "Sentiment (Pos)": min(safe_div(positive_sentiment, period_replied) * 100, 100) if period_replied > 0 else 0,
+            "Deliverability": min(safe_div(enrolled_leads - failed_count, enrolled_leads) * 100, 100) if enrolled_leads > 0 else 100,
+            "Bounces": min(safe_div(failed_count, enrolled_leads) * 100, 100) if enrolled_leads > 0 else 0,
+        }
+
         # Add staleness indicator to response
         try:
             last_rollup_res = supabase.table('processing_jobs') \
@@ -423,7 +431,7 @@ def get_master_view_stats(
             print(f"Failed to fetch staleness indicator: {e}")
             last_rolled_up_at = None
 
-        today_live_data = compute_today_live(workspace_id, supabase, req.date_end[:10] if req.date_end else datetime.utcnow().date().isoformat())
+        today_live_data = compute_today_live(workspace_id, supabase, req.date_end[:10] if req.date_end else datetime.utcnow().date().isoformat(), req.senders)
 
         return {
             "summary": {
@@ -542,12 +550,32 @@ def get_funnel_leads(
         
         if req.step == "Extracted":
             lq = supabase.table("leads").select("id").eq("workspace_id", workspace_id)
+            if req.date_start is not None and req.date_end is not None:
+                lq = lq.gte("created_at", req.date_start).lte("created_at", req.date_end)
             res = lq.limit(20).execute()
             lead_ids = {r["id"] for r in res.data}
             
         elif req.step in ["Enrolled", "Connected", "Booked"]:
+            # Resolve effective campaign filter: intersection of explicit campaign filter and sender-owned campaigns
+            effective_campaigns = req.campaigns  # may be None (no filter)
+            if req.senders:
+                # lead_states has no account_id — filter via campaigns.sender_account_ids_json
+                # Fetch all campaigns for this workspace and client-side filter by sender
+                try:
+                    ca_res = supabase.table("campaign_accounts").select("campaign_id").in_("account_id", req.senders).execute()
+                    sender_campaign_ids = list({r["campaign_id"] for r in (ca_res.data or [])})
+                    if effective_campaigns:
+                        # Intersect with explicit campaign filter
+                        effective_campaigns = [c for c in effective_campaigns if c in sender_campaign_ids]
+                    else:
+                        effective_campaigns = sender_campaign_ids
+                except Exception as e:
+                    print(f"[FunnelLeads] Sender→campaign resolution error: {e}")
+
             sq = supabase.table("lead_states").select("opportunity_id, status").eq("workspace_id", workspace_id)
-            if req.campaigns: sq = sq.in_("campaign_id", req.campaigns)
+            if effective_campaigns: sq = sq.in_("campaign_id", effective_campaigns)
+            if req.date_start is not None and req.date_end is not None:
+                sq = sq.gte("created_at", req.date_start).lte("created_at", req.date_end)
             
             if req.step == "Connected":
                 sq = sq.in_("status", ["running", "completed", "exited"])
@@ -560,6 +588,8 @@ def get_funnel_leads(
         elif req.step == "Replied":
             mq = supabase.table("messages").select("lead_id").eq("workspace_id", workspace_id).eq("direction", "inbound")
             if req.senders: mq = mq.in_("account_id", req.senders)
+            if req.date_start is not None and req.date_end is not None:
+                mq = mq.gte("created_at", req.date_start).lte("created_at", req.date_end)
             res = mq.order("created_at", desc=True).limit(50).execute()
             lead_ids = {r["lead_id"] for r in res.data if r.get("lead_id")}
 

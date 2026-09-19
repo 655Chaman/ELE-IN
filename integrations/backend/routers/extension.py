@@ -63,18 +63,14 @@ def get_extension_tasks(
     # To keep it simple in this MVP, we query lead_states that are 'pending' and due.
     
     # 1. Get campaigns using this account_id
-    camp_res = supabase.table("campaigns").select("id, sender_account_ids_json").eq("workspace_id", workspace_id).execute()
+    camp_res = supabase.table("campaigns").select("id").eq("workspace_id", workspace_id).execute()
     valid_campaigns = []
     for c in camp_res.data:
         try:
             acc_res = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", c["id"]).execute()
             senders = [r["account_id"] for r in acc_res.data]
         except Exception:
-            senders = c.get("sender_account_ids_json") or []
-            if isinstance(senders, str):
-                import json
-                try: senders = json.loads(senders)
-                except: senders = []
+            senders = []
         if account_id in senders:
             valid_campaigns.append(c["id"])
             

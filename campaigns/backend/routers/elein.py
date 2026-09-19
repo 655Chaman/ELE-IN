@@ -1234,7 +1234,7 @@ def get_dashboard_stats(supabase: Client = Depends(get_supabase_client), workspa
     camp_ids = []
     camps_data = []
     try:
-        camps = supabase.table("campaigns").select("id, name, status, created_at, sender_account_ids_json").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
+        camps = supabase.table("campaigns").select("id, name, status, created_at").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
         camps_data = camps.data
         camp_ids = [c["id"] for c in camps_data]
     except Exception as e:
@@ -2145,7 +2145,7 @@ def get_campaign_detail(campaign_id: str, supabase: Client = Depends(get_supabas
             acc_res = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", campaign_id).execute()
             campaign["sender_account_ids"] = [r["account_id"] for r in acc_res.data]
         except Exception:
-            campaign["sender_account_ids"] = json.loads(campaign.get("sender_account_ids_json") or "[]") if isinstance(campaign.get("sender_account_ids_json"), str) else (campaign.get("sender_account_ids_json") or [])
+            campaign["sender_account_ids"] = []
 
         # Fetch stats
         # In Supabase REST we can't easily GROUP BY without RPC. So we fetch all statuses.
