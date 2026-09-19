@@ -1883,7 +1883,6 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
             "id": version_id,
             "campaign_id": campaign_id,
             "version": next_version,
-            "name": f"Version {next_version}"
         }).execute()
 
         node_id_map = {}
