@@ -26,7 +26,10 @@ class NvidiaKeyCreate(BaseModel):
 @router.get("/admin/api-keys", response_model=List[Dict[str, Any]])
 def get_nvidia_keys(_auth=Depends(require_superadmin)):
     supabase = get_service_client()
-    res = supabase.table("system_api_keys").select("*").order("created_at").execute()
+    try:
+        res = supabase.table("system_api_keys").select("*").order("created_at").execute()
+    except Exception:
+        return [{"configured": False, "message": "system_api_keys table not found. Run the pending migration to configure the LLM key pool."}]
     
     # Mask keys before sending to frontend
     keys = []
@@ -50,16 +53,21 @@ def add_nvidia_key(payload: NvidiaKeyCreate, _auth=Depends(require_superadmin)):
         
     supabase = get_service_client()
     
-    # Prevent exact duplicates
-    existing = supabase.table("system_api_keys").select("id").eq("api_key", payload.api_key).execute()
-    if existing.data:
-        raise HTTPException(status_code=400, detail="Key already exists in the pool.")
-        
-    res = supabase.table("system_api_keys").insert({
-        "provider": "nvidia",
-        "api_key": payload.api_key,
-        "status": "active"
-    }).execute()
+    try:
+        # Prevent exact duplicates
+        existing = supabase.table("system_api_keys").select("id").eq("api_key", payload.api_key).execute()
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Key already exists in the pool.")
+            
+        res = supabase.table("system_api_keys").insert({
+            "provider": "nvidia",
+            "api_key": payload.api_key,
+            "status": "active"
+        }).execute()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="system_api_keys table not found. Run the pending migration before adding keys.")
     
     # force cache invalidation in ai service
     try:
@@ -73,7 +81,10 @@ def add_nvidia_key(payload: NvidiaKeyCreate, _auth=Depends(require_superadmin)):
 @router.delete("/admin/api-keys/{key_id}")
 def delete_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
     supabase = get_service_client()
-    supabase.table("system_api_keys").delete().eq("id", key_id).execute()
+    try:
+        supabase.table("system_api_keys").delete().eq("id", key_id).execute()
+    except Exception:
+        raise HTTPException(status_code=503, detail="system_api_keys table not found. Run the pending migration.")
     
     try:
         from knowledge.backend.services.elein_ai_service import _last_fetch_time
@@ -86,10 +97,13 @@ def delete_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
 @router.put("/admin/api-keys/{key_id}/reset")
 def reset_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
     supabase = get_service_client()
-    supabase.table("system_api_keys").update({
-        "status": "active",
-        "error_count": 0
-    }).eq("id", key_id).execute()
+    try:
+        supabase.table("system_api_keys").update({
+            "status": "active",
+            "error_count": 0
+        }).eq("id", key_id).execute()
+    except Exception:
+        raise HTTPException(status_code=503, detail="system_api_keys table not found. Run the pending migration.")
     
     try:
         from knowledge.backend.services.elein_ai_service import _last_fetch_time

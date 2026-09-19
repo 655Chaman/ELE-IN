@@ -63,6 +63,9 @@ async def process_single_job(job, sync_supabase):
                     process_voyager_search_background(payload['list_id'], payload['url'], workspace_id, payload.get('account_id'), payload['max_results'])
                 elif job_type == 'synthesis':
                     pass # update_synthesis runs automatically for this below
+                elif job_type == 'hubspot_import':
+                    from integrations.backend.services.hubspot_worker import import_hubspot_list_bg
+                    loop.run_until_complete(import_hubspot_list_bg(sync_supabase, workspace_id, payload['list_id'], payload['internal_list_id']))
                 elif job_type in ('inbox_sync', 'inbox_action'):
                     # ── INBOX JOBS: These run inside the SECURE background worker ──────────────────
                     # PARANOIA LAYER 2: Inbox jobs MUST be processed here in the background worker.
@@ -170,14 +173,14 @@ async def reap_zombie_jobs(async_supabase):
         # PARANOIA LAYER 1: try/except so network blips don't crash the reaper
         threshold_time = datetime.now(timezone.utc) - timedelta(minutes=ZOMBIE_TIMEOUT_MINUTES)
         
-        response = await async_supabase.table("processing_jobs").select("id").eq("status", "running").lt("started_at", threshold_time.isoformat()).execute()
+        response = await async_supabase.table("processing_jobs").select("id").eq("status", "running").lt("updated_at", threshold_time.isoformat()).execute()
         
         zombie_jobs = response.data
         if zombie_jobs:
             zombie_ids = [job['id'] for job in zombie_jobs]
             await async_supabase.table("processing_jobs").update({
                 "status": "pending",
-                "started_at": None
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }).in_("id", zombie_ids).execute()
             
             print(f"[Zombie Reaper] Resurrected {len(zombie_ids)} marooned jobs.")

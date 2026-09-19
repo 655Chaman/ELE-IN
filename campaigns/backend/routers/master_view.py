@@ -607,8 +607,7 @@ def get_account_health(
         # a suspended account as healthy for up to 1 hour — that is unacceptable.
         accounts_res = supabase.table("accounts") \
             .select("id, name, status, is_warmup, warmup_start_date, warmup_target_days, "
-                    "last_health_check_at, cookie_expires_at, "
-                    "daily_connection_limit, daily_message_limit") \
+                    "last_health_check_at, cookie_expires_at") \
             .eq("workspace_id", workspace_id) \
             .execute()
         
@@ -636,8 +635,8 @@ def get_account_health(
                 usage_by_account[acc_id] = {}
             usage_by_account[acc_id][row["action_type"]] = row.get("count", 0)
             
-        conn_action_types = {'send_connection_request', 'send_connection_request_with_note'}
-        msg_action_types = {'send_message', 'send_voice_note', 'send_message_with_doc', 'send_message_with_image'}
+        conn_action_types = {'connection_request'}
+        msg_action_types = {'message'}
         
         accounts_health = []
         total_throttled = 0
@@ -649,9 +648,21 @@ def get_account_health(
             today_connection_count = sum(acc_usage.get(at, 0) for at in conn_action_types)
             today_message_count = sum(acc_usage.get(at, 0) for at in msg_action_types)
             
-            # Layer 2 Human Paranoia Guard: Handle 0 explicitly vs None
-            conn_limit = acc.get("daily_connection_limit") if acc.get("daily_connection_limit") is not None else 20
-            msg_limit = acc.get("daily_message_limit") if acc.get("daily_message_limit") is not None else 40
+            # Layer 2 Human Paranoia Guard: Handle 0 explicitly vs None, fetch unified limits
+            try:
+                conn_res = supabase.rpc("get_account_action_limit", {"p_account_id": acc_id, "p_action_type": "connection_request"}).execute()
+                conn_limit = conn_res.data if conn_res.data is not None else 20
+            except Exception:
+                conn_limit = 20
+                
+            try:
+                msg_res = supabase.rpc("get_account_action_limit", {"p_account_id": acc_id, "p_action_type": "message"}).execute()
+                msg_limit = msg_res.data if msg_res.data is not None else 40
+            except Exception:
+                msg_limit = 40
+                
+            conn_limit = max(conn_limit, 1)
+            msg_limit = max(msg_limit, 1)
             
             connection_pct = round((today_connection_count / conn_limit) * 100, 1)
             message_pct = round((today_message_count / msg_limit) * 100, 1)

@@ -40,6 +40,9 @@ export interface LeadImportState {
   cleanData: boolean;
   setCleanData: (c: boolean) => void;
   
+  targetTimezone: string;
+  setTargetTimezone: (t: string) => void;
+  
   isSubmitting: boolean;
   setIsSubmitting: (s: boolean) => void;
   
@@ -114,6 +117,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
   const [name, setName] = useState("")
   const [urlList, setUrlList] = useState("")
   const [salesNavUrl, setSalesNavUrl] = useState("")
+  const [targetTimezone, setTargetTimezone] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -211,6 +215,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     name, setName,
     urlList, setUrlList,
     salesNavUrl, setSalesNavUrl,
+    targetTimezone, setTargetTimezone,
     file, setFile,
     cleanData, setCleanData,
     isSubmitting, setIsSubmitting,

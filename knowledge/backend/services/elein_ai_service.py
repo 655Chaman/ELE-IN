@@ -211,13 +211,7 @@ def get_active_nvidia_keys(task: str = None):
     active_quarantined_keys = set(list(_rate_limited_env_keys.keys()) + db_exhausted_keys)
 
     if now - _last_fetch_time > 30 or not _cached_keys:
-        supabase = get_service_client()
         db_keys = []
-        try:
-            res = supabase.table("api_keys").select("id, api_key").eq("is_active", True).execute()
-            db_keys = [{"id": r["id"], "key": r["api_key"]} for r in res.data] if res.data else []
-        except Exception as e:
-            pass
 
         # ENV keys are the primary source
         env_keys_raw = os.environ.get("NVIDIA_API_KEYS", os.environ.get("NVIDIA_API_KEY", ""))

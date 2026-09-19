@@ -21,6 +21,34 @@ SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
 if not SUPABASE_JWT_SECRET:
     logger.critical("SECURITY FATAL: SUPABASE_JWT_SECRET is not configured. The app will fail to start.")
 
+from pydantic import BaseModel
+class AuthUser(BaseModel):
+    id: str
+    workspace_id: str
+    email: str
+
+def verify_jwt(token: str) -> AuthUser:
+    if not HAS_PYJWT or not SUPABASE_JWT_SECRET:
+        raise HTTPException(status_code=401, detail="Missing PyJWT or JWT secret")
+    try:
+        decoded = jwt.decode(
+            token, 
+            SUPABASE_JWT_SECRET, 
+            algorithms=["HS256"], 
+            options={"verify_exp": True},
+            audience="authenticated"
+        )
+        return AuthUser(
+            id=decoded.get("sub", ""),
+            workspace_id=decoded.get("user_metadata", {}).get("workspace_id", ""),
+            email=decoded.get("email", "")
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token signature.")
+
+
 def verify_token_and_get_user_id(token: str) -> str:
     if HAS_PYJWT and SUPABASE_JWT_SECRET:
         try:

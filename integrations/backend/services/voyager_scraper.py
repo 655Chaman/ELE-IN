@@ -13,6 +13,7 @@ Anti-ban layers:
 """
 
 import json
+import os
 import time
 import random
 import logging
@@ -302,6 +303,10 @@ class VoyagerScraper:
                     target = hit.get("item", {}).get("entityResult", {})
                     if not target:
                         continue
+                    
+                    if os.environ.get("VOYAGER_DEBUG_LOG") == "1":
+                        logger.warning(f"[VoyagerDebug] keys={list(target.keys())} raw={json.dumps(target)[:2000]}")
+
                     nav_url = target.get("navigationUrl", "")
                     match = re.search(r"/in/([^/?]+)", nav_url)
                     if not match:

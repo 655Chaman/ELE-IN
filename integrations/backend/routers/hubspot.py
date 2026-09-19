@@ -113,14 +113,39 @@ async def import_hubspot_list(
     workspace_id: str = Depends(require_workspace_admin),
     supabase: Client = Depends(get_supabase_client)
 ):
+    import uuid
+    import logging
+    from core.backend.services.job_queue import enqueue_job
+    logger = logging.getLogger(__name__)
+
     # Fetch token from workspace
     res = supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
     if not res.data or not res.data[0].get("hubspot_token"):
         raise HTTPException(status_code=400, detail="HubSpot not connected")
     
-    access_token = res.data[0]["hubspot_token"]
+    # We do NOT put the raw access_token in the payload; the worker fetches it securely.
     
-    # This would trigger an asynchronous background task to sync the list
-    # For now we'll just return a success
-    return {"status": "sync_started", "list_id": list_id}
+    # Create internal lead list to store the imported leads
+    internal_list_id = str(uuid.uuid4())
+    try:
+        supabase.table("lead_lists").insert({
+            "id": internal_list_id,
+            "name": f"HubSpot Import {list_id}",
+            "type": "hubspot",
+            "row_count": -1,
+            "workspace_id": workspace_id,
+        }).execute()
+    except Exception as e:
+        logger.error(f"import_hubspot_list: failed to create lead_list record: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create the lead list.")
+
+    enqueue_job(
+        supabase, 
+        'hubspot_import', 
+        workspace_id, 
+        internal_list_id, 
+        {'list_id': list_id, 'internal_list_id': internal_list_id}
+    )
+    
+    return {"status": "sync_started", "list_id": list_id, "internal_list_id": internal_list_id}
 

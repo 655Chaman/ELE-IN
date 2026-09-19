@@ -3,6 +3,7 @@ import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
 import { useState, useEffect } from "react"
+import { cn } from "@/lib/utils"
 import { motion } from "motion/react"
 import { Link, useNavigate } from "react-router-dom"
 import {
@@ -43,6 +44,7 @@ export function EleInCampaigns() {
   const [search, setSearch] = useState("")
   const [draftExists, setDraftExists] = useState(false)
   const [draftTime, setDraftTime] = useState("")
+  const [statusTooltipOpen, setStatusTooltipOpen] = useState(false)
   
   // Custom Confirmation Modal State
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null)
@@ -118,15 +120,35 @@ export function EleInCampaigns() {
             </h1>
             {(() => {
               if (!workerStatus) return null;
+              
+              if (workerStatus.status === "unknown") {
+                return (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold border border-foreground/10 bg-muted/30">
+                    <span className="text-muted-foreground">
+                      Get Started — connect a LinkedIn account
+                    </span>
+                  </div>
+                );
+              }
+              
               return (
-                <div 
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-help"
-                  title={workerStatus.message}
-                >
-                  <div className={`w-2 h-2 rounded-full ${workerStatus.stalled ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className={workerStatus.stalled ? 'text-red-500' : 'text-emerald-500'}>
-                    {workerStatus.stalled ? 'Engine Stalled' : 'Engine Live'}
-                  </span>
+                <div className="relative group">
+                  <button 
+                    onClick={() => setStatusTooltipOpen(!statusTooltipOpen)}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:bg-muted/30 transition-colors"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${workerStatus.stalled ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    <span className={workerStatus.stalled ? 'text-red-500' : 'text-emerald-500'}>
+                      {workerStatus.stalled ? 'Engine Stalled' : 'Engine Live'}
+                    </span>
+                  </button>
+                  <div className={cn(
+                    "absolute left-1/2 -translate-x-1/2 top-full mt-2 w-max max-w-xs p-2 bg-popover border border-border shadow-xl rounded-lg text-xs text-popover-foreground pointer-events-none transition-opacity z-50",
+                    statusTooltipOpen ? "opacity-100 pointer-events-auto" : "opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto"
+                  )}>
+                    {workerStatus.message}
+                    {workerStatus.stalled && <div className="mt-1 font-semibold text-red-500">Action: Start the backend worker script (e.g., ./start.sh)</div>}
+                  </div>
                 </div>
               );
             })()}

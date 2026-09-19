@@ -9,6 +9,8 @@ import { CSVImport } from "./methods/CSVImport"
 import { SalesNavImport } from "./methods/SalesNavImport"
 import { RawProfilesImport } from "./methods/RawProfilesImport"
 import { SearchImport } from "./methods/SearchImport"
+import { TargetRegionSelector } from "./TargetRegionSelector"
+import { TARGET_REGIONS } from "../../../shared/constants/regions"
 
 function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAdd: () => void }) {
   const {
@@ -23,11 +25,19 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
     liveUrl,
     urlList,
     salesNavUrl,
+    targetTimezone, setTargetTimezone,
     isSubmitting, setIsSubmitting
   } = useLeadImport();
 
   const handleSubmit = async () => {
     if (!name.trim()) { toast.error("Please enter a list name"); return; }
+    
+    // Validate targetTimezone for methods that require it (all except hubspot)
+    if (method !== "hubspot" && !targetTimezone) {
+      toast.error("Please select a Target Region");
+      return;
+    }
+    
     if (method === "csv" && step === 1) {
       if (!file) { toast.error("Please select a CSV file"); return; }
       setStep(2);
@@ -36,6 +46,15 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
 
     setIsSubmitting(true)
     try {
+      // Find the label for the timezone
+      // We need to import TARGET_REGIONS from shared, let's do this dynamically if needed or just use state.
+      // Wait, we need to import TARGET_REGIONS at the top of ImportLeadsModal.tsx
+      // For now, let's assume we can get it or we just send it if it's not strictly needed for UI.
+      // Wait, the API requires target_region_label. 
+      // Let's import TARGET_REGIONS at the top of the file.
+      const selectedRegion = TARGET_REGIONS.find(r => r.timezone === targetTimezone);
+      const regionLabel = selectedRegion ? selectedRegion.label : "";
+      
       if (method === "search") {
         if (!liveUrl) { toast.error("Please select at least one search filter"); setIsSubmitting(false); return; }
         if (!activeAccount) { toast.error("No active LinkedIn account connected. Go to Accounts to connect one."); setIsSubmitting(false); return; }
@@ -43,7 +62,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         const res = await fetchWithAuth("/api/elein/leads/upload_sales_nav", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, url: liveUrl, account_id: activeAccount.id, max_results: Math.min(100, budget.remaining) })
+          body: JSON.stringify({ name, url: liveUrl, account_id: activeAccount.id, max_results: Math.min(100, budget.remaining), target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
         toast.success("Native search import started! Leads will appear shortly.")
@@ -51,6 +70,8 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         const formData = new FormData()
         formData.append("file", file!)
         formData.append("name", name)
+        formData.append("target_timezone", targetTimezone)
+        formData.append("target_region_label", regionLabel)
         formData.append("mappings", JSON.stringify(mappings))
         formData.append("clean_data", String(cleanData))
         const res = await fetchWithAuth("/api/elein/leads/upload_csv", { method: "POST", body: formData })
@@ -60,14 +81,14 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         const urls = urlList.split("\n").map(u => u.trim()).filter(Boolean)
         if (urls.length === 0) { toast.error("Please enter at least one URL"); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_urls", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls, target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
         toast.success("URLs uploaded successfully!")
       } else if (method === "sales_nav") {
         if (!salesNavUrl.trim()) { toast.error("Please enter a Sales Navigator URL"); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_sales_nav", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl, target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
         toast.success("Sales Navigator import started!")
@@ -183,6 +204,13 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                     autoFocus
                   />
                 </div>
+              )}
+
+              {method && method !== "hubspot" && (
+                <TargetRegionSelector 
+                  value={targetTimezone} 
+                  onChange={setTargetTimezone} 
+                />
               )}
 
               {method === "search" && <SearchImport />}

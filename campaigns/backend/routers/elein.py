@@ -211,7 +211,7 @@ import asyncio
 import os
 import shutil
 
-def process_csv_background(list_id: str, file_path: str, mappings: dict = None, clean_data: bool = False, workspace_id: str = None):
+def process_csv_background(list_id: str, file_path: str, mappings: dict = None, clean_data: bool = False, workspace_id: str = None, target_timezone: str = None):
     from core.backend.api.auth_dep import get_service_client
     import csv
     import uuid
@@ -263,7 +263,8 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
                 rpc_res = supabase.rpc("bulk_import_leads", {
                     "p_list_id": list_id,
                     "p_workspace_id": workspace_id,
-                    "p_leads": current_chunk
+                    "p_leads": current_chunk,
+                    "p_timezone": target_timezone
                 }).execute()
                 
                 inserted = rpc_res.data.get("inserted_count", 0) if rpc_res.data else len(current_chunk)
@@ -276,6 +277,7 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
             ln_col = mappings.get("last_name")
             li_col = mappings.get("linkedin_url")
             co_col = mappings.get("company_name")
+            loc_col = mappings.get("location")
             
             for row in reader:
                 if li_col and fn_col:
@@ -283,12 +285,14 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
                     last_name = row.get(ln_col, '')
                     linkedin = row.get(li_col, '')
                     company = row.get(co_col, '')
+                    location = row.get(loc_col, '') if loc_col else ''
                 else:
                     row_lower = {k.lower().strip(): v for k, v in row.items() if k}
                     first_name = row_lower.get('first name', row_lower.get('firstname', ''))
                     last_name = row_lower.get('last name', row_lower.get('lastname', ''))
                     linkedin = row_lower.get('linkedin', row_lower.get('linkedin url', row_lower.get('profile url', '')))
                     company = row_lower.get('company', row_lower.get('company name', ''))
+                    location = row_lower.get('location', row_lower.get('city', row_lower.get('country', '')))
                 
                 if not linkedin:
                     continue
@@ -298,6 +302,7 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
                     "last_name": last_name,
                     "linkedin_url": linkedin,
                     "company_name": company,
+                    "p_location": location,
                 })
                 
                 if len(chunk) >= CHUNK_SIZE:
@@ -320,7 +325,16 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
             os.remove(file_path)
 
 @router.post("/leads/upload_csv", response_model=dict)
-def upload_csv(file: UploadFile = File(...), name: str = Form(...), mappings: str = Form(None), clean_data: bool = Form(False), supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def upload_csv(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    target_timezone: str = Form(...),
+    target_region_label: str = Form(...),
+    mappings: str = Form(None),
+    clean_data: bool = Form(False),
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
     """Streams a CSV file to local disk and processes it in a background task to prevent OOM."""
     import tempfile
     import json
@@ -353,6 +367,8 @@ def upload_csv(file: UploadFile = File(...), name: str = Form(...), mappings: st
             "type": "csv",
             "row_count": -1,
             "workspace_id": workspace_id,
+            "target_timezone": target_timezone,
+            "target_region_label": target_region_label
         }).execute()
     except Exception as e:
         # Layer 1: Clean up the temp file we already wrote to disk
@@ -366,7 +382,13 @@ def upload_csv(file: UploadFile = File(...), name: str = Form(...), mappings: st
         )
 
     # Hand off the temp file path to background worker
-    enqueue_job(supabase, 'csv', workspace_id, list_id, {'list_id': list_id, 'temp_file': temp_file.name, 'mapping_dict': mapping_dict, 'clean_data': clean_data})
+    enqueue_job(supabase, 'csv', workspace_id, list_id, {
+        'list_id': list_id, 
+        'temp_file': temp_file.name, 
+        'mapping_dict': mapping_dict, 
+        'clean_data': clean_data,
+        'target_timezone': target_timezone
+    })
 
     return {"status": "processing", "list_id": list_id}
 
@@ -374,6 +396,8 @@ def upload_csv(file: UploadFile = File(...), name: str = Form(...), mappings: st
 class UploadUrlsRequest(BaseModel):
     name: str
     urls: list[str]
+    target_timezone: str
+    target_region_label: str
 
 @router.post("/leads/upload_urls", response_model=dict)
 def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
@@ -385,6 +409,8 @@ def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase
             "type": "linkedin_url",
             "row_count": len(body.urls),
             "workspace_id": workspace_id,
+            "target_timezone": body.target_timezone,
+            "target_region_label": body.target_region_label
         }).execute()
         
         leads_to_insert = [{"linkedin_url": url.strip()} for url in body.urls if url.strip()]
@@ -393,7 +419,8 @@ def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase
             rpc_res = supabase.rpc("bulk_import_leads", {
                 "p_list_id": list_id,
                 "p_workspace_id": workspace_id,
-                "p_leads": leads_to_insert
+                "p_leads": leads_to_insert,
+                "p_timezone": body.target_timezone
             }).execute()
             row_count = rpc_res.data.get("inserted_count", 0) if rpc_res.data else 0
         else:
@@ -407,6 +434,8 @@ def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase
 class UploadSalesNavRequest(BaseModel):
     name: str
     url: str
+    target_timezone: str
+    target_region_label: str
     account_id: Optional[str] = None   # Which LinkedIn account to scrape from
     max_results: Optional[int] = 100   # Default cap: 100 profiles per import
 
@@ -416,6 +445,7 @@ def process_voyager_search_background(
     workspace_id: str,
     account_id: Optional[str],
     max_results: int,
+    target_timezone: str,
 ):
     """
     Native Voyager scraper background task.
@@ -444,19 +474,6 @@ def process_voyager_search_background(
             )
 
         acc_row = acc_res.data[0]
-        # PARANOIA LAYER 1: Enqueue job instead of executing locally
-        supabase.table("processing_jobs").insert({
-            'job_type': 'voyager_search',
-            'status': 'pending',
-            'metadata': {
-                'account_id': acc_row["id"],
-                'workspace_id': workspace_id,
-                'list_id': list_id,
-                'url': url,
-                'max_results': max_results
-            }
-        }).execute()
-        return
 
         # 2. Parse the LinkedIn search URL into Voyager-compatible params
         from urllib.parse import urlparse, parse_qs
@@ -510,7 +527,8 @@ def process_voyager_search_background(
             rpc_res = supabase.rpc("bulk_import_leads", {
                 "p_list_id": list_id,
                 "p_workspace_id": workspace_id,
-                "p_leads": rpc_leads
+                "p_leads": rpc_leads,
+                "p_timezone": target_timezone
             }).execute()
             row_count = rpc_res.data.get("inserted_count", 0) if rpc_res.data else 0
             skipped_dupes = len(rpc_leads) - row_count
@@ -606,6 +624,8 @@ def upload_sales_nav(
             "row_count": -1,
             "status": "pending",
             "workspace_id": workspace_id,
+            "target_timezone": body.target_timezone,
+            "target_region_label": body.target_region_label
         }).execute()
 
         from core.backend.services.job_queue import enqueue_job
@@ -618,7 +638,8 @@ def upload_sales_nav(
                 'list_id': list_id,
                 'url': url,
                 'account_id': acc_row["id"],
-                'max_results': max_results
+                'max_results': max_results,
+                'target_timezone': body.target_timezone
             }
         )
 
@@ -1926,6 +1947,12 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
 def pause_campaign(campaign_id: str, workspace_id: str = Depends(get_current_workspace), client: Client = Depends(get_supabase_client)):
     client.table("campaigns").update({"status": "PAUSED"}).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
     return {"status": "paused"}
+
+@router.post("/campaigns/pause-all", response_model=dict)
+def pause_all_campaigns(workspace_id: str = Depends(get_current_workspace), client: Client = Depends(get_supabase_client)):
+    """Panic Button: Instantly pause all active campaigns for the workspace."""
+    client.table("campaigns").update({"status": "PAUSED"}).eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
+    return {"status": "all_paused"}
 
 @router.patch("/campaigns/{campaign_id}/activate", response_model=dict)
 def activate_campaign(campaign_id: str, workspace_id: str = Depends(get_current_workspace), client: Client = Depends(get_supabase_client)):

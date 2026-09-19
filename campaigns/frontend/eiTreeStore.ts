@@ -53,7 +53,7 @@ export interface EITreeStore {
 
 function makeNode(type: EINodeType | "sequence_end", data?: Record<string, any>): SeqTreeNode {
   const outputs = data?.outputs as string[] | undefined
-  const labels = outputs && outputs.length > 1 ? outputs : (type === "sequence_end" ? [] : ["output"])
+  const labels = outputs && outputs.length > 0 ? outputs : (type === "sequence_end" ? [] : ["output"])
   const branches: Record<string, SeqTreeNode[]> = {}
   for (const label of labels) branches[label] = []
   return { id: uuidv4(), type, data: data || {}, children: branches }

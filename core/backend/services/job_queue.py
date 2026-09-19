@@ -1,6 +1,6 @@
 from core.backend.api.auth_dep import get_service_client
 
-def enqueue_job(supabase, job_type: str, workspace_id: str, asset_id: str, payload: dict) -> dict:
+def enqueue_job(supabase, job_type: str, workspace_id: str, asset_id: str, payload: dict, priority: int = 0) -> dict:
     """
     Inserts a new job into the processing_jobs table using service_role to bypass RLS.
     Returns the created job record.

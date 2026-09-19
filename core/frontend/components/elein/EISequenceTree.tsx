@@ -249,22 +249,34 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                   return (
                     <div key={type} className="relative group h-full">
                       <button
-                        onClick={() => onPick(type as EINodeType)}
-                        className="w-full h-full flex flex-col items-start p-4 rounded-xl border border-border/50 bg-muted/10 hover:bg-muted/30 text-left transition-all relative overflow-hidden group-hover:border-foreground/30 shadow-lg"
+                        onClick={() => { if (!def.comingSoon) onPick(type as EINodeType) }}
+                        disabled={def.comingSoon}
+                        className={cn(
+                          "w-full h-full flex flex-col items-start p-4 rounded-xl border border-border/50 bg-muted/10 text-left relative overflow-hidden transition-all shadow-lg",
+                          def.comingSoon 
+                            ? "opacity-60 cursor-not-allowed grayscale" 
+                            : "hover:bg-muted/30 group-hover:border-foreground/30"
+                        )}
                       >
                         {/* Glow effect */}
-                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: `radial-gradient(circle at center, ${color}15 0%, transparent 70%)` }} />
+                        {!def.comingSoon && <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: `radial-gradient(circle at center, ${color}15 0%, transparent 70%)` }} />}
+                        
                         <div
                           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-3 border backdrop-blur-sm z-10 transition-transform group-hover:scale-105"
                           style={{ borderColor: `${color}33`, color, background: `${color}10` }}
                         >
                           <Icon size={18} strokeWidth={1.5} />
                         </div>
-                        <div className="min-w-0 z-10 flex-1">
-                          <p className="text-[13px] font-bold text-foreground leading-tight transition-colors">{def.label}</p>
+                        <div className="min-w-0 z-10 flex-1 w-full relative">
+                          {def.comingSoon && (
+                            <span className="absolute top-0 right-0 text-[9px] font-bold tracking-wider uppercase bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border">
+                              Coming Soon
+                            </span>
+                          )}
+                          <p className="text-[13px] font-bold text-foreground leading-tight transition-colors pr-14">{def.label}</p>
                           <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug line-clamp-2">{def.description}</p>
                         </div>
-                        {type === "find_email" && (
+                        {type === "find_email" && !def.comingSoon && (
                           <div className="absolute left-4 bottom-4 flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded text-[10px] font-bold border border-emerald-500/20">
                             <Database size={9} /> 1
                           </div>

@@ -39,8 +39,10 @@ def run_rollup_tracked(supabase, target_date: str):
             job_res = supabase.table('processing_jobs').insert({
                 'job_type': job_type,
                 'status': 'running',
-                'started_at': datetime.utcnow().isoformat(),
-                'metadata': {'target_date': target_date}
+                'payload': {
+                    'target_date': target_date,
+                    'started_at': datetime.utcnow().isoformat()
+                }
             }).execute()
             job_id = job_res.data[0]['id'] if job_res.data else None
         except Exception as e:

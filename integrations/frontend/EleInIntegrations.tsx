@@ -10,10 +10,10 @@ const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
 const BASE_INTEGRATIONS = [
   { id: "hubspot", name: "HubSpot", category: "CRM", description: "Sync leads, campaigns, and activity data directly to HubSpot.", status: "available" },
-  { id: "salesforce", name: "Salesforce", category: "CRM", description: "Bidirectional sync for leads, opportunities, and accounts.", status: "available" },
-  { id: "slack", name: "Slack", category: "Communication", description: "Get real-time alerts for replies, meetings booked, and bounces.", status: "available" },
-  { id: "zapier", name: "Zapier", category: "Automation", description: "Connect Ele-in with 5,000+ apps using custom Zapier workflows.", status: "available" },
-  { id: "webhook", name: "Custom Webhooks", category: "Developer", description: "Receive real-time event payloads to your custom endpoints.", status: "available" }
+  { id: "salesforce", name: "Salesforce", category: "CRM", description: "Bidirectional sync for leads, opportunities, and accounts.", status: "coming_soon" },
+  { id: "slack", name: "Slack", category: "Communication", description: "Get real-time alerts for replies, meetings booked, and bounces.", status: "coming_soon" },
+  { id: "zapier", name: "Zapier", category: "Automation", description: "Connect Ele-in with 5,000+ apps using custom Zapier workflows.", status: "coming_soon" },
+  { id: "webhook", name: "Custom Webhooks", category: "Developer", description: "Receive real-time event payloads to your custom endpoints.", status: "coming_soon" }
 ]
 
 export function EleInIntegrations() {
@@ -64,6 +64,10 @@ export function EleInIntegrations() {
                   <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
                     <CheckCircle2 size={12} /> Connected
                   </span>
+                ) : app.status === "coming_soon" ? (
+                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-muted-foreground text-[10px] font-bold">
+                    Coming Soon
+                  </span>
                 ) : (
                   <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-muted-foreground text-[10px] font-bold">
                     Available
@@ -85,6 +89,10 @@ export function EleInIntegrations() {
                 {app.status === "connected" ? (
                   <button className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-background hover:bg-muted border border-border/50 rounded-lg text-xs font-bold text-foreground transition-all shadow-sm">
                     <Settings size={14} className="text-muted-foreground" /> Manage
+                  </button>
+                ) : app.status === "coming_soon" ? (
+                  <button disabled className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-muted text-muted-foreground rounded-lg text-xs font-bold cursor-not-allowed opacity-70">
+                    Connect
                   </button>
                 ) : (
                   <button onClick={() => handleConnect(app.id)} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg text-xs font-bold transition-all shadow-sm">

@@ -216,7 +216,16 @@ export function EleInDashboard() {
   const timeOfDayData: any[] = stats?.time_of_day_data ?? []
   const multiCampaignData: any[] = stats?.multi_campaign_data ?? []
   const multiCampaignLabels: any = stats?.multi_campaign_labels ?? {}
-  const aiInsight: string = stats?.ai_insight ?? "Your pipeline is healthy. Keep adding fresh leads to maintain velocity."
+  const hasAccounts = (filtersData?.senders?.length ?? 0) > 0;
+  
+  let aiInsight = "Analyzing your pipeline data...";
+  if (!statsLoading && stats) {
+    if (!hasAccounts) {
+      aiInsight = "Connect your first LinkedIn account to get started.";
+    } else {
+      aiInsight = stats?.ai_insight ?? "Your pipeline is healthy. Keep adding fresh leads to maintain velocity.";
+    }
+  }
   
   const leadSources = stats?.lead_sources ?? []
   const radarStats = stats?.radar_stats ?? {}

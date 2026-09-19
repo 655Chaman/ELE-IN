@@ -609,15 +609,16 @@ class EleInOrchestrator:
             # Reschedule to tomorrow 9am in their timezone
             tz_str = state.get("tz_str", "UTC")
             enforce_working_hours = state.get("enforce_working_hours", True)
-            self._record_observability(state, current_node, "rate_limited", error_reason="Account rate limited")
+            self._record_observability(state, current_node, "rate_limited", error_reason="We paused this because your daily limit is reached — automatically resumes tomorrow.")
             self.update_state(state["id"], current_node["id"], "pending", next_working_day_9am(tz_str), lease_token, tz_str=tz_str, enforce_working_hours=enforce_working_hours)
             return
 
         if action_result.get("status") == "account_disconnected":
             broken_account_id = state.get("account_id")
+            logger.warning(f"Account {broken_account_id} is disconnected. Marking as error.")
             if broken_account_id:
                 self.supabase.table("accounts").update({"status": "DISCONNECTED"}).eq("id", broken_account_id).execute()
-            self._record_observability(state, current_node, "error", error_reason="Account disconnected")
+            self._record_observability(state, current_node, "error", error_reason="We paused this because your LinkedIn session expired — please reconnect your account in the Accounts tab.")
             self.update_state(state["id"], current_node_id, "pending", datetime.utcnow(), lease_token, tz_str=state.get('tz_str', 'UTC'), enforce_working_hours=False)
             return
 
@@ -803,9 +804,12 @@ class EleInOrchestrator:
                     
                     dek_bytes = None
                     cookie_secret_ref = None
-                    sys_res = self.supabase.table("system_api_keys").select("secret_id").eq("service", "cookie_dek").eq("workspace_id", account_row["workspace_id"]).execute()
-                    if sys_res.data:
-                        cookie_secret_ref = sys_res.data[0]["secret_id"]
+                    try:
+                        sys_res = self.supabase.table("system_api_keys").select("secret_id").eq("service", "cookie_dek").eq("workspace_id", account_row["workspace_id"]).execute()
+                        if sys_res.data:
+                            cookie_secret_ref = sys_res.data[0]["secret_id"]
+                    except Exception as e:
+                        capture_error(e, context={"service": "elein_orchestrator", "detail": "system_api_keys table may not exist; falling back to COOKIE_PRIVATE_KEY"})
                     if cookie_secret_ref:
                         try:
                             rpc_res = self.supabase.rpc("get_decrypted_account_payload", {"p_secret_id": cookie_secret_ref}).execute()

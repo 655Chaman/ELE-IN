@@ -116,113 +116,7 @@ import asyncio
 import os
 import shutil
 
-def process_csv_background(list_id: str, file_path: str, mappings: dict = None, clean_data: bool = False, workspace_id: str = None):
-    from core.backend.api.auth_dep import get_service_client
-    import csv
-    import uuid
-    
-    supabase = get_service_client()
-    try:
-        # Stream from disk line by line instead of loading to RAM!
-        with open(file_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            
-            leads_to_insert = []
-            
-            # Parse all valid rows first (this is still memory-intensive if CSV is HUGE, 
-            # but much better than raw string. To be strictly memory-safe, we should chunk 
-            # the parse loop directly.)
-            
-            # Let's do true chunking directly from the reader!
-            CHUNK_SIZE = 500
-            total_inserted = 0
-            
-            chunk = []
-            
-            def process_chunk(current_chunk):
-                nonlocal total_inserted
-                if not current_chunk: return
-                
-                # Apply data hygiene and deduct credits
-                if clean_data and workspace_id:
-                    # Check credits
-                    credit_res = supabase.table("workspaces").select("data_cleaning_credits").eq("id", workspace_id).execute()
-                    credits = credit_res.data[0].get("data_cleaning_credits") if credit_res.data else 0
-                    if credits is None: credits = 1000
-                    
-                    cost = len(current_chunk) // 100
-                    if cost == 0: cost = 1 # Minimum 1 credit per chunk if less than 100
-                    
-                    if credits >= cost:
-                        from leads.backend.services.data_hygiene import DataHygieneService
-                        for lead in current_chunk:
-                            lead["first_name"] = DataHygieneService.clean_name(lead.get("first_name", ""))
-                            lead["last_name"] = DataHygieneService.clean_name(lead.get("last_name", ""))
-                            lead["company_name"] = DataHygieneService.clean_company(lead.get("company_name", ""))
-                        
-                        # Deduct credits
-                        supabase.table("workspaces").update({"data_cleaning_credits": credits - cost}).eq("id", workspace_id).execute()
 
-                # Paranoia Layer 1: Delegate ALL deduplication and insertion to the atomic Postgres RPC
-                # This guarantees 0 duplicates even across concurrent background workers.
-                rpc_res = supabase.rpc("bulk_import_leads", {
-                    "p_list_id": list_id,
-                    "p_workspace_id": workspace_id,
-                    "p_leads": current_chunk
-            }).execute()
-                
-                inserted = rpc_res.data.get("inserted_count", 0) if rpc_res.data else len(current_chunk)
-                total_inserted += inserted
-                supabase.table("lead_lists").update({"row_count": -total_inserted}).eq("id", list_id).execute()
-
-            # Use mappings if provided, else fallback to guess
-            mappings = mappings or {}
-            fn_col = mappings.get("first_name")
-            ln_col = mappings.get("last_name")
-            li_col = mappings.get("linkedin_url")
-            co_col = mappings.get("company_name")
-            
-            for row in reader:
-                if li_col and fn_col:
-                    first_name = row.get(fn_col, '')
-                    last_name = row.get(ln_col, '')
-                    linkedin = row.get(li_col, '')
-                    company = row.get(co_col, '')
-                else:
-                    row_lower = {k.lower().strip(): v for k, v in row.items() if k}
-                    first_name = row_lower.get('first name', row_lower.get('firstname', ''))
-                    last_name = row_lower.get('last name', row_lower.get('lastname', ''))
-                    linkedin = row_lower.get('linkedin', row_lower.get('linkedin url', row_lower.get('profile url', '')))
-                    company = row_lower.get('company', row_lower.get('company name', ''))
-                
-                if not linkedin:
-                    continue
-                    
-                chunk.append({
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "linkedin_url": linkedin,
-                    "company_name": company,
-                })
-                
-                if len(chunk) >= CHUNK_SIZE:
-                    process_chunk(chunk)
-                    chunk = []
-                    
-            # Process remaining
-            if chunk:
-                process_chunk(chunk)
-                
-        # Final update to positive number to mark completion
-        supabase.table("lead_lists").update({"row_count": total_inserted}).eq("id", list_id).execute()
-        
-    except Exception as e:
-        print(f"CSV background processing error: {e}")
-        supabase.table("lead_lists").update({"row_count": -2}).eq("id", list_id).execute()
-    finally:
-        # Clean up the local temp file!
-        if os.path.exists(file_path):
-            os.remove(file_path)
 
 
 
@@ -238,19 +132,7 @@ class UploadSalesNavRequest(BaseModel):
     account_id: Optional[str] = None   # Which LinkedIn account to scrape from
     max_results: Optional[int] = 100   # Default cap: 100 profiles per import
 
-async def process_voyager_search_background(
-    list_id: str,
-    url: str,
-    workspace_id: str,
-    account_id: Optional[str],
-    max_results: int,
-):
-    """
-    Native Voyager scraper background task.
-    Replaces Apify entirely — uses the user's own LinkedIn session cookies
-    already stored in Supabase to call LinkedIn's internal Voyager search API.
-    """
-    raise HTTPException(status_code=501, detail="Not implemented")
+
 
 
 # ── Feature 6b: Auto-enqueue after sync ───────────────────────────────────────

@@ -34,7 +34,13 @@ These are independent of each other but both share the 018 prefix.
 1. `023_rollup_advisory_lock.sql` (Creates `processing_locks` and lock functions)
 2. `023_unified_rate_limits.sql` (Creates `account_limit_overrides`, fixes rate limits, safely removes `daily_action_cap` while temporarily retaining `daily_connection_limit` and `daily_message_limit` to prevent breaking active code).
 
----
+### Migration 033 (Lead-Local Timezone Scheduling — Phase 1 Foundation)
+This migration supersedes and replaces the now-deleted `032_timezone_foundation.sql`. The earlier file used `normalized_location` as the primary key directly and lacked a `CHECK` constraint on `resolution_status`; this version uses a safer surrogate `id UUID` primary key, promotes `normalized_location` to a `UNIQUE NOT NULL` constraint, and adds the `CHECK` constraint. All statements are idempotent (`IF NOT EXISTS`).
+**Recommended Order:**
+1. `033_timezone_scheduling.sql` (**pending**) - Adds `timezone TEXT` column to `public.leads`; creates `public.location_timezone_cache` table (surrogate UUID PK, UNIQUE `normalized_location`, CHECK on `resolution_status`); creates `idx_location_timezone_cache_status` index.
+**Superseded/Deleted:**
+- `032_timezone_foundation.sql` (Deleted: superseded by this migration — conflicting primary key shape and missing CHECK constraint).
+
 
 ## Instructions: How to Apply Migrations via Supabase Dashboard
 Because the Supabase Python client REST API (PostgREST) does not support executing raw DDL statements, these migrations must be run manually via the dashboard.

@@ -1,0 +1,22 @@
+[
+  { "label": "United States — Eastern", "timezone": "America/New_York" },
+  { "label": "United States — Central", "timezone": "America/Chicago" },
+  { "label": "United States — Mountain", "timezone": "America/Denver" },
+  { "label": "United States — Pacific", "timezone": "America/Los_Angeles" },
+  { "label": "Canada — Eastern", "timezone": "America/Toronto" },
+  { "label": "Canada — Pacific", "timezone": "America/Vancouver" },
+  { "label": "United Kingdom", "timezone": "Europe/London" },
+  { "label": "Europe — Central", "timezone": "Europe/Berlin" },
+  { "label": "Europe — Eastern", "timezone": "Europe/Kyiv" },
+  { "label": "Australia — Sydney", "timezone": "Australia/Sydney" },
+  { "label": "Australia — Perth", "timezone": "Australia/Perth" },
+  { "label": "New Zealand", "timezone": "Pacific/Auckland" },
+  { "label": "Asia — India", "timezone": "Asia/Kolkata" },
+  { "label": "Asia — Singapore/HK", "timezone": "Asia/Singapore" },
+  { "label": "Asia — Japan", "timezone": "Asia/Tokyo" },
+  { "label": "Asia — UAE", "timezone": "Asia/Dubai" },
+  { "label": "Latin America — BRT", "timezone": "America/Sao_Paulo" },
+  { "label": "Latin America — ART", "timezone": "America/Argentina/Buenos_Aires" },
+  { "label": "Africa — South Africa", "timezone": "Africa/Johannesburg" },
+  { "label": "Africa — East Africa", "timezone": "Africa/Nairobi" }
+]

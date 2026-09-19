@@ -1,6 +1,6 @@
-import threading
-import os
 import logging
+import os
+import threading
 from collections import OrderedDict
 from playwright.sync_api import sync_playwright
 

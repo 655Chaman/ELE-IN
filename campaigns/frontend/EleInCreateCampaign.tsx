@@ -21,6 +21,7 @@ import { Linkedin } from "@/components/icons/Linkedin"
 import SpotlightCard from "@/components/SpotlightCard"
 import StarBorder from "@/components/StarBorder"
 import ShinyText from "@/components/ShinyText"
+import SafetyIndicator, { computeSafetyIndicatorLocally } from "@/components/accounts/SafetyIndicator"
 
 import { toast } from "sonner"
 import { mutate } from "swr"
@@ -106,7 +107,7 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
 
 // ─── Step 1: Leads ────────────────────────────────────────────────────────────
 
-function StepLeads({ state, onChange }: { state: any; onChange: (k: string, v: any) => void }) {
+function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: string, v: any) => void; onNext?: () => void }) {
   const { data, error, isLoading, mutate } = useSWR("/api/elein/leads/lists", fetcher)
   const lists = data || []
   
@@ -133,6 +134,12 @@ function StepLeads({ state, onChange }: { state: any; onChange: (k: string, v: a
             <input
               value={state.campaignName}
               onChange={e => onChange("campaignName", e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && onNext) {
+                  e.preventDefault();
+                  onNext();
+                }
+              }}
               placeholder="e.g. BIOTECH Q3 OUTREACH"
               className="w-full rounded-lg bg-background/50 border border-border/50 px-3 py-2.5 text-sm text-foreground
                          placeholder-muted-foreground focus:outline-none focus:border-foreground/30 transition-colors"
@@ -558,7 +565,7 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Blank Canvas */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => { resetTree(); setMode("build") }}>
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => { loadTree([]); setMode("build") }}>
               <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Plus size={24} className="text-foreground" />
               </div>
@@ -725,7 +732,10 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-foreground text-sm">{acc.name}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-foreground text-sm">{acc.name}</h4>
+                          <SafetyIndicator accountId={acc.id} status={acc.status} />
+                        </div>
                         {acc.is_warmup && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-orange-500/10 text-orange-500 uppercase border border-orange-500/20">Warm-up</span>
                         )}
@@ -740,8 +750,8 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                     return (
                       <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border/50">
                         {isRestricted && (
-                           <p className="text-[10px] text-orange-500 leading-tight">
-                             New account. Sending volume is automatically restricted and scales up safely over 30 days to prevent shadow-bans.
+                           <p className="text-[10px] text-orange-500 leading-tight bg-orange-500/10 p-2 rounded-md">
+                             ⚠️ This account is in warmup. It can only send <strong>{limits.connLimit} connections</strong> and <strong>{limits.msgLimit} messages</strong> today to prevent shadow-bans.
                            </p>
                         )}
                         <div className="flex items-center gap-2">
@@ -1177,7 +1187,7 @@ function EleInCreateCampaignInner() {
                     <p className="text-base text-muted-foreground">Give your campaign a name and select your target audience.</p>
                   </div>
                   <div className="w-full">
-                    <StepLeads state={state} onChange={handleStateChange} />
+                    <StepLeads state={state} onChange={handleStateChange} onNext={handleNext} />
                   </div>
                 </div>
               </div>

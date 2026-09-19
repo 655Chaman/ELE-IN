@@ -38,7 +38,7 @@ export default function WarmupTimeline({ accountId }: { accountId: string }) {
              <TrendingUp size={11} className="text-muted-foreground" />
           )}
           <span className="text-[11px] font-semibold text-muted-foreground">
-             {isActivePhase ? "Account Active" : `Warmup — Day ${data.day}`}
+             {isActivePhase ? "Account Active" : `Warmup — Day ${data.day} of 14`}
           </span>
           {!isActivePhase && (
             <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded',
@@ -52,6 +52,11 @@ export default function WarmupTimeline({ accountId }: { accountId: string }) {
           <span className={cn('text-[10px] font-bold', safetyColor)}>{safety}% safe</span>
         </div>
       </div>
+      {!isActivePhase && (
+         <p className="text-[10px] text-muted-foreground italic mb-2">
+            Here's why we're sending slowly: To protect your account from shadow-bans, we gradually ramp up volume over 14 days.
+         </p>
+      )}
       {!isActivePhase && phases.length > 0 && (
         <div className="flex gap-1 h-1.5">
           {phases.map((p: any, i: number) => {

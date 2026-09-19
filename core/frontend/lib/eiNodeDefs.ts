@@ -474,6 +474,7 @@ export const HR_NODE_DEFS = {
   },
 
   ai_buying_signal: {
+    comingSoon: true,
     label: "AI Detect Buying Signal",
     description: "AI scans their recent posts for specific buying signals or pain points. Route high-signal leads directly to an SDR via a Slack Alert.",
     category: "ai",
@@ -487,6 +488,7 @@ export const HR_NODE_DEFS = {
   },
 
   ai_write_connection_note: {
+    comingSoon: true,
     label: "AI Write Connection Note",
     description: "AI drafts a personalized connection note based on shared interests or career history. Avoids generic templates and spikes acceptance rates.",
     category: "ai",
@@ -562,6 +564,7 @@ export const HR_NODE_DEFS = {
   // ══════════════════════════════════════════════════════════════════════════
 
   find_email: {
+    comingSoon: true,
     label: "Find Work Email",
     description: "Runs a waterfall enrichment (Apollo -> Hunter -> Clearbit) to find a verified work email. Always follow this with an 'If Email Found?' condition.",
     category: "enrichment",
@@ -573,6 +576,7 @@ export const HR_NODE_DEFS = {
   },
 
   find_personal_email: {
+    comingSoon: true,
     label: "Find Personal Email",
     description: "Enriches their private email. Great for founder-to-founder outreach or when work emails bounce. Follow with an email campaign handoff.",
     category: "enrichment",
@@ -584,6 +588,7 @@ export const HR_NODE_DEFS = {
   },
 
   find_phone: {
+    comingSoon: true,
     label: "Find Phone Number",
     description: "Finds a direct dial or mobile number. If successful, route to a Slack Alert so your SDR team can execute a warm cold-call immediately.",
     category: "enrichment",
@@ -595,6 +600,7 @@ export const HR_NODE_DEFS = {
   },
 
   find_tech_stack: {
+    comingSoon: true,
     label: "Find Company Tech Stack",
     description: "Detects the software tools their company uses. Use this to dynamically branch your messaging (e.g., 'Saw you use Salesforce...').",
     category: "enrichment",
@@ -608,6 +614,7 @@ export const HR_NODE_DEFS = {
   },
 
   find_funding_round: {
+    comingSoon: true,
     label: "Find Funding Round",
     description: "Checks if they recently raised capital. Fresh funding means active budgets. Route funded companies to a high-priority outreach track.",
     category: "enrichment",
@@ -621,6 +628,7 @@ export const HR_NODE_DEFS = {
   },
 
   find_headcount: {
+    comingSoon: true,
     label: "Find Company Headcount",
     description: "Scrapes their exact employee count. Use this alongside an 'If Company Size' condition to ensure you aren't pitching to companies that are too small.",
     category: "enrichment",
@@ -632,6 +640,7 @@ export const HR_NODE_DEFS = {
   },
 
   find_job_postings: {
+    comingSoon: true,
     label: "Find Open Job Postings",
     description: "Detects open roles at their company. A strong indicator of growth and specific pain points. Route to a tailored pitch addressing their hiring needs.",
     category: "enrichment",
@@ -645,6 +654,7 @@ export const HR_NODE_DEFS = {
   },
 
   get_linkedin_activity: {
+    comingSoon: true,
     label: "Get LinkedIn Activity Score",
     description: "Scores how active they are on LinkedIn. Highly active leads should be engaged via comments and DMs; inactive leads should be routed to cold email.",
     category: "enrichment",
@@ -656,6 +666,7 @@ export const HR_NODE_DEFS = {
   },
 
   get_mutual_connections: {
+    comingSoon: true,
     label: "Get Mutual Connections",
     description: "Fetches shared connections. If found, route to an 'AI Personalize' node to dynamically drop a mutual connection's name in your opener.",
     category: "enrichment",
@@ -667,6 +678,7 @@ export const HR_NODE_DEFS = {
   },
 
   verify_email: {
+    comingSoon: true,
     label: "Verify Email Deliverability",
     description: "Pings the enriched email to ensure it won't bounce. Always run this before handing the lead off to an email sequencer to protect your domain reputation.",
     category: "enrichment",
@@ -682,6 +694,7 @@ export const HR_NODE_DEFS = {
   // ══════════════════════════════════════════════════════════════════════════
 
   send_slack_alert: {
+    comingSoon: true,
     label: "Send Slack Alert",
     description: "Fires a real-time Slack notification to your team. Use this immediately when a lead replies positively, books a meeting, or is marked SQL.",
     category: "multichannel",
@@ -696,6 +709,7 @@ export const HR_NODE_DEFS = {
   },
 
   send_webhook: {
+    comingSoon: true,
     label: "Send Webhook",
     description: "Sends lead data via POST request to Zapier, Make, or a custom backend. The ultimate escape hatch for custom integrations.",
     category: "multichannel",

@@ -15,7 +15,9 @@ import { useWorkspace } from '../contexts/WorkspaceContext';
 import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
 
 import { GlowingEffect } from './ui/glowing-effect';
-
+import { toast } from 'sonner';
+import { fetchWithAuth } from '@/lib/apiClient';
+import { PauseOctagon } from 'lucide-react';
 export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeMarket, setActiveMarket] = useState("biotech");
@@ -214,6 +216,25 @@ export function AppLayout() {
 
           {/* User Profile */}
           <div className="p-3 border-t border-border shrink-0 space-y-2">
+            <button 
+              onClick={async () => {
+                if (!window.confirm("PANIC PAUSE: Are you sure you want to pause ALL active campaigns immediately? This will stop all outgoing connections and messages.")) return;
+                try {
+                  const res = await fetchWithAuth("/api/elein/campaigns/pause-all", { method: "POST" });
+                  if (!res.ok) throw new Error("Failed to pause");
+                  toast.success("All active campaigns have been paused.");
+                  // Optional: Refresh page to reflect new campaign states
+                  setTimeout(() => window.location.reload(), 1000);
+                } catch (e) {
+                  toast.error("Failed to pause campaigns.");
+                }
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors font-bold shadow-sm border border-red-700"
+              title={!isSidebarOpen ? "Panic Pause All" : undefined}
+            >
+              <div className="shrink-0"><PauseOctagon size={14} strokeWidth={2.5} /></div>
+              {isSidebarOpen && <span className="text-[12px]">Panic Pause All</span>}
+            </button>
             <div className="w-full flex items-center justify-between px-2">
                {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-widest">Theme</span>}
                <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
