@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import List, Optional
+import asyncio
+import time
+
+_captain_brief_cache: dict = {}
+_CAPTAIN_BRIEF_TTL_SECONDS = 1800
+
 from datetime import date, datetime, timedelta
 from supabase import Client
 from core.backend.api.auth_dep import get_supabase_client
@@ -150,6 +156,89 @@ def compute_today_live(workspace_id: str, supabase: Client, user_today: str, sen
 # MULTI-TENANT SAFETY CHECKLIST:
 # [ ] Is the query scoped by workspace_id? Every query reading from any table MUST filter workspace_id.
 # [ ] Does the workspace_id filter happen FIRST (i.e., is it the leading column in the WHERE clause)?
+async def _generate_captain_brief(
+    workspace_id: str,
+    acceptance_rate: float,
+    reply_rate: float,
+    booking_rate: float,
+    sentiment_pct: float,
+    deliverability: float,
+    bounces: float,
+    connections_today: int,
+    messages_today: int,
+    active_campaigns: int,
+    throttled_accounts: int,
+    total_accounts: int,
+) -> Optional[str]:
+    """
+    Generates a real AI insight using the existing NVIDIA/OpenAI failover client.
+    Returns None on any failure — caller must handle fallback.
+    """
+    global _captain_brief_cache
+    
+    # Layer 1: Check TTL cache first — avoid hammering LLM on every page load
+    cached = _captain_brief_cache.get(workspace_id)
+    if cached and (time.time() - cached["ts"]) < _CAPTAIN_BRIEF_TTL_SECONDS:
+        return cached["insight"]
+    
+    try:
+        from knowledge.backend.services.elein_ai_service import _get_async_client, _resolve_model, get_active_nvidia_keys
+        
+        keys = get_active_nvidia_keys("summarize")
+        if not keys:
+            return None
+            
+        client = _get_async_client(keys[0]["key"])
+        if not client:
+            return None
+        
+        model_list = _resolve_model(None, "summarize")
+        model = "meta/llama-3.2-11b-vision-instruct"
+        
+        prompt = f"""You are a sharp sales ops analyst reviewing a LinkedIn outreach campaign.
+Given these REAL metrics, write ONE short actionable sentence (under 200 characters) flagging the single most important thing to act on RIGHT NOW. Be specific with numbers. No filler. No hedging.
+
+Metrics:
+- Acceptance Rate: {acceptance_rate:.1f}%
+- Reply Rate: {reply_rate:.1f}%
+- Booking Rate: {booking_rate:.1f}%
+- Positive Sentiment: {sentiment_pct:.1f}%
+- Deliverability: {deliverability:.1f}%
+- Bounce Rate: {bounces:.1f}%
+- Connections Today: {connections_today}
+- Messages Today: {messages_today}
+- Active Campaigns: {active_campaigns}
+- Throttled Accounts: {throttled_accounts} of {total_accounts}
+
+Output ONLY the insight sentence. No explanation. No prefix like 'Insight:'. Just the sentence."""
+        
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=80,
+            ),
+            timeout=8.0  # Layer 1: Hard 8s timeout — never block a dashboard load
+        )
+        
+        insight = response.choices[0].message.content.strip()
+        
+        # Layer 2: Sanity check — reject empty or suspiciously long responses
+        if not insight or len(insight) > 300:
+            return None
+        
+        # Store in cache
+        _captain_brief_cache[workspace_id] = {"insight": insight, "ts": time.time()}
+        return insight
+        
+    except asyncio.TimeoutError:
+        print("[CaptainsBrief] LLM call timed out after 8s — using fallback")
+        return None
+    except Exception as e:
+        print(f"[CaptainsBrief] LLM call failed: {e} — using fallback")
+        return None
+
 @router.post("/api/master-view/stats")
 def get_master_view_stats(
     request: Request,
@@ -347,7 +436,7 @@ def get_master_view_stats(
             print(f"[MasterView] Time of day fetch failed: {e}")
         multi_campaign_data = []
         multi_campaign_labels = []
-        ai_insight = "Aggregating all dashboard metrics exclusively from daily_campaign_stats rollup job."
+        
         lead_sources = []
         # PARANOIA LAYER 2: NEVER remove the .limit(15) here. Fetching the full action_log will cause catastrophic OOM crashes on the dashboard.
         # PARANOIA: NEVER remove the live_feed_error field from the response. Silently returning [] hides real DB failures and makes them look like 'no activity'. This field lets the frontend distinguish the two states.
@@ -432,6 +521,28 @@ def get_master_view_stats(
             last_rolled_up_at = None
 
         today_live_data = compute_today_live(workspace_id, supabase, req.date_end[:10] if req.date_end else datetime.utcnow().date().isoformat(), req.senders)
+        _fallback_insight = "Your pipeline is active. Review acceptance and reply rates to find the highest-leverage improvement."
+        try:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _generate_captain_brief(
+                    workspace_id=workspace_id,
+                    acceptance_rate=radar_stats.get("Acceptance Rate", 0),
+                    reply_rate=radar_stats.get("Reply Rate", 0),
+                    booking_rate=radar_stats.get("Booking Rate", 0),
+                    sentiment_pct=radar_stats.get("Sentiment (Pos)", 0),
+                    deliverability=radar_stats.get("Deliverability", 100),
+                    bounces=radar_stats.get("Bounces", 0),
+                    connections_today=today_live_data.get("connections_today", 0),
+                    messages_today=today_live_data.get("messages_today", 0),
+                    active_campaigns=active_campaigns,
+                    throttled_accounts=0,
+                    total_accounts=0,
+                ))
+                ai_insight = future.result(timeout=10) or _fallback_insight
+        except Exception as _brief_err:
+            print(f"[CaptainsBrief] Unexpected error: {_brief_err}")
+            ai_insight = _fallback_insight
 
         return {
             "summary": {

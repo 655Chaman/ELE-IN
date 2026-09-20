@@ -345,7 +345,7 @@ export const HR_NODE_DEFS = {
 • "Ask if they struggle with CRM data entry. Our AI agent solves this."
 • "Congratulate them on their new role and gently introduce our analytics tool."` },
       { key: "tone", label: "How should the AI sound?", type: "select", options: ["Friendly & Casual", "Professional & Direct", "Short & Punchy", "Funny & Witty"] },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
     ],
   },
 
@@ -407,7 +407,7 @@ export const HR_NODE_DEFS = {
     fields: [
       { key: "hook_sources", label: "What to pull from", type: "select", options: ["Recent post", "Job title + company", "Bio summary", "Company news", "Best available"] },
       { key: "hook_length", label: "Hook length", type: "select", options: ["One sentence", "Two sentences", "One line (punchy)"] },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
       { key: "custom_persona", label: "Custom Persona Override", type: "textarea", placeholder: "e.g., You are an aggressive tech recruiter..." },
       { key: "custom_rules", label: "Custom Generation Rules", type: "textarea", placeholder: "e.g., Write exactly 4 sentences. Be sarcastic." },
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
@@ -435,7 +435,7 @@ export const HR_NODE_DEFS = {
     fields: [
       { key: "tone", label: "Icebreaker tone", type: "select", options: ["Curious", "Agreeable", "Challenging (respectfully)", "Complimentary"] },
       { key: "max_chars", label: "Max length (chars)", type: "number", default: 150 },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
       { key: "custom_persona", label: "Custom Persona Override", type: "textarea", placeholder: "e.g., You are an aggressive tech recruiter..." },
       { key: "custom_rules", label: "Custom Generation Rules", type: "textarea", placeholder: "e.g., Write exactly 4 sentences. Be sarcastic." },
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
@@ -451,7 +451,7 @@ export const HR_NODE_DEFS = {
     delayDefault: 0,
     fields: [
       { key: "fallback_language", label: "Fallback language", type: "select", options: ["English", "Spanish", "French", "German", "Portuguese", "Dutch"] },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
       { key: "custom_persona", label: "Custom Persona Override", type: "textarea", placeholder: "e.g., You are an aggressive tech recruiter..." },
       { key: "custom_rules", label: "Custom Generation Rules", type: "textarea", placeholder: "e.g., Write exactly 4 sentences. Be sarcastic." },
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
@@ -467,7 +467,7 @@ export const HR_NODE_DEFS = {
     delayDefault: 0,
     fields: [
       { key: "icp_description", label: "Your ICP description", type: "textarea", maxChars: 500, placeholder: "B2B SaaS founders and VPs of Sales at companies 20-200 employees who are scaling outbound..." },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
       { key: "custom_persona", label: "Custom Persona Override", type: "textarea", placeholder: "e.g., You are an aggressive tech recruiter..." },
       { key: "custom_rules", label: "Custom Generation Rules", type: "textarea", placeholder: "e.g., Write exactly 4 sentences. Be sarcastic." },
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
@@ -510,7 +510,7 @@ export const HR_NODE_DEFS = {
     hasDelay: true,
     delayDefault: 0,
     fields: [
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
       { key: "custom_persona", label: "Custom Persona Override", type: "textarea", placeholder: "e.g., You are an aggressive tech recruiter..." },
       { key: "custom_rules", label: "Custom Generation Rules", type: "textarea", placeholder: "e.g., Write exactly 4 sentences. Be sarcastic." },
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }
@@ -527,7 +527,7 @@ export const HR_NODE_DEFS = {
     delayDefault: 0,
     fields: [
       { key: "competitors", label: "Competitor names (comma-separated)", type: "input", placeholder: "EleIn, Lemlist, Apollo, Outreach..." },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.1 8B (Fastest)", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
       { key: "custom_persona", label: "Custom Persona Override", type: "textarea", placeholder: "e.g., You are an aggressive tech recruiter..." },
       { key: "custom_rules", label: "Custom Generation Rules", type: "textarea", placeholder: "e.g., Write exactly 4 sentences. Be sarcastic." },
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
@@ -919,6 +919,32 @@ export const HR_NODE_DEFS = {
     ],
   },
 
+
+  send_email: {
+    label: "Send Email",
+    description: "Sends an email to the lead using SendGrid.",
+    category: "messages",
+    color: "#ec4899",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "to", label: "To (optional, defaults to lead's email)", type: "input", placeholder: "{{lead.email}}" },
+      { key: "subject_template", label: "Subject", type: "input", placeholder: "e.g. Quick question..." },
+      { key: "body_template", label: "Body", type: "textarea", placeholder: "e.g. Hi {{lead.first_name}}..." },
+    ],
+  },
+
+  if_email_found: {
+    label: "If Email Found?",
+    description: "Branches based on whether the lead has a valid email address.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Has Email", "No Email"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [],
+  },
 } as const
 
 export type EINodeType = keyof typeof HR_NODE_DEFS

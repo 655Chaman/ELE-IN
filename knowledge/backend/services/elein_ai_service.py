@@ -156,20 +156,20 @@ _base_url = "https://integrate.api.nvidia.com/v1"
 
 def _resolve_model(requested_model: str, task: str) -> list:
     if not requested_model or requested_model == "Auto-Route (Recommended)":
-        return ROUTING_CONFIG.get(task, ["meta/llama-3.1-8b-instruct"])
+        return ROUTING_CONFIG.get(task, ["meta/llama-3.2-11b-vision-instruct"])
         
     mapping = {
         "DeepSeek V4 Pro": "deepseek-ai/deepseek-r1", # or standard deepseek representation on NIM
         "GPT-OS": "openai/gpt-oss-20b",
         "Kimi k3": "moonshot-v1-32k",
-        "Llama-3.1 8B (Fastest)": "meta/llama-3.1-8b-instruct",
+        "Llama-3.2 11B": "meta/llama-3.2-11b-vision-instruct",
         "Nemotron 120B": "nvidia/nemotron-4-340b-instruct"
     }
     
     resolved = mapping.get(requested_model)
     if resolved:
         return [resolved]
-    return ROUTING_CONFIG.get(task, ["meta/llama-3.1-8b-instruct"])
+    return ROUTING_CONFIG.get(task, ["meta/llama-3.2-11b-vision-instruct"])
 
 ROUTING_CONFIG = {
     "synthesis": ["meta/llama-3.2-11b-vision-instruct", "google/gemma-4-31b-it"],

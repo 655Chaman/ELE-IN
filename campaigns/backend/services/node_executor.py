@@ -284,6 +284,13 @@ def _exec_enrich_leads(node: WorkflowNode, context: dict, run_id: str) -> dict:
 def _exec_send_email(node: WorkflowNode, context: dict, run_id: str) -> dict:
     cfg = node.data
     to_email = _render(cfg.get("to", ""), context)
+    
+    if not to_email:
+        lead = context.get("lead", {})
+        if isinstance(lead, dict) and lead.get("email"):
+            to_email = str(lead.get("email")).strip()
+        elif context.get("email"):
+            to_email = str(context.get("email")).strip()
     subject = _render(cfg.get("subject_template", ""), context)
     body = _render(cfg.get("body_template", ""), context)
 
@@ -391,8 +398,23 @@ def _exec_rag_inbox_monitor(node: WorkflowNode, context: Dict, run_id: str) -> D
 
     return {"status": "success", "branch": classification, "email_text": email_text}
 
+
+def _exec_if_email_found(node: WorkflowNode, context: dict, run_id: str) -> dict:
+    lead = context.get("lead", {})
+    email = ""
+    if isinstance(lead, dict) and lead.get("email"):
+        email = lead.get("email")
+    elif context.get("email"):
+        email = context.get("email")
+        
+    has_email = bool(email and str(email).strip())
+    branch = "Has Email" if has_email else "No Email"
+    logger.info("if_email_found.evaluated", email=email, result=branch)
+    return {"branch": branch, "evaluated": has_email, "field_value": email}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Dispatcher
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 _EXECUTORS = {
@@ -410,6 +432,7 @@ _EXECUTORS = {
     "scrape_leads":         _exec_scrape_leads,
     "enrich_leads":         _exec_enrich_leads,
     "send_email":           _exec_send_email,
+    "if_email_found":       _exec_if_email_found,
     "find_businesses":      _exec_find_businesses,
     "gohighlevel":          _exec_gohighlevel,
     "rag_inbox_monitor":    _exec_rag_inbox_monitor,
