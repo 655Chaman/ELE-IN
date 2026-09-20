@@ -25,7 +25,7 @@ export default function WarmupTimeline({ accountId }: { accountId: string }) {
   const phases = data.phases || []
   const currentPhase = data.phase || 'observe'
   const safety = data.safety_score ?? 100
-  const safetyColor = safety >= 80 ? 'text-emerald-400' : safety >= 50 ? 'text-amber-400' : 'text-red-400'
+  const safetyColor = safety >= 80 ? 'text-emerald-400' : safety >= 50 ? 'text-primary/80' : 'text-red-400'
   const isActivePhase = currentPhase === 'active'
 
   return (

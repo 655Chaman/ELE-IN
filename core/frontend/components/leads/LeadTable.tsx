@@ -15,8 +15,8 @@ const TYPE_LABEL: Record<string, string> = {
 const STATUS_BADGE: Record<string, { label: string; className: string; icon?: boolean; title?: string }> = {
   completed:       { label: "Completed",       className: "bg-emerald-500/10 text-emerald-600" },
   importing:       { label: "Importing…",      className: "bg-primary/10 text-primary animate-pulse" },
-  throttled:       { label: "Throttled",       className: "bg-amber-500/10 text-amber-600" },
-  daily_limit:     { label: "Daily Limit",     className: "bg-orange-500/10 text-orange-600" },
+  throttled:       { label: "Throttled",       className: "bg-primary/10 text-amber-600" },
+  daily_limit:     { label: "Daily Limit",     className: "bg-primary/10 text-orange-600" },
   error:           { label: "Error",           className: "bg-red-600 text-white shadow-sm flex items-center gap-1", icon: true, title: "Import failed. Click to retry or re-upload." },
   session_expired: { label: "Session Expired", className: "bg-red-500/10 text-red-600" },
 }
@@ -42,9 +42,9 @@ export function LeadTable({
 }: LeadTableProps) {
   if (error) {
     return (
-      <div className="mb-6 flex items-center justify-between p-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600">
+      <div className="mb-6 flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/10 text-amber-600">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           {error instanceof Error ? error.message : String(error) || "Backend connection lost. Retrying..."}
         </div>
         <button onClick={() => mutate()} className="text-xs font-bold hover:underline">Reconnect</button>
@@ -104,10 +104,10 @@ export function LeadTable({
             <div className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
               switch(list.type) {
                 case 'csv': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
-                case 'sales_nav': return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
+                case 'sales_nav': return 'text-primary bg-primary/10 border-primary/20';
                 case 'search': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
                 case 'linkedin_url': return 'text-blue-500 bg-primary/10 border-primary/20';
-                case 'hubspot': return 'text-orange-500 bg-orange-500/10 border-orange-500/20';
+                case 'hubspot': return 'text-primary bg-primary/10 border-primary/20';
                 default: return 'text-primary bg-primary/10 border-primary/20';
               }
             })()}`}>

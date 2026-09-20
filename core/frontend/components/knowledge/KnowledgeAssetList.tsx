@@ -32,7 +32,7 @@ export function KnowledgeAssetList({ assets, onDelete, onRetry }: KnowledgeAsset
               <p className="text-sm font-medium text-foreground truncate">{asset.name}</p>
               <p className="text-xs text-muted-foreground capitalize flex items-center gap-1">
                 {asset.type === 'url' ? 'Website' : asset.type === 'pdf' ? 'Document' : 'Pasted text'} · {
-                  asset.status === 'processing' ? <span className="text-amber-500 font-medium flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> Processing...</span>
+                  asset.status === 'processing' ? <span className="text-primary font-medium flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> Processing...</span>
                   : asset.status === 'failed' ? <span className="text-red-500 font-medium">Failed to process</span>
                   : <span className="text-green-500 font-medium">Active</span>
                 }

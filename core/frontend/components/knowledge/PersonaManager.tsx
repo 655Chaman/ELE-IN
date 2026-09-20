@@ -79,10 +79,10 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                     <div className="space-y-6">
                       <div>
                         <div className="flex items-center gap-2 mb-3">
-                          <ShieldAlert className="w-4 h-4 text-orange-500" />
+                          <ShieldAlert className="w-4 h-4 text-primary" />
                           <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Pain Points</p>
                         </div>
-                        <div className="text-sm text-foreground/80 leading-relaxed flex flex-col gap-1.5 pl-6 border-l-2 border-orange-200 dark:border-orange-500/20">
+                        <div className="text-sm text-foreground/80 leading-relaxed flex flex-col gap-1.5 pl-6 border-l-2 border-orange-200 dark:border-primary/20">
                           {Array.isArray(persona.pain_points) && persona.pain_points.length > 0
                             ? persona.pain_points.map((pt: any, i: number) => <span key={i} className="flex items-start"><span className="mr-2 opacity-50">•</span>{pt}</span>)
                             : <span className="text-muted-foreground italic">None defined</span>}
@@ -196,7 +196,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                     <textarea 
                       value={personaForm.pain_points} 
                       onChange={(e) => setPersonaForm(prev => ({...prev, pain_points: e.target.value}))}
-                      className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-orange-500/50 transition-all h-28 resize-none"
+                      className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-primary/50 transition-all h-28 resize-none"
                       placeholder="e.g. Reps burning 10 hours a week on manual research.
 Cold email conversion is flatlining."
                     />

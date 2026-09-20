@@ -109,9 +109,9 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
   const METHODS = [
     { id: "search", label: "Build a Search", desc: "Use our native LinkedIn URL generator for pinpoint accuracy.", icon: Search, color: "text-indigo-500", bg: "bg-indigo-500/10", border: "border-l-2 border-indigo-500/0 group-hover:border-indigo-500/50", active: true },
     { id: "csv", label: "Upload CSV", desc: "Map your spreadsheet columns directly to our database.", icon: FileSpreadsheet, color: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-l-2 border-emerald-500/0 group-hover:border-emerald-500/50", active: true },
-    { id: "sales_nav", label: "Sales Navigator", desc: "Paste an existing Sales Nav query to scrape instantly.", icon: Compass, color: "text-amber-500", bg: "bg-amber-500/10", border: "border-l-2 border-amber-500/0 group-hover:border-amber-500/50", active: true },
+    { id: "sales_nav", label: "Sales Navigator", desc: "Paste an existing Sales Nav query to scrape instantly.", icon: Compass, color: "text-primary", bg: "bg-primary/10", border: "border-l-2 border-primary/0 group-hover:border-primary/50", active: true },
     { id: "linkedin_url", label: "Raw Profiles", desc: "Paste a raw list of LinkedIn profile URLs.", icon: Link2, color: "text-blue-500", bg: "bg-primary/10", border: "border-l-2 border-blue-500/0 group-hover:border-blue-500/50", active: true },
-    { id: "hubspot", label: "HubSpot Sync", desc: "Pull directly from your CRM.", icon: () => <img src="https://cdn.simpleicons.org/hubspot/ff7a59" className="w-[18px] h-[18px]" alt="HubSpot" />, color: "text-orange-500", bg: "bg-orange-500/10", border: "border-l-2 border-orange-500/0 group-hover:border-orange-500/50", active: true },
+    { id: "hubspot", label: "HubSpot Sync", desc: "Pull directly from your CRM.", icon: () => <img src="https://cdn.simpleicons.org/hubspot/ff7a59" className="w-[18px] h-[18px]" alt="HubSpot" />, color: "text-primary", bg: "bg-primary/10", border: "border-l-2 border-primary/0 group-hover:border-primary/50", active: true },
   ];
 
   const currentMethod = METHODS.find(m => m.id === method);

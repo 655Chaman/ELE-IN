@@ -99,7 +99,7 @@ export function EleInTemplates() {
                   <LayoutTemplate size={18} className="text-primary" />
                 </div>
                 {activeTab === "mine" && tpl.status === "pending" && (
-                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 text-amber-500 text-[10px] font-bold">
+                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-[10px] font-bold">
                     <Clock size={12} /> Under Review
                   </span>
                 )}

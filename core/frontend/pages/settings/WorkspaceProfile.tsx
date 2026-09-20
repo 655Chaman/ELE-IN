@@ -18,7 +18,7 @@ const getGradient = (name: string) => {
   const gradients = [
     "from-blue-500 to-indigo-500",
     "from-purple-500 to-fuchsia-500",
-    "from-amber-400 to-orange-500",
+    "from-primary/80 to-primary",
     "from-emerald-400 to-teal-500",
     "from-rose-400 to-red-500",
   ];
@@ -110,7 +110,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
 
   const charCountRatio = name.length / 50;
   let progressColor = "bg-primary";
-  if (charCountRatio > 0.84) progressColor = "bg-amber-500";
+  if (charCountRatio > 0.84) progressColor = "bg-primary";
   if (charCountRatio >= 1.0) progressColor = "bg-destructive";
 
   return (
@@ -154,23 +154,23 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
                   initial={{ opacity: 0, y: -20, height: 0 }}
                   animate={{ opacity: 1, y: 0, height: 'auto' }}
                   exit={{ opacity: 0, y: -20, height: 0 }}
-                  className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex items-center justify-between overflow-hidden"
+                  className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-center justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 text-amber-500">
+                  <div className="flex items-center gap-3 text-primary">
                     <AlertTriangle size={18} />
                     <span className="text-sm font-medium">You have unsaved changes</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setName(serverName)}
-                      className="px-3 py-1.5 text-xs font-semibold hover:bg-amber-500/20 text-amber-500 rounded-md transition-colors"
+                      className="px-3 py-1.5 text-xs font-semibold hover:bg-primary/20 text-primary rounded-md transition-colors"
                       disabled={saving}
                     >
                       Discard
                     </button>
                     <button
                       onClick={handleSave}
-                      className="px-3 py-1.5 text-xs font-semibold bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors shadow-sm"
+                      className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-md hover:bg-amber-600 transition-colors shadow-sm"
                       disabled={saving || isEmpty || isTooLong}
                     >
                       Save

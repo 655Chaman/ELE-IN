@@ -204,11 +204,11 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
         </div>
 
       {/* Critical Alerts Section */}
-      <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-amber-950/5 shadow-sm">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-red-500" />
+      <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-amber-950/5 shadow-sm">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-red-500" />
         <div className="p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500">
+            <div className="p-2 bg-primary/10 rounded-xl text-primary">
               <ShieldAlert size={24} />
             </div>
             <div>

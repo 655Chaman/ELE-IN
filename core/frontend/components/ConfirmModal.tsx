@@ -48,7 +48,7 @@ export function ConfirmModal({
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="w-full max-w-md bg-[#121214] border border-zinc-500/30 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto flex flex-col relative"
             >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500/50 to-orange-500/50" />
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500/50 to-primary/50" />
               <button 
                 onClick={onClose}
                 className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors p-1"

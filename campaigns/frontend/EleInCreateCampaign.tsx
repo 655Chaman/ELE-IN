@@ -29,6 +29,7 @@ import { BackgroundBeams } from "@/components/ui/background-beams"
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler"
 import { useTheme } from "@/components/ThemeProvider"
 import { Meteors } from "@/components/ui/meteors"
+import { WarmupWizard } from "./WarmupWizard"
 
 
 function FadeContent({ children, blur = false, duration = 0.5, className = "" }: { children: React.ReactNode, blur?: boolean, duration?: number, className?: string }) {
@@ -350,7 +351,7 @@ function TemplateBrowser({ onClose, onImport }: {
                     <span className={cn(
                       "text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest",
                       t.difficulty === "beginner" ? "bg-emerald-500/15 text-emerald-400" :
-                      t.difficulty === "intermediate" ? "bg-amber-500/15 text-amber-400" :
+                      t.difficulty === "intermediate" ? "bg-primary/15 text-primary/80" :
                       "bg-rose-500/15 text-rose-400"
                     )}>
                       {t.difficulty}
@@ -516,7 +517,7 @@ function LivePreviewSidebar() {
 // ─── Step 2: Sequence (canvas + entry point chooser) ─────────────────────────
 function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   const { reset: resetTree, loadTree, rootNodes } = useHRTreeStore()
-  const [mode, setMode] = useState<"choose" | "build" | "template">(rootNodes.length > 0 ? "build" : "choose")
+  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard">(rootNodes.length > 0 ? "build" : "choose")
   const [showBrowser, setShowBrowser] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   
@@ -554,6 +555,18 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     setShowBrowser(false)
   }
 
+  if (mode === "wizard") {
+    return (
+      <WarmupWizard 
+        onComplete={(nodes) => {
+          loadTree(nodes);
+          setMode("build");
+        }}
+        onCancel={() => setMode("choose")}
+      />
+    );
+  }
+
   if (mode === "choose") {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
@@ -563,7 +576,7 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
             <p className="text-sm text-muted-foreground">Choose a template or build from scratch.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Blank Canvas */}
             <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => { loadTree([]); setMode("build") }}>
               <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
@@ -571,6 +584,15 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Blank Canvas</h3>
               <p className="text-xs text-muted-foreground">Start fresh and build your own custom sequence</p>
+            </SpotlightCard>
+
+            {/* Guided Warm-up Wizard */}
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => setMode("wizard")}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 text-primary flex items-center justify-center mb-6 group-hover:scale-110 transition-transform relative overflow-hidden">
+                <Zap size={24} className="relative z-10" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Guided Warm-up</h3>
+              <p className="text-xs text-muted-foreground">Step-by-step wizard to build a proven warm-up flow</p>
             </SpotlightCard>
 
             {/* Template Library */}
@@ -659,13 +681,13 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
         </div>
 
 
-        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-8 flex gap-4 max-w-3xl mx-auto text-left shadow-sm">
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-8 flex gap-4 max-w-3xl mx-auto text-left shadow-sm">
           <div className="mt-0.5">
-             <AlertTriangle size={20} className="text-amber-500" />
+             <AlertTriangle size={20} className="text-primary" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-amber-500 mb-1">CRITICAL: Do Not Manually Send Connections</h4>
-            <p className="text-xs text-amber-500/80 leading-relaxed">
+            <h4 className="text-sm font-bold text-primary mb-1">CRITICAL: Do Not Manually Send Connections</h4>
+            <p className="text-xs text-primary/80 leading-relaxed">
               Our safety engine strictly enforces daily limits. However, we cannot track actions you perform manually on your phone or browser. If you manually send connections while this campaign is active, you will exceed LinkedIn&apos;s limits and risk permanently banning your account.
             </p>
           </div>
@@ -737,7 +759,7 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                           <SafetyIndicator accountId={acc.id} status={acc.status} />
                         </div>
                         {acc.is_warmup && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-orange-500/10 text-orange-500 uppercase border border-orange-500/20">Warm-up</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-primary/10 text-primary uppercase border border-primary/20">Warm-up</span>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate max-w-[140px]">{acc.linkedin_profile_url || "No URL provided"}</p>
@@ -750,7 +772,7 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                     return (
                       <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border/50">
                         {isRestricted && (
-                           <p className="text-[10px] text-orange-500 leading-tight bg-orange-500/10 p-2 rounded-md">
+                           <p className="text-[10px] text-primary leading-tight bg-primary/10 p-2 rounded-md">
                              ⚠️ This account is in warmup. It can only send <strong>{limits.connLimit} connections</strong> and <strong>{limits.msgLimit} messages</strong> today to prevent shadow-bans.
                            </p>
                         )}

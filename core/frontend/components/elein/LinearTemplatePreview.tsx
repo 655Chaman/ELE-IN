@@ -90,14 +90,14 @@ function StepCard({ node, stickyNote, delay }: {
 
       {/* Sticky note */}
       {stickyNote && (
-        <div className="mx-4 mb-4 rounded-lg bg-amber-400/[0.07] border border-amber-400/20 px-3 py-2.5">
+        <div className="mx-4 mb-4 rounded-lg bg-primary/80/[0.07] border border-primary/80/20 px-3 py-2.5">
           <div className="flex items-center gap-1.5 mb-1.5">
-            <StickyNote size={10} className="text-amber-400 shrink-0" />
-            <span className="text-[10px] font-bold text-amber-400">{stickyNote.title}</span>
+            <StickyNote size={10} className="text-primary/80 shrink-0" />
+            <span className="text-[10px] font-bold text-primary/80">{stickyNote.title}</span>
           </div>
           <p className="text-[11px] text-amber-200/80 leading-relaxed mb-1.5">{stickyNote.body}</p>
-          <p className="text-[10px] text-amber-400/60 leading-relaxed">
-            <span className="font-semibold text-amber-400/80">Why it works: </span>
+          <p className="text-[10px] text-primary/80/60 leading-relaxed">
+            <span className="font-semibold text-primary/80/80">Why it works: </span>
             {stickyNote.why}
           </p>
         </div>
@@ -122,7 +122,7 @@ export function LinearTemplatePreview({ template }: Props) {
           <span className={cn(
             "text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest",
             template.difficulty === "beginner" ? "bg-emerald-500/15 text-emerald-400" :
-            template.difficulty === "intermediate" ? "bg-amber-500/15 text-amber-400" :
+            template.difficulty === "intermediate" ? "bg-primary/15 text-primary/80" :
             "bg-rose-500/15 text-rose-400"
           )}>
             {template.difficulty}
@@ -163,8 +163,8 @@ export function LinearTemplatePreview({ template }: Props) {
 
       {/* Sticky note legend */}
       <div className="flex items-center gap-1.5 mb-3">
-        <StickyNote size={10} className="text-amber-400" />
-        <span className="text-[10px] text-amber-400/70">Yellow cards explain what each step does and why it works</span>
+        <StickyNote size={10} className="text-primary/80" />
+        <span className="text-[10px] text-primary/80/70">Yellow cards explain what each step does and why it works</span>
       </div>
 
       {/* Step cards */}

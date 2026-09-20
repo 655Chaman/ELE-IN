@@ -124,7 +124,7 @@ export function SearchImport() {
         </div>
         <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
           <div
-            className={`h-2 rounded-full transition-all duration-500 ${budget.used / budget.limit > 0.85 ? 'bg-red-500' : budget.used / budget.limit > 0.6 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+            className={`h-2 rounded-full transition-all duration-500 ${budget.used / budget.limit > 0.85 ? 'bg-red-500' : budget.used / budget.limit > 0.6 ? 'bg-primary' : 'bg-emerald-500'}`}
             style={{ width: `${Math.min(100, (budget.used / budget.limit) * 100)}%` }}
           />
         </div>

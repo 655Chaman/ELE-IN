@@ -52,11 +52,11 @@ function NakedVariableWarning({ text }: { text: string }) {
   const varName = match ? match[1] : "variable";
   
   return (
-    <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-500 flex items-start gap-2 leading-relaxed shadow-sm">
+    <div className="mt-3 p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-amber-600 dark:text-primary flex items-start gap-2 leading-relaxed shadow-sm">
       <span className="shrink-0 mt-0.5">⚠️</span>
       <div className="flex flex-col gap-1">
         <span className="font-bold">Missing Fallback on {"{{"}{varName}{"}}"}</span>
-        <span className="text-amber-700/80 dark:text-amber-400/90 text-[11px]">
+        <span className="text-amber-700/80 dark:text-primary/80/90 text-[11px]">
           Even with a valid LinkedIn URL, this data can be blocked by privacy walls (3rd-degree connections) or left blank by the user. If we can't scrape it, your message will fail to send to protect your reputation.
         </span>
         <span className="mt-1 font-medium text-[11px]">
@@ -719,7 +719,7 @@ function SendVoiceNoteConfig({ data, onChange }: { data: any; onChange: (k: stri
           className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-600" 
         />
         {errorMsg && <p className="text-red-500 text-[10px] mt-1">{errorMsg}</p>}
-        {warningMsg && <p className="text-orange-500 text-[10px] mt-1">{warningMsg}</p>}
+        {warningMsg && <p className="text-primary text-[10px] mt-1">{warningMsg}</p>}
       </div>
       <div className="p-3 rounded-xl bg-indigo-950/20 border border-indigo-800/30">
         <p className="text-xs text-indigo-300">💡 Voice notes have 3× higher reply rates than text messages. Pre-record a personal 60-second pitch and upload it here.</p>
@@ -1030,7 +1030,7 @@ if_large_following: {
         <div className="space-y-6">
           <SimpleDelayConfig data={data} onChange={onChange} label="withdraw the pending connection request" />
           {hasAuto && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-500 mt-4">
+            <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-xs text-primary mt-4">
               Warning: A connection node in this sequence has auto-withdraw enabled. This Withdraw node is redundant and will be ignored by the validator.
             </div>
           )}

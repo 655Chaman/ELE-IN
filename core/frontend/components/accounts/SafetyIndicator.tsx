@@ -27,7 +27,7 @@ export function computeSafetyIndicatorLocally(status: string): { level: SafetySt
 
 const LEVEL_CONFIG: Record<SafetyStatus, { color: string; dotClass: string }> = {
   critical: { color: "text-red-500", dotClass: "bg-red-500" },
-  warning: { color: "text-amber-500", dotClass: "bg-amber-500" },
+  warning: { color: "text-primary", dotClass: "bg-primary" },
   watch: { color: "text-blue-500", dotClass: "bg-blue-500" },
   healthy: { color: "text-emerald-500", dotClass: "bg-emerald-500" },
   loading: { color: "text-muted-foreground", dotClass: "bg-muted-foreground animate-pulse" },

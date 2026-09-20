@@ -136,7 +136,7 @@ export function LimitProgressBar({ used, limit, pct, label }: { used: number, li
   const clampedWidth = Math.min(width, 100);
   let colorClass = 'bg-primary';
   if (clampedWidth >= 90) colorClass = 'bg-rose-500';
-  else if (clampedWidth >= 70) colorClass = 'bg-amber-500';
+  else if (clampedWidth >= 70) colorClass = 'bg-primary';
 
   return (
     <div>
@@ -404,7 +404,7 @@ export function EleInAnalyticsView({
                 
                 let dotColor = 'bg-emerald-500'
                 if (maxPct >= 90) dotColor = 'bg-rose-500'
-                else if (maxPct >= 70) dotColor = 'bg-amber-500'
+                else if (maxPct >= 70) dotColor = 'bg-primary'
 
                 return (
                   <div key={i} className="rounded-2xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none relative">
@@ -476,7 +476,7 @@ export function EleInAnalyticsView({
                 </button>
                 {/* TODO: Re-add Replied area when rollup_daily_stats populates daily replied counts */}
                 <div className="flex items-center gap-1.5 px-2 opacity-50 cursor-help group relative">
-                  <div className="w-2.5 h-2.5 rounded-full shadow-sm bg-amber-500/50" />
+                  <div className="w-2.5 h-2.5 rounded-full shadow-sm bg-primary/50" />
                   <span className="text-foreground/50">Replied</span>
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-foreground text-background text-[10px] font-medium rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50">
                     ℹ️ Reply tracking coming soon
@@ -548,7 +548,7 @@ export function EleInAnalyticsView({
               {/* PARANOIA: live_feed_error distinguishes a DB failure from genuine zero activity. Never merge these two states into a single 'empty' UI. */}
               {mergedFeed.length === 0 && liveFeedError && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-4">
-                  <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg p-3 text-amber-700 dark:text-amber-400 flex items-center gap-2 text-sm font-medium">
+                  <div className="bg-amber-50 dark:bg-primary/10 border border-amber-200 dark:border-primary/20 rounded-lg p-3 text-amber-700 dark:text-primary/80 flex items-center gap-2 text-sm font-medium">
                     <AlertTriangle size={16} /> Activity feed temporarily unavailable
                   </div>
                 </div>

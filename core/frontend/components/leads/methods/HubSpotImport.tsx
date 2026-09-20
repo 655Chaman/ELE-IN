@@ -28,7 +28,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
           <div className="bg-card border shadow-sm rounded-xl p-6 text-left">
             <div className="mb-5">
               <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+                <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
                 Authentication Required
               </h4>
               <p className="text-xs text-muted-foreground mt-1">
@@ -45,7 +45,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
                   <input 
                     type="password"
                     placeholder="pat-na1-xxxx-xxxx-xxxx"
-                    className="flex h-11 w-full rounded-lg border border-input bg-background/50 px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 focus-visible:border-orange-500 transition-all placeholder:text-muted-foreground/50"
+                    className="flex h-11 w-full rounded-lg border border-input bg-background/50 px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary transition-all placeholder:text-muted-foreground/50"
                     value={hubspotToken}
                     onChange={(e) => setHubspotToken(e.target.value)}
                     spellCheck={false}

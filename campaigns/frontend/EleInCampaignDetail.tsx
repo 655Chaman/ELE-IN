@@ -115,7 +115,7 @@ export function EleInCampaignDetail() {
             <span className={cn(
               "px-2.5 py-1 text-xs font-semibold uppercase tracking-wider rounded-full border flex items-center gap-1.5",
               campaign.status === 'ACTIVE' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-              campaign.status === 'PAUSED' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+              campaign.status === 'PAUSED' ? "bg-primary/10 text-primary/80 border-primary/20" :
               "bg-muted text-muted-foreground border-border"
             )}>
               {campaign.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
@@ -146,7 +146,7 @@ export function EleInCampaignDetail() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { label: "Enrolled", value: campaign.stats?.total_leads ?? 0, icon: Users, color: "text-blue-400" },
-          { label: "Running", value: campaign.stats?.running ?? 0, icon: Activity, color: "text-amber-400" },
+          { label: "Running", value: campaign.stats?.running ?? 0, icon: Activity, color: "text-primary/80" },
           { label: "Completed", value: campaign.stats?.completed ?? 0, icon: CheckCircle2, color: "text-emerald-400" },
           { label: "Conversion", value: `${((campaign.stats?.conversion_rate ?? 0) * 100).toFixed(1)}%`, icon: RefreshCw, color: "text-purple-400" }
         ].map((stat, i) => (
@@ -274,7 +274,7 @@ export function EleInCampaignDetail() {
                         "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",
                         lead.status === 'completed' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
                         lead.status === 'error' ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                        lead.status === 'running' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                        lead.status === 'running' ? "bg-primary/10 text-primary/80 border-primary/20" :
                         "bg-muted/50 text-muted-foreground border-transparent"
                       )}>
                         {lead.status === 'running' && <Clock size={12} />}

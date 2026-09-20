@@ -91,7 +91,7 @@ export function EISequenceValidator() {
             className={`pointer-events-auto flex items-start gap-3 p-3 rounded-lg border shadow-lg backdrop-blur-md ${
               w.type === "error" 
                 ? "bg-red-500/10 border-red-500/20 text-red-500" 
-                : "bg-amber-500/10 border-amber-500/20 text-amber-500"
+                : "bg-primary/10 border-primary/20 text-primary"
             }`}
           >
             <div className="mt-0.5">

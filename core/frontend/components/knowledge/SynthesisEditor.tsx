@@ -19,12 +19,12 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
   return (
     <div className="md:col-span-1 group outline-none">
       <div className="h-full bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-[40px] p-8 overflow-hidden relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl">
-        <div className="absolute top-0 right-0 w-64 h-64 -mr-16 -mt-16 rounded-full bg-orange-100 dark:bg-orange-500/10 blur-[60px] pointer-events-none" />
+        <div className="absolute top-0 right-0 w-64 h-64 -mr-16 -mt-16 rounded-full bg-orange-100 dark:bg-primary/10 blur-[60px] pointer-events-none" />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-6">
 
-            <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-500/20 border border-orange-100 dark:border-orange-500/30 flex items-center justify-center shadow-sm">
-              <Sparkles className="w-5 h-5 text-orange-600 dark:text-orange-500" />
+            <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/20 border border-orange-100 dark:border-primary/30 flex items-center justify-center shadow-sm">
+              <Sparkles className="w-5 h-5 text-orange-600 dark:text-primary" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-foreground">What the AI understood</h3>
@@ -36,12 +36,12 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
             <div>
               <div className="flex justify-between items-center text-xs mb-2">
                 <span className="font-semibold text-foreground">AI Readiness</span>
-                <span className={`font-bold ${synthesis?.core_value_prop ? 'text-green-600 dark:text-green-500' : 'text-orange-600 dark:text-orange-500'}`}>
+                <span className={`font-bold ${synthesis?.core_value_prop ? 'text-green-600 dark:text-green-500' : 'text-orange-600 dark:text-primary'}`}>
                   {synthesis?.core_value_prop ? '✓ Ready to write DMs' : 'Add content above'}
                 </span>
               </div>
               <div className="h-2 w-full bg-slate-100 dark:bg-muted rounded-full overflow-hidden">
-                <div className={`h-full transition-all duration-700 ${synthesis?.core_value_prop ? 'bg-green-500 w-full' : 'bg-orange-500 w-[15%]'}`} />
+                <div className={`h-full transition-all duration-700 ${synthesis?.core_value_prop ? 'bg-green-500 w-full' : 'bg-primary w-[15%]'}`} />
               </div>
               <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
                 {synthesis?.core_value_prop
@@ -166,7 +166,7 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
                   <ul className="space-y-2">
                     {synthesis.primary_pain_points_solved?.map((pt: string, i: number) => (
                       <li key={i} className="text-xs text-muted-foreground italic bg-slate-50 dark:bg-muted/30 p-3 rounded-xl border border-slate-200 dark:border-border/30 flex items-start gap-2">
-                        <span className="text-orange-500 font-bold">→</span> <span>{pt}</span>
+                        <span className="text-primary font-bold">→</span> <span>{pt}</span>
                       </li>
                     ))}
                   </ul>

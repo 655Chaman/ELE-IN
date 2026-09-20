@@ -26,7 +26,7 @@ const getCategoryStyles = (category: Category) => {
     case 'Team':
       return { icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' };
     case 'Account':
-      return { icon: User, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' };
+      return { icon: User, color: 'text-primary/80', bg: 'bg-primary/10', border: 'border-primary/30' };
     case 'Campaign':
       return { icon: Megaphone, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30' };
     case 'Deletion':

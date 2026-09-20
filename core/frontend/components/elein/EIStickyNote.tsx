@@ -120,7 +120,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
               <button
                 key={c}
                 onClick={(e) => { e.stopPropagation(); changeStickyNoteColor(note.id, c) }}
-                className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${c === 'yellow' ? 'bg-amber-400' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-purple-400'} ${baseColorKey === c ? 'ring-2 ring-white ring-offset-1 ring-offset-background' : ''}`}
+                className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${c === 'yellow' ? 'bg-primary/80' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-purple-400'} ${baseColorKey === c ? 'ring-2 ring-white ring-offset-1 ring-offset-background' : ''}`}
               />
             ))}
             <div className="w-px h-4 bg-border mx-1" />

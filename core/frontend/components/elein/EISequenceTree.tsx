@@ -999,7 +999,7 @@ export function EISequenceTree({
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card border border-border shadow-2xl rounded-2xl p-6 max-w-md w-full mx-4"
             >
-              <div className="flex items-center gap-3 text-amber-500 mb-4">
+              <div className="flex items-center gap-3 text-primary mb-4">
                 <AlertCircle size={24} />
                 <h3 className="text-lg font-bold text-foreground">Conflict Detected</h3>
               </div>

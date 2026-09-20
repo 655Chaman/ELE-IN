@@ -191,7 +191,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
     switch (role) {
       case "owner":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
             <Crown size={12} />
             Owner
           </span>
@@ -348,14 +348,14 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                         return (
                           <tr 
                             key={member.user_id} 
-                            className={`group relative transition-colors ${isOwner ? "bg-amber-500/[0.02]" : "hover:bg-muted/10"}`}
+                            className={`group relative transition-colors ${isOwner ? "bg-primary/[0.02]" : "hover:bg-muted/10"}`}
                           >
                             <td className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                             
                             <td className="px-5 py-4">
                               <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm border
-                                  ${isOwner ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : 
+                                  ${isOwner ? "bg-primary/10 text-primary border-primary/20" : 
                                     member.role === 'admin' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : 
                                     "bg-primary/10 text-primary border-primary/20"}`}
                                 >
@@ -413,7 +413,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                               className={`flex items-start gap-3 px-3 py-2 text-xs text-left rounded-md hover:bg-muted/50 transition-colors ${member.role === r ? 'bg-muted/30 font-medium' : 'text-muted-foreground'}`}
                                             >
                                               <div className="pt-0.5">
-                                                {r === 'owner' && <Crown size={14} className="text-amber-500" />}
+                                                {r === 'owner' && <Crown size={14} className="text-primary" />}
                                                 {r === 'admin' && <Shield size={14} className="text-blue-400" />}
                                                 {r === 'member' && <UserIcon size={14} />}
                                               </div>
@@ -494,10 +494,10 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                             <RoleBadge role={invite.role} />
                           </td>
                           <td className="px-5 py-4">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
                               <span className="relative flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
                               </span>
                               Pending
                             </span>
