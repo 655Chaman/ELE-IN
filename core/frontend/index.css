@@ -166,8 +166,8 @@
   --card-foreground: #111111;
   --popover: #F9FAFB;
   --popover-foreground: #111111;
-  --primary: #001507;
-  --primary-foreground: #8FFF83;
+  --primary: #00A63E; /* Bright visible green for light mode */
+  --primary-foreground: #FFFFFF;
   --secondary: #F3F4F6;
   --secondary-foreground: #111111;
   --muted: #F3F4F6;
@@ -175,27 +175,27 @@
   --accent: #F3F4F6;
   --accent-foreground: #111111;
   --destructive: #EF4444;
-  --success: #001507;
+  --success: #00A63E;
   --warning: #B45309;
   --border: #E5E7EB;
   --input: #E5E7EB;
-  --ring: #001507;
+  --ring: #00A63E;
   --spotlight: rgba(0, 0, 0, 0.05);
   --star-color: rgba(0, 0, 0, 0.4);
-  --chart-1: #001507;
+  --chart-1: #00A63E;
   --chart-2: #374151;
   --chart-3: #6B7280;
   --chart-4: #9CA3AF;
   --chart-5: #D1D5DB;
   --radius: 0.625rem;
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #111111;
-  --sidebar-primary: #001507;
-  --sidebar-primary-foreground: #8FFF83;
-  --sidebar-accent: #F3F4F6;
-  --sidebar-accent-foreground: #111111;
-  --sidebar-border: #E5E7EB;
-  --sidebar-ring: #001507;
+  --sidebar: #001507; /* Dark Forest Green sidebar in light mode too! */
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #8FFF83;
+  --sidebar-primary-foreground: #001507;
+  --sidebar-accent: rgba(255, 255, 255, 0.1);
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #001507;
+  --sidebar-ring: #8FFF83;
 }
 
 .dark {
