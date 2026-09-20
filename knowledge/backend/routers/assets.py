@@ -506,3 +506,57 @@ async def delete_objection(
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail="Knowledge service temporarily unavailable")
+
+class TestObjectionRequest(BaseModel):
+    objection: str
+    
+@router.post("/knowledge/test-objection")
+async def test_objection(
+    req: TestObjectionRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
+    
+    # Layer 1 Paranoia: Fallback to draft if live synthesis is missing due to schema desync
+    synthesis = KnowledgeService.get_synthesis(supabase, workspace_id)
+    if not synthesis or not synthesis.get('key_differentiators'):
+        draft_res = supabase.table("knowledge_synthesis_drafts").select("*").eq("workspace_id", workspace_id).execute()
+        if draft_res.data:
+            synthesis = draft_res.data[0]
+            
+    if not synthesis:
+        raise HTTPException(status_code=400, detail="No synthesis available. Please seed the workspace first.")
+        
+    synthesis_layer = f"CORE VALUE PROP:\n{synthesis.get('core_value_prop', '')}\n\n"
+    if isinstance(synthesis.get('key_differentiators'), list):
+        synthesis_layer += f"KEY DIFFERENTIATORS:\n{', '.join(synthesis.get('key_differentiators', []))}\n\n"
+    if isinstance(synthesis.get('proof_points'), list):
+        synthesis_layer += f"PROOF POINTS:\n{', '.join(synthesis.get('proof_points', []))}\n\n"
+        
+    system_prompt = f"""You are an elite Sales Development Representative handling objections.
+
+--- LAYER 1: WORKSPACE CONSTITUTION ---
+{synthesis_layer}
+
+--- LAYER 2: EXECUTION RULES ---
+GOAL: Write exactly ONE concise paragraph to handle the objection.
+1. Acknowledge the objection professionally.
+2. Pivot using our specific key differentiators or proof points.
+3. Close with a soft question or call to action.
+DO NOT use generic boilerplate. Use the exact proof points provided in the constitution."""
+
+    user_prompt = f"LEAD OBJECTION:\n{req.objection}\n\nWrite the reply:"
+
+    try:
+        reply = _run_llm_with_failover(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=300,
+            temperature=0.7,
+            task="generation",
+            workspace_id=workspace_id
+        )
+        return {"reply": reply}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

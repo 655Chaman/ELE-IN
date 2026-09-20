@@ -30,14 +30,14 @@ export function TestDriveSimulator() {
     setTestMessage("");
     setIsTesting(true);
     try {
-      const res = await fetchWithAuth("/api/knowledge/personas/test-drive", {
+      const res = await fetchWithAuth("/api/knowledge/test-objection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: currentMsg })
+        body: JSON.stringify({ objection: currentMsg })
       });
       if (res.ok) {
         const data = await res.json();
-        setTestResponses(prev => [...prev, { role: "ai", content: data.response }]);
+        setTestResponses(prev => [...prev, { role: "ai", content: data.reply }]);
       } else {
          toast.error("Failed to generate response");
       }
@@ -57,7 +57,7 @@ export function TestDriveSimulator() {
         innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-[18px] bg-foreground hover:bg-foreground/90 text-background text-sm font-bold transition-all shadow-lg"
         speed="3s"
       >
-        <MessageSquare size={14} /> Test AI
+        <MessageSquare size={14} /> Test Objection
       </StarBorder>
 
       <AnimatePresence>
@@ -81,7 +81,7 @@ export function TestDriveSimulator() {
                   <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/20 border border-blue-100 dark:border-blue-500/30 flex items-center justify-center">
                     <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-500" />
                   </div>
-                  <h3 className="font-semibold text-sm">Test Your AI</h3>
+                  <h3 className="font-semibold text-sm">Test Objection Playbook</h3>
                 </div>
                 <button onClick={() => setIsTestOpen(false)} className="text-muted-foreground hover:text-foreground p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-muted"><X size={16} /></button>
               </div>
