@@ -20,7 +20,7 @@ export function EleInIntegrations() {
   const { data: hubspotStatus } = useSWR("/api/elein/hubspot/status", fetcher);
 
   const integrations = BASE_INTEGRATIONS.map(app => {
-    if (app.id === "hubspot" && hubspotStatus?.is_connected) {
+    if (app.id === "hubspot" && hubspotStatus?.connected) {
       return { ...app, status: "connected" };
     }
     return app;

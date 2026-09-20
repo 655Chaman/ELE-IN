@@ -38,8 +38,8 @@ async def get_hubspot_status(
     """Returns the stored token if it exists (so the UI can show Connected on load)"""
     res = supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
     if not res.data or not res.data[0].get("hubspot_token"):
-        return {"connected": False, "token": None}
-    return {"connected": True, "token": res.data[0]["hubspot_token"]}
+        return {"connected": False}
+    return {"connected": True}
 
 @router.post("/auth")
 async def authenticate_hubspot(
