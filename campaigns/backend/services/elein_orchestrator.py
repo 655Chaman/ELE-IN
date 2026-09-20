@@ -994,6 +994,7 @@ class EleInOrchestrator:
             resolved_data["_workspace_id"] = state.get("workspace_id")
             resolved_data["_lead_id"] = state.get("lead_id")
             resolved_data["_enrollment_id"] = state.get("enrollment_id")
+            resolved_data["_account_id"] = state.get("account_id")
             executor = EleInNodeExecutor(worker, supabase=self.supabase)
             res = executor.execute(action, resolved_data, linkedin_url)
             

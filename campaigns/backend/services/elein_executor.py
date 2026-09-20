@@ -770,7 +770,7 @@ EXECUTION RULES:
 2. Pivot to the key differentiators or proof points if applicable.
 3. Close with a soft, low-friction Call to Action (CTA).
 4. Keep it concise, friendly, and under 100 words.
-5. Output ONLY the raw message text. No prefixes or quotes."""
+5. You MUST output your final message wrapped exactly in <reply>...</reply> tags. No prefixes before the tag."""
 
         from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
         try:
@@ -781,9 +781,39 @@ EXECUTION RULES:
         if not generated_reply or "Error" in generated_reply:
             return {"status": "error", "error": f"LLM Generation failed: {generated_reply}"}
             
+        import re
+        match = re.search(r'<reply>(.*?)</reply>', generated_reply, re.DOTALL)
+        if match:
+            clean_reply = match.group(1).strip()
+        else:
+            # Fallback fail-closed if LLM goes completely off the rails
+            return {"status": "error", "error": "LLM failed to output <reply> tags. Output was unsafe for sending."}
+            
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
-        return self.worker.send_message(linkedin_url, generated_reply.strip())
+        
+        # Dispatch to LinkedIn
+        res = self.worker.send_message(linkedin_url, clean_reply)
+        
+        # Log the outbound message to the messages table
+        import uuid
+        account_id = data.get("_account_id")
+        if res.get("status") == "success":
+            try:
+                self.supabase.table("messages").insert({
+                    "id": str(uuid.uuid4()),
+                    "workspace_id": workspace_id,
+                    "account_id": account_id,
+                    "lead_id": lead_id,
+                    "sender_name": "AI Agent",
+                    "message_text": clean_reply,
+                    "direction": "outbound"
+                }).execute()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to log outbound AI reply to messages table: {e}")
+                
+        return res
 
     def handle_ai_buying_signal(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         logger.warning(f"Action 'ai_buying_signal' called on {linkedin_url} but has no worker method")
