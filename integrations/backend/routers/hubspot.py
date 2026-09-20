@@ -153,3 +153,67 @@ async def import_hubspot_list(
     
     return {"status": "sync_started", "list_id": list_id, "internal_list_id": internal_list_id}
 
+
+
+@router.get("/pipelines")
+async def get_hubspot_pipelines(
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: AsyncClient = Depends(get_async_supabase_client)
+):
+    """Fetches real pipelines and stages from HubSpot Deals API"""
+    res = await supabase.table("workspaces").select("hubspot_token, hubspot_won_stage_id").eq("id", workspace_id).execute()
+    if not res.data or not res.data[0].get("hubspot_token"):
+        raise HTTPException(status_code=400, detail="HubSpot not connected")
+        
+    access_token = res.data[0]["hubspot_token"]
+    saved_stage_id = res.data[0].get("hubspot_won_stage_id")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    from core.backend.services.http_client import async_external_request
+    
+    resp = await async_external_request("GET", "https://api.hubapi.com/crm/v3/pipelines/deals", headers=headers)
+    
+    if resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Failed to fetch pipelines")
+        
+    data = resp.json()
+    pipelines = []
+    
+    for pipe in data.get("results", []):
+        stages = []
+        for stage in pipe.get("stages", []):
+            stages.append({
+                "id": stage["id"],
+                "label": stage["label"],
+                "displayOrder": stage.get("displayOrder", 0)
+            })
+        stages = sorted(stages, key=lambda x: x["displayOrder"])
+            
+        pipelines.append({
+            "id": pipe["id"],
+            "label": pipe["label"],
+            "stages": stages
+        })
+        
+    return {"pipelines": pipelines, "saved_stage_id": saved_stage_id}
+
+class HubspotWonStage(BaseModel):
+    stage_id: str
+
+@router.post("/won-stage")
+async def set_hubspot_won_stage(
+    data: HubspotWonStage,
+    workspace_id: str = Depends(require_workspace_admin),
+    supabase: AsyncClient = Depends(get_async_supabase_client)
+):
+    res = await supabase.table("workspaces").update({
+        "hubspot_won_stage_id": data.stage_id
+    }).eq("id", workspace_id).execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to save won stage")
+
+    return {"status": "ok"}

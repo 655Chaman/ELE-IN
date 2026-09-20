@@ -206,6 +206,8 @@ async def main_loop():
     
     last_reap_time = 0
     REAP_INTERVAL_SECONDS = 600 # 10 minutes
+    last_hubspot_poll_time = 0
+    HUBSPOT_POLL_INTERVAL_SECONDS = 300 # 5 minutes
     
     while True:
         try:
@@ -213,6 +215,15 @@ async def main_loop():
             if current_time - last_reap_time > REAP_INTERVAL_SECONDS:
                 await reap_zombie_jobs(async_supabase)
                 last_reap_time = current_time
+
+            if current_time - last_hubspot_poll_time > HUBSPOT_POLL_INTERVAL_SECONDS:
+                try:
+                    from integrations.backend.services.hubspot_sync import sync_hubspot_deals_job
+                    await sync_hubspot_deals_job(async_supabase, sync_supabase)
+                except Exception as poll_e:
+                    print(f"[HubSpot Poll] Error: {poll_e}")
+                last_hubspot_poll_time = current_time
+
 
             done_tasks = {t for t in running_tasks if t.done()}
             running_tasks.difference_update(done_tasks)

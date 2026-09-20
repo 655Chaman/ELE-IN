@@ -678,14 +678,30 @@ class EleInOrchestrator:
                 node_id=current_node_id
             )
             return
+
+        if action_result.get("status") == "not_implemented":
+            self.mark_error(
+                state["id"],
+                f"Action not yet supported: {action}",
+                attempts=state.get("attempts", 0),
+                max_attempts=state.get("max_attempts", 5),
+                hard_error=True,
+                lease_token=lease_token,
+                node_id=current_node_id
+            )
+            return
             
         if action_result.get("status") == "skipped":
             # Used when account is locked. Reschedule quickly.
             self.update_state(state["id"], current_node["id"], "pending", datetime.utcnow() + timedelta(seconds=45), lease_token=lease_token)
             return
 
-        if action in ("sequence_end", "mark_converted"):
-            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token)
+        if action == "mark_converted":
+            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token, error_reason="mark_converted")
+            return
+
+        if action == "sequence_end":
+            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token, error_reason="sequence_completed")
             return
 
         if action == "retry_step":
