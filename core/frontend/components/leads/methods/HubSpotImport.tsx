@@ -3,7 +3,7 @@ import { Check, Database, Sparkles } from "lucide-react"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { useLeadImport } from "../LeadImportContext"
 
-export function HubSpotImport({ onClose }: { onClose: () => void }) {
+export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => void, mode?: "import" | "connect" }) {
   const { 
     isHubspotConnected, 
     hubspotToken, setHubspotToken, 
@@ -70,6 +70,10 @@ export function HubSpotImport({ onClose }: { onClose: () => void }) {
                     
                     await mutateHubspotStatus();
                     toast.success("Successfully authenticated with HubSpot!");
+                    if (mode === "connect") {
+                      onClose();
+                      return;
+                    }
                   } catch (err) {
                     toast.error("Failed to connect. Is your token valid?");
                   } finally {

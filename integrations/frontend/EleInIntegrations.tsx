@@ -1,10 +1,13 @@
 import { motion } from "motion/react"
-import { Plug, Zap, CheckCircle2, Search, ArrowRight, ExternalLink, Settings } from "lucide-react"
+import { Plug, Zap, CheckCircle2, Search, ArrowRight, ExternalLink, Settings, X } from "lucide-react"
 import SpotlightCard from "@/components/SpotlightCard"
 import ShinyText from "@/components/ShinyText"
 import useSWR from "swr"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
+import { useState } from "react"
+import { LeadImportProvider } from "@/components/leads/LeadImportContext"
+import { HubSpotImport } from "@/components/leads/methods/HubSpotImport"
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -26,12 +29,13 @@ export function EleInIntegrations() {
     return app;
   });
 
+  const [showHubspotModal, setShowHubspotModal] = useState(false);
+
   const handleConnect = (id: string) => {
     if (id !== "hubspot") {
       toast("Coming soon — we'll notify you when this integration launches");
     } else {
-      // Connect hubspot logic if any, or just toast for now
-      toast("HubSpot connection flow initiated");
+      setShowHubspotModal(true);
     }
   }
 
@@ -104,6 +108,22 @@ export function EleInIntegrations() {
           </motion.div>
         ))}
       </div>
+
+      {showHubspotModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-card w-full max-w-md rounded-2xl border shadow-xl p-6 relative">
+            <button 
+              onClick={() => setShowHubspotModal(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground z-10"
+            >
+              <X size={20} />
+            </button>
+            <LeadImportProvider>
+              <HubSpotImport onClose={() => setShowHubspotModal(false)} mode="connect" />
+            </LeadImportProvider>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
