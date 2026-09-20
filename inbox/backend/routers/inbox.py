@@ -307,6 +307,7 @@ def sync_inbox_api(payload: dict, supabase: Client = Depends(get_supabase_client
     supabase.table("processing_jobs").insert({
         'job_type': 'inbox_sync',
         'status': 'pending',
+        'workspace_id': workspace_id,
         'payload': {
             'account_id': account_id,
             'workspace_id': workspace_id
@@ -453,6 +454,7 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
     supabase.table("processing_jobs").insert({
         'job_type': 'inbox_sync',
         'status': 'pending',
+        'workspace_id': workspace_id,
         'payload': {
             'account_id': account_id,
             'workspace_id': workspace_id

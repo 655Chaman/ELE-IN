@@ -560,6 +560,13 @@ class EleInOrchestrator:
             self.update_state(state["id"], next_node_id, "pending", next_run, lease_token, variables=state.get("variables"), tz_str=state.get('tz_str', 'UTC'))
             return
 
+        # Live check to prevent ghost execution after Panic Pause
+        campaign_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
+        if not campaign_check.data or campaign_check.data[0].get("status") != "ACTIVE":
+            logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE. Skipping execution for lead {state['opportunity_id']}.")
+            self.update_state(state["id"], current_node_id, "pending", None, lease_token, variables=state.get("variables"), tz_str=state.get("tz_str", "UTC"))
+            return
+
         # Execute
         action_result = self.execute_node_action(
             action, data,

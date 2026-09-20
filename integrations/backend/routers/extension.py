@@ -122,12 +122,17 @@ def report_task_result(
     """
     Called by the Chrome Extension after executing a task.
     """
+    # Verify ownership before updating
+    ls_res = supabase.table("campaign_execution_states").select("workspace_id").eq("id", task_id).execute()
+    if not ls_res.data or ls_res.data[0].get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=403, detail="Task does not belong to your workspace.")
+
     status = payload.get("status", "error") # 'success' or 'error'
     error_detail = payload.get("error_detail", "")
     
     if status == "success":
         new_status = "completed" # Or advance to next node
-        supabase.table("lead_states").update({
+        supabase.table("campaign_execution_states").update({
             "status": new_status,
             "error_reason": None,
             "updated_at": datetime.utcnow().isoformat()
@@ -136,14 +141,14 @@ def report_task_result(
         # Log it
         supabase.table("action_log").insert({
             "workspace_id": workspace_id,
-            "lead_state_id": task_id,
+            "execution_state_id": task_id,
             "action_type": "extension_execution",
             "result": "success"
         }).execute()
         
     else:
-        new_status = "failed"
-        supabase.table("lead_states").update({
+        new_status = "error"
+        supabase.table("campaign_execution_states").update({
             "status": new_status,
             "error_reason": error_detail,
             "updated_at": datetime.utcnow().isoformat()
@@ -151,7 +156,7 @@ def report_task_result(
         
         supabase.table("action_log").insert({
             "workspace_id": workspace_id,
-            "lead_state_id": task_id,
+            "execution_state_id": task_id,
             "action_type": "extension_execution",
             "result": "failed",
             "error_detail": error_detail

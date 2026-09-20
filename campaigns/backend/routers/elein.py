@@ -1747,6 +1747,15 @@ def create_campaign(
                 )
             )
 
+        if campaign.senders:
+            accounts_check = supabase.table("accounts").select("id").in_("id", campaign.senders).execute()
+            valid_ids = {row["id"] for row in accounts_check.data}
+            if not all(s in valid_ids for s in campaign.senders):
+                raise HTTPException(
+                    status_code=403, 
+                    detail="One or more sender accounts do not belong to your workspace."
+                )
+
         nodes = json.dumps(nodes_raw)
         edges = json.dumps(edges_raw)
         name = campaign.name
@@ -1848,6 +1857,15 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
         if not existing.data:
             raise HTTPException(status_code=404, detail="Campaign not found")
             
+        if payload.senders:
+            accounts_check = client.table("accounts").select("id").in_("id", payload.senders).execute()
+            valid_ids = {row["id"] for row in accounts_check.data}
+            if not all(s in valid_ids for s in payload.senders):
+                raise HTTPException(
+                    status_code=403, 
+                    detail="One or more sender accounts do not belong to your workspace."
+                )
+
         nodes_raw = [n.dict() for n in payload.nodes]
         edges_raw = [e.dict() for e in payload.edges]
         
