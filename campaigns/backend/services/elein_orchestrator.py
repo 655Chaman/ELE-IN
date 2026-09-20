@@ -1,5 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
+import uuid
+import threading
+
+
 import json
 import re
 import math
@@ -805,7 +809,7 @@ class EleInOrchestrator:
                     return {"status": "skipped", "reason": "account_locked"}
                     
                 acc_res = self.supabase.table("accounts").select(
-                    "id, workspace_id, status, proxy_id, session_cookies_encrypted, proxies(protocol, host, port, username)"
+                    "id, workspace_id, status, status_changed_at, proxy_id, session_cookies_encrypted, proxies(protocol, host, port, username)"
                 ).eq("id", chosen_sender_id).execute()
                 account_row = acc_res.data[0] if acc_res.data else None
                 
@@ -813,6 +817,37 @@ class EleInOrchestrator:
                     return {"status": "error", "error": f"Sender {chosen_sender_id} not found"}
                     
                 if account_row.get("status") in ("NEEDS_REVIEW", "DISABLED", "SUSPENDED", "MANUAL_MODE"):
+                    # --- 48h Static Allocation Failover ---
+                    status_changed_at_str = account_row.get("status_changed_at")
+                    is_stale_unhealthy = False
+                    if status_changed_at_str:
+                        from dateutil.parser import parse
+                        try:
+                            status_changed_at = parse(status_changed_at_str)
+                            if status_changed_at.tzinfo is None:
+                                status_changed_at = status_changed_at.replace(tzinfo=pytz.UTC)
+                            if datetime.utcnow().replace(tzinfo=pytz.UTC) - status_changed_at > timedelta(hours=48):
+                                is_stale_unhealthy = True
+                        except Exception as e:
+                            logger.error(f"Failed to parse status_changed_at {status_changed_at_str}: {e}")
+                    
+                    if is_stale_unhealthy and "enrollment_id" in state:
+                        # Attempt reassignment
+                        enroll_res = self.supabase.table("campaign_enrollments").select("campaign_id").eq("id", state["enrollment_id"]).execute()
+                        if enroll_res.data:
+                            campaign_id = enroll_res.data[0]["campaign_id"]
+                            # Find healthy backup account
+                            backups_res = self.supabase.table("campaign_accounts").select(
+                                "account_id, accounts!inner(status)"
+                            ).eq("campaign_id", campaign_id).eq("accounts.status", "ACTIVE").neq("account_id", chosen_sender_id).limit(1).execute()
+                            
+                            if backups_res.data:
+                                new_account_id = backups_res.data[0]["account_id"]
+                                self.supabase.table("campaign_enrollments").update({"account_id": new_account_id}).eq("id", state["enrollment_id"]).execute()
+                                self._record_observability(state, {"id": current_node_id}, "rate_limited", error_reason=f"Account {chosen_sender_id} was unhealthy for >48h. Automatically reassigned lead to fallback account {new_account_id}.")
+                                return {"status": "rate_limited"}
+                                
+                    # Fallback to existing stall behavior
                     # Handled by process_lead as a 24h backoff without incrementing attempt
                     return {"status": "rate_limited"}
                     
