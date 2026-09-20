@@ -730,8 +730,60 @@ class EleInNodeExecutor:
         return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
 
     def handle_ai_generate_reply(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        logger.warning(f"Action 'ai_generate_reply' called on {linkedin_url} but has no worker method")
-        return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
+        workspace_id = data.get("_workspace_id")
+        lead_id = data.get("_lead_id")
+        
+        if not workspace_id or not lead_id:
+            return {"status": "error", "error": "Missing workspace_id or lead_id in context"}
+            
+        msg_res = self.supabase.table("messages").select("message_text").eq("lead_id", lead_id).eq("direction", "inbound").order("created_at", desc=True).limit(1).execute()
+        if not msg_res.data:
+            return {"status": "error", "error": "No inbound message found for lead"}
+            
+        lead_message = msg_res.data[0]["message_text"]
+        
+        from knowledge.backend.services.vector_store import SemanticBrain
+        from knowledge.backend.services.knowledge_service import KnowledgeService
+        
+        vs = SemanticBrain(self.supabase)
+        chunks = vs.retrieve(query=lead_message, workspace_id=workspace_id, top_k=3)
+        chunk_texts = [c.get("content", "") for c in chunks]
+        
+        synthesis = KnowledgeService.get_synthesis(self.supabase, workspace_id)
+        if not synthesis:
+            synthesis = {}
+            
+        synthesis_layer = "CORE VALUE PROP:\n" + synthesis.get('core_value_prop', '') + "\n\n"
+        if isinstance(synthesis.get('key_differentiators'), list):
+            synthesis_layer += "KEY DIFFERENTIATORS:\n" + ", ".join(synthesis.get('key_differentiators', [])) + "\n\n"
+        if isinstance(synthesis.get('proof_points'), list):
+            synthesis_layer += "PROOF POINTS:\n" + ", ".join(synthesis.get('proof_points', [])) + "\n\n"
+            
+        rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + "\n".join(chunk_texts)
+        
+        system_prompt = f"""You are an expert sales representative. Your goal is to reply to the prospect's message.
+{synthesis_layer}
+{rag_layer}
+
+EXECUTION RULES:
+1. Acknowledge what the prospect said.
+2. Pivot to the key differentiators or proof points if applicable.
+3. Close with a soft, low-friction Call to Action (CTA).
+4. Keep it concise, friendly, and under 100 words.
+5. Output ONLY the raw message text. No prefixes or quotes."""
+
+        from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
+        try:
+            generated_reply = _run_llm_with_failover(system_prompt=system_prompt, user_prompt=f"Prospect message: {lead_message}", workspace_id=workspace_id)
+        except Exception as e:
+            return {"status": "error", "error": f"LLM Generation failed: {str(e)}"}
+            
+        if not generated_reply or "Error" in generated_reply:
+            return {"status": "error", "error": f"LLM Generation failed: {generated_reply}"}
+            
+        err = self._require_worker(linkedin_url)
+        if err: return {"status": "error", "error": err}
+        return self.worker.send_message(linkedin_url, generated_reply.strip())
 
     def handle_ai_buying_signal(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         logger.warning(f"Action 'ai_buying_signal' called on {linkedin_url} but has no worker method")

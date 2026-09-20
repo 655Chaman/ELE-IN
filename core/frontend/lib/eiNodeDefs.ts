@@ -554,6 +554,17 @@ export const HR_NODE_DEFS = {
 
   // ══════════════════════════════════════════════════════════════════════════
   
+  ai_generate_reply: {
+    label: "AI: Reply to Lead",
+    description: "Autonomously generate and send a context-aware reply to the lead's latest message based on your Workspace Knowledge Base (RAG). Highly effective after an 'If Replied' split.",
+    category: "ai",
+    color: "#f97316",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
   ai_query_knowledge_base: {
     label: "AI Query Brain",
     description: "Queries the Workspace Knowledge Base about your business to generate a targeted objection-handling response based on a negative or questioning reply.",

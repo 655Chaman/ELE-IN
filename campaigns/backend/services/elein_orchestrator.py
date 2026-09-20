@@ -163,6 +163,7 @@ ACTION_TYPE_MAP: dict = {
     "connection_no_note":         "connection_request",
     "connection_ai_note":         "connection_request",
     "send_message":               "message",
+    "ai_generate_reply":          "message",
     "send_ai_message":            "message",
     "send_message_ab":            "message",
     "send_followup":              "message",
@@ -990,7 +991,10 @@ class EleInOrchestrator:
 
             # --- 5. Execute Action ---
             from campaigns.backend.services.elein_executor import EleInNodeExecutor
-            executor = EleInNodeExecutor(worker)
+            resolved_data["_workspace_id"] = state.get("workspace_id")
+            resolved_data["_lead_id"] = state.get("lead_id")
+            resolved_data["_enrollment_id"] = state.get("enrollment_id")
+            executor = EleInNodeExecutor(worker, supabase=self.supabase)
             res = executor.execute(action, resolved_data, linkedin_url)
             
             # Coerce unhandled statuses to error so process_lead doesn't silently advance the graph
