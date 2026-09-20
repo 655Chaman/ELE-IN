@@ -1,12 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { mutate } from 'swr';
+import { useAuth } from '@/lib/AuthContext';
 
 interface Workspace {
   id: string;
   name: string;
   account_count: number;
   status?: string;
+}
+
+interface AgencyInfo {
+  id: string;
+  name: string;
+  role: string;
 }
 
 interface WorkspaceContextType {
@@ -17,12 +24,15 @@ interface WorkspaceContextType {
   createWorkspace: (name: string) => Promise<Workspace>;
   assignAccount: (accountId: string, targetWorkspaceId: string) => Promise<void>;
   isPendingDeletion: boolean;
+  myAgencies: AgencyInfo[];
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { session } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [myAgencies, setMyAgencies] = useState<AgencyInfo[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string | null>(
     localStorage.getItem('elein_active_workspace')
   );
@@ -40,8 +50,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   useEffect(() => {
-    fetchWorkspaces();
-  }, []);
+    if (session) {
+      fetchWorkspaces();
+      fetcher('/api/agencies').then(setMyAgencies).catch(console.error);
+    } else {
+      setWorkspaces([]);
+      setMyAgencies([]);
+    }
+  }, [session]);
 
   const setActiveWorkspaceId = (id: string) => {
     setActiveWorkspaceIdState(id);
@@ -87,7 +103,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       refreshWorkspaces: fetchWorkspaces,
       createWorkspace,
       assignAccount,
-      isPendingDeletion
+      isPendingDeletion,
+      myAgencies
     }}>
       {children}
     </WorkspaceContext.Provider>

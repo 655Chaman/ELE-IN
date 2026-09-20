@@ -23,6 +23,7 @@ import { AcceptInvite } from "@admin/AcceptInvite"
 import { EleInAdmin } from "@admin/EleInAdmin"
 import { EleInIntegrations } from "@integrations/EleInIntegrations"
 import { EleInSettings } from "@admin/EleInSettings"
+import { EleInAgencySettings } from "@admin/EleInAgencySettings"
 import { EleInBilling } from "@admin/EleInBilling"
 import { MFASetupPage } from "@admin/MFASetupPage"
 
@@ -86,6 +87,7 @@ export default function App() {
             <Route path="/elein/admin" element={<EleInAdmin />} />
             <Route path="/elein/integrations" element={<EleInIntegrations />} />
             <Route path="/elein/settings" element={<EleInSettings />} />
+            <Route path="/elein/agency" element={<EleInAgencySettings />} />
             <Route path="/elein/billing" element={<EleInBilling />} />
           </Route>
           <Route path="/elein/campaigns/new" element={<ProtectedRoute><EleInCreateCampaign /></ProtectedRoute>} />

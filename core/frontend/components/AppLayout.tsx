@@ -17,7 +17,7 @@ import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
 import { GlowingEffect } from './ui/glowing-effect';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
-import { PauseOctagon } from 'lucide-react';
+import { PauseOctagon, Building2 } from 'lucide-react';
 export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeMarket, setActiveMarket] = useState("biotech");
@@ -26,7 +26,7 @@ export function AppLayout() {
   const { signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const { keys, saveKeys } = useKeys();
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, isPendingDeletion } = useWorkspace();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, isPendingDeletion, myAgencies } = useWorkspace();
   const location = useLocation();
 
   useEffect(() => {
@@ -117,9 +117,24 @@ export function AppLayout() {
           {/* Workspace Switcher */}
           {isSidebarOpen ? (
             <div className="px-3 pt-4 pb-2">
-              <p className="px-1 text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">
-                Current Workspace
-              </p>
+              <div className="flex items-center justify-between px-1 mb-1.5">
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest">
+                  Current Workspace
+                </p>
+                {myAgencies && myAgencies.some(a => a.role === 'owner' || a.role === 'admin') && (
+                  <button 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.location.href = '/elein/agency';
+                    }}
+                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest"
+                    title="Agency Management"
+                  >
+                    <Building2 size={10} />
+                    Agency
+                  </button>
+                )}
+              </div>
               <select 
                 className="w-full bg-accent/30 border border-border rounded-md text-xs px-2 py-1.5 text-foreground outline-none focus:border-primary/50 cursor-pointer"
                 value={activeWorkspaceId || ""}

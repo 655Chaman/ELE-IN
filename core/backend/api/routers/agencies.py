@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from supabase._async.client import AsyncClient
-from core.backend.api.auth_dep import get_async_supabase_client, get_current_user_id
+from core.backend.api.auth_dep import get_async_service_client, get_current_user_id
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ class AgencyMemberInvite(BaseModel):
 @router.post("")
 async def create_agency(
     payload: AgencyCreate,
-    supabase: AsyncClient = Depends(get_async_supabase_client),
+    supabase: AsyncClient = Depends(get_async_service_client),
     user_id: str = Depends(get_current_user_id)
 ):
     # 1. Create agency
@@ -44,7 +44,7 @@ async def create_agency(
 async def create_client_workspace(
     agency_id: str,
     payload: ClientWorkspaceCreate,
-    supabase: AsyncClient = Depends(get_async_supabase_client),
+    supabase: AsyncClient = Depends(get_async_service_client),
     user_id: str = Depends(get_current_user_id)
 ):
     # RLS on workspaces will block insert if the user isn't allowed,
@@ -66,7 +66,7 @@ async def create_client_workspace(
 async def invite_member(
     agency_id: str,
     payload: AgencyMemberInvite,
-    supabase: AsyncClient = Depends(get_async_supabase_client)
+    supabase: AsyncClient = Depends(get_async_service_client)
 ):
     from core.backend.api.auth_dep import get_async_service_client
     svc = await get_async_service_client()
@@ -106,7 +106,7 @@ async def grant_client_access(
     agency_id: str,
     member_id: str,
     payload: dict, # expects workspace_id
-    supabase: AsyncClient = Depends(get_async_supabase_client)
+    supabase: AsyncClient = Depends(get_async_service_client)
 ):
     workspace_id = payload.get("workspace_id")
     res = await supabase.table("agency_client_access").insert({
@@ -120,8 +120,82 @@ async def revoke_client_access(
     agency_id: str,
     member_id: str,
     payload: dict,
-    supabase: AsyncClient = Depends(get_async_supabase_client)
+    supabase: AsyncClient = Depends(get_async_service_client)
 ):
     workspace_id = payload.get("workspace_id")
     await supabase.table("agency_client_access").delete().eq("agency_member_id", member_id).eq("workspace_id", workspace_id).execute()
     return {"status": "success"}
+
+@router.get("")
+async def list_my_agencies(
+    supabase: AsyncClient = Depends(get_async_service_client),
+    user_id: str = Depends(get_current_user_id)
+):
+    """Return all agencies this user belongs to (with their role)."""
+    mem_res = await supabase.table("agency_members").select("role, agency_id").eq("user_id", user_id).execute()
+    if not mem_res.data:
+        return []
+
+    out = []
+    for row in mem_res.data:
+        agency_res = await supabase.table("agencies").select("id, name").eq("id", row["agency_id"]).execute()
+        if agency_res.data:
+            out.append({
+                "id": agency_res.data[0]["id"],
+                "name": agency_res.data[0]["name"],
+                "role": row["role"]
+            })
+    return out
+
+@router.get("/{agency_id}/members")
+async def list_agency_members(
+    agency_id: str,
+    supabase: AsyncClient = Depends(get_async_service_client),
+    user_id: str = Depends(get_current_user_id)
+):
+    """List all members of an agency with their per-client access grants."""
+    from core.backend.api.auth_dep import get_async_service_client
+    svc = await get_async_service_client()
+
+    mem_res = await supabase.table("agency_members").select("id, user_id, role").eq("agency_id", agency_id).execute()
+    if not mem_res.data:
+        return []
+
+    # Batch-fetch emails via admin SDK
+    all_users = {}
+    page = 1
+    while True:
+        users = await svc.auth.admin.list_users(page=page, per_page=500)
+        if not users:
+            break
+        for u in users:
+            all_users[u.id] = u.email or u.id
+        if len(users) < 500:
+            break
+        page += 1
+
+    out = []
+    for row in mem_res.data:
+        member_id = row["id"]
+        # Fetch client access grants for this member
+        access_res = await supabase.table("agency_client_access").select("workspace_id").eq("agency_member_id", member_id).execute()
+        access = [acc["workspace_id"] for acc in (access_res.data or [])]
+        out.append({
+            "id": member_id,
+            "user_id": row["user_id"],
+            "display_name": all_users.get(row["user_id"], row["user_id"]),
+            "role": row["role"],
+            "access": access
+        })
+    return out
+
+@router.get("/{agency_id}/clients")
+async def list_agency_clients(
+    agency_id: str,
+    supabase: AsyncClient = Depends(get_async_service_client),
+    user_id: str = Depends(get_current_user_id)
+):
+    """List all client workspaces that belong to this agency."""
+    res = await supabase.table("workspaces").select("id, name").eq("agency_id", agency_id).execute()
+    return res.data or []
+
