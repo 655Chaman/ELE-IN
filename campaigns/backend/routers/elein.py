@@ -491,11 +491,26 @@ def process_voyager_search_background(
             search_params["school"] = qs["school"][0]
         if qs.get("network"):
             search_params["network"] = qs["network"][0]
+        if qs.get("pastCompany"):
+            search_params["pastCompany"] = qs["pastCompany"][0]
+        if qs.get("geoUrn"):
+            search_params["geoUrn"] = qs["geoUrn"][0]
+        if qs.get("industry"):
+            search_params["industry"] = qs["industry"][0]
+        if qs.get("function"):
+            search_params["function"] = qs["function"][0]
+        if qs.get("seniority"):
+            search_params["seniority"] = qs["seniority"][0]
 
-
-        cookie_json = None
-        if not cookie_json:
+        encrypted_cookies = acc_row.get("session_cookies_encrypted")
+        if not encrypted_cookies:
             raise HTTPException(status_code=400, detail="No LinkedIn session found for this account.")
+        from core.backend.core import crypto
+        try:
+            decrypted = crypto.decrypt_bytes(encrypted_cookies)
+            cookie_json = decrypted.decode("utf-8")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Cookie decryption failed. Account must be reconnected via the Chrome Extension.")
         # 3. Run the Voyager scraper
         scraper = VoyagerScraper(
             cookies_json=cookie_json,

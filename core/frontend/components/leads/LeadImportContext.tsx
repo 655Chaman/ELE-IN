@@ -191,17 +191,26 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
       if (nets.length > 0) params.append("network", JSON.stringify(nets));
     }
     
-    let keywords: string[] = [];
-    if (searchParams.keywords) keywords.push(searchParams.keywords);
-    if (searchParams.location) keywords.push(`"${searchParams.location}"`);
-    if (searchParams.pastCompany) keywords.push(`"${searchParams.pastCompany}"`);
-    
-    if (searchParams.industries.length > 0) keywords.push(`(${searchParams.industries.map((i: any) => `"${i}"`).join(" OR ")})`);
-    if (searchParams.department.length > 0) keywords.push(`(${searchParams.department.map((d: any) => `"${d}"`).join(" OR ")})`);
-    if (searchParams.seniority.length > 0) keywords.push(`(${searchParams.seniority.map((s: any) => `"${s}"`).join(" OR ")})`);
-    
-    if (keywords.length > 0) {
-      params.append("keywords", keywords.join(" "));
+    // keywords: only the actual free-text field — NOT a dumping ground for structured filters
+    if (searchParams.keywords) {
+      params.append("keywords", searchParams.keywords);
+    }
+
+    // Structured LinkedIn filters — each as its own URL param
+    if (searchParams.location) {
+      params.append("geoUrn", searchParams.location);
+    }
+    if (searchParams.pastCompany) {
+      params.append("pastCompany", searchParams.pastCompany);
+    }
+    if (searchParams.industries.length > 0) {
+      params.append("industry", JSON.stringify(searchParams.industries));
+    }
+    if (searchParams.department.length > 0) {
+      params.append("function", JSON.stringify(searchParams.department));
+    }
+    if (searchParams.seniority.length > 0) {
+      params.append("seniority", JSON.stringify(searchParams.seniority));
     }
     
     if (Array.from(params.keys()).length === 0) return "";

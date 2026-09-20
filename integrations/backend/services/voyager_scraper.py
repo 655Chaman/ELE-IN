@@ -198,6 +198,19 @@ class VoyagerScraper:
             url += f"&school={urllib.parse.quote(search_params['school'])}"
         if search_params.get("network"):
             url += f"&network={urllib.parse.quote(search_params['network'])}"
+        if search_params.get("pastCompany"):
+            url += f"&pastCompany={urllib.parse.quote(search_params['pastCompany'])}"
+        # LinkedIn's real geoUrn/industry facets may require numeric LinkedIn URN IDs rather than
+        # free text for full accuracy — this passes the raw selected value through as-is;
+        # needs live-account verification before assuming exact-match filtering works perfectly.
+        if search_params.get("geoUrn"):
+            url += f"&geoUrn={urllib.parse.quote(search_params['geoUrn'])}"
+        if search_params.get("industry"):
+            url += f"&industry={urllib.parse.quote(search_params['industry'])}"
+        if search_params.get("function"):
+            url += f"&function={urllib.parse.quote(search_params['function'])}"
+        if search_params.get("seniority"):
+            url += f"&seniority={urllib.parse.quote(search_params['seniority'])}"
 
         logger.info(f"[VoyagerScraper] Fetching page start={start}: {url[:120]}...")
 
