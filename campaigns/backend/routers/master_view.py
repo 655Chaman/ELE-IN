@@ -11,7 +11,8 @@ from datetime import date, datetime, timedelta
 from supabase import Client
 from core.backend.api.auth_dep import get_supabase_client
 from campaigns.backend.routers.elein import get_current_workspace
-
+from fastapi.responses import StreamingResponse
+from campaigns.backend.utils.pdf_generator import generate_pdf_report
 
 # ==============================================================================
 # 🚨 PARANOIA FRAMEWORK: SECURITY WARNING (LAYER 2) 🚨
@@ -586,6 +587,26 @@ def get_master_view_stats(
     except Exception as e:
         print("Master View Error:", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/master-view/stats/export/pdf")
+def export_master_view_stats_pdf(
+    request: Request,
+    req: MasterViewRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    stats_data = get_master_view_stats(request, req, supabase, workspace_id)
+    
+    date_range = "All Time"
+    if req.date_start and req.date_end:
+        date_range = f"{req.date_start[:10]} to {req.date_end[:10]}"
+        
+    pdf_buffer = generate_pdf_report(stats_data, date_range=date_range)
+    return StreamingResponse(
+        pdf_buffer, 
+        media_type="application/pdf", 
+        headers={"Content-Disposition": "attachment; filename=EleIn_Performance_Overview.pdf"}
+    )
 
 @router.get("/api/master-view/filters")
 def get_master_view_filters(

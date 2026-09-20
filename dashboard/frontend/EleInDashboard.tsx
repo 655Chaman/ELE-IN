@@ -313,6 +313,42 @@ export function EleInDashboard() {
     (statsError && String(statsError?.message || '').includes('No workspace found')) ||
     (accountHealthError && String(accountHealthError?.message || '').includes('No workspace found')));
 
+  const handleExportPdf = async () => {
+    try {
+      const payload = {
+        senders: sanitizeFilter(selectedSenders),
+        campaigns: sanitizeFilter(selectedCampaigns),
+        ...getDateRange(timeRange)
+      }
+      
+      const response = await fetchWithAuth('/api/master-view/stats/export/pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Export failed: ${response.status} ${errText}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `EleIn_Performance_Overview_${timeRange}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      alert(err instanceof Error ? err.message : 'Failed to export PDF. Please check your connection or try again later.');
+    }
+  };
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground font-sans overflow-x-hidden selection:bg-primary/30 relative">
       {statsValidating && (
@@ -506,6 +542,7 @@ export function EleInDashboard() {
                 accountHealth={accountHealth}
                 live_feed_error={!!statsError}
                 onTimeRangeChange={setTimeRange}
+                onExportPdf={handleExportPdf}
                 isLoading={statsLoading}
                 primaryColor={primaryColor}
                 secondaryColor={secondaryColor}

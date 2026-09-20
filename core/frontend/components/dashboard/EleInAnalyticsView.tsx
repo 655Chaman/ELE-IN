@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { 
   Users, Target, Zap, TrendingUp, MessageSquareHeart, ShieldCheck,
   MousePointerClick, Send, RefreshCw, UserX, BarChart2, Clock, CheckCircle2,
-  AlertTriangle, Sparkles, X, ArrowRight, ExternalLink, Activity
+  AlertTriangle, Sparkles, X, ArrowRight, ExternalLink, Activity, Download
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -181,6 +181,7 @@ interface EleInAnalyticsViewProps {
   errorFeed?: any[];
   accountHealth?: any;
   onTimeRangeChange?: (range: string) => void;
+  onExportPdf?: () => void;
   isLoading?: boolean;
   primaryColor?: string;
   secondaryColor?: string;
@@ -190,7 +191,7 @@ interface EleInAnalyticsViewProps {
 }
 
 export function EleInAnalyticsView({ 
-  summary, today, timeSeries, heatmapData, timeOfDayData, multiCampaignData, multiCampaignLabels, aiInsight, funnelSteps, leadSources, radarStats, liveFeed, errorFeed, accountHealth, onTimeRangeChange, isLoading, primaryColor, secondaryColor, fetchFunnelLeads, live_feed_error, timeRange = '7d'
+  summary, today, timeSeries, heatmapData, timeOfDayData, multiCampaignData, multiCampaignLabels, aiInsight, funnelSteps, leadSources, radarStats, liveFeed, errorFeed, accountHealth, onTimeRangeChange, onExportPdf, isLoading, primaryColor, secondaryColor, fetchFunnelLeads, live_feed_error, timeRange = '7d'
 }: EleInAnalyticsViewProps) {
   const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
   const [hoveredFunnelStep, setHoveredFunnelStep] = useState<number | null>(null)
@@ -342,6 +343,16 @@ export function EleInAnalyticsView({
                 {range.label}
               </button>
             ))}
+            {onExportPdf && (
+              <button
+                onClick={onExportPdf}
+                className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                title="Export performance overview to PDF"
+              >
+                <Download className="h-4 w-4" />
+                Export PDF
+              </button>
+            )}
           </div>
         </div>
 
