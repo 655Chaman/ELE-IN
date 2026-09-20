@@ -2,12 +2,12 @@ import jwt
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import httpx
-from supabase import Client
+from supabase import Client, AsyncClient
 
 # We must import these from the correct location. 
 # They are defined in elein.py but they depend on auth_dep.py.
 # To avoid circular imports, let's just use auth_dep.py and re-implement get_current_workspace here.
-from core.backend.api.auth_dep import get_supabase_client, get_current_workspace, get_current_user_id, get_service_client
+from core.backend.api.auth_dep import get_supabase_client, get_async_supabase_client, get_current_workspace, get_current_user_id, get_service_client
 from fastapi import Request
 
 router = APIRouter()
@@ -33,10 +33,10 @@ class HubspotAuth(BaseModel):
 @router.get("/status")
 async def get_hubspot_status(
     workspace_id: str = Depends(get_current_workspace),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: AsyncClient = Depends(get_async_supabase_client)
 ):
     """Returns the stored token if it exists (so the UI can show Connected on load)"""
-    res = supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
+    res = await supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
     if not res.data or not res.data[0].get("hubspot_token"):
         return {"connected": False}
     return {"connected": True}
@@ -45,25 +45,29 @@ async def get_hubspot_status(
 async def authenticate_hubspot(
     data: HubspotAuth,
     workspace_id: str = Depends(require_workspace_admin),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: AsyncClient = Depends(get_async_supabase_client)
 ):
     # Verify the token by calling HubSpot API
+    clean_token = data.access_token.strip()
     headers = {
-        "Authorization": f"Bearer {data.access_token}",
+        "Authorization": f"Bearer {clean_token}",
         "Content-Type": "application/json"
     }
     from core.backend.services.http_client import async_external_request
     
     # Using the CRM properties endpoint as a simple validation
-    resp = await async_external_request("GET", "https://api.hubapi.com/crm/v3/properties/contacts", headers=headers)
+    resp = await async_external_request("GET", "https://api.hubapi.com/contacts/v1/lists", headers=headers)
     
     if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid HubSpot Access Token")
+        raise HTTPException(status_code=400, detail="Invalid HubSpot Access Token")
         
     # Valid token! Save it to the workspace.
-    supabase.table("workspaces").update({
-        "hubspot_token": data.access_token
+    res = await supabase.table("workspaces").update({
+        "hubspot_token": clean_token
     }).eq("id", workspace_id).execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to save token to database (silent failure)")
 
     return {"status": "ok", "message": "Authenticated and token saved successfully"}
 
@@ -71,11 +75,11 @@ async def authenticate_hubspot(
 async def get_hubspot_lists(
     access_token: str = None,
     workspace_id: str = Depends(get_current_workspace),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: AsyncClient = Depends(get_async_supabase_client)
 ):
     # If no token passed in query, try fetching from DB
     if not access_token:
-        res = supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
+        res = await supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
         if res.data and res.data[0].get("hubspot_token"):
             access_token = res.data[0]["hubspot_token"]
             
@@ -111,7 +115,7 @@ async def get_hubspot_lists(
 async def import_hubspot_list(
     list_id: int,
     workspace_id: str = Depends(require_workspace_admin),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: AsyncClient = Depends(get_async_supabase_client)
 ):
     import uuid
     import logging
@@ -119,7 +123,7 @@ async def import_hubspot_list(
     logger = logging.getLogger(__name__)
 
     # Fetch token from workspace
-    res = supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
+    res = await supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id).execute()
     if not res.data or not res.data[0].get("hubspot_token"):
         raise HTTPException(status_code=400, detail="HubSpot not connected")
     
