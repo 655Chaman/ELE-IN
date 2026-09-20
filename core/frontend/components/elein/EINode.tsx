@@ -22,7 +22,7 @@ const NODE_ICONS: Record<string, any> = {
   if_connected:         CheckCircle2,
   if_replied:           MessageSquare,
   if_email_found:       AtSign,
-  if_meeting_booked:    CalendarCheck,
+  // if_meeting_booked:    CalendarCheck,
   open_profile_check:   Search,
   // Messages
   send_message:         MessageSquare,
@@ -62,7 +62,7 @@ const NODE_CATEGORY: Record<string, string> = {
   view_profile: "warmup", follow_profile: "warmup", like_post: "warmup", endorse_skill: "warmup",
   connection_request: "connect",
   if_connected: "conditions", if_replied: "conditions", if_email_found: "conditions",
-  if_meeting_booked: "conditions", open_profile_check: "conditions",
+  // if_meeting_booked: "conditions", open_profile_check: "conditions",
   send_message: "messages", send_voice_note: "messages", send_inmail: "messages",
   send_meeting_invite: "convert", mark_converted: "convert",
   find_email: "enrichment", find_phone: "enrichment",

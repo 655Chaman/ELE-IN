@@ -786,12 +786,14 @@ const NODE_CONFIG: Record<string, {
     color: "#10b981",
     render: (data, onChange) => <ConditionConfig data={data} onChange={onChange} label="Did enrichment return a valid email address?" />,
   },
+/*
   if_meeting_booked: {
     title: "If Meeting Booked?",
     icon: CalendarCheck,
     color: "#10b981",
     render: (data, onChange) => <ConditionConfig data={data} onChange={onChange} label="Did the lead click your link and book a meeting?" />,
   },
+*/
   open_profile_check: {
     title: "Open Profile Check",
     icon: Search,

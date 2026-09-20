@@ -295,6 +295,7 @@ export const HR_NODE_DEFS = {
     ],
   },
 
+/*
   if_meeting_booked: {
     label: "If Meeting Booked?",
     description: "Checks if they booked via your Calendly link. This is a critical safety net. If YES, route to 'Mark Converted' and stop all further automated follow-ups.",
@@ -305,6 +306,7 @@ export const HR_NODE_DEFS = {
     delayDefault: 2,
     fields: [],
   },
+*/
 
 
 
@@ -473,6 +475,7 @@ export const HR_NODE_DEFS = {
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
   },
 
+/*
   ai_buying_signal: {
     comingSoon: true,
     label: "AI Detect Buying Signal",
@@ -486,7 +489,9 @@ export const HR_NODE_DEFS = {
       { key: "signal_keywords", label: "Signal topics (what pain do you solve?)", type: "textarea", maxChars: 300, placeholder: "outbound, pipeline, lead gen, sales team, hiring SDRs, scaling revenue..." },
     ],
   },
+*/
 
+/*
   ai_write_connection_note: {
     comingSoon: true,
     label: "AI Write Connection Note",
@@ -500,6 +505,7 @@ export const HR_NODE_DEFS = {
       { key: "angle", label: "Connection angle", type: "select", options: ["Relevant experience", "Shared interest in their post", "Company context", "Direct value offer"] },
     ],
   },
+*/
 
   ai_summarize_profile: {
     label: "AI Summarize Profile",

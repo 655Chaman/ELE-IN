@@ -53,7 +53,7 @@ const NODE_ICONS: Record<string, any> = {
   if_premium_member: Star, if_large_following: Users, if_mutual_connections: Users,
   if_recently_active: Zap, if_has_recent_posts: MessageSquare,
   if_company_hiring: Zap, icp_score_gate: CheckCircle2,
-  if_meeting_booked: CalendarCheck, if_request_pending: Clock,
+  /* if_meeting_booked: CalendarCheck, */ if_request_pending: Clock,
   if_lead_matches: Shield,
   // Messages
   send_message: MessageSquare, send_ai_message: MessageSquare,
@@ -61,7 +61,7 @@ const NODE_ICONS: Record<string, any> = {
   // AI
   ai_personalize: Zap, ai_detect_sentiment: Zap,
   ai_generate_icebreaker: MessageSquare, ai_translate_message: Zap,
-  ai_score_icp: CheckCircle2, ai_buying_signal: Zap,
+  ai_score_icp: CheckCircle2, /* ai_buying_signal: Zap, */
   ai_summarize_profile: Eye, ai_detect_competitor: Shield, 
   ai_best_send_time: Clock, ai_query_knowledge_base: Zap,
   // Enrichment
@@ -127,7 +127,7 @@ const SUBSEQUENT_NODES: [string, string][] = [
   ["conditions",   "if_email_found"],
   ["conditions",   "if_recently_active"],
   ["conditions",   "if_has_recent_posts"],
-  ["conditions",   "if_meeting_booked"],
+  // ["conditions",   "if_meeting_booked"],
   ["conditions",   "if_lead_matches"],
   ["conditions",   "open_profile_check"],
   ["conditions",   "icp_score_gate"],
@@ -142,7 +142,7 @@ const SUBSEQUENT_NODES: [string, string][] = [
   ["ai",           "ai_personalize"],
   ["ai",           "ai_detect_sentiment"],
   ["ai",           "ai_score_icp"],
-  ["ai",           "ai_buying_signal"],
+  // ["ai",           "ai_buying_signal"],
   ["ai",           "ai_query_knowledge_base"],
   ["ai",           "ai_detect_competitor"],
   // Data & Handoffs
