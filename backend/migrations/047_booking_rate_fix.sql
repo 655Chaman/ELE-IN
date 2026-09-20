@@ -88,8 +88,8 @@ BEGIN
             ce.campaign_id,
             COUNT(DISTINCT m.lead_id) as replied
         FROM public.messages m
-        JOIN public.campaign_execution_states ces ON ces.enrollment_id = m.enrollment_id
-        JOIN public.campaign_enrollments ce ON ce.id = ces.enrollment_id
+        JOIN public.campaign_enrollments ce ON ce.lead_id = m.lead_id
+        JOIN public.campaign_execution_states ces ON ces.enrollment_id = ce.id
         WHERE m.direction = 'inbound'
         AND (p_workspace_id IS NULL OR ces.workspace_id = p_workspace_id)
         GROUP BY ces.workspace_id, ce.campaign_id
