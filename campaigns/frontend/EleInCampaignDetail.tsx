@@ -128,7 +128,7 @@ export function EleInCampaignDetail() {
             onClick={() => navigate(`/elein/campaigns/new?edit=${campaign.id}`)}
             className="flex items-center gap-2 px-4 py-2 bg-muted/30 hover:bg-muted text-foreground font-medium text-sm rounded-lg transition-colors border border-border/50"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
             Edit
           </button>
           <button
@@ -156,7 +156,7 @@ export function EleInCampaignDetail() {
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-              <h3 className="text-2xl font-semibold text-foreground mt-1">{stat.value}</h3>
+              <h3 className="text-2xl font-semibold text-foreground mt-1 tabular-nums">{stat.value}</h3>
             </div>
           </div>
         ))}

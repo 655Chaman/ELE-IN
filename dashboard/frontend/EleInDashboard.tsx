@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import ShinyText from "@/components/ShinyText"
-import { Activity, Send, MessageSquare, X } from 'lucide-react'
+import { Activity, Send, MessageSquare, X, Zap, RefreshCw } from 'lucide-react'
 
 import { EleInAnalyticsView } from "@/components/dashboard/EleInAnalyticsView"
 import { EleInFlowView } from "@/components/dashboard/EleInFlowView"
@@ -346,7 +346,7 @@ export function EleInDashboard() {
                   setShowOnboarding(true);
                   setForceShowOnboarding(true);
                 }}
-                className="text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors flex items-center gap-1 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20"
+                className="text-sm font-medium text-primary hover:text-primary/90 transition-colors flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20"
               >
                 Getting Started
               </button>
@@ -407,48 +407,47 @@ export function EleInDashboard() {
       {!showEscapeHatch && (<main className="max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10">
         
         {isShowingOnboarding && (
-          <div className="mb-8 relative flex flex-col md:flex-row items-center gap-6 p-6 bg-card dark:bg-muted/30 border-l-4 border-l-amber-500 border border-border/50 rounded-2xl shadow-sm">
+          <div className="mb-8 relative flex flex-col md:flex-row items-center gap-6 p-6 bg-card dark:bg-muted/30 border-l-4 border-l-primary border border-border/50 rounded-2xl shadow-sm">
             <div className="flex-1">
               <h2 className="text-lg font-bold text-foreground mb-4">Welcome to Ele-in — let's get you live in 3 steps</h2>
               <div className="flex flex-col md:flex-row gap-4">
-                <button onClick={() => navigate('/elein/accounts')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-amber-500/50 transition-colors text-left flex-1">
-                  <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs">1</div>
+                <button onClick={() => navigate('/elein/accounts')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">1</div>
                   <div>
                     <span className="block text-sm font-bold text-foreground">Connect LinkedIn</span>
-                    <span className="text-xs text-muted-foreground">Add your LinkedIn account</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">Link your first sending account</span>
                   </div>
                 </button>
-                <button onClick={() => navigate('/elein/knowledge')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-amber-500/50 transition-colors text-left flex-1">
-                  <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs">2</div>
+                <button onClick={() => navigate('/elein/knowledge')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">2</div>
                   <div>
                     <span className="block text-sm font-bold text-foreground">Train Your AI</span>
-                    <span className="text-xs text-muted-foreground">Upload your website or product PDF</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">Upload a PDF or paste a website</span>
                   </div>
                 </button>
-                <button onClick={() => navigate('/elein/campaigns')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-amber-500/50 transition-colors text-left flex-1">
-                  <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs">3</div>
+                <button onClick={() => navigate('/elein/campaigns')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">3</div>
                   <div>
                     <span className="block text-sm font-bold text-foreground">Launch Campaign</span>
-                    <span className="text-xs text-muted-foreground">Import leads and start your first sequence</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">Build your first sequence</span>
                   </div>
                 </button>
               </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={handleSeedDemo}
-                  disabled={isSeedingDemo}
-                  className="px-4 py-2 text-sm font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 rounded-lg transition-colors flex items-center gap-2"
-                >
-                  {isSeedingDemo ? (
-                    <>
-                      <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                      Seeding...
-                    </>
-                  ) : (
-                    "Load Demo Data"
-                  )}
-                </button>
-              </div>
+            </div>
+            
+            <div className="shrink-0 flex flex-col gap-2 items-center text-center p-4 rounded-xl bg-muted/20 border border-border/50">
+              <p className="text-xs font-medium text-muted-foreground">Or want to explore first?</p>
+              <button 
+                onClick={handleSeedDemo}
+                disabled={isSeedingDemo}
+                className="px-4 py-2 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center gap-2"
+              >
+                {isSeedingDemo ? (
+                  <><RefreshCw size={16} className="animate-spin" /> Populating Data...</>
+                ) : (
+                  <><Zap size={16} /> Seed Demo Data</>
+                )}
+              </button>
             </div>
             <button onClick={handleDismissOnboarding} className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
               <X size={16} />

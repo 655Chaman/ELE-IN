@@ -76,13 +76,13 @@ export function EleInFlowView() {
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
       exit={{ opacity: 0, y: -20, filter: 'blur(8px)' }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="flex flex-col items-center justify-start min-h-[80vh] pt-12 pb-24 w-full"
+      className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] py-8 lg:py-12 w-full"
     >
       <div className="flex flex-col items-center max-w-6xl mx-auto w-full px-4 space-y-12">
         
         {/* Header Section */}
         <div className="text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-500 text-sm font-medium">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
             <Zap className="w-3.5 h-3.5" /> Automated Pipeline Engine
           </div>
           
@@ -96,10 +96,10 @@ export function EleInFlowView() {
         </div>
 
         {/* Interactive Flow Section */}
-        <div className="flex flex-col lg:flex-row items-stretch justify-center gap-8 lg:gap-16 w-full mt-12 px-4 md:px-12">
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full mt-12 px-4 md:px-12">
           
           {/* Left Visualizer */}
-          <div className="flex-1 max-w-md w-full aspect-square bg-card rounded-[40px] border border-border/50 flex items-center justify-center relative overflow-hidden shadow-2xl">
+          <div className="flex-1 max-w-md w-full aspect-[4/3] lg:aspect-square bg-card/40 backdrop-blur-sm rounded-[40px] border border-white/5 flex items-center justify-center relative overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.2)]">
              {/* Subtle background glow based on active step */}
              <motion.div 
                className="absolute inset-0 blur-[100px] rounded-full opacity-30"
@@ -111,30 +111,98 @@ export function EleInFlowView() {
              <AnimatePresence mode="wait">
                <motion.div
                  key={activeStepIndex}
-                 initial={{ opacity: 0, scale: 0.8, filter: 'blur(10px)' }}
-                 animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                 exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
+                 initial={{ opacity: 0, y: 10, filter: 'blur(10px)' }}
+                 animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                 exit={{ opacity: 0, y: -10, filter: 'blur(10px)' }}
                  transition={{ duration: 0.4 }}
-                 className="relative z-10 w-48 h-48 rounded-full border border-border/50 bg-background/50 backdrop-blur-md flex items-center justify-center shadow-2xl"
+                 className="relative z-10 w-full h-full p-8 flex flex-col items-center justify-center"
                >
-                  <stepData.icon className={`w-20 h-20 ${stepData.textColor} stroke-[1.5]`} />
-                  
-                  {/* Floating decorative elements */}
-                  {stepData.id === 'accounts' && (
-                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2 }} className="absolute -top-2 -right-2 p-3 bg-blue-500/10 rounded-full border border-blue-500/20">
-                      <Users size={20} className="text-blue-500" />
-                    </motion.div>
-                  )}
-                  {stepData.id === 'leads' && (
-                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2 }} className="absolute bottom-0 -left-4 p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                      <Database size={20} className="text-emerald-500" />
-                    </motion.div>
-                  )}
-                  {stepData.id === 'campaigns' && (
-                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2 }} className="absolute -top-4 -left-4 p-3 bg-violet-500/10 rounded-lg border border-violet-500/20">
-                      <GitBranch size={20} className="text-violet-500" />
-                    </motion.div>
-                  )}
+                 {stepData.id === 'accounts' && (
+                   <div className="w-full max-w-[260px] space-y-3">
+                     {[1, 2, 3].map((i) => (
+                       <motion.div 
+                         key={i}
+                         initial={{ opacity: 0, x: -20 }}
+                         animate={{ opacity: 1, x: 0 }}
+                         transition={{ delay: i * 0.1 }}
+                         className="flex items-center gap-3 p-3 rounded-2xl bg-background/80 border border-white/5 shadow-sm"
+                       >
+                         <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                           <Users size={18} className="text-blue-500" />
+                         </div>
+                         <div className="flex-1 space-y-1.5">
+                           <div className="h-2.5 w-24 bg-foreground/20 rounded-full"></div>
+                           <div className="h-2 w-16 bg-foreground/10 rounded-full"></div>
+                         </div>
+                         <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+                       </motion.div>
+                     ))}
+                   </div>
+                 )}
+
+                 {stepData.id === 'leads' && (
+                   <div className="w-full max-w-[280px] bg-background/80 rounded-2xl border border-white/5 shadow-lg overflow-hidden flex flex-col">
+                     <div className="h-10 border-b border-white/5 flex items-center px-4 gap-2">
+                       <Database size={14} className="text-emerald-500" />
+                       <div className="h-2 w-16 bg-foreground/20 rounded-full"></div>
+                     </div>
+                     <div className="p-4 space-y-4">
+                       {[1, 2, 3, 4].map((i) => (
+                         <motion.div 
+                           key={i}
+                           initial={{ opacity: 0, scale: 0.95 }}
+                           animate={{ opacity: 1, scale: 1 }}
+                           transition={{ delay: i * 0.1 }}
+                           className="flex items-center justify-between"
+                         >
+                           <div className="flex items-center gap-3">
+                             <div className="w-6 h-6 rounded bg-emerald-500/20"></div>
+                             <div className="space-y-1.5">
+                               <div className="h-2 w-20 bg-foreground/20 rounded-full"></div>
+                               <div className="h-1.5 w-12 bg-foreground/10 rounded-full"></div>
+                             </div>
+                           </div>
+                           <div className="h-4 w-12 bg-foreground/5 rounded flex items-center justify-center">
+                             <div className="h-1 w-8 bg-foreground/20 rounded-full"></div>
+                           </div>
+                         </motion.div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {stepData.id === 'campaigns' && (
+                   <div className="w-full max-w-[260px] flex flex-col items-center">
+                     <motion.div 
+                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                       className="p-3 rounded-2xl bg-background/80 border border-violet-500/30 flex items-center gap-3 shadow-lg w-full z-10"
+                     >
+                       <div className="p-2 bg-violet-500/20 rounded-lg"><Users size={16} className="text-violet-500"/></div>
+                       <div className="h-2 w-20 bg-foreground/20 rounded-full"></div>
+                     </motion.div>
+                     
+                     <div className="w-px h-6 bg-border"></div>
+                     
+                     <motion.div 
+                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+                       className="p-3 rounded-2xl bg-background/80 border border-white/5 flex items-center gap-3 shadow-lg w-11/12 z-10"
+                     >
+                       <div className="p-2 bg-blue-500/20 rounded-lg"><Send size={16} className="text-blue-500"/></div>
+                       <div className="h-2 w-24 bg-foreground/20 rounded-full"></div>
+                     </motion.div>
+                     
+                     <div className="w-px h-6 bg-border"></div>
+                     
+                     <motion.div 
+                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+                       className="p-3 rounded-2xl bg-background/80 border border-white/5 flex items-center gap-3 shadow-lg w-10/12 z-10"
+                     >
+                       <div className="p-2 bg-emerald-500/20 rounded-lg"><Activity size={16} className="text-emerald-500"/></div>
+                       <div className="h-2 w-16 bg-foreground/20 rounded-full"></div>
+                     </motion.div>
+                   </div>
+                 )}
+
                </motion.div>
              </AnimatePresence>
           </div>
@@ -152,9 +220,9 @@ export function EleInFlowView() {
           </div>
 
           {/* Right Content Card */}
-          <div className="flex-1 max-w-md w-full flex flex-col justify-center">
-            <Link to={stepData.link} className="block outline-none group h-full">
-              <div className="bg-card border border-border/50 text-card-foreground rounded-[40px] overflow-hidden flex flex-col h-full shadow-2xl transition-all duration-300 hover:border-border hover:shadow-xl">
+          <div className="flex-1 max-w-md w-full aspect-[4/3] lg:aspect-square flex flex-col justify-center">
+            <Link to={stepData.link} className="block outline-none group w-full h-full">
+              <div className="w-full h-full bg-card/80 backdrop-blur-2xl border border-white/10 text-card-foreground rounded-[40px] overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.3)] transition-all duration-300 hover:border-white/20 hover:shadow-[0_16px_60px_rgba(0,0,0,0.4)]">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeStepIndex}
@@ -202,19 +270,7 @@ export function EleInFlowView() {
               </div>
             </Link>
 
-            {/* Manual Step Navigation */}
-            <div className="flex justify-center gap-3 mt-8">
-              {FLOW_STEPS.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleManualStep(idx)}
-                  className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                    idx === activeStepIndex ? 'bg-foreground scale-125' : 'bg-border hover:bg-muted-foreground'
-                  }`}
-                  aria-label={`Go to step ${idx + 1}`}
-                />
-              ))}
-            </div>
+
           </div>
 
         </div>
