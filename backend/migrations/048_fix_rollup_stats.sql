@@ -46,7 +46,18 @@ BEGIN
         updated_at = NOW();
 
     -- STEP B: Rollup Campaign-Level Stats
-    WITH action_aggs AS (
+    WITH target_campaigns AS (
+        SELECT campaign_id, workspace_id
+        FROM public.daily_campaign_stats
+        WHERE stat_date = p_target_date
+          AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id)
+        UNION
+        SELECT DISTINCT ce.campaign_id, ces.workspace_id 
+        FROM public.campaign_execution_states ces 
+        JOIN public.campaign_enrollments ce ON ce.id = ces.enrollment_id
+        WHERE (p_workspace_id IS NULL OR ces.workspace_id = p_workspace_id)
+    ),
+    action_aggs AS (
         SELECT 
             al.workspace_id,
             ce.campaign_id,
@@ -83,19 +94,6 @@ BEGIN
         WHERE m.direction = 'inbound'
         AND (p_workspace_id IS NULL OR ces.workspace_id = p_workspace_id)
         GROUP BY ces.workspace_id, ce.campaign_id
-    ),
-    target_campaigns AS (
-        -- Narrowed anchor: Only campaigns with existing stats today or active events today
-        SELECT campaign_id, workspace_id
-        FROM public.daily_campaign_stats
-        WHERE stat_date = p_target_date
-          AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id)
-        UNION
-        SELECT campaign_id, workspace_id FROM action_aggs
-        UNION
-        SELECT campaign_id, workspace_id FROM funnel_aggs
-        UNION
-        SELECT campaign_id, workspace_id FROM replies_aggs
     )
     
     INSERT INTO public.daily_campaign_stats (
