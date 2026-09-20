@@ -58,22 +58,19 @@ def list_workspaces(
     user_id: str = Depends(get_current_user_id)
 ):
     try:
-        wm_res = supabase.table("workspace_members").select("workspace_id, workspaces(*)").eq("user_id", user_id).execute()
-        if not wm_res.data:
+        ws_res = supabase.table("workspaces").select("*").execute()
+        if not ws_res.data:
             return []
             
         result = []
-        for w in wm_res.data:
-            ws = w.get("workspaces")
-            if ws:
-                result.append({
-                    "id": ws["id"],
-                    "name": ws["name"] or "Unnamed Workspace",
-                    "require_2fa": ws.get("require_2fa", False),
-                    "status": ws.get("status", "active"),
-                    "deletion_requested_at": ws.get("deletion_requested_at"),
-                })
-        
+        for ws in ws_res.data:
+            result.append({
+                "id": ws["id"],
+                "name": ws.get("name") or "Unnamed Workspace",
+                "require_2fa": ws.get("require_2fa", False),
+                "status": ws.get("status", "active"),
+                "deletion_requested_at": ws.get("deletion_requested_at"),
+            })
         # also append account counts
         for w in result:
             acc_res = supabase.table("accounts").select("id", count="exact").eq("workspace_id", w["id"]).execute()

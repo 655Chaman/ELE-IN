@@ -80,6 +80,7 @@ app.include_router(apollo.router, prefix="/api/elein/apollo", dependencies=[Depe
 app.include_router(extension.router, prefix="/api/extension")
 app.include_router(workspaces.router, dependencies=[Depends(get_current_user_id)])
 
+from core.backend.api.routers import agencies
 from core.backend.api.routers import error_logger
 app.include_router(error_logger.router, prefix="/api/elein")
 from admin.backend.routers.onboarding import router as onboarding_router

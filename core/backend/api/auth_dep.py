@@ -175,9 +175,9 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     
     try:
         if requested_workspace_id:
-            res = await supabase.table("workspace_members").select("workspace_id").eq("user_id", user_id).eq("workspace_id", requested_workspace_id).execute()
+            res = await supabase.table("workspaces").select("id").eq("id", requested_workspace_id).execute()
         else:
-            res = await supabase.table("workspace_members").select("workspace_id").eq("user_id", user_id).order("created_at", desc=False).limit(1).execute()
+            res = await supabase.table("workspaces").select("id").order("created_at", desc=False).limit(1).execute()
     except Exception as e:
         print("DEBUG TOKEN ERROR:", e)
         raise HTTPException(status_code=500, detail="Database error retrieving workspace")
@@ -185,14 +185,14 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     if not res.data:
         if requested_workspace_id:
             # Ghost Workspace Lockout trap: Check if they have ANY workspaces at all
-            fallback_res = await supabase.table("workspace_members").select("workspace_id").eq("user_id", user_id).limit(1).execute()
+            fallback_res = await supabase.table("workspaces").select("id").limit(1).execute()
             if not fallback_res.data:
                 raise HTTPException(status_code=404, detail="No workspace found. Please complete onboarding first.")
             raise HTTPException(status_code=403, detail="Not a member of this workspace")
         raise HTTPException(status_code=404, detail="No workspace found. Please complete onboarding first.")
         
     workspace_data = res.data[0]
-    workspace_id = workspace_data["workspace_id"]
+    workspace_id = str(workspace_data["id"])
 
     # Block mutations on pending_deletion workspaces
     exempt_paths = ["/request-deletion", "/cancel-deletion"]
