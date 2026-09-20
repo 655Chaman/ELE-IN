@@ -251,16 +251,16 @@ export function EleInAnalyticsView({
   const kpiCards = [
     // PARANOIA RULE: Every .value here MUST use ?? 0 or || 0.
     // NEVER access backend fields without a fallback. The backend may 500.
-    { label: "Total Audience", value: safeSummary.total_leads || 0, icon: Users, color: "text-blue-600 dark:text-blue-500", bg: "bg-blue-500/5 dark:bg-blue-500/10" },
-    { label: "Active Campaigns", value: safeSummary.active_campaigns || 0, icon: TrendingUp, color: "text-violet-600 dark:text-violet-500", bg: "bg-violet-500/5 dark:bg-violet-500/10" },
-    { label: "Connections (24h)", value: safeSummary.connections_today || 0, icon: MousePointerClick, color: "text-emerald-600 dark:text-emerald-500", bg: "bg-emerald-500/5 dark:bg-emerald-500/10" },
-    { label: "Messages (24h)", value: safeSummary.messages_today || 0, icon: Send, color: "text-amber-600 dark:text-amber-500", bg: "bg-amber-500/5 dark:bg-amber-500/10" },
-    { label: "Inmails (24h)", value: safeSummary.inmails_today || 0, icon: Send, color: "text-purple-600 dark:text-purple-500", bg: "bg-purple-500/5 dark:bg-purple-500/10" },
+    { label: "Total Audience", value: safeSummary.total_leads || 0, icon: Users, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Active Campaigns", value: safeSummary.active_campaigns || 0, icon: TrendingUp, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Connections (24h)", value: safeSummary.connections_today || 0, icon: MousePointerClick, color: "text-success", bg: "bg-success/10" },
+    { label: "Messages (24h)", value: safeSummary.messages_today || 0, icon: Send, color: "text-success", bg: "bg-success/10" },
+    { label: "Inmails (24h)", value: safeSummary.inmails_today || 0, icon: Send, color: "text-warning", bg: "bg-warning/10" },
     /* account_health is a categorical label (e.g. 'Excellent', 'Good') — do NOT append %. Backend may also return a number 0-100, handled by formatKpiValue. */
-    { label: "Account Health", value: formatKpiValue(safeSummary.account_health as any), icon: ShieldCheck, color: "text-emerald-500 dark:text-emerald-400", bg: "bg-emerald-500/5 dark:bg-emerald-400/10" },
+    { label: "Account Health", value: formatKpiValue(safeSummary.account_health as any), icon: ShieldCheck, color: "text-success", bg: "bg-success/10" },
     // Backend returns absolute count, NOT a percentage. Do not add % sign.
-    { label: "Positive Sentiment", value: formatKpiValue(safeSummary.positive_sentiment as any, { unit: 'count' }), icon: MessageSquareHeart, color: "text-pink-600 dark:text-pink-500", bg: "bg-pink-500/5 dark:bg-pink-500/10" },
-    { label: "Auto-Withdrawals", value: safeSummary.auto_withdrawals ?? 0, icon: UserX, color: "text-rose-600 dark:text-rose-500", bg: "bg-rose-500/5 dark:bg-rose-500/10" }
+    { label: "Positive Sentiment", value: formatKpiValue(safeSummary.positive_sentiment as any, { unit: 'count' }), icon: MessageSquareHeart, color: "text-success", bg: "bg-success/10" },
+    { label: "Auto-Withdrawals", value: safeSummary.auto_withdrawals ?? 0, icon: UserX, color: "text-destructive", bg: "bg-destructive/10" }
   ]
 
   const mergedFeed = useMemo(() => {
@@ -499,8 +499,8 @@ export function EleInAnalyticsView({
                         <stop offset="95%" stopColor={secondaryColor} stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorInmails" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#FFB020" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#FFB020" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorRep" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2}/>
@@ -517,7 +517,7 @@ export function EleInAnalyticsView({
                     <Area type="monotone" dataKey="messages" stroke={secondaryColor} strokeWidth={3} fill="url(#colorMsg)" style={{ opacity: hoveredSeries && hoveredSeries !== 'messages' ? 0.2 : 1, transition: 'all 0.3s ease' }} activeDot={{ r: 5, fill: secondaryColor, stroke: 'hsl(var(--background))', strokeWidth: 2 }} />
                     {/* PARANOIA: Every metric returned by the backend's time_series MUST have a corresponding <Area> chart line, otherwise the data is invisible to the user. */}
                     {/* Maps to 'inmails' in API response */}
-                    <Area type="monotone" dataKey="inmails" stroke="#8b5cf6" strokeWidth={3} fill="url(#colorInmails)" style={{ opacity: hoveredSeries && hoveredSeries !== 'inmails' ? 0.2 : 1, transition: 'all 0.3s ease' }} activeDot={{ r: 5, fill: "#8b5cf6", stroke: 'hsl(var(--background))', strokeWidth: 2 }} />
+                    <Area type="monotone" dataKey="inmails" stroke="#FFB020" strokeWidth={3} fill="url(#colorInmails)" style={{ opacity: hoveredSeries && hoveredSeries !== 'inmails' ? 0.2 : 1, transition: 'all 0.3s ease' }} activeDot={{ r: 5, fill: "#FFB020", stroke: 'hsl(var(--background))', strokeWidth: 2 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (

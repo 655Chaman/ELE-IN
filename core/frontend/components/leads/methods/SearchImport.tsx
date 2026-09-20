@@ -32,7 +32,7 @@ export function SearchImport() {
         <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">JOB TITLE KEYWORDS</label>
         <div className="flex flex-wrap gap-2 mb-3">
           {["Founder", "CEO", "VP of Sales", "SDR", "BDR", "Account Executive", "Marketing Director", "Software Engineer"].map(t => (
-            <button key={t} onClick={() => togglePill('jobTitles', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.jobTitles.includes(t) ? 'bg-primary border-blue-600 text-white' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
+            <button key={t} onClick={() => togglePill('jobTitles', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.jobTitles.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
           ))}
         </div>
         <input value={searchParams.customTitle} onChange={e => setSearchParams({...searchParams, customTitle: e.target.value})} placeholder='Or enter custom titles (comma separated)' className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
@@ -67,7 +67,7 @@ export function SearchImport() {
         <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">INDUSTRY</label>
         <div className="flex flex-wrap gap-2">
           {["Software Development", "Financial Services", "Healthcare", "Marketing", "IT Services", "Real Estate", "Education", "Retail"].map(t => (
-            <button key={t} onClick={() => togglePill('industries', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.industries.includes(t) ? 'bg-primary border-blue-600 text-white' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
+            <button key={t} onClick={() => togglePill('industries', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.industries.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
           ))}
         </div>
       </div>
@@ -75,7 +75,7 @@ export function SearchImport() {
         <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">DEPARTMENT / FUNCTION</label>
         <div className="flex flex-wrap gap-2">
           {["Engineering", "Sales", "Marketing", "Operations", "HR", "Finance", "Legal"].map(t => (
-            <button key={t} onClick={() => togglePill('department', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.department.includes(t) ? 'bg-primary border-blue-600 text-white' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
+            <button key={t} onClick={() => togglePill('department', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.department.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
           ))}
         </div>
       </div>
@@ -84,7 +84,7 @@ export function SearchImport() {
           <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">CONNECTION</label>
           <div className="flex flex-wrap gap-2">
             {["1st degree", "2nd degree", "3rd+ degree"].map(t => (
-               <button key={t} onClick={() => togglePill('network', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.network.includes(t) ? 'bg-primary border-blue-600 text-white' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
+               <button key={t} onClick={() => togglePill('network', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.network.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
             ))}
           </div>
         </div>
@@ -92,7 +92,7 @@ export function SearchImport() {
           <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">SENIORITY</label>
           <div className="flex flex-wrap gap-2">
             {["Entry", "Senior", "Director", "VP", "CXO", "Partner", "Owner"].map(t => (
-               <button key={t} onClick={() => togglePill('seniority', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.seniority.includes(t) ? 'bg-primary border-blue-600 text-white' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
+               <button key={t} onClick={() => togglePill('seniority', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.seniority.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
             ))}
           </div>
         </div>
@@ -101,7 +101,7 @@ export function SearchImport() {
         <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">COMPANY HEADCOUNT</label>
         <div className="flex flex-wrap gap-2">
           {["1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5000+"].map(t => (
-             <button key={t} onClick={() => togglePill('companySize', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.companySize.includes(t) ? 'bg-primary border-blue-600 text-white' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
+             <button key={t} onClick={() => togglePill('companySize', t)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${searchParams.companySize.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'bg-transparent border-input text-foreground hover:bg-muted'}`}>{t}</button>
           ))}
         </div>
       </div>

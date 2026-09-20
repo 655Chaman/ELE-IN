@@ -225,9 +225,9 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
         </div>
         <div>
           <label className="block text-xs font-semibold text-foreground mb-3">Global Deduplication (Always On)</label>
-          <div className="space-y-3 bg-indigo-500/5 p-4 rounded-xl border border-indigo-500/20">
+          <div className="space-y-3 bg-primary/5 p-4 rounded-xl border border-primary/20">
             <div className="flex items-start gap-3 opacity-80">
-              <div className="mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 bg-indigo-500 border-indigo-500">
+              <div className="mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 bg-primary border-primary">
                 <Check size={10} className="text-white" strokeWidth={3} />
               </div>
               <span className="text-xs text-foreground font-medium leading-relaxed">
@@ -240,7 +240,7 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
                   onClick={() => onChange("excludeOtherCampaigns", !state["excludeOtherCampaigns"])}
                   className={cn(
                     "mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
-                    state["excludeOtherCampaigns"] ? "bg-indigo-500 border-indigo-500" : "border-border hover:border-indigo-500/50"
+                    state["excludeOtherCampaigns"] ? "bg-primary border-primary" : "border-border hover:border-primary/50"
                   )}
                 >
                   {state["excludeOtherCampaigns"] && <Check size={10} className="text-white" strokeWidth={3} />}
@@ -321,7 +321,7 @@ function TemplateBrowser({ onClose, onImport }: {
                   className={cn(
                     "flex items-center gap-1 text-[9px] px-2 py-1 rounded-md font-semibold transition-all",
                     activeTag === tag
-                      ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                      ? "bg-primary/20 text-primary/80 border border-primary/30"
                       : "text-muted-foreground border border-transparent hover:text-zinc-300 hover:bg-muted/30"
                   )}
                 >
@@ -356,7 +356,7 @@ function TemplateBrowser({ onClose, onImport }: {
                       {t.difficulty}
                     </span>
                     {t.tags.includes("recommended") && (
-                      <span className="text-[8px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded font-bold">★ Top pick</span>
+                      <span className="text-[8px] text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded font-bold">★ Top pick</span>
                     )}
                   </div>
                   <p className="text-xs font-bold text-foreground mb-1 leading-tight">{t.name}</p>
@@ -403,7 +403,7 @@ function TemplateBrowser({ onClose, onImport }: {
             {selectedTemplate && (
               <button
                 onClick={() => { onImport(selected); onClose() }}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-foreground transition-all"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary/90 hover:bg-primary text-xs font-bold text-foreground transition-all"
               >
                 Use this template <ArrowUpRight size={12} />
               </button>
@@ -452,7 +452,7 @@ function LivePreviewSidebar() {
     
     previewContent = (
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 font-bold shrink-0">Y</div>
+        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">Y</div>
         <div className="text-foreground">
           <span className="font-bold">You</span> {actionText}
         </div>
@@ -462,7 +462,7 @@ function LivePreviewSidebar() {
   } else if (isNoNote) {
     previewContent = (
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 font-bold shrink-0">Y</div>
+        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">Y</div>
         <div className="text-foreground">
           <span className="font-bold">You</span> sent a connection request
         </div>
@@ -475,7 +475,7 @@ function LivePreviewSidebar() {
     previewContent = (
       <>
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-500 font-bold">P</div>
+          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">P</div>
           <div>
             <div className="font-bold text-foreground text-sm">Prospect Name</div>
             <div className="text-muted-foreground">Software Engineer</div>
@@ -670,12 +670,12 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
             </p>
           </div>
         </div>
-        <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 mb-8 flex gap-4 max-w-3xl mx-auto text-left shadow-sm">
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-8 flex gap-4 max-w-3xl mx-auto text-left shadow-sm">
           <div className="mt-0.5">
-             <Zap size={20} className="text-indigo-500 fill-indigo-500/20" />
+             <Zap size={20} className="text-primary fill-primary/20" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-indigo-500 mb-1">Smart Load Balancing is Active</h4>
+            <h4 className="text-sm font-bold text-primary mb-1">Smart Load Balancing is Active</h4>
             <p className="text-xs text-muted-foreground leading-relaxed">
               When multiple senders are selected, the engine acts as a load-balancer. It calculates real-time capacity across all active campaigns and routes each outreach to the account with the most remaining headroom. This perfectly distributes volume while strictly protecting each account from shadow-bans.
             </p>
@@ -689,7 +689,7 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
           </div>
         ) : !accounts ? (
           <div className="flex justify-center p-12">
-            <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           </div>
         ) : accounts.length === 0 ? (
           <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
@@ -700,7 +700,7 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
             <p className="text-sm text-muted-foreground mb-6">You need to connect at least one LinkedIn account to launch a campaign.</p>
             <button 
               onClick={() => navigate('/elein/accounts')}
-              className="px-6 py-2.5 rounded-xl bg-indigo-500 text-white font-medium hover:bg-indigo-600 transition-colors">
+              className="px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors">
               Connect Account
             </button>
           </div>
@@ -714,13 +714,13 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                   onClick={() => toggleSender(acc.id)}
                   className={`relative p-5 rounded-2xl border transition-all cursor-pointer ${
                     isSelected 
-                      ? "bg-indigo-500/5 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.1)]" 
+                      ? "bg-primary/5 border-primary shadow-[0_0_15px_rgba(99,102,241,0.1)]" 
                       : "bg-card border-border hover:border-muted-foreground/30 hover:bg-muted/10 shadow-sm"
                   }`}
                 >
                   <div className="absolute top-4 right-4">
                     <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
-                      isSelected ? "bg-indigo-500 border-indigo-500 text-white" : "border-muted-foreground/30"
+                      isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
                     }`}>
                       {isSelected && <Check size={12} strokeWidth={3} />}
                     </div>

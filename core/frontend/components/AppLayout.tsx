@@ -94,18 +94,24 @@ export function AppLayout() {
           <div className="h-[60px] flex items-center justify-between px-4 border-b border-border shrink-0">
             {isSidebarOpen ? (
               <div className="flex items-center gap-2 font-semibold text-[13px] tracking-widest uppercase text-foreground">
+                <img src="/logo-icon.png" alt="Ele-in" className="w-6 h-6 object-cover rounded-md" />
                 ELE-IN
               </div>
             ) : (
-              <div className="w-full flex justify-center text-foreground font-bold tracking-widest text-[10px]">ELE</div>
+              <div className="w-full flex justify-center cursor-pointer" onClick={() => setIsSidebarOpen(true)}>
+                <img src="/logo-icon.png" alt="Ele-in" className="w-6 h-6 object-cover rounded-md" />
+              </div>
             )}
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-              title="Toggle Sidebar (Cmd+X)"
-            >
-              {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-            </button>
+            
+            {isSidebarOpen && (
+              <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                title="Toggle Sidebar (Cmd+X)"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            )}
           </div>
 
           {/* Workspace Switcher */}

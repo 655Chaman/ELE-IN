@@ -250,8 +250,8 @@ export function EleInDashboard() {
   ]
 
   const isDark = document.documentElement.classList.contains("dark")
-  const primaryColor = isDark ? "#3b82f6" : "#2563eb"
-  const secondaryColor = isDark ? "#10b981" : "#059669"
+  const primaryColor = "#8FFF83" // Matches --primary
+  const secondaryColor = "#35D07F" // Matches --success
 
   const navigate = useNavigate()
   const [showOnboarding, setShowOnboarding] = useState(
@@ -321,9 +321,7 @@ export function EleInDashboard() {
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
-              <Activity className="w-4 h-4 text-primary" />
-            </div>
+            <img src="/logo-icon.png" alt="Ele-in Logo" className="w-8 h-8 rounded-lg object-cover" />
             <h1 className="text-xl font-medium tracking-tight">
               <ShinyText text="Ele-in Workspace" speed={3} className="text-foreground" />
             </h1>
@@ -407,51 +405,52 @@ export function EleInDashboard() {
       {!showEscapeHatch && (<main className="max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10">
         
         {isShowingOnboarding && (
-          <div className="mb-8 relative flex flex-col md:flex-row items-center gap-6 p-6 bg-card dark:bg-muted/30 border-l-4 border-l-primary border border-border/50 rounded-2xl shadow-sm">
-            <div className="flex-1">
-              <h2 className="text-lg font-bold text-foreground mb-4">Welcome to Ele-in — let's get you live in 3 steps</h2>
-              <div className="flex flex-col md:flex-row gap-4">
-                <button onClick={() => navigate('/elein/accounts')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
-                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">1</div>
-                  <div>
-                    <span className="block text-sm font-bold text-foreground">Connect LinkedIn</span>
-                    <span className="block text-xs text-muted-foreground mt-0.5">Link your first sending account</span>
-                  </div>
-                </button>
-                <button onClick={() => navigate('/elein/knowledge')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
-                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">2</div>
-                  <div>
-                    <span className="block text-sm font-bold text-foreground">Train Your AI</span>
-                    <span className="block text-xs text-muted-foreground mt-0.5">Upload a PDF or paste a website</span>
-                  </div>
-                </button>
-                <button onClick={() => navigate('/elein/campaigns')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
-                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">3</div>
-                  <div>
-                    <span className="block text-sm font-bold text-foreground">Launch Campaign</span>
-                    <span className="block text-xs text-muted-foreground mt-0.5">Build your first sequence</span>
-                  </div>
+          <div className="mb-8 relative flex flex-col gap-4 p-6 pt-5 bg-card dark:bg-muted/30 border-l-4 border-l-primary border border-border/50 rounded-2xl shadow-sm pr-12">
+            <button onClick={handleDismissOnboarding} className="absolute top-4 right-4 p-1.5 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
+              <X size={18} />
+            </button>
+            <h2 className="text-lg font-bold text-foreground">Welcome to Ele-in — let's get you live in 3 steps</h2>
+            
+            <div className="flex flex-col md:flex-row items-stretch gap-4">
+              <button onClick={() => navigate('/elein/accounts')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
+                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">1</div>
+                <div>
+                  <span className="block text-sm font-bold text-foreground">Connect LinkedIn</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Link your first sending account</span>
+                </div>
+              </button>
+              <button onClick={() => navigate('/elein/knowledge')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
+                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">2</div>
+                <div>
+                  <span className="block text-sm font-bold text-foreground">Train Your AI</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Upload a PDF or paste a website</span>
+                </div>
+              </button>
+              <button onClick={() => navigate('/elein/campaigns')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
+                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">3</div>
+                <div>
+                  <span className="block text-sm font-bold text-foreground">Launch Campaign</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Build your first sequence</span>
+                </div>
+              </button>
+              
+              <div className="hidden md:block w-px bg-border/50 self-stretch my-1"></div>
+              
+              <div className="shrink-0 flex flex-col justify-center gap-1.5 items-center text-center p-3 rounded-xl bg-muted/20 border border-border/50 w-full md:w-[200px]">
+                <p className="text-xs font-medium text-muted-foreground">Or want to explore first?</p>
+                <button 
+                  onClick={handleSeedDemo}
+                  disabled={isSeedingDemo}
+                  className="w-full py-1.5 text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {isSeedingDemo ? (
+                    <><RefreshCw size={14} className="animate-spin" /> Seeding...</>
+                  ) : (
+                    <><Zap size={14} /> Seed Demo Data</>
+                  )}
                 </button>
               </div>
             </div>
-            
-            <div className="shrink-0 flex flex-col gap-2 items-center text-center p-4 rounded-xl bg-muted/20 border border-border/50">
-              <p className="text-xs font-medium text-muted-foreground">Or want to explore first?</p>
-              <button 
-                onClick={handleSeedDemo}
-                disabled={isSeedingDemo}
-                className="px-4 py-2 text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center gap-2"
-              >
-                {isSeedingDemo ? (
-                  <><RefreshCw size={16} className="animate-spin" /> Populating Data...</>
-                ) : (
-                  <><Zap size={16} /> Seed Demo Data</>
-                )}
-              </button>
-            </div>
-            <button onClick={handleDismissOnboarding} className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
-              <X size={16} />
-            </button>
           </div>
         )}
         <AnimatePresence mode="wait">
