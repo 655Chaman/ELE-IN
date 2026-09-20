@@ -1,4 +1,5 @@
 import logging
+from integrations.backend.services.elein_crm_service import push_to_hubspot
 import re
 import json
 import random
@@ -760,7 +761,29 @@ class EleInNodeExecutor:
             logger.error(f"handle_if_replied error: {e}")
             return {"status": "error", "branch": "No Reply", "error": str(e)}
 
+
+    def handle_push_to_hubspot(self, data: dict, linkedin_url: str) -> dict:
+        try:
+            res = self.supabase.table("leads").select("*").eq("workspace_id", self.workspace_id).eq("linkedin_url", linkedin_url).limit(1).execute()
+            if not res.data:
+                return {"status": "error", "error": "Lead not found in database"}
+            lead_data = res.data[0]
+            
+            w_res = self.supabase.table("workspaces").select("hubspot_token").eq("id", self.workspace_id).single().execute()
+            token = w_res.data.get("hubspot_token") if w_res.data else None
+            if not token:
+                return {"status": "error", "error": "HubSpot token not found for workspace"}
+                
+            success = push_to_hubspot(lead_data, "lead", token, self.supabase)
+            if success:
+                return {"status": "success", "message": "Pushed to HubSpot"}
+            else:
+                return {"status": "error", "error": "Failed to push to HubSpot"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
     def handle_push_to_crm(self, data: dict, linkedin_url: str) -> dict:
+
         provider = data.get("provider", "HubSpot").lower().replace(" ", "")
         handler_map = {
             "hubspot": self.handle_push_to_hubspot,

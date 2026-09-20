@@ -4,9 +4,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def push_to_hubspot(lead_data: dict, lifecycle_stage: str = "lead") -> bool:
-    """Pushes a lead to HubSpot Contacts API."""
-    api_key = os.environ.get("HUBSPOT_ACCESS_TOKEN")
+def push_to_hubspot(lead_data: dict, lifecycle_stage: str = "lead", api_key: str = None, supabase=None) -> bool:
+    """Pushes a lead to HubSpot Contacts API, creates a Deal, and associates them."""
+    api_key = api_key or os.environ.get("HUBSPOT_ACCESS_TOKEN")
     if not api_key:
         logger.warning("[CRM] No HUBSPOT_ACCESS_TOKEN set. Skipping HubSpot push.")
         return False
@@ -16,21 +16,71 @@ def push_to_hubspot(lead_data: dict, lifecycle_stage: str = "lead") -> bool:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
+    
+    # 1. Create or Find Contact
     payload = {
         "properties": {
             "firstname": lead_data.get("first_name", ""),
             "lastname": lead_data.get("last_name", ""),
             "email": lead_data.get("email", ""),
-            "company": lead_data.get("company", ""),
-            "jobtitle": lead_data.get("title", ""),
-            "linkedin_profile": lead_data.get("linkedin_url", ""),
+            "company": lead_data.get("company") or lead_data.get("company_name", ""),
+            "jobtitle": lead_data.get("title") or lead_data.get("job_title", ""),
+            # linkedin_profile isn't a default hs_ property, omitting to prevent 400 errors
             "lifecyclestage": lifecycle_stage
         }
     }
     
     try:
+        import re
         res = requests.post(url, headers=headers, json=payload, timeout=10)
-        return res.status_code in (200, 201)
+        contact_id = None
+        
+        if res.status_code in (200, 201):
+            contact_id = res.json().get("id")
+        elif res.status_code == 409:
+            # Contact already exists
+            match = re.search(r"Existing ID: (\d+)", res.json().get("message", ""))
+            if match:
+                contact_id = match.group(1)
+                
+        if not contact_id:
+            logger.error(f"[CRM] Failed to get/create HubSpot contact. Response: {res.text}")
+            return False
+            
+        # 2. Create Deal
+        deal_url = "https://api.hubapi.com/crm/v3/objects/deals"
+        name = f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip()
+        company = lead_data.get("company") or lead_data.get("company_name")
+        deal_name = f"{name} @ {company}" if company else name
+        
+        deal_payload = {
+            "properties": {
+                "dealname": deal_name
+                # Omitting dealstage/pipeline to fallback to HubSpot defaults
+            }
+        }
+        deal_res = requests.post(deal_url, headers=headers, json=deal_payload, timeout=10)
+        if deal_res.status_code not in (200, 201):
+            logger.error(f"[CRM] Failed to create HubSpot deal. Response: {deal_res.text}")
+            return False
+            
+        deal_id = deal_res.json().get("id")
+        
+        # 3. Associate Deal with Contact
+        assoc_url = f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}/associations/contacts/{contact_id}/deal_to_contact"
+        assoc_res = requests.put(assoc_url, headers=headers, timeout=10)
+        if assoc_res.status_code not in (200, 201, 204):
+            logger.error(f"[CRM] Failed to associate deal {deal_id} with contact {contact_id}. Response: {assoc_res.text}")
+        
+        # 4. Save hubspot_deal_id to leads table
+        lead_id = lead_data.get("id")
+        if lead_id and supabase:
+            try:
+                supabase.table("leads").update({"hubspot_deal_id": str(deal_id)}).eq("id", lead_id).execute()
+            except Exception as db_e:
+                logger.error(f"[CRM] Failed to save hubspot_deal_id to DB for lead {lead_id}: {db_e}")
+                
+        return True
     except Exception as e:
         logger.error(f"[CRM] HubSpot API error: {e}")
         
