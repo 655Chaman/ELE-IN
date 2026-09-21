@@ -490,17 +490,19 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
 
                     if m["intent"] == "booking_confirmation" and intent_data.get("confirmed_time") and matched_lead:
                         try:
-                            # 1. Idempotency Check & Atomic Lock Transition
+                            # 1. Intermediate Race Lock (Booking Pending)
                             enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
                             if enroll_res.data:
                                 enroll_ids = [e["id"] for e in enroll_res.data]
+                                
+                                # Lock the state so concurrent workers don't also attempt to book
                                 update_res = supabase.table("campaign_execution_states").update({
-                                    "status": "exited",
-                                    "error_reason": "meeting_booked"
-                                }).in_("enrollment_id", enroll_ids).neq("status", "exited").execute()
+                                    "status": "paused",
+                                    "error_reason": "booking_pending"
+                                }).in_("enrollment_id", enroll_ids).neq("status", "exited").neq("error_reason", "booking_pending").execute()
                                 
                                 if update_res.data:
-                                    # We won the race (it wasn't exited yet). Safe to book!
+                                    # We won the race. Execute the booking API call.
                                     acc_res = supabase.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("id", account_id).limit(1).execute()
                                     if acc_res.data and acc_res.data[0].get("calendar_provider"):
                                         adapter = get_calendar_adapter(acc_res.data[0])
@@ -512,27 +514,57 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
                                                 start_time=intent_data.get("confirmed_time"),
                                                 end_time=intent_data.get("confirmed_time")
                                             )
-                                            # Ideally we would save booking_res["booking_id"] to a new column here.
+                                            
+                                            # If booking succeeded, finalize the state and save the booking_id
+                                            if booking_res and booking_res.get("status") == "confirmed":
+                                                booking_id = booking_res.get("booking_id")
+                                                # Fetch existing variables to preserve them
+                                                state_res = supabase.table("campaign_execution_states").select("id, variables").in_("enrollment_id", enroll_ids).execute()
+                                                for st in state_res.data:
+                                                    vars_dict = st.get("variables") or {}
+                                                    vars_dict["booking_id"] = booking_id
+                                                    supabase.table("campaign_execution_states").update({
+                                                        "status": "exited",
+                                                        "error_reason": "meeting_booked",
+                                                        "variables": vars_dict
+                                                    }).eq("id", st["id"]).execute()
+                                            else:
+                                                # Booking failed (e.g. API down, slot taken). Unlock to paused/booking_failed for manual review.
+                                                supabase.table("campaign_execution_states").update({
+                                                    "status": "paused",
+                                                    "error_reason": "booking_failed"
+                                                }).in_("enrollment_id", enroll_ids).execute()
                                 else:
-                                    logger.info(f"Duplicate booking confirmation for lead {matched_lead['id']} ignored (already exited).")
+                                    logger.info(f"Duplicate booking confirmation for lead {matched_lead['id']} ignored (already booking or exited).")
                         except Exception as e:
                             logger.error(f"Failed to process booking confirmation: {e}")
 
                     elif m["intent"] in ["cancellation", "reschedule_request"] and matched_lead:
                         try:
-                            # If they cancel or want to reschedule, we need to revert the exited state
-                            # so they drop back into the campaign (or enter a manual review state)
                             enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
                             if enroll_res.data:
                                 enroll_ids = [e["id"] for e in enroll_res.data]
-                                supabase.table("campaign_execution_states").update({
-                                    "status": "paused", # Require manual intervention
-                                    "error_reason": f"user_{m['intent']}"
-                                }).in_("enrollment_id", enroll_ids).eq("error_reason", "meeting_booked").execute()
                                 
-                                # In a real implementation with saved booking IDs:
-                                # booking_id = ...
-                                # await adapter.cancel_booking(booking_id)
+                                # 1. Find the execution state to extract the booking_id
+                                state_res = supabase.table("campaign_execution_states").select("id, variables").in_("enrollment_id", enroll_ids).eq("error_reason", "meeting_booked").execute()
+                                
+                                if state_res.data:
+                                    acc_res = supabase.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("id", account_id).limit(1).execute()
+                                    if acc_res.data and acc_res.data[0].get("calendar_provider"):
+                                        adapter = get_calendar_adapter(acc_res.data[0])
+                                        if adapter:
+                                            # Execute cancellation for each state that has a booking_id
+                                            for st in state_res.data:
+                                                vars_dict = st.get("variables") or {}
+                                                booking_id = vars_dict.get("booking_id")
+                                                if booking_id:
+                                                    await adapter.cancel_booking(booking_id)
+                                                    
+                                    # 2. Revert the state so they drop out of exited and enter manual review
+                                    supabase.table("campaign_execution_states").update({
+                                        "status": "paused", # Require manual intervention
+                                        "error_reason": f"user_{m['intent']}"
+                                    }).in_("enrollment_id", enroll_ids).eq("error_reason", "meeting_booked").execute()
                         except Exception as e:
                             logger.error(f"Failed to process cancellation/reschedule: {e}")
 
