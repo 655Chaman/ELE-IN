@@ -68,8 +68,8 @@ export function EleInInbox() {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)] bg-[#0B0C0E] text-white">
         <div className="flex flex-col items-center justify-center text-center p-10 max-w-md bg-surface/20 border border-white/5 rounded-3xl backdrop-blur-md">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-6 border border-indigo-500/20">
-            <MessageSquare size={32} className="text-indigo-400" />
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 border border-primary/20">
+            <MessageSquare size={32} className="text-primary" />
           </div>
           <h2 className="text-xl font-bold mb-2">Your inbox is quiet right now</h2>
           <p className="text-sm text-zinc-400 mb-8 leading-relaxed">
@@ -77,7 +77,7 @@ export function EleInInbox() {
           </p>
           <button 
             onClick={() => navigate('/elein/campaigns')}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-indigo-500/20"
+            className="px-6 py-3 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-primary/20"
           >
             Launch a Campaign
           </button>
@@ -113,7 +113,7 @@ export function EleInInbox() {
               onClick={() => setSelectedSender(thread.sender_name)}
               className={`p-4 border-b border-white/5 cursor-pointer transition-all duration-200 ${
                 selectedSender === thread.sender_name 
-                  ? 'bg-indigo-500/10 border-l-2 border-l-indigo-400' 
+                  ? 'bg-primary/10 border-l-2 border-l-primary' 
                   : 'hover:bg-white/5 border-l-2 border-l-transparent'
               }`}
             >
@@ -152,7 +152,7 @@ export function EleInInbox() {
                 <div key={msg.id} className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[70%] rounded-2xl p-4 ${
                     msg.direction === 'outbound' 
-                      ? 'bg-indigo-600/20 text-indigo-100 border border-indigo-500/20 rounded-tr-sm' 
+                      ? 'bg-primary/20 text-primary-foreground border border-primary/20 rounded-tr-sm' 
                       : 'bg-zinc-800/50 text-zinc-200 border border-white/5 rounded-tl-sm'
                   }`}>
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.message_text}</p>
@@ -172,7 +172,7 @@ export function EleInInbox() {
                   className="flex-1 bg-transparent border-none outline-none text-sm px-2 text-white placeholder-zinc-500 disabled:opacity-50"
                   disabled
                 />
-                <button disabled className="p-2 bg-indigo-500/20 text-indigo-300 rounded-lg disabled:opacity-50">
+                <button disabled className="p-2 bg-primary/20 text-primary rounded-lg disabled:opacity-50">
                   <Sparkles size={16} />
                 </button>
                 <button disabled className="p-2 bg-zinc-800 text-zinc-400 rounded-lg disabled:opacity-50">
