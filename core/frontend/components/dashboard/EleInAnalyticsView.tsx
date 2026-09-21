@@ -543,19 +543,29 @@ export function EleInAnalyticsView({
               <Activity size={16} className="text-primary animate-pulse" /> Live Feed
             </h3>
             <div className="flex-1 overflow-y-auto pr-2 space-y-3 scrollbar-hide">
-              {mergedFeed.map((item: any, index: number) => {
-                const isError = item.type === 'error';
-                return (
-                <div key={index} className={`flex gap-3 text-sm p-3 rounded-xl border ${isError ? 'bg-destructive/10 border-destructive/20' : 'bg-muted/30 border-border/50'}`}>
-                  <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${isError ? 'bg-destructive/20 text-destructive' : 'bg-primary/20 text-primary'}`}>
-                    {isError ? <AlertTriangle size={12} /> : <MessageSquareHeart size={12} />}
-                  </div>
-                  <div>
-                    <p className="text-foreground">{item.text}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{timeAgo(item.time)}</p>
-                  </div>
-                </div>
-              )})}
+              <AnimatePresence initial={false}>
+                {mergedFeed.map((item: any, index: number) => {
+                  const isError = item.type === 'error';
+                  return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8, height: 0, marginBottom: 0, padding: 0, overflow: 'hidden' }}
+                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                    className={`flex gap-3 text-sm p-3 rounded-xl border ${isError ? 'bg-destructive/10 border-destructive/20' : 'bg-muted/30 border-border/50'}`}
+                  >
+                    <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${isError ? 'bg-destructive/20 text-destructive' : 'bg-primary/20 text-primary'}`}>
+                      {isError ? <AlertTriangle size={12} /> : <MessageSquareHeart size={12} />}
+                    </div>
+                    <div>
+                      <p className="text-foreground">{item.text}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{timeAgo(item.time)}</p>
+                    </div>
+                  </motion.div>
+                  );
+                })}
+              </AnimatePresence>
               {/* PARANOIA: live_feed_error distinguishes a DB failure from genuine zero activity. Never merge these two states into a single 'empty' UI. */}
               {mergedFeed.length === 0 && liveFeedError && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-4">
