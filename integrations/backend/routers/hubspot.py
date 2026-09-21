@@ -132,7 +132,7 @@ async def import_hubspot_list(
     # Create internal lead list to store the imported leads
     internal_list_id = str(uuid.uuid4())
     try:
-        supabase.table("lead_lists").insert({
+        await supabase.table("lead_lists").insert({
             "id": internal_list_id,
             "name": f"HubSpot Import {list_id}",
             "type": "hubspot",
