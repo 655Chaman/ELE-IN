@@ -1,4 +1,3 @@
-import json
 from core.backend.services.calendar_adapter import get_calendar_adapter
 """
 elein_ai_service.py — Production AI engine for Ele-in
@@ -512,11 +511,12 @@ async def stream_reply_draft(
 
     # Phase C: Calendar Integration for positive intents
     calendar_layer = ""
-    if intent == "positive" and workspace_id:
+    account_id = thread_messages[0].get('account_id') if thread_messages else None
+    if intent == "positive" and workspace_id and account_id:
         try:
             from core.backend.api.auth_dep import get_service_client
             sc = get_service_client()
-            acc_res = sc.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("workspace_id", workspace_id).eq("name", sender_name).limit(1).execute()
+            acc_res = sc.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("workspace_id", workspace_id).eq("id", account_id).limit(1).execute()
             if acc_res.data:
                 adapter = get_calendar_adapter(acc_res.data[0])
                 if adapter:
