@@ -313,12 +313,12 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
             if chunk:
                 process_chunk(chunk)
                 
-        # Final update to positive number to mark completion
-        supabase.table("lead_lists").update({"row_count": total_inserted}).eq("id", list_id).execute()
+        # Final update to mark completion with terminal status
+        supabase.table("lead_lists").update({"row_count": total_inserted, "status": "completed"}).eq("id", list_id).execute()
         
     except Exception as e:
         print(f"CSV background processing error: {e}")
-        supabase.table("lead_lists").update({"row_count": -2}).eq("id", list_id).execute()
+        supabase.table("lead_lists").update({"row_count": -2, "status": "error", "error_message": str(e)}).eq("id", list_id).execute()
     finally:
         # Clean up the local temp file!
         if os.path.exists(file_path):
@@ -504,13 +504,13 @@ def process_voyager_search_background(
 
         encrypted_cookies = acc_row.get("session_cookies_encrypted")
         if not encrypted_cookies:
-            raise HTTPException(status_code=400, detail="No LinkedIn session found for this account.")
+            raise ValueError("No LinkedIn session found for this account. Please reconnect via the Chrome Extension.")
         from core.backend.core import crypto
         try:
             decrypted = crypto.decrypt_bytes(encrypted_cookies)
             cookie_json = decrypted.decode("utf-8")
         except Exception as e:
-            raise HTTPException(status_code=400, detail="Cookie decryption failed. Account must be reconnected via the Chrome Extension.")
+            raise ValueError("Cookie decryption failed. Account must be reconnected via the Chrome Extension.")
         # 3. Run the Voyager scraper
         scraper = VoyagerScraper(
             cookies_json=cookie_json,
@@ -601,6 +601,7 @@ def process_voyager_search_background(
         supabase.table("lead_lists").update({
             "row_count": -2,
             "status": "error",
+            "error_message": str(e),
         }).eq("id", list_id).execute()
 
 

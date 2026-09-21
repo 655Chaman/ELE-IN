@@ -165,6 +165,19 @@ async def process_single_job(job, sync_supabase):
                 "status": "failed",
                 "error_msg": error_msg
             }).eq("id", job_id).execute()
+            # PARANOIA: For list-type jobs, also mark the lead_list as errored.
+            # If the background function itself threw before its own error handler ran
+            # (e.g. KeyError on payload keys), the list would be stuck at 'pending' forever.
+            list_id = payload.get("list_id") if isinstance(payload, dict) else None
+            if list_id and job_type in ("voyager_search", "csv", "hubspot_import"):
+                try:
+                    sync_supabase.table("lead_lists").update({
+                        "status": "error",
+                        "row_count": -2,
+                        "error_message": f"Job processor error: {error_msg}",
+                    }).eq("id", list_id).execute()
+                except Exception as le:
+                    print(f"Failed to mark lead_list {list_id} as error: {le}")
         await asyncio.to_thread(_fail_job)
 
 
