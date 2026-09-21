@@ -120,3 +120,14 @@ async def start_outbox_poller():
         asyncio.create_task(run_outbox_poller())
     except ImportError:
         print("Warning: outbox_worker module not found, skipping poller.")
+
+@app.on_event("startup")
+def start_webhook_poller():
+    try:
+        import threading
+        from core.backend.workers.webhook_worker import poll_webhooks
+        # Using a daemon thread since the webhook worker is currently synchronous 
+        # to avoid the macOS AsyncClient SSL bug.
+        threading.Thread(target=poll_webhooks, daemon=True).start()
+    except Exception as e:
+        print(f"Warning: Failed to start webhook poller: {e}")
