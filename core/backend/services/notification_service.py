@@ -11,6 +11,7 @@ DEFAULT_CHANNELS: Dict[str, Dict[str, bool]] = {
     'account_needs_attention': {'in_app': True,  'email': True},
     'approval_queue_pending':  {'in_app': True,  'email': False},
     'campaign_completed':      {'in_app': True,  'email': False},
+    'campaign_needs_attention':{'in_app': True,  'email': True},
     'daily_digest':            {'in_app': False, 'email': False},
 }
 

@@ -144,3 +144,116 @@ if __name__ == "__main__":
     run_throttle_and_burnout_checks(supabase)
     print("\n-------------------\n")
     run_daily_digest(supabase)
+    print("\n-------------------\n")
+    run_funnel_bottleneck_alerts(supabase)
+
+def run_funnel_bottleneck_alerts(supabase):
+    print("Running Funnel Bottleneck Alerts (Task #16 - #1)...")
+    workspaces_res = supabase.table('workspaces').select('id, status').eq('status', 'active').execute()
+    
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+    fourteen_days_ago = now - timedelta(days=14)
+    
+    for ws in workspaces_res.data:
+        workspace_id = ws['id']
+        
+        # 1. Fetch action logs with node_id for the last 14 days
+        logs_res = supabase.table('action_log').select('action_type, executed_at, metadata').eq('workspace_id', workspace_id).gte('executed_at', fourteen_days_ago.isoformat()).execute()
+        
+        from collections import defaultdict
+        import json
+        node_stats = defaultdict(lambda: {'prior_sends': 0, 'prior_success': 0, 'trailing_sends': 0, 'trailing_success': 0})
+        
+        for log in logs_res.data:
+            meta = log.get('metadata')
+            if not meta or not isinstance(meta, dict) or 'node_id' not in meta:
+                continue
+                
+            node_id = meta['node_id']
+            action_type = log.get('action_type')
+            executed_at_str = log.get('executed_at')
+            if not executed_at_str:
+                continue
+            
+            # Handle possible trailing Z in timestamp
+            executed_at = datetime.fromisoformat(executed_at_str.replace('Z', '+00:00'))
+            
+            is_trailing = executed_at >= seven_days_ago
+            
+            is_send = action_type in ['message', 'connection_request']
+            is_success = action_type in ['reply_received', 'connection_accepted']
+            
+            if is_trailing:
+                if is_send: node_stats[node_id]['trailing_sends'] += 1
+                if is_success: node_stats[node_id]['trailing_success'] += 1
+            else:
+                if is_send: node_stats[node_id]['prior_sends'] += 1
+                if is_success: node_stats[node_id]['prior_success'] += 1
+                
+        # 2. Check for bottlenecks
+        for node_id, stats in node_stats.items():
+            prior_sends = stats['prior_sends']
+            prior_success = stats['prior_success']
+            trailing_sends = stats['trailing_sends']
+            trailing_success = stats['trailing_success']
+            
+            if prior_sends < 5 or trailing_sends < 5:
+                continue # Not enough volume to confidently measure a drop
+                
+            prior_rate = prior_success / prior_sends
+            trailing_rate = trailing_success / trailing_sends
+            
+            # Dropped by more than 50% relative
+            if trailing_rate < (prior_rate * 0.5) and prior_rate > 0.05:
+                print(f"Bottleneck detected on node {node_id}: Prior rate {prior_rate:.1%}, Trailing rate {trailing_rate:.1%}")
+                
+                # Fetch node content
+                node_res = supabase.table('campaign_nodes').select('config').eq('id', node_id).execute()
+                node_content = "Unknown content"
+                if node_res.data and node_res.data[0]['config']:
+                    config = node_res.data[0]['config']
+                    node_content = config.get('body') or config.get('message') or json.dumps(config)
+                    
+                # Ask LLM for hypothesis
+                from knowledge.backend.services.elein_ai_service import _get_sync_client, get_active_nvidia_keys
+                
+                keys = get_active_nvidia_keys("summarize")
+                hypothesis = "Failed to generate AI hypothesis."
+                if keys:
+                    client = _get_sync_client(keys[0]["key"])
+                    
+                    prompt = f"""You are an expert sales strategist analyzing a sequence drop-off.
+We detected a significant performance drop at a specific step in a cold outreach sequence.
+Previous 7 days conversion rate: {prior_rate:.1%} ({prior_success}/{prior_sends})
+Last 7 days conversion rate: {trailing_rate:.1%} ({trailing_success}/{trailing_sends})
+
+Step Content:
+{node_content}
+
+Generate a short, specific, plain-English hypothesis for why this drop occurred and one suggested fix.
+Keep it under 3 sentences. Do not use generic filler. Do not prefix with 'Hypothesis:'."""
+                    try:
+                        response = client.chat.completions.create(
+                            model="meta/llama-3.2-11b-vision-instruct",
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0.3,
+                            max_tokens=150
+                        )
+                        hypothesis = response.choices[0].message.content.strip()
+                    except Exception as e:
+                        print("LLM Error:", e)
+                
+                dispatch_notification(
+                    svc=supabase,
+                    workspace_id=workspace_id,
+                    event_type="campaign_needs_attention",
+                    payload={
+                        "node_id": node_id,
+                        "prior_rate": prior_rate,
+                        "trailing_rate": trailing_rate,
+                        "hypothesis": hypothesis
+                    }
+                )
+
