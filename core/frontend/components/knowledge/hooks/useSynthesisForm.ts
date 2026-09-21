@@ -47,7 +47,7 @@ export function useSynthesisForm(synthesis: any, mutateSynthesis: () => void) {
         })
       });
       if (!res.ok) throw new Error("Failed to update synthesis");
-      toast.success("AI instructions updated manually.");
+      toast.success("AI Synthesis & Guidelines successfully updated.");
       setIsEditingSynthesis(false);
       mutateSynthesis();
     } catch (err) {
