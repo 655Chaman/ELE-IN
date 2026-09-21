@@ -1,6 +1,7 @@
 import { LinkIcon } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { friendlyToast } from "../FriendlyError"
 import { fetchWithAuth } from "@/lib/apiClient"
 
 export function AddUrlModal() {
@@ -34,7 +35,7 @@ export function AddUrlModal() {
       toast.success("URL submitted! Processing in background...");
       setScrapeUrl("");
     } catch (e: any) {
-      toast.error(e.message || "Failed to submit URL");
+      friendlyToast('Failed to submit URL — please check the link and try again.', e);
     } finally {
       setIsScraping(false);
     }

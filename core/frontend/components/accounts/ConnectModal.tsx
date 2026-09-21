@@ -5,6 +5,7 @@ import { X, CheckCircle2, Clock, AlertCircle, ChevronRight, Info } from "lucide-
 import * as Popover from "@radix-ui/react-popover"
 import { cn } from "@/lib/utils"
 import SpotlightCard from "../SpotlightCard"
+import { AdvancedSettingsPanel } from "@/components/AdvancedSettingsPanel"
 import { fetchWithAuth, fetcher } from "@/lib/apiClient"
 import type { LinkedInAccount } from "@accounts/eiAccountsStore"
 import useSWR from "swr"
@@ -74,7 +75,7 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
       if (!result.valid) {
         setValidating(false)
         setValidated({ valid: false })
-        setError(result.error || "Cookie session is invalid or expired. Log into LinkedIn and re-export.")
+        setError(result.error ? 'Connection failed — your cookie session may be expired. Please re-export from LinkedIn.' : 'Cookie session is invalid or expired. Log into LinkedIn and re-export.')
         return
       }
 
@@ -286,57 +287,61 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
                                 </AnimatePresence>
                               </div>
 
-                              <div className="space-y-1.5">
-                                <div className="flex items-center gap-1.5 ml-1">
-                                  <label className="text-[11px] font-semibold text-foreground">Proxy <span className="text-muted-foreground font-normal">(Optional)</span></label>
-                                  <Popover.Root>
-                                    <Popover.Trigger asChild>
-                                      <button 
-                                        className="inline-flex items-center justify-center shrink-0 w-3.5 h-3.5 rounded-full bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                                        title="What is a proxy?"
-                                        onClick={(e) => e.stopPropagation()}
+                              <div className="mt-4">
+                                <AdvancedSettingsPanel label="Advanced: Proxy Configuration">
+                                  <div className="space-y-1.5 pt-1">
+                                    <div className="flex items-center gap-1.5 ml-1">
+                                      <label className="text-[11px] font-semibold text-foreground">Proxy <span className="text-muted-foreground font-normal">(Optional)</span></label>
+                                      <Popover.Root>
+                                        <Popover.Trigger asChild>
+                                          <button 
+                                            className="inline-flex items-center justify-center shrink-0 w-3.5 h-3.5 rounded-full bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                            title="What is a proxy?"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <Info size={10} />
+                                          </button>
+                                        </Popover.Trigger>
+                                        <Popover.Portal>
+                                          <Popover.Content 
+                                            side="top" 
+                                            align="start" 
+                                            sideOffset={8} 
+                                            className="z-[200] w-64 bg-card border border-border rounded-xl shadow-xl p-3 animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <h4 className="text-sm font-semibold mb-1.5">Why use a proxy?</h4>
+                                            <p className="text-xs text-muted-foreground mb-2">
+                                              LinkedIn closely monitors login locations. If multiple accounts run from the same central server IP, LinkedIn algorithms often flag them as bots.
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                              Assigning a Proxy gives this specific account a dedicated, safe IP address (like a normal home connection) to completely prevent location-based bans.
+                                            </p>
+                                            <Popover.Arrow className="fill-border" />
+                                          </Popover.Content>
+                                        </Popover.Portal>
+                                      </Popover.Root>
+                                    </div>
+                                    {proxies && proxies.length > 0 ? (
+                                      <select
+                                        value={proxyId}
+                                        onChange={e => setProxyId(e.target.value)}
+                                        className="w-full rounded-lg bg-background border border-input px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                                       >
-                                        <Info size={10} />
-                                      </button>
-                                    </Popover.Trigger>
-                                    <Popover.Portal>
-                                      <Popover.Content 
-                                        side="top" 
-                                        align="start" 
-                                        sideOffset={8} 
-                                        className="z-[200] w-64 bg-card border border-border rounded-xl shadow-xl p-3 animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <h4 className="text-sm font-semibold mb-1.5">Why use a proxy?</h4>
-                                        <p className="text-xs text-muted-foreground mb-2">
-                                          LinkedIn closely monitors login locations. If multiple accounts run from the same central server IP, LinkedIn algorithms often flag them as bots.
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                          Assigning a Proxy gives this specific account a dedicated, safe IP address (like a normal home connection) to completely prevent location-based bans.
-                                        </p>
-                                        <Popover.Arrow className="fill-border" />
-                                      </Popover.Content>
-                                    </Popover.Portal>
-                                  </Popover.Root>
-                                </div>
-                                {proxies && proxies.length > 0 ? (
-                                  <select
-                                    value={proxyId}
-                                    onChange={e => setProxyId(e.target.value)}
-                                    className="w-full rounded-lg bg-background border border-input px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                                  >
-                                    <option value="">No proxy (Use server IP)</option>
-                                    {proxies.map((p: any) => (
-                                      <option key={p.id} value={p.id}>
-                                        {p.provider} — {p.host}:{p.port}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <div className="text-[10px] text-muted-foreground bg-muted/50 p-2.5 rounded-lg border border-border/50">
-                                    No proxies configured. Running without proxy is riskier but supported.
+                                        <option value="">No proxy (Use server IP)</option>
+                                        {proxies.map((p: any) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.provider} — {p.host}:{p.port}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <div className="text-[10px] text-muted-foreground bg-muted/50 p-2.5 rounded-lg border border-border/50">
+                                        No proxies configured. Running without proxy is riskier but supported.
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                </AdvancedSettingsPanel>
                               </div>
 
                               {error && (

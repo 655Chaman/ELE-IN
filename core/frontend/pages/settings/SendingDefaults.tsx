@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Send, Info, Loader2, AlertCircle, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import useSWR from "swr";
-import { toast } from "sonner";
+import { toast } from "sonner"
+import { friendlyToast } from "../../components/FriendlyError";
 import { motion, AnimatePresence } from "motion/react";
 import SpotlightCard from "@/components/SpotlightCard";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
@@ -67,7 +68,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
       setShowSuccess(true);
       successTimerRef.current = setTimeout(() => setShowSuccess(false), 5000);
     } catch (e: any) {
-      toast.error(e.message || "Failed to save");
+      friendlyToast('Failed to save sending defaults — please try again.', e);
     } finally {
       setSaving(false);
     }

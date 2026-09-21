@@ -2,7 +2,8 @@ import useSWR from "swr";
 
 import { useState, useEffect } from "react";
 import { Info, Loader2, Save, Check, Clock, Hash, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "sonner"
+import { friendlyToast } from "../../components/FriendlyError";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { motion, AnimatePresence } from "motion/react";
 import { format } from "date-fns";
@@ -84,7 +85,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
       await refreshWorkspaces();
       setTimeout(() => setSavedSuccess(false), 2000);
     } catch (e: any) {
-      toast.error(e.message || "Failed to save workspace profile — try again");
+      friendlyToast('Failed to save workspace profile — please try again.', e);
     } finally {
       setSaving(false);
     }

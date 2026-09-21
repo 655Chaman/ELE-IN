@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { fetcher, fetchWithAuth } from '@/lib/apiClient';
 import { toast } from 'sonner';
+import { friendlyToast } from '../../core/frontend/components/FriendlyError';
 import { Plus, Trash2, Shield, UserPlus, Building2 } from 'lucide-react';
 
 interface AgencyMember {
@@ -69,7 +70,7 @@ export function EleInAgencySettings() {
       loadAgencyData();
       refreshWorkspaces(); // Refresh global workspaces so the switcher gets the new one
     } catch (e: any) {
-      toast.error(e.message || 'Failed to create client');
+      friendlyToast('Failed to create client — please try again.', e);
     }
   };
 
@@ -83,10 +84,11 @@ export function EleInAgencySettings() {
         body: JSON.stringify({ email: newMemberEmail.trim(), role: newMemberRole })
       });
       toast.success('Member invited');
+      toast.success('Invitation sent');
       setNewMemberEmail('');
       loadAgencyData();
     } catch (e: any) {
-      toast.error(e.message || 'Failed to invite member');
+      friendlyToast('Failed to invite member — please try again.', e);
     }
   };
 

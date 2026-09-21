@@ -21,7 +21,7 @@ export function MFASetupPage() {
       setFactorId(data.id)
       setStep('scan')
     } catch (e: any) {
-      setError(e.message || 'Failed to start enrollment')
+      setError('Enrollment failed — please try again.')
     } finally {
       setLoading(false)
     }
@@ -51,7 +51,7 @@ export function MFASetupPage() {
         }
       }, 2000)
     } catch (e: any) {
-      setError(e.message || 'Invalid code. Please try again.')
+      setError('Invalid code — please try again.')
     } finally {
       setLoading(false)
     }

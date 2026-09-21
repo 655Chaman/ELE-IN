@@ -4,7 +4,8 @@ import {
   Shield, Mail, Crown, User as UserIcon, Trash2, AlertTriangle, Clock
 } from "lucide-react";
 import useSWR from "swr";
-import { toast } from "sonner";
+import { toast } from "sonner"
+import { friendlyToast } from "../../components/FriendlyError";
 import SpotlightCard from "@/components/SpotlightCard";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
@@ -93,7 +94,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
       setShowInviteForm(false);
       mutate();
     } catch (e: any) {
-      toast.error(e.message || "Failed to send invite");
+      friendlyToast('Failed to send invite — please try again.', e);
     } finally {
       setSending(false);
       isSubmittingRef.current = false;
@@ -127,7 +128,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
       toast.success("Role updated successfully");
       mutate();
     } catch (e: any) {
-      toast.error(e.message || "Failed to update role");
+      friendlyToast('Failed to update role — please try again.', e);
     } finally {
       setActingOn(null);
     }
@@ -157,7 +158,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
       toast.success(`${displayName} has been removed`);
       mutate();
     } catch (e: any) {
-      toast.error(e.message || "Failed to remove member");
+      friendlyToast('Failed to remove member — please try again.', e);
     } finally {
       setActingOn(null);
     }

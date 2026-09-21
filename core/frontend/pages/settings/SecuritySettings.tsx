@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Shield, ShieldAlert, ShieldCheck, Loader2, AlertTriangle, CheckCircle2, Lock, Unlock } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "sonner"
+import { friendlyToast } from "../../components/FriendlyError";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { motion, AnimatePresence } from "motion/react";
 import SpotlightCard from "@/components/SpotlightCard";
@@ -89,7 +90,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
       
       mutate();
     } catch (e: any) {
-      toast.error(e.message || "Failed to update security settings");
+      friendlyToast('Failed to update security settings — please try again.', e);
       // Revert local state
       setRequire2fa(previousValue);
       if (newValue) {

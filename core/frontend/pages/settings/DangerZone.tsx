@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { AlertTriangle, Trash2, Loader2, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "sonner"
+import { friendlyToast } from "../../components/FriendlyError";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { motion, AnimatePresence } from "motion/react";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
@@ -38,7 +39,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
       setDeletionRequested(false);
       mutateData();
     } catch (e: any) {
-      toast.error(e.message || "Failed to cancel deletion");
+      friendlyToast('Failed to cancel deletion — please try again.', e);
     } finally {
       setCancelling(false);
     }
@@ -88,7 +89,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
       toast.success("Workspace deletion requested. 14-day grace period started.");
       mutateData();
     } catch (e: any) {
-      toast.error(e.message || "Failed to request deletion");
+      friendlyToast('Failed to request deletion — please try again.', e);
     } finally {
       setRequesting(false);
       setCountdown(null);

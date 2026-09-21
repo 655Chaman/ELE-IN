@@ -3,6 +3,7 @@ import { motion } from "motion/react"
 import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
+import { friendlyToast } from "../../components/FriendlyError"
 import {
   LayoutTemplate, Search, Copy, CheckCircle2, User, Download, Clock
 } from "lucide-react"
@@ -34,7 +35,7 @@ export function EleInTemplates() {
       mutateMine()
       mutateCommunity()
     } catch (e: any) {
-      toast.error(e.message || "Failed to clone template")
+      friendlyToast('Failed to clone template.', e)
     }
   }
 

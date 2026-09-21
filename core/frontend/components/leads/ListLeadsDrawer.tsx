@@ -3,6 +3,7 @@ import useSWR from "swr"
 import { Users, X, Trash2 } from "lucide-react"
 import { Linkedin } from "../icons/Linkedin"
 import { toast } from "sonner"
+import { friendlyToast } from "../FriendlyError"
 import { fetchWithAuth, fetcher } from "@/lib/apiClient"
 import { TableSkeleton } from "../EleInSkeleton"
 import { Virtuoso } from "react-virtuoso"
@@ -19,7 +20,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
       mutateLists() // Note: the realtime channel will also update lists, but doing it here is fine.
       toast.success("Lead removed from list")
     } catch (e: any) {
-      toast.error(e.message || "Failed to remove lead")
+      friendlyToast('Failed to remove lead — please try again.', e)
     }
   }
 

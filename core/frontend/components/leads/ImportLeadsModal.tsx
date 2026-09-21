@@ -95,7 +95,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
       }
       onAdd(); onClose();
     } catch (e: any) { 
-      let errMsg = e.message || "Failed to upload";
+      let errMsg = "Failed to upload — please check your file and try again.";
       try {
         const parsed = JSON.parse(errMsg);
         if (parsed.detail) errMsg = parsed.detail;

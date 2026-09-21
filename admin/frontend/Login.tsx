@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from "@/lib/supabase";
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, Building2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
+import { friendlyToast } from '../../core/frontend/components/FriendlyError';
 import { useAuth } from "@/lib/AuthContext";
 
 export function Login() {
@@ -41,7 +42,8 @@ export function Login() {
         toast.success('Welcome back!');
       }
     } catch (error: any) {
-      toast.error(error.message || 'An error occurred during authentication');
+      console.error(error);
+      friendlyToast('Authentication failed — please check your credentials.', error);
     } finally {
       setLoading(false);
     }

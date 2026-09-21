@@ -1,5 +1,6 @@
 import { UploadCloud } from "lucide-react"
 import { toast } from "sonner"
+import { friendlyToast } from "../FriendlyError"
 import { useRef, useState } from "react"
 import { fetchWithAuth } from "@/lib/apiClient"
 
@@ -24,7 +25,7 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
       toast.success("Document uploading! Processing in background...");
       mutateAssets();
     } catch (e: any) {
-      toast.error(e.message || "Failed to upload document");
+      friendlyToast('Failed to upload document — please try again.', e);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

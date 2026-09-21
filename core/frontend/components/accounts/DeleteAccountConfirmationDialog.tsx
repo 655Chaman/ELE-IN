@@ -28,7 +28,7 @@ export default function DeleteAccountConfirmationDialog({
       await onConfirm(accountId);
       onOpenChange(false);
     } catch (e: any) {
-      setDeleteError(e.message || "Failed to remove account");
+      setDeleteError('Failed to remove account — please try again.');
     } finally {
       setIsDeleting(false);
     }
