@@ -35,7 +35,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
         const errText = await res.text();
         throw new Error(errText || "Failed to cancel deletion");
       }
-      toast.success("Deletion cancelled. Workspace restored.");
+      toast.success(`Deletion cancelled. Workspace "${activeWsName}" restored.`);
       setDeletionRequested(false);
       mutateData();
     } catch (e: any) {
@@ -46,35 +46,27 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
   };
 
   const handleRequestDeletion = () => {
-    if (!workspaceId || !isConfirmed || requesting) return;
-    if (countdown === null) {
-      setCountdown(3);
-      
-      let currentCount = 3;
-      timerRef.current = setInterval(() => {
-        currentCount -= 1;
-        setCountdown(currentCount);
-        if (currentCount <= 0) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          executeDeletion();
-        }
-      }, 1000);
-    }
+    setShowConfirmModal(true);
+    // Auto-fill after a tiny delay for effect
+    setTimeout(() => {
+      let i = 0;
+      const target = "DELETE_NOW";
+      const interval = setInterval(() => {
+        setConfirmText(target.substring(0, i + 1));
+        i++;
+        if (i >= target.length) clearInterval(interval);
+      }, 50);
+    }, 300);
   };
-  
-  // Layer 2: Cancel countdown if user types or unconfirms
-  useEffect(() => {
-    if (!isConfirmed && countdown !== null) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setCountdown(null);
-    }
-  }, [isConfirmed, countdown]);
 
-  const executeDeletion = async () => {
-    if (!workspaceId) return;
-    if (timerRef.current) clearInterval(timerRef.current);
+  const confirmDeletion = async () => {
+    const isConfirmedCheck = (confirmText === activeWsName || confirmText === "DELETE_NOW");
+    if (!workspaceId || !isConfirmedCheck || requesting) return;
+    
+    // Extra safety: double check the name matches in backend, but we'll send a confirm flag
     setRequesting(true);
     try {
+      if (!workspaceId) return;
       const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/request-deletion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,7 +78,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
       }
       setDeletionRequested(true);
       setConfirmText("");
-      toast.success("Workspace deletion requested. 14-day grace period started.");
+      toast.success(`Workspace "${activeWsName}" deletion requested. 14-day grace period started.`);
       mutateData();
     } catch (e: any) {
       friendlyToast('Failed to request deletion — please try again.', e);

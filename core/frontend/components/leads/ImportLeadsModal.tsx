@@ -65,7 +65,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
           body: JSON.stringify({ name, url: liveUrl, account_id: activeAccount.id, max_results: Math.min(100, budget.remaining), target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
-        toast.success("Native search import started! Leads will appear shortly.")
+        toast.success(`Native search import started for "${name}"! Leads will appear shortly.`)
       } else if (method === "csv") {
         const formData = new FormData()
         formData.append("file", file!)
@@ -76,7 +76,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         formData.append("clean_data", String(cleanData))
         const res = await fetchWithAuth("/api/elein/leads/upload_csv", { method: "POST", body: formData })
         if (!res.ok) throw new Error(await res.text())
-        toast.success(`CSV Import started in the background!`)
+        toast.success(`CSV Import started in the background for "${name}"!`)
       } else if (method === "linkedin_url") {
         const urls = urlList.split("\n").map(u => u.trim()).filter(Boolean)
         if (urls.length === 0) { toast.error("Please enter at least one URL"); setIsSubmitting(false); return; }
@@ -84,14 +84,15 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls, target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
-        toast.success("URLs uploaded successfully!")
+        const data = await res.json()
+        toast.success(`${data.row_count || urls.length} URLs uploaded successfully to "${name}"!`)
       } else if (method === "sales_nav") {
         if (!salesNavUrl.trim()) { toast.error("Please enter a Sales Navigator URL"); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_sales_nav", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl, target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
-        toast.success("Sales Navigator import started!")
+        toast.success(`Sales Navigator import started for "${name}"!`)
       }
       onAdd(); onClose();
     } catch (e: any) { 

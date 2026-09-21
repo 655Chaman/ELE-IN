@@ -12,13 +12,14 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
   const { data: leads, error, isLoading, mutate } = useSWR(`/api/leads/lists/${list.id}/leads`, fetcher)
 
   const handleRemoveLead = async (leadId: string) => {
+    const lead = leads?.find((l: any) => l.id === leadId);
     try {
       // Optimistic update
       mutate((current: any) => current?.filter((l: any) => l.id !== leadId), false)
       
       await fetchWithAuth(`/api/leads/lists/${list.id}/leads/${leadId}`, { method: 'DELETE' })
       mutateLists() // Note: the realtime channel will also update lists, but doing it here is fine.
-      toast.success("Lead removed from list")
+      toast.success(`${lead?.first_name || 'Lead'} ${lead?.last_name || ''}`.trim() + ` removed from "${list.name}"`)
     } catch (e: any) {
       friendlyToast('Failed to remove lead — please try again.', e)
     }

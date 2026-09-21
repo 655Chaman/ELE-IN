@@ -545,7 +545,7 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
         if (json.nodes && json.edges) {
           loadTree(dagToTree(json.nodes, json.edges))
           setMode("build")
-          toast.success("Template imported successfully")
+          toast.success(`Template "${file.name}" imported successfully`)
         } else {
           throw new Error("Invalid format")
         }
@@ -563,7 +563,7 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     if (template) {
       const tree = dagToTree(template.nodes, template.edges)
       loadTree(tree)
-      toast.success("Template loaded successfully.")
+      toast.success(`Template "${template.name}" loaded successfully.`)
     }
     setMode("build")
     setShowBrowser(false)

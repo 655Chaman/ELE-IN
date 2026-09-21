@@ -40,11 +40,12 @@ export function EleInAdmin() {
   const [isAddingKey, setIsAddingKey] = useState(false)
 
   const handleAction = async (id: string, action: "approve" | "reject") => {
+    const template = safeTemplates.find(t => t.id === id)
     setLoadingId(id)
     try {
       const res = await fetchWithAuth(`/api/assets/templates/admin/${id}/${action}`, { method: "POST" })
       if (!res.ok) throw new Error(`Failed to ${action} template. Check if you have the SUPABASE_SERVICE_KEY configured.`)
-      toast.success(`Template ${action}d successfully!`)
+      toast.success(`Template "${template?.name || 'Unknown'}" ${action}d successfully!`)
       mutateTemplates()
     } catch (e: any) {
       friendlyToast('Failed to update template status — please try again.', e)
@@ -55,7 +56,7 @@ export function EleInAdmin() {
 
   const handleAddKey = async () => {
     if (!newKey.trim().startsWith("nvapi-")) {
-      toast.error("Invalid key format. Must start with nvapi-")
+      toast.error("Invalid NVIDIA API Key format")
       return
     }
     setIsAddingKey(true)
@@ -70,7 +71,7 @@ export function EleInAdmin() {
         try { const d = await res.json(); err = d.detail || err; } catch(e) {}
         throw new Error(err)
       }
-      toast.success("NVIDIA API key added to pool!")
+      toast.success(`NVIDIA API key (${newKey.trim().substring(0, 12)}...) added to pool!`)
       setNewKey("")
       mutateKeys()
     } catch (e: any) {
@@ -81,9 +82,10 @@ export function EleInAdmin() {
   }
 
   const handleDeleteKey = async (id: string) => {
+    const keyObj = safeKeys.find(k => k.id === id)
     try {
       await fetchWithAuth(`/api/settings/admin/api-keys/${id}`, { method: "DELETE" })
-      toast.success("Key removed from pool")
+      toast.success(`Key (${keyObj?.api_key.substring(0, 12)}...) removed from pool`)
       mutateKeys()
     } catch (e: any) {
       toast.error("Failed to delete key")
@@ -91,9 +93,10 @@ export function EleInAdmin() {
   }
 
   const handleResetKey = async (id: string) => {
+    const keyObj = safeKeys.find(k => k.id === id)
     try {
       await fetchWithAuth(`/api/settings/admin/api-keys/${id}/reset`, { method: "PUT" })
-      toast.success("Key status reset to active")
+      toast.success(`Key (${keyObj?.api_key.substring(0, 12)}...) status reset to active`)
       mutateKeys()
     } catch (e: any) {
       toast.error("Failed to reset key")

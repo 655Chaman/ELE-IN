@@ -57,7 +57,7 @@ export function usePersonaForm(personas: any[], mutatePersonas: any, mutateObjec
       });
       
       if (res.ok) {
-        toast.success(editingPersonaId ? "Persona updated!" : "Persona created!");
+        toast.success(editingPersonaId ? `Persona "${personaForm.title}" updated!` : `Persona "${personaForm.title}" created!`);
         setIsPersonaModalOpen(false);
         mutatePersonas();
       } else {
@@ -86,7 +86,7 @@ export function usePersonaForm(personas: any[], mutatePersonas: any, mutateObjec
         body: JSON.stringify({ title: "New Target Persona", painPoints: ["Missing pipeline", "Low reply rates"] })
       });
       if (res.ok) {
-        toast.success("Persona created!");
+        toast.success(`Persona "New Target Persona" created!`);
         mutatePersonas(); mutateObjections();
       } else {
         mutatePersonas();
@@ -98,11 +98,11 @@ export function usePersonaForm(personas: any[], mutatePersonas: any, mutateObjec
     }
   };
 
-  const handleDeletePersona = async (id: string) => {
+  const handleDeletePersona = async (id: string, title?: string) => {
     try {
       const res = await fetchWithAuth(`/api/knowledge/personas/${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Persona deleted!");
+        toast.success(title ? `Persona "${title}" deleted!` : "Persona deleted!");
         mutatePersonas(); mutateObjections();
       }
     } catch (e) {

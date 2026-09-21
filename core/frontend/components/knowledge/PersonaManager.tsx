@@ -72,7 +72,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity translate-x-2 group-hover:translate-x-0">
                         <button onClick={() => openPersonaModal(persona)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-muted-foreground hover:text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><Edit2 size={14} /></button>
-                        <button onClick={() => handleDeletePersona(persona.id)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 size={14} /></button>
+                        <button onClick={() => handleDeletePersona(persona.id, persona.title)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </div>
                     
