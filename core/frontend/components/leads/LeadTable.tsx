@@ -1,4 +1,4 @@
-import { motion } from "motion/react"
+import { motion, AnimatePresence } from "motion/react"
 import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download } from "lucide-react"
 import { TableSkeleton } from "../EleInSkeleton"
 import SpotlightCard from "../SpotlightCard"
@@ -93,11 +93,13 @@ export function LeadTable({
       <div className="flex items-center justify-between mb-4 mt-2">
         <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Showing {lists.length} list{lists.length !== 1 ? 's' : ''}</span>
       </div>
+      <AnimatePresence>
       {lists.map((list, i) => (
         <motion.div
           key={list.id}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0, overflow: 'hidden', transition: { duration: 0.25 } }}
           transition={{ delay: i * 0.06 }}
         >
           <SpotlightCard className="relative overflow-hidden flex items-center gap-4 px-5 py-4 border border-border/50 bg-background/50 backdrop-blur-md cursor-pointer hover:border-primary/30 transition-transform hover:scale-[1.005] group" onClick={() => onSelectList(list)}>
@@ -189,6 +191,7 @@ export function LeadTable({
           </SpotlightCard>
         </motion.div>
       ))}
+      </AnimatePresence>
     </div>
   )
 }

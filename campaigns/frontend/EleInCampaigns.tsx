@@ -4,7 +4,7 @@ import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { motion } from "motion/react"
+import { motion, AnimatePresence } from "motion/react"
 import { Link, useNavigate } from "react-router-dom"
 import {
   Megaphone, Plus, Search, Play, Pause,
@@ -79,7 +79,7 @@ export function EleInCampaigns() {
     const action = campaign.status === 'ACTIVE' ? 'pause' : 'activate';
     try {
       await fetchWithAuth(`/api/elein/campaigns/${id}/${action}`, { method: 'PATCH' });
-      toast.success(action === 'activate' ? "Campaign activated" : "Campaign paused");
+      toast.success(action === 'activate' ? `Campaign "${campaign.name}" activated` : `Campaign "${campaign.name}" paused`);
       mutate();
     } catch (e: any) {
       toast.error(e.message);
@@ -87,6 +87,7 @@ export function EleInCampaigns() {
   }
   
   const remove = async (id: string) => {
+    const campaign = campaigns.find(c => c.id === id);
     setConfirmModal({
       isOpen: true,
       title: "Delete Campaign",
@@ -94,7 +95,7 @@ export function EleInCampaigns() {
       onConfirm: async () => {
         try {
           await fetchWithAuth(`/api/elein/campaigns/${id}`, { method: 'DELETE' });
-          toast.success("Campaign deleted");
+          toast.success(`Campaign "${campaign?.name || 'Unknown'}" deleted`);
           mutate();
         } catch (e: any) {
           toast.error(e.message);
@@ -289,6 +290,7 @@ export function EleInCampaigns() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
+                    <AnimatePresence>
                     {filtered.map((c, i) => {
                       const statusCfg = STATUS_CONFIG[c.status] || STATUS_CONFIG["DRAFT"]
                       const leadCount = c.leads_total || 0
@@ -298,7 +300,14 @@ export function EleInCampaigns() {
                       const dateStr = c.created_at ? new Date(c.created_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : "Just now"
 
                       return (
-                        <tr key={c.id} className="hover:bg-muted/20 transition-colors group">
+                        <motion.tr
+                          key={c.id}
+                          className="hover:bg-muted/20 transition-colors group"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -16, transition: { duration: 0.2 } }}
+                          transition={{ duration: 0.22, delay: i * 0.03 }}
+                        >
                           {/* Status */}
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
@@ -386,9 +395,10 @@ export function EleInCampaigns() {
                               </button>
                             </div>
                           </td>
-                        </tr>
+                        </motion.tr>
                       )
                     })}
+                    </AnimatePresence>
                   </tbody>
                 </table>
               </div>
