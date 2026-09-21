@@ -695,32 +695,34 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
   return (
     <div className="flex-1 overflow-auto p-8 flex flex-col items-center min-h-0">
       <div className="w-full max-w-4xl mx-auto">
-        <div className="text-center mb-6 mt-6">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground mb-3">Sender Rotation</h2>
-          <p className="text-muted-foreground">Select one or multiple LinkedIn accounts to distribute the sending volume.</p>
+        <div className="text-center mb-12 mt-6">
+          <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">Sender Rotation</h2>
+          <p className="text-sm text-muted-foreground">Select one or multiple LinkedIn accounts to distribute the sending volume.</p>
         </div>
 
 
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-8 flex gap-4 max-w-3xl mx-auto text-left shadow-sm">
-          <div className="mt-0.5">
-             <AlertTriangle size={20} className="text-primary" />
+        <div className="max-w-3xl mx-auto space-y-4 mb-10">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex gap-4 text-left shadow-sm">
+            <div className="mt-0.5 shrink-0">
+               <AlertTriangle size={20} className="text-destructive" />
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-destructive mb-1">CRITICAL: Do Not Manually Send Connections</h4>
+              <p className="text-xs text-destructive/90 leading-relaxed">
+                Our safety engine strictly enforces daily limits. However, we cannot track actions you perform manually on your phone or browser. If you manually send connections while this campaign is active, you will exceed LinkedIn&apos;s limits and risk permanently banning your account.
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="text-sm font-bold text-primary mb-1">CRITICAL: Do Not Manually Send Connections</h4>
-            <p className="text-xs text-primary/80 leading-relaxed">
-              Our safety engine strictly enforces daily limits. However, we cannot track actions you perform manually on your phone or browser. If you manually send connections while this campaign is active, you will exceed LinkedIn&apos;s limits and risk permanently banning your account.
-            </p>
-          </div>
-        </div>
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-8 flex gap-4 max-w-3xl mx-auto text-left shadow-sm">
-          <div className="mt-0.5">
-             <Zap size={20} className="text-primary fill-primary/20" />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-primary mb-1">Smart Load Balancing is Active</h4>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              When multiple senders are selected, the engine acts as a load-balancer. It calculates real-time capacity across all active campaigns and routes each outreach to the account with the most remaining headroom. This perfectly distributes volume while strictly protecting each account from shadow-bans.
-            </p>
+          <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex gap-4 text-left shadow-sm">
+            <div className="mt-0.5 shrink-0">
+               <Zap size={20} className="text-primary fill-primary/20" />
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-primary mb-1">Smart Load Balancing is Active</h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                When multiple senders are selected, the engine acts as a load-balancer. It calculates real-time capacity across all active campaigns and routes each outreach to the account with the most remaining headroom. This perfectly distributes volume while strictly protecting each account from shadow-bans.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -775,7 +777,7 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-foreground text-sm">{acc.name}</h4>
+                          <h4 className="font-semibold text-foreground text-sm">{acc.name}</h4>
                           <SafetyIndicator accountId={acc.id} status={acc.status} />
                         </div>
                         {acc.is_warmup && (
@@ -792,7 +794,7 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
                     return (
                       <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border/50">
                         {isRestricted && (
-                           <p className="text-[10px] text-primary leading-tight bg-primary/10 p-2 rounded-md">
+                           <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight bg-amber-500/10 border border-amber-500/20 p-2 rounded-md">
                              ⚠️ This account is in warmup. It can only send <strong>{limits.connLimit} connections</strong> and <strong>{limits.msgLimit} messages</strong> today to prevent shadow-bans.
                            </p>
                         )}
