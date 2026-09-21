@@ -95,7 +95,7 @@ export const useHRTreeStore = create<EITreeStore>()(persist((set) => ({
     senders: [],
     senderIds: [],
     leads: [],
-    timezone: 'UTC',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     schedule: {},
     limit: 50,
     provider: 'any',
@@ -295,7 +295,7 @@ export const useHRTreeStore = create<EITreeStore>()(persist((set) => ({
 
   selectNode: (id) => set({ selectedNodeId: id }),
   
-  reset: () => set({ rootNodes: [], stickyNotes: [], selectedNodeId: null, history: [], future: [], formState: { campaignName: '', senders: [], senderIds: [], leads: [], timezone: 'UTC', schedule: {}, limit: 50, provider: 'any', leadListId: '', excludeListId: '' }, campaignStep: 0 }),
+  reset: () => set({ rootNodes: [], stickyNotes: [], selectedNodeId: null, history: [], future: [], formState: { campaignName: '', senders: [], senderIds: [], leads: [], timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', schedule: {}, limit: 50, provider: 'any', leadListId: '', excludeListId: '' }, campaignStep: 0 }),
   
   loadTree: (rootNodes, stickyNotes) => set({ rootNodes, stickyNotes: stickyNotes || [], selectedNodeId: null, history: [], future: [] }),
 

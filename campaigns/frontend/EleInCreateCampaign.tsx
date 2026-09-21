@@ -19,6 +19,7 @@ import { EISequenceTree } from "@/components/elein/EISequenceTree"
 import { LinearTemplatePreview } from "@/components/elein/LinearTemplatePreview"
 import { Linkedin } from "@/components/icons/Linkedin"
 import SpotlightCard from "@/components/SpotlightCard"
+import { AdvancedSettingsPanel } from "@/components/AdvancedSettingsPanel"
 import StarBorder from "@/components/StarBorder"
 import ShinyText from "@/components/ShinyText"
 import SafetyIndicator, { computeSafetyIndicatorLocally } from "@/components/accounts/SafetyIndicator"
@@ -111,6 +112,12 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
 function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: string, v: any) => void; onNext?: () => void }) {
   const { data, error, isLoading, mutate } = useSWR("/api/elein/leads/lists", fetcher)
   const lists = data || []
+  
+  useEffect(() => {
+    if (lists.length === 1 && !state.leadListId) {
+      onChange("leadListId", lists[0].id)
+    }
+  }, [lists, state.leadListId, onChange])
   
   const [timedOut, setTimedOut] = useState(false)
   useEffect(() => {
@@ -225,33 +232,34 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
           </div>
         </div>
         <div>
-          <label className="block text-xs font-semibold text-foreground mb-3">Global Deduplication (Always On)</label>
-          <div className="space-y-3 bg-primary/5 p-4 rounded-xl border border-primary/20">
-            <div className="flex items-start gap-3 opacity-80">
-              <div className="mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 bg-primary border-primary">
-                <Check size={10} className="text-white" strokeWidth={3} />
-              </div>
-              <span className="text-xs text-foreground font-medium leading-relaxed">
-                Exclude leads currently active in other campaigns
-              </span>
-            </div>
-            <div className="flex items-start gap-3">
-              <label className="flex items-start gap-3 cursor-pointer group w-full">
-                <div
-                  onClick={() => onChange("excludeOtherCampaigns", !state["excludeOtherCampaigns"])}
-                  className={cn(
-                    "mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
-                    state["excludeOtherCampaigns"] ? "bg-primary border-primary" : "border-border hover:border-primary/50"
-                  )}
-                >
-                  {state["excludeOtherCampaigns"] && <Check size={10} className="text-white" strokeWidth={3} />}
+          <AdvancedSettingsPanel label="Advanced: Global Deduplication">
+            <div className="space-y-3 bg-primary/5 p-4 rounded-xl border border-primary/20">
+              <div className="flex items-start gap-3 opacity-80">
+                <div className="mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 bg-primary border-primary">
+                  <Check size={10} className="text-white" strokeWidth={3} />
                 </div>
-                <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground transition-colors">
-                  Also exclude leads contacted in the past (completed campaigns)
+                <span className="text-xs text-foreground font-medium leading-relaxed">
+                  Exclude leads currently active in other campaigns
                 </span>
-              </label>
+              </div>
+              <div className="flex items-start gap-3">
+                <label className="flex items-start gap-3 cursor-pointer group w-full">
+                  <div
+                    onClick={() => onChange("excludeOtherCampaigns", !state["excludeOtherCampaigns"])}
+                    className={cn(
+                      "mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
+                      state["excludeOtherCampaigns"] ? "bg-primary border-primary" : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    {state["excludeOtherCampaigns"] && <Check size={10} className="text-white" strokeWidth={3} />}
+                  </div>
+                  <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground transition-colors">
+                    Also exclude leads contacted in the past (completed campaigns)
+                  </span>
+                </label>
+              </div>
             </div>
-          </div>
+          </AdvancedSettingsPanel>
         </div>
         </div>
       </SpotlightCard>
@@ -268,7 +276,13 @@ function TemplateBrowser({ onClose, onImport }: {
   const customTemplates = useTemplatesStore(s => s.customTemplates)
   const allTemplates = [...HR_TEMPLATES, ...customTemplates]
   
-  const [selected, setSelected] = useState(allTemplates.length > 0 ? allTemplates[0].id : "")
+  const getInitialSelection = () => {
+    if (allTemplates.length === 1) return allTemplates[0].id;
+    const recommended = allTemplates.find(t => t.tags && (t.tags.includes("recommended") || t.tags.includes("onboarding")));
+    if (recommended) return recommended.id;
+    return allTemplates.length > 0 ? allTemplates[0].id : "";
+  };
+  const [selected, setSelected] = useState(getInitialSelection())
   const [search, setSearch] = useState("")
   const [activeTag, setActiveTag] = useState("all")
 
@@ -662,6 +676,12 @@ function calculateDailyLimits(acc: any) {
 function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v: any) => void }) {
   const navigate = useNavigate();
   const { data: accounts, error } = useSWR("/api/elein/accounts", fetcher)
+  
+  useEffect(() => {
+    if (accounts && accounts.length === 1 && (!state.senderIds || state.senderIds.length === 0)) {
+      onChange("senderIds", [accounts[0].id])
+    }
+  }, [accounts, state.senderIds, onChange])
 
   const toggleSender = (id: string) => {
     const current = state.senderIds || []

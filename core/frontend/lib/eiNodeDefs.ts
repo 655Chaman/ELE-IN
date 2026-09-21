@@ -325,10 +325,10 @@ export const HR_NODE_DEFS = {
     fields: [
       { key: "body", label: "Message body", type: "textarea", maxChars: 8000, placeholder: "Hey {{first_name}}, ..." },
       { key: "fallback", label: "Fallback message", type: "textarea", maxChars: 8000, placeholder: "Fallback if primary fails..." },
-      { key: "variant_b", label: "Variant B (optional A/B test)", type: "textarea", maxChars: 8000, placeholder: "Alternative version..." },
-      { key: "variant_c", label: "Variant C (optional)", type: "textarea", maxChars: 8000, placeholder: "Third variant..." },
-      { key: "attachment_type", label: "Attachment", type: "select", options: ["None", "Document", "Image"] },
-      { key: "attachment_url", label: "Attachment URL", type: "input", placeholder: "https://...", showIf: "attachment_type!=None" },
+      { key: "variant_b", label: "Variant B (optional A/B test)", type: "textarea", maxChars: 8000, placeholder: "Alternative version...", advanced: true },
+      { key: "variant_c", label: "Variant C (optional)", type: "textarea", maxChars: 8000, placeholder: "Third variant...", advanced: true },
+      { key: "attachment_type", label: "Attachment", type: "select", options: ["None", "Document", "Image"], advanced: true },
+      { key: "attachment_url", label: "Attachment URL", type: "input", placeholder: "https://...", showIf: "attachment_type!=None", advanced: true },
     ],
     versioned: true,
   },
@@ -347,7 +347,7 @@ export const HR_NODE_DEFS = {
 • "Ask if they struggle with CRM data entry. Our AI agent solves this."
 • "Congratulate them on their new role and gently introduce our analytics tool."` },
       { key: "tone", label: "How should the AI sound?", type: "select", options: ["Friendly & Casual", "Professional & Direct", "Short & Punchy", "Funny & Witty"] },
-      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)" },
+      { key: "ai_model", label: "AI Routing Engine (Model)", type: "select", options: ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"], default: "Auto-Route (Recommended)", advanced: true },
     ],
   },
 

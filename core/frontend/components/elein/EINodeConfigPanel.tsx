@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 
 import { usePickerStore } from "./EISequenceTree"
+import { AdvancedSettingsPanel } from "@/components/AdvancedSettingsPanel"
 
 import { useHRTreeStore } from "@campaigns/eiTreeStore"
 import { HR_NODE_DEFS } from "@/lib/eiNodeDefs"
@@ -1165,12 +1166,25 @@ function DynamicNodeConfig({ data, onChange, def }: { data: any; onChange: (k: s
         </div>
       )}
       
-      {def.fields?.map((f: any) => {
+      {def.fields && (() => {
+        const standardFields = def.fields.filter((f: any) => !f.advanced);
+        const advancedFields = def.fields.filter((f: any) => f.advanced);
+        
+        const renderField = (f: any) => {
         if (f.showIf) {
-            const [depKey, depVal] = f.showIf.split("==");
-            const targetField = def.fields.find((df: any) => df.key === depKey);
-            const currentVal = data[depKey] !== undefined ? data[depKey] : (targetField?.default || targetField?.options?.[0]);
-            if (String(currentVal) !== String(depVal)) return null;
+            let [depKey, depVal] = f.showIf.split("==");
+            let targetField = def.fields.find((df: any) => df.key === depKey);
+            let currentVal = data[depKey] !== undefined ? data[depKey] : (targetField?.default || targetField?.options?.[0]);
+            
+            // Handle !=
+            if (f.showIf.includes("!=")) {
+                [depKey, depVal] = f.showIf.split("!=");
+                targetField = def.fields.find((df: any) => df.key === depKey);
+                currentVal = data[depKey] !== undefined ? data[depKey] : (targetField?.default || targetField?.options?.[0]);
+                if (String(currentVal) === String(depVal)) return null;
+            } else {
+                if (String(currentVal) !== String(depVal)) return null;
+            }
         }
         if (f.hideIf) {
             const [depKey, depVal] = f.hideIf.split("==");
@@ -1244,7 +1258,23 @@ function DynamicNodeConfig({ data, onChange, def }: { data: any; onChange: (k: s
           ) : null}
         </div>
         );
-      })}
+      }
+
+        return (
+          <>
+            {standardFields.map(renderField)}
+            {advancedFields.length > 0 && (
+              <div className="mt-4">
+                <AdvancedSettingsPanel label="Advanced Settings">
+                  <div className="space-y-4">
+                    {advancedFields.map(renderField)}
+                  </div>
+                </AdvancedSettingsPanel>
+              </div>
+            )}
+          </>
+        );
+      })()}
       
       {!def.hasDelay && (!def.fields || def.fields.length === 0) && (
         <div className="p-4 rounded-xl bg-background border border-border">
