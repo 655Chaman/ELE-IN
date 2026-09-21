@@ -124,14 +124,14 @@ export function SearchImport() {
         </div>
         <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
           <div
-            className={`h-2 rounded-full transition-all duration-500 ${budget.used / budget.limit > 0.85 ? 'bg-red-500' : budget.used / budget.limit > 0.6 ? 'bg-primary' : 'bg-emerald-500'}`}
+            className={`h-2 rounded-full transition-all duration-500 ${budget.used / budget.limit > 0.85 ? 'bg-destructive' : budget.used / budget.limit > 0.6 ? 'bg-primary' : 'bg-success'}`}
             style={{ width: `${Math.min(100, (budget.used / budget.limit) * 100)}%` }}
           />
         </div>
         <p className="text-[11px] text-muted-foreground mt-2">
           {activeAccount
-            ? <><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />Scraping via <span className="font-medium text-foreground">{activeAccount.name}</span> · {budget.remaining} profiles remaining today</>
-            : <><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5" /><span className="text-red-500 font-medium">No LinkedIn account connected.</span> Go to Accounts first.</>
+            ? <><span className="inline-block w-2 h-2 rounded-full bg-success mr-1.5 animate-pulse" />Scraping via <span className="font-medium text-foreground">{activeAccount.name}</span> · {budget.remaining} profiles remaining today</>
+            : <><span className="inline-block w-2 h-2 rounded-full bg-destructive mr-1.5" /><span className="text-destructive font-medium">No LinkedIn account connected.</span> Go to Accounts first.</>
           }
         </p>
       </div>

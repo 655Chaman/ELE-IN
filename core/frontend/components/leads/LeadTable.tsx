@@ -13,12 +13,12 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string; icon?: boolean; title?: string }> = {
-  completed:       { label: "Completed",       className: "bg-emerald-500/10 text-emerald-600" },
+  completed:       { label: "Completed",       className: "bg-success/10 text-success" },
   importing:       { label: "Importing…",      className: "bg-primary/10 text-primary animate-pulse" },
-  throttled:       { label: "Throttled",       className: "bg-primary/10 text-amber-600" },
-  daily_limit:     { label: "Daily Limit",     className: "bg-primary/10 text-orange-600" },
-  error:           { label: "Error",           className: "bg-red-600 text-white shadow-sm flex items-center gap-1", icon: true, title: "Import failed. Click to retry or re-upload." },
-  session_expired: { label: "Session Expired", className: "bg-red-500/10 text-red-600" },
+  throttled:       { label: "Throttled",       className: "bg-primary/10 text-warning" },
+  daily_limit:     { label: "Daily Limit",     className: "bg-primary/10 text-destructive" },
+  error:           { label: "Error",           className: "bg-destructive text-white shadow-sm flex items-center gap-1", icon: true, title: "Import failed. Click to retry or re-upload." },
+  session_expired: { label: "Session Expired", className: "bg-destructive/10 text-destructive" },
 }
 
 interface LeadTableProps {
@@ -42,7 +42,7 @@ export function LeadTable({
 }: LeadTableProps) {
   if (error) {
     return (
-      <div className="mb-6 flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/10 text-amber-600">
+      <div className="mb-6 flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/10 text-warning">
         <div className="flex items-center gap-2 text-sm font-medium">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           {error instanceof Error ? error.message : String(error) || "Backend connection lost. Retrying..."}
@@ -103,10 +103,10 @@ export function LeadTable({
           <SpotlightCard className="relative overflow-hidden flex items-center gap-4 px-5 py-4 border border-border/50 bg-background/50 backdrop-blur-md cursor-pointer hover:border-primary/30 transition-transform hover:scale-[1.005] group" onClick={() => onSelectList(list)}>
             <div className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
               switch(list.type) {
-                case 'csv': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+                case 'csv': return 'text-success bg-success/10 border-success/20';
                 case 'sales_nav': return 'text-primary bg-primary/10 border-primary/20';
-                case 'search': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
-                case 'linkedin_url': return 'text-blue-500 bg-primary/10 border-primary/20';
+                case 'search': return 'text-primary bg-primary/10 border-primary/20';
+                case 'linkedin_url': return 'text-primary bg-primary/10 border-primary/20';
                 case 'hubspot': return 'text-primary bg-primary/10 border-primary/20';
                 default: return 'text-primary bg-primary/10 border-primary/20';
               }
@@ -152,11 +152,11 @@ export function LeadTable({
                         {list.type === "csv" ? "Processing CSV..." : "Extracting profiles..."}
                       </span>
                     )
-                    if (st === 'throttled') return <span className="flex items-center gap-1.5 text-amber-600"><AlertCircle size={11} /> LinkedIn throttled — will retry</span>
-                    if (st === 'daily_limit') return <span className="flex items-center gap-1.5 text-orange-600"><AlertCircle size={11} /> Daily limit reached</span>
-                    if (st === 'session_expired') return <span className="flex items-center gap-1.5 text-red-600"><AlertCircle size={11} /> LinkedIn session expired — reconnect account</span>
+                    if (st === 'throttled') return <span className="flex items-center gap-1.5 text-warning"><AlertCircle size={11} /> LinkedIn throttled — will retry</span>
+                    if (st === 'daily_limit') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> Daily limit reached</span>
+                    if (st === 'session_expired') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> LinkedIn session expired — reconnect account</span>
                     if (st === 'error') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> {(list as any).error_message || "Import failed. Please retry."}</span>
-                    if (st.startsWith('completed') && st.includes('duplicates')) return <span className="text-muted-foreground">{list.row_count.toLocaleString()} leads <span className="text-amber-600">· {st.split('—')[1]?.trim()}</span></span>
+                    if (st.startsWith('completed') && st.includes('duplicates')) return <span className="text-muted-foreground">{list.row_count.toLocaleString()} leads <span className="text-warning">· {st.split('—')[1]?.trim()}</span></span>
                     return `${list.row_count.toLocaleString()} leads`
                   })()}
                 </span>

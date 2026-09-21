@@ -94,7 +94,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
       ) : (
         <div className="text-left bg-muted/20 border p-6 rounded-xl max-w-md mx-auto animate-in fade-in slide-in-from-bottom-4">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b">
-              <div className="w-10 h-10 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 bg-success/20 text-success rounded-full flex items-center justify-center">
                 <Check size={20} />
               </div>
               <div>
@@ -119,7 +119,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
               </select>
             )}
             
-            <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg text-primary dark:text-blue-400">
+            <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg text-primary dark:text-primary">
               <Sparkles size={14} />
               <p>Contacts will be automatically deduped and enriched when imported.</p>
             </div>
