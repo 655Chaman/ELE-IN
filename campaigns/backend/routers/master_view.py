@@ -249,12 +249,6 @@ def get_master_view_stats(
 ):
     if not workspace_id:
         raise HTTPException(status_code=403, detail='workspace_id required')
-    
-    user_id = get_current_user_id(request, supabase)
-    # Layer 1: Strictly verify the user is a member of this specific workspace
-    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
-    if not ws_check.data:
-        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
         
     req.date_start, req.date_end = validate_date_range(req.date_start, req.date_end)
 
@@ -616,12 +610,6 @@ def get_master_view_filters(
 ):
     if not workspace_id:
         raise HTTPException(status_code=403, detail='workspace_id required')
-        
-    user_id = get_current_user_id(request, supabase)
-    # Layer 1: Strictly verify the user is a member of this specific workspace
-    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
-    if not ws_check.data:
-        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
 
     try:
         workspaces_data = []
@@ -653,12 +641,6 @@ def get_funnel_leads(
 ):
     if not workspace_id:
         raise HTTPException(status_code=403, detail='workspace_id required')
-    
-    user_id = get_current_user_id(request, supabase)
-    # Layer 1: Strictly verify the user is a member of this specific workspace
-    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
-    if not ws_check.data:
-        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
         
     req.date_start, req.date_end = validate_date_range(req.date_start, req.date_end)
 
@@ -775,12 +757,6 @@ def get_account_health(
 ):
     if not workspace_id:
         raise HTTPException(status_code=403, detail='workspace_id required')
-        
-    user_id = get_current_user_id(request, supabase)
-    # Layer 1: Strictly verify the user is a member of this specific workspace
-    ws_check = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
-    if not ws_check.data:
-        raise HTTPException(status_code=403, detail='Access denied: You are not a member of this workspace')
 
     try:
         # SAFETY: This query MUST read from 'accounts' directly.
