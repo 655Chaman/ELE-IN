@@ -594,7 +594,7 @@ class EleInOrchestrator:
 
 
         
-        if action == "if_connected" and action_result.get("status") == "success" and action_result.get("branch") == "Yes":
+        if action == "if_connected" and action_result.get("status") == "success" and action_result.get("branch") == "Connected":
             try:
                 self.supabase.table("action_log").insert({
                     "execution_state_id": state["id"],
