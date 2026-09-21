@@ -152,24 +152,38 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     token = auth_header.split(" ")[1]
     
     # Extract user_id and AAL from the JWT
-    user_id = verify_token_and_get_user_id(token)
     user_aal = "aal1"
     if HAS_PYJWT:
         try:
             decoded = jwt.decode(token, options={"verify_signature": False})
+            if decoded.get("exp") and decoded["exp"] < time.time():
+                raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
             user_aal = decoded.get("aal", "aal1")
-        except:
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
+        except Exception as e:
             pass
-    else:
-        # Layer 1: If PyJWT is not available, try to extract AAL from the supabase AMR data
-        try:
-            temp_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-            user_response = temp_client.auth.get_user(token)
+            
+    try:
+        # Layer 1: We use the already injected AsyncClient to validate the token.
+        # This prevents synchronous event-loop blocking from create_client.
+        user_response = await supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Authentication failed.")
+        user_id = user_response.user.id
+        
+        if not HAS_PYJWT:
             amr = getattr(user_response.user, 'amr', None) or []
             if any(a.get('method') == 'totp' for a in amr):
                 user_aal = 'aal2'
-        except Exception:
-            pass  # Default to aal1 is safe — will enforce 2FA if workspace requires it
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("DEBUG TOKEN ERROR:", e)
+        err_str = str(e).lower()
+        if 'expired' in err_str or 'exp' in err_str:
+            raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
+        raise HTTPException(status_code=401, detail="Authentication failed.")
     
     requested_workspace_id = request.headers.get("X-Workspace-Id")
     
