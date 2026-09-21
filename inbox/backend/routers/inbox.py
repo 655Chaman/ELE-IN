@@ -488,17 +488,14 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
                                     # Fallback end time mock
                                     end_time = start_time 
                                     
-                                    # 3. Find lead_id
-                                    lead_res = supabase.table("leads").select("id, email, first_name, last_name").eq("workspace_id", workspace_id).limit(100).execute()
-                                    
-                                    # Match sender_name locally since we can't concatenate in PostgREST easily
+                                    # 3. Resolve lead_id safely from previous thread history in messages
                                     matched_lead = None
-                                    if lead_res.data:
-                                        for row in lead_res.data:
-                                            full_name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
-                                            if full_name.lower() == str(m.get("sender_name", "")).lower():
-                                                matched_lead = row
-                                                break
+                                    msg_res = supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("sender_name", m.get("sender_name")).not_.is_("lead_id", "null").limit(1).execute()
+                                    if msg_res.data and msg_res.data[0].get("lead_id"):
+                                        target_lead_id = msg_res.data[0]["lead_id"]
+                                        lead_res = supabase.table("leads").select("id, email, first_name, last_name").eq("id", target_lead_id).execute()
+                                        if lead_res.data:
+                                            matched_lead = lead_res.data[0]
                                                 
                                     if matched_lead:
                                         # Mock write-path call
