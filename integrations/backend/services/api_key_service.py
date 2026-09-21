@@ -20,7 +20,7 @@ def generate_api_key() -> tuple[str, str, str]:
     
     return raw_key, key_prefix, key_hash
 
-def issue_api_key(supabase: Client, workspace_id: str, name: str, scopes: list[str]) -> dict:
+def issue_api_key(supabase: Client, workspace_id: str, name: str, scopes: list[str], actor: str = "system") -> dict:
     raw_key, prefix, key_hash = generate_api_key()
     
     res = supabase.table("api_keys").insert({
@@ -38,7 +38,7 @@ def issue_api_key(supabase: Client, workspace_id: str, name: str, scopes: list[s
     supabase.table("api_key_audit_logs").insert({
         "workspace_id": workspace_id,
         "api_key_id": result["id"],
-        "actor": "system", # In a real implementation this would be the current user's email/ID
+        "actor": actor,
         "action": "created"
     }).execute()
     
