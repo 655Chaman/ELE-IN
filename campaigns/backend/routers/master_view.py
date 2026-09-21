@@ -691,7 +691,6 @@ def get_funnel_leads(
             # Resolve effective campaign filter: intersection of explicit campaign filter and sender-owned campaigns
             effective_campaigns = req.campaigns  # may be None (no filter)
             if req.senders:
-                # lead_states has no account_id — filter via campaigns.sender_account_ids_json
                 # Fetch all campaigns for this workspace and client-side filter by sender
                 try:
                     ca_res = supabase.table("campaign_accounts").select("campaign_id").in_("account_id", req.senders).execute()
@@ -704,22 +703,42 @@ def get_funnel_leads(
                 except Exception as e:
                     print(f"[FunnelLeads] Sender→campaign resolution error: {e}")
 
-            sq = supabase.table("lead_states").select("opportunity_id, status").eq("workspace_id", workspace_id)
-            if effective_campaigns: sq = sq.in_("campaign_id", effective_campaigns)
+            sq = supabase.table("campaign_execution_states").select("status, error_reason, updated_at, campaign_enrollments!inner(lead_id, campaign_id)").eq("workspace_id", workspace_id)
+            if effective_campaigns: sq = sq.in_("campaign_enrollments.campaign_id", effective_campaigns)
             if req.date_start is not None and req.date_end is not None:
-                sq = sq.gte("created_at", req.date_start).lte("created_at", req.date_end)
+                sq = sq.gte("updated_at", req.date_start).lte("updated_at", req.date_end)
             
             if req.step == "Connected":
                 sq = sq.in_("status", ["running", "completed", "exited"])
             elif req.step == "Booked":
-                sq = sq.eq("status", "exited")
+                sq = sq.eq("status", "exited").in_("error_reason", ["mark_converted", "hubspot_deal_won"])
                 
-            res = sq.order("created_at", desc=True).limit(50).execute()
-            lead_ids = {r["opportunity_id"] for r in res.data if r.get("opportunity_id")}
+            res = sq.order("updated_at", desc=True).limit(50).execute()
+            
+            lead_ids = set()
+            for r in res.data:
+                enroll = r.get("campaign_enrollments", {})
+                lead_id = enroll.get("lead_id")
+                if lead_id:
+                    lead_ids.add(lead_id)
             
         elif req.step == "Replied":
+            # Also apply effective campaigns for Replied for consistency
+            effective_campaigns = req.campaigns
+            if req.senders:
+                try:
+                    ca_res = supabase.table("campaign_accounts").select("campaign_id").in_("account_id", req.senders).execute()
+                    sender_campaign_ids = list({r["campaign_id"] for r in (ca_res.data or [])})
+                    if effective_campaigns:
+                        effective_campaigns = [c for c in effective_campaigns if c in sender_campaign_ids]
+                    else:
+                        effective_campaigns = sender_campaign_ids
+                except Exception as e:
+                    print(f"[FunnelLeads] Sender→campaign resolution error for Replied: {e}")
+                    
             mq = supabase.table("messages").select("lead_id").eq("workspace_id", workspace_id).eq("direction", "inbound")
             if req.senders: mq = mq.in_("account_id", req.senders)
+            if effective_campaigns: mq = mq.in_("campaign_id", effective_campaigns)
             if req.date_start is not None and req.date_end is not None:
                 mq = mq.gte("created_at", req.date_start).lte("created_at", req.date_end)
             res = mq.order("created_at", desc=True).limit(50).execute()
