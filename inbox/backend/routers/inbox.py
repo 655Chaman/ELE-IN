@@ -471,53 +471,70 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
             for m in messages:
                 if m.get("direction") == "inbound":
 
-                    intent_data = await classify_intent(m["message_text"], workspace_id=workspace_id)
+                    # --- Phase 3: Resolve Lead Context First ---
+                    matched_lead = None
+                    target_lead_id = None
+                    lead_tz = "UTC"
+                    msg_res = supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("sender_name", m.get("sender_name")).not_.is_("lead_id", "null").limit(1).execute()
+                    if msg_res.data and msg_res.data[0].get("lead_id"):
+                        target_lead_id = msg_res.data[0]["lead_id"]
+                        lead_res = supabase.table("leads").select("id, email, first_name, last_name, timezone").eq("id", target_lead_id).execute()
+                        if lead_res.data:
+                            matched_lead = lead_res.data[0]
+                            lead_tz = matched_lead.get("timezone") or "UTC"
+
+                    intent_data = await classify_intent(m["message_text"], workspace_id=workspace_id, lead_timezone=lead_tz)
                     m["intent"] = intent_data.get("intent", "unknown")
                     m["intent_confidence"] = intent_data.get("confidence", 0.0)
                     classified += 1
 
-                    if m["intent"] == "booking_confirmation" and intent_data.get("confirmed_time"):
+                    if m["intent"] == "booking_confirmation" and intent_data.get("confirmed_time") and matched_lead:
                         try:
-                            # 1. Get calendar adapter
-                            acc_res = supabase.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("id", account_id).limit(1).execute()
-                            if acc_res.data and acc_res.data[0].get("calendar_provider"):
-                                adapter = get_calendar_adapter(acc_res.data[0])
-                                if adapter:
-                                    # 2. Mock booking execution
-                                    start_time = intent_data.get("confirmed_time")
-                                    # Fallback end time mock
-                                    end_time = start_time 
-                                    
-                                    # 3. Resolve lead_id safely from previous thread history in messages
-                                    matched_lead = None
-                                    msg_res = supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("sender_name", m.get("sender_name")).not_.is_("lead_id", "null").limit(1).execute()
-                                    if msg_res.data and msg_res.data[0].get("lead_id"):
-                                        target_lead_id = msg_res.data[0]["lead_id"]
-                                        lead_res = supabase.table("leads").select("id, email, first_name, last_name").eq("id", target_lead_id).execute()
-                                        if lead_res.data:
-                                            matched_lead = lead_res.data[0]
-                                                
-                                    if matched_lead:
-                                        # Mock write-path call
-                                        full_name = f"{matched_lead.get('first_name', '')} {matched_lead.get('last_name', '')}".strip()
-                                        booking_res = await adapter.create_booking(
-                                            lead_email=matched_lead.get("email", "unknown@test.com"),
-                                            lead_name=full_name,
-                                            start_time=start_time,
-                                            end_time=end_time
-                                        )
-                                        
-                                        if booking_res and booking_res.get("status") == "confirmed":
-                                            # 4. Transition campaign state
-                                            enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
-                                            if enroll_res.data:
-                                                enroll_ids = [e["id"] for e in enroll_res.data]
-                                                supabase.table("campaign_execution_states").update({
-                                                    "status": "exited",
-                                                    "error_reason": "meeting_booked"
-                                                }).in_("enrollment_id", enroll_ids).execute()
+                            # 1. Idempotency Check & Atomic Lock Transition
+                            enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
+                            if enroll_res.data:
+                                enroll_ids = [e["id"] for e in enroll_res.data]
+                                update_res = supabase.table("campaign_execution_states").update({
+                                    "status": "exited",
+                                    "error_reason": "meeting_booked"
+                                }).in_("enrollment_id", enroll_ids).neq("status", "exited").execute()
+                                
+                                if update_res.data:
+                                    # We won the race (it wasn't exited yet). Safe to book!
+                                    acc_res = supabase.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("id", account_id).limit(1).execute()
+                                    if acc_res.data and acc_res.data[0].get("calendar_provider"):
+                                        adapter = get_calendar_adapter(acc_res.data[0])
+                                        if adapter:
+                                            full_name = f"{matched_lead.get('first_name', '')} {matched_lead.get('last_name', '')}".strip()
+                                            booking_res = await adapter.create_booking(
+                                                lead_email=matched_lead.get("email", "unknown@test.com"),
+                                                lead_name=full_name,
+                                                start_time=intent_data.get("confirmed_time"),
+                                                end_time=intent_data.get("confirmed_time")
+                                            )
+                                            # Ideally we would save booking_res["booking_id"] to a new column here.
+                                else:
+                                    logger.info(f"Duplicate booking confirmation for lead {matched_lead['id']} ignored (already exited).")
                         except Exception as e:
                             logger.error(f"Failed to process booking confirmation: {e}")
+
+                    elif m["intent"] in ["cancellation", "reschedule_request"] and matched_lead:
+                        try:
+                            # If they cancel or want to reschedule, we need to revert the exited state
+                            # so they drop back into the campaign (or enter a manual review state)
+                            enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
+                            if enroll_res.data:
+                                enroll_ids = [e["id"] for e in enroll_res.data]
+                                supabase.table("campaign_execution_states").update({
+                                    "status": "paused", # Require manual intervention
+                                    "error_reason": f"user_{m['intent']}"
+                                }).in_("enrollment_id", enroll_ids).eq("error_reason", "meeting_booked").execute()
+                                
+                                # In a real implementation with saved booking IDs:
+                                # booking_id = ...
+                                # await adapter.cancel_booking(booking_id)
+                        except Exception as e:
+                            logger.error(f"Failed to process cancellation/reschedule: {e}")
 
 
             res = bulk_upsert_messages(supabase, workspace_id, account_id, messages)

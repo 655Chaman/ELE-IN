@@ -1,3 +1,4 @@
+import pytz
 from core.backend.services.calendar_adapter import get_calendar_adapter
 """
 elein_ai_service.py — Production AI engine for Ele-in
@@ -380,7 +381,7 @@ INTENT_LABELS = {
     "unknown":   {"emoji": "💬", "label": "Neutral",       "color": "zinc"},
 }
 
-async def classify_intent(message_text: str, workspace_id: str = "") -> dict:
+async def classify_intent(message_text: str, workspace_id: str = "", lead_timezone: str = "UTC") -> dict:
     """
     Classify a LinkedIn reply into: positive, objection, question, negative, unknown.
     Uses temperature=0 for deterministic output.
@@ -399,15 +400,17 @@ CLASSIFICATION RULES:
 - "question": They are curious and asking for specifics ("how does it work?", "what's the pricing?", "do you integrate with X?")
 - "negative": Hard rejection, hostile, or final dismissal ("not interested", "please remove me", "stop messaging me")
 - "booking_confirmation": The prospect explicitly confirmed a specific date and time for a meeting (e.g. "Tuesday at 2 works", "Let's do 10am tomorrow").
+- "cancellation": The prospect explicitly requested to cancel a previously confirmed meeting ("please cancel our meeting", "I can't make it anymore").
+- "reschedule_request": The prospect explicitly asked to move a previously confirmed meeting to a different time ("can we do Thursday instead?", "need to reschedule").
 - "unknown": Ambiguous, off-topic, or auto-reply
 
 Respond ONLY with this exact JSON structure (no markdown, no preamble):
-{{"intent": "<one of: positive|objection|question|negative|booking_confirmation|unknown>", "confidence": <0.0-1.0 float>, "reasoning": "<one precise sentence explaining the signal that drove your classification>", "confirmed_time": "<ISO8601 string if intent is booking_confirmation, else null>"}}
+{{"intent": "<one of: positive|objection|question|negative|booking_confirmation|cancellation|reschedule_request|unknown>", "confidence": <0.0-1.0 float>, "reasoning": "<one precise sentence explaining the signal that drove your classification>", "confirmed_time": "<ISO8601 string if intent is booking_confirmation, else null>"}}
 
 CURRENT CONTEXT:
-Today's Date: {datetime.utcnow().strftime('%Y-%m-%d %A')} UTC.
+Today's Date (in prospect's local timezone): {datetime.now(pytz.timezone(lead_timezone) if lead_timezone in pytz.all_timezones else pytz.UTC).strftime('%Y-%m-%d %A')} {lead_timezone}.
 Upcoming days for reference:
-{chr(10).join([(datetime.utcnow() + timedelta(days=i)).strftime('- %Y-%m-%d (%A)') for i in range(1, 8)])}
+{chr(10).join([(datetime.now(pytz.timezone(lead_timezone) if lead_timezone in pytz.all_timezones else pytz.UTC) + timedelta(days=i)).strftime('- %Y-%m-%d (%A)') for i in range(1, 8)])}
 Use this reference to map day names (like "Tuesday") to the exact upcoming ISO8601 date.
 
 LinkedIn Reply to classify:
@@ -528,6 +531,19 @@ async def stream_reply_draft(
     # Phase C: Calendar Integration for positive intents
     calendar_layer = ""
     account_id = thread_messages[0].get('account_id') if thread_messages else None
+    lead_id = thread_messages[0].get('lead_id') if thread_messages else None
+    
+    target_timezone = "UTC"
+    if lead_id:
+        try:
+            from core.backend.api.auth_dep import get_service_client
+            sc = get_service_client()
+            lead_res = sc.table("leads").select("timezone").eq("id", lead_id).execute()
+            if lead_res.data and lead_res.data[0].get("timezone"):
+                target_timezone = lead_res.data[0]["timezone"]
+        except Exception:
+            pass
+
     if intent == "positive" and workspace_id and account_id:
         try:
             from core.backend.api.auth_dep import get_service_client
@@ -536,8 +552,8 @@ async def stream_reply_draft(
             if acc_res.data:
                 adapter = get_calendar_adapter(acc_res.data[0])
                 if adapter:
-                    slots = await adapter.get_availability("2024-03-25", "2024-03-30", "UTC")
-                    slot_strs = [f"- {s['start_time']} to {s['end_time']}" for s in slots]
+                    slots = await adapter.get_availability("2024-03-25", "2024-03-30", target_timezone)
+                    slot_strs = [f"- {s['start_time']} to {s['end_time']} ({target_timezone})" for s in slots]
                     calendar_layer = "\n--- LAYER X: SENDER AVAILABILITY ---\n" + "\n".join(slot_strs) + "\n"
         except Exception as e:
             logger.error(f"[EleInAI] Calendar fetch failed: {e}")
