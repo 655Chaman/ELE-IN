@@ -25,7 +25,6 @@ BEGIN
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        -- First time seeing this key, initialize at max capacity minus cost
         IF p_capacity >= p_cost THEN
             INSERT INTO public.api_rate_limits_window (api_key_id, tokens, last_refill)
             VALUES (p_key_id, p_capacity - p_cost, now());
@@ -35,16 +34,13 @@ BEGIN
         END IF;
     END IF;
 
-    -- Calculate elapsed time and tokens to add
     v_time_passed := extract(epoch from (now() - v_window.last_refill));
     v_new_tokens := v_window.tokens + (v_time_passed * p_refill_rate_per_second);
 
-    -- Cap at capacity
     IF v_new_tokens > p_capacity THEN
         v_new_tokens := p_capacity;
     END IF;
 
-    -- Check if we can afford the cost
     IF v_new_tokens >= p_cost THEN
         v_final_tokens := floor(v_new_tokens - p_cost);
         UPDATE public.api_rate_limits_window
@@ -53,7 +49,6 @@ BEGIN
         WHERE api_key_id = p_key_id;
         RETURN true;
     ELSE
-        -- Update the tokens but don't consume (so they keep regenerating up to capacity)
         v_final_tokens := floor(v_new_tokens);
         UPDATE public.api_rate_limits_window
         SET tokens = v_final_tokens,
@@ -83,13 +78,24 @@ CREATE TABLE IF NOT EXISTS public.webhook_deliveries (
     payload jsonb NOT NULL,
     status_code int,
     response_body text,
-    delivery_status text NOT NULL DEFAULT 'pending', -- pending, success, failed
+    delivery_status text NOT NULL DEFAULT 'pending',
     attempt_count int DEFAULT 0,
     next_retry_at timestamptz,
     created_at timestamptz DEFAULT now()
 );
 
--- 4. Simple API Audit Logs (Minimal)
+-- 4. API Audit Logs and Revocation
+ALTER TABLE public.api_keys ADD COLUMN IF NOT EXISTS revoked_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS public.api_key_audit_logs (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    workspace_id uuid REFERENCES public.workspaces(id) ON DELETE CASCADE NOT NULL,
+    api_key_id uuid REFERENCES public.api_keys(id) ON DELETE CASCADE NOT NULL,
+    actor text NOT NULL,
+    action text NOT NULL, -- e.g., 'created', 'revoked'
+    created_at timestamptz DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS public.api_request_logs (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     workspace_id uuid REFERENCES public.workspaces(id) ON DELETE CASCADE,
@@ -99,14 +105,12 @@ CREATE TABLE IF NOT EXISTS public.api_request_logs (
     created_at timestamptz DEFAULT now()
 );
 
--- Apply RLS policies
+-- Enable RLS (Default Deny-All for non-service roles)
 ALTER TABLE public.webhook_endpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.webhook_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_request_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_rate_limits_window ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.api_key_audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Allow service role full access (assuming workspaces access is managed via service role for API)
-CREATE POLICY "service_role_all_webhook_endpoints" ON public.webhook_endpoints USING (true);
-CREATE POLICY "service_role_all_webhook_deliveries" ON public.webhook_deliveries USING (true);
-CREATE POLICY "service_role_all_api_request_logs" ON public.api_request_logs USING (true);
-CREATE POLICY "service_role_all_api_rate_limits" ON public.api_rate_limits_window USING (true);
+-- Note: We omit "CREATE POLICY" entirely because the backend service_role 
+-- bypasses RLS automatically. Zero policies means PUBLIC/anon are denied.

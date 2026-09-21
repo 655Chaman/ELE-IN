@@ -32,7 +32,16 @@ def issue_api_key(supabase: Client, workspace_id: str, name: str, scopes: list[s
         "is_active": True
     }).execute()
     
-    # Return the raw key ONCE. It is never stored.
     result = res.data[0]
+    
+    # Write to audit log
+    supabase.table("api_key_audit_logs").insert({
+        "workspace_id": workspace_id,
+        "api_key_id": result["id"],
+        "actor": "system", # In a real implementation this would be the current user's email/ID
+        "action": "created"
+    }).execute()
+    
+    # Return the raw key ONCE. It is never stored.
     result["secret_key"] = raw_key
     return result

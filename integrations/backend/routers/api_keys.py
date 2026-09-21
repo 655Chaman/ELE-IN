@@ -26,6 +26,8 @@ def create_api_key(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+from datetime import datetime
+
 @router.delete("/{key_id}")
 def revoke_api_key(
     key_id: str,
@@ -33,9 +35,22 @@ def revoke_api_key(
     supabase: Client = Depends(get_service_client)
 ):
     """
-    Revokes (deletes) an API key.
+    Revokes an API key softly, leaving it in the database for foreign keys.
     """
-    res = supabase.table("api_keys").delete().eq("id", key_id).eq("workspace_id", workspace_id).execute()
+    res = supabase.table("api_keys").update({
+        "is_active": False,
+        "revoked_at": datetime.utcnow().isoformat()
+    }).eq("id", key_id).eq("workspace_id", workspace_id).execute()
+    
     if not res.data:
         raise HTTPException(status_code=404, detail="API key not found")
+        
+    # Write to audit log
+    supabase.table("api_key_audit_logs").insert({
+        "workspace_id": workspace_id,
+        "api_key_id": key_id,
+        "actor": "system",
+        "action": "revoked"
+    }).execute()
+        
     return {"status": "success", "message": "API key revoked"}
