@@ -15,60 +15,61 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("elein.worker")
 
 _WORKER_ID = "elein-daemon"
+_SLEEP_SECONDS = 30
 
 def run():
-    logger.info("Starting Ele-in Orchestrator Cron Worker (One-shot)...")
+    logger.info("Starting Ele-in Orchestrator Daemon...")
     supabase = get_service_client()
-    start_ms = int(time.time() * 1000)
 
-    # Write heartbeat BEFORE tick
-    try:
-        supabase.table("worker_heartbeat").upsert({
-            "worker_id": _WORKER_ID,
-            "last_beat_at": datetime.datetime.utcnow().isoformat(),
-            "status": "ticking"
-        }).execute()
-    except Exception:
-        logger.debug("Heartbeat write failed", exc_info=True)
+    while True:
+        start_ms = int(time.time() * 1000)
 
-    try:
-        orchestrator = EleInOrchestrator()
-        results = orchestrator.process_pending_leads()
-        leads_processed = len(results) if results else 0
-        duration_ms = int(time.time() * 1000) - start_ms
-
-        if results:
-            logger.info(f"Processed {leads_processed} leads: {results}")
-
-        # Write success heartbeat AFTER tick
+        # Write heartbeat BEFORE tick
         try:
             supabase.table("worker_heartbeat").upsert({
                 "worker_id": _WORKER_ID,
                 "last_beat_at": datetime.datetime.utcnow().isoformat(),
-                "status": "alive",
-                "last_tick_duration_ms": duration_ms,
-                "last_tick_leads_processed": leads_processed
+                "status": "ticking"
             }).execute()
         except Exception:
             logger.debug("Heartbeat write failed", exc_info=True)
 
-        logger.info("Orchestrator run complete. Exiting cleanly.")
-
-    except Exception as e:
-        logger.error("Error during orchestrator execution", exc_info=True)
-        # Write error heartbeat
         try:
-            supabase.table("worker_heartbeat").upsert({
-                "worker_id": _WORKER_ID,
-                "last_beat_at": datetime.datetime.utcnow().isoformat(),
-                "status": "error",
-                "last_tick_duration_ms": int(time.time() * 1000) - start_ms
-            }).execute()
-        except Exception:
-            logger.debug("Heartbeat write failed", exc_info=True)
+            orchestrator = EleInOrchestrator()
+            results = orchestrator.process_pending_leads()
+            leads_processed = len(results) if results else 0
+            duration_ms = int(time.time() * 1000) - start_ms
 
-        logger.error("Orchestrator crashed. Exiting with status 1.")
-        sys.exit(1)
+            if results:
+                logger.info(f"Processed {leads_processed} leads: {results}")
+
+            # Write success heartbeat AFTER tick
+            try:
+                supabase.table("worker_heartbeat").upsert({
+                    "worker_id": _WORKER_ID,
+                    "last_beat_at": datetime.datetime.utcnow().isoformat(),
+                    "status": "alive",
+                    "last_tick_duration_ms": duration_ms,
+                    "last_tick_leads_processed": leads_processed
+                }).execute()
+            except Exception:
+                logger.debug("Heartbeat write failed", exc_info=True)
+
+        except Exception as e:
+            logger.error("Error during orchestrator execution", exc_info=True)
+            # Write error heartbeat
+            try:
+                supabase.table("worker_heartbeat").upsert({
+                    "worker_id": _WORKER_ID,
+                    "last_beat_at": datetime.datetime.utcnow().isoformat(),
+                    "status": "error",
+                    "last_tick_duration_ms": int(time.time() * 1000) - start_ms
+                }).execute()
+            except Exception:
+                logger.debug("Heartbeat write failed", exc_info=True)
+
+        logger.info(f"Tick complete. Sleeping for {_SLEEP_SECONDS} seconds...")
+        time.sleep(_SLEEP_SECONDS)
 
 if __name__ == "__main__":
     run()

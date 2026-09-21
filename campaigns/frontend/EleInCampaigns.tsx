@@ -91,8 +91,10 @@ export function EleInCampaigns() {
     setConfirmModal({
       isOpen: true,
       title: "Delete Campaign",
-      message: "Are you sure you want to delete this campaign? This cannot be undone.",
+      message: `Are you sure you want to delete the campaign "${campaign?.name || 'Unknown'}"? This cannot be undone.`,
       onConfirm: async () => {
+        setConfirmModal(null);
+
         try {
           await fetchWithAuth(`/api/elein/campaigns/${id}`, { method: 'DELETE' });
           toast.success(`Campaign "${campaign?.name || 'Unknown'}" deleted`);
@@ -100,7 +102,7 @@ export function EleInCampaigns() {
         } catch (e: any) {
           toast.error(e.message);
         }
-        setConfirmModal(null);
+        
       }
     });
   }
@@ -174,7 +176,7 @@ export function EleInCampaigns() {
               as="button"
               onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
               className="group flex-shrink-0"
-              innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-[18px] bg-foreground hover:bg-foreground/90 text-background text-sm font-bold transition-all shadow-lg"
+              innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-[18px] bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-all shadow-lg"
               
               speed="3s"
             >
@@ -255,7 +257,7 @@ export function EleInCampaigns() {
                 as="button"
                 onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
                 className="group flex-shrink-0"
-                innerClassName="flex items-center gap-2 px-6 py-3 rounded-[18px] bg-foreground hover:bg-foreground/90 text-background text-sm font-bold transition-all shadow-lg"
+                innerClassName="flex items-center gap-2 px-6 py-3 rounded-[18px] bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-all shadow-lg"
                 
                 speed="3s"
               >
