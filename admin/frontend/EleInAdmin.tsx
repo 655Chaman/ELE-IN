@@ -140,7 +140,7 @@ export function EleInAdmin() {
                   <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center">
                     <LayoutTemplate size={18} className="text-primary" />
                   </div>
-                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 text-amber-500 text-[10px] font-bold">
+                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-warning/10 text-warning text-[10px] font-bold">
                     <Clock size={12} /> Pending Review
                   </span>
                 </div>
@@ -156,14 +156,14 @@ export function EleInAdmin() {
                   <button 
                     onClick={() => handleAction(tpl.id, "approve")}
                     disabled={loadingId === tpl.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-500 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-success/10 hover:bg-success/20 border border-success/20 text-success rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                   >
                     <CheckCircle size={14} /> Approve
                   </button>
                   <button 
                     onClick={() => handleAction(tpl.id, "reject")}
                     disabled={loadingId === tpl.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-500 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 text-destructive rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                   >
                     <XCircle size={14} /> Reject
                   </button>
@@ -173,7 +173,7 @@ export function EleInAdmin() {
           ))}
           {safeTemplates.length === 0 && (
             <div className="col-span-full py-20 text-center flex flex-col items-center">
-              <CheckCircle size={32} className="text-emerald-500/50 mb-4" />
+              <CheckCircle size={32} className="text-success/50 mb-4" />
               <h3 className="text-sm font-bold text-foreground mb-1">Queue Empty</h3>
               <p className="text-xs text-muted-foreground">All pending templates have been reviewed.</p>
             </div>
@@ -211,7 +211,7 @@ export function EleInAdmin() {
             {safeKeys.map(k => (
               <div key={k.id} className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-background group">
                 <div className="flex items-center gap-4">
-                  <div className={`w-2 h-2 rounded-full ${k.status === 'active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : k.status === 'rate_limited' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+                  <div className={`w-2 h-2 rounded-full ${k.status === 'active' ? 'bg-success shadow-[0_0_8px_var(--success),0.5)]' : k.status === 'rate_limited' ? 'bg-warning' : 'bg-destructive'}`} />
                   <div>
                     <p className="text-sm font-mono font-medium">{k.api_key}</p>
                     <p className="text-xs text-muted-foreground capitalize mt-0.5">
@@ -223,7 +223,7 @@ export function EleInAdmin() {
                   {k.status !== 'active' && (
                     <button 
                       onClick={() => handleResetKey(k.id)}
-                      className="p-2 text-muted-foreground hover:text-emerald-500 rounded-lg hover:bg-emerald-500/10 transition-colors"
+                      className="p-2 text-muted-foreground hover:text-success rounded-lg hover:bg-success/10 transition-colors"
                       title="Reset Status"
                     >
                       <RefreshCw size={14} />
@@ -231,7 +231,7 @@ export function EleInAdmin() {
                   )}
                   <button 
                     onClick={() => handleDeleteKey(k.id)}
-                    className="p-2 text-muted-foreground hover:text-rose-500 rounded-lg hover:bg-rose-500/10 transition-colors"
+                    className="p-2 text-muted-foreground hover:text-destructive rounded-lg hover:bg-destructive/10 transition-colors"
                     title="Remove from pool"
                   >
                     <Trash2 size={14} />

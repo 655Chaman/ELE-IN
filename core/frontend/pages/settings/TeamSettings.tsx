@@ -198,7 +198,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
         );
       case "admin":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
             <Shield size={12} />
             Admin
           </span>
@@ -356,7 +356,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                               <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm border
                                   ${isOwner ? "bg-primary/10 text-primary border-primary/20" : 
-                                    member.role === 'admin' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : 
+                                    member.role === 'admin' ? "bg-primary/10 text-primary border-primary/20" : 
                                     "bg-primary/10 text-primary border-primary/20"}`}
                                 >
                                   {member.display_name?.charAt(0).toUpperCase()}
@@ -414,7 +414,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                             >
                                               <div className="pt-0.5">
                                                 {r === 'owner' && <Crown size={14} className="text-primary" />}
-                                                {r === 'admin' && <Shield size={14} className="text-blue-400" />}
+                                                {r === 'admin' && <Shield size={14} className="text-primary" />}
                                                 {r === 'member' && <UserIcon size={14} />}
                                               </div>
                                               <div className="flex flex-col">
@@ -433,8 +433,8 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                             </td>
                             
                             <td className="px-5 py-4">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-500 border border-green-500/20">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success border border-success/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
                                 Active
                               </span>
                             </td>

@@ -20,7 +20,7 @@ export function EleInBilling() {
         <SpotlightCard className="col-span-2 p-6 rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2 text-muted-foreground">
-              <Zap size={16} className="text-amber-500" /> 
+              <Zap size={16} className="text-warning" /> 
               <span className="text-xs font-semibold uppercase tracking-wider">Current Plan</span>
             </div>
             <h2 className="text-3xl font-bold tracking-tight text-foreground mb-1">Growth Tier</h2>
@@ -63,7 +63,7 @@ export function EleInBilling() {
               <td className="px-6 py-4 text-foreground">Growth Tier - Monthly</td>
               <td className="px-6 py-4 text-foreground">$149.00</td>
               <td className="px-6 py-4">
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-success/10 text-success text-[10px] font-bold">
                   <CheckCircle2 size={12} /> Paid
                 </span>
               </td>
@@ -73,7 +73,7 @@ export function EleInBilling() {
               <td className="px-6 py-4 text-foreground">1,000 Extra Credits</td>
               <td className="px-6 py-4 text-foreground">$29.00</td>
               <td className="px-6 py-4">
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-success/10 text-success text-[10px] font-bold">
                   <CheckCircle2 size={12} /> Paid
                 </span>
               </td>
@@ -83,7 +83,7 @@ export function EleInBilling() {
               <td className="px-6 py-4 text-foreground">Growth Tier - Monthly</td>
               <td className="px-6 py-4 text-foreground">$149.00</td>
               <td className="px-6 py-4">
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-success/10 text-success text-[10px] font-bold">
                   <CheckCircle2 size={12} /> Paid
                 </span>
               </td>

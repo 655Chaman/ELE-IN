@@ -59,7 +59,7 @@ function Toggle({
     return (
       <div
         title="This alert cannot be disabled for your safety."
-        className="flex items-center justify-center gap-1.5 w-[72px] h-6 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-[10px] uppercase tracking-wider cursor-not-allowed select-none"
+        className="flex items-center justify-center gap-1.5 w-[72px] h-6 rounded-full bg-success/10 text-success border border-success/20 font-bold text-[10px] uppercase tracking-wider cursor-not-allowed select-none"
       >
         <Lock size={10} /> ON
       </div>
@@ -204,8 +204,8 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
         </div>
 
       {/* Critical Alerts Section */}
-      <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-amber-950/5 shadow-sm">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-red-500" />
+      <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-warning/5 shadow-sm">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-destructive" />
         <div className="p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-primary/10 rounded-xl text-primary">
@@ -232,10 +232,10 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
 
       {/* Activity Updates Section */}
       <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-surface shadow-sm">
-        <div className="absolute top-0 bottom-0 left-0 w-1 bg-gradient-to-b from-blue-500 to-indigo-500" />
+        <div className="absolute top-0 bottom-0 left-0 w-1 bg-gradient-to-b from-primary to-primary/80" />
         <div className="p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+            <div className="p-2 bg-primary/10 rounded-xl text-primary">
               <Activity size={24} />
             </div>
             <div>

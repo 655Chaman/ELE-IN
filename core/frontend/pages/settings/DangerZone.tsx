@@ -124,7 +124,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
   // Determine input styling based on progress
   let inputBorderClass = "border-border focus:ring-border";
   if (confirmText.length > 0 && confirmText !== activeWsName) {
-    inputBorderClass = "border-yellow-500/50 focus:ring-yellow-500/30 text-yellow-500";
+    inputBorderClass = "border-warning/50 focus:ring-warning/30 text-warning";
   } else if (isConfirmed) {
     inputBorderClass = "border-destructive focus:ring-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)] text-destructive";
   }

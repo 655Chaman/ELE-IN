@@ -123,9 +123,9 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
           </div>
         </div>
 
-        <div className="mb-8 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl flex gap-3">
-          <Info className="text-blue-500 shrink-0 mt-0.5" size={20} />
-          <div className="text-sm text-blue-600 dark:text-blue-400 font-medium leading-relaxed">
+        <div className="mb-8 p-4 bg-primary/10 border border-primary/20 rounded-xl flex gap-3">
+          <Info className="text-primary shrink-0 mt-0.5" size={20} />
+          <div className="text-sm text-primary dark:text-primary font-medium leading-relaxed">
             These settings act as the template for <strong>newly added accounts</strong>. Changing these values will NOT retroactively alter accounts that are already connected.
           </div>
         </div>
@@ -177,7 +177,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                       initial={{ opacity: 0, height: 0 }} 
                       animate={{ opacity: 1, height: 'auto' }} 
                       exit={{ opacity: 0, height: 0 }}
-                      className="mt-3 flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-500"
+                      className="mt-3 flex items-center gap-2 text-sm text-warning dark:text-warning"
                     >
                       <AlertTriangle size={16} />
                       <span>{connLimit > 30 ? 'High risk! Approaching dangerous limits for new accounts.' : 'Caution: Above LinkedIn recommended safe limit (20/day).'}</span>
@@ -225,7 +225,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                       initial={{ opacity: 0, height: 0 }} 
                       animate={{ opacity: 1, height: 'auto' }} 
                       exit={{ opacity: 0, height: 0 }}
-                      className="mt-3 flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-500"
+                      className="mt-3 flex items-center gap-2 text-sm text-warning dark:text-warning"
                     >
                       <AlertTriangle size={16} />
                       <span>{msgLimit > 80 ? 'High risk! Messaging at this volume may trigger spam filters.' : 'Caution: Above typical safe limit (50/day).'}</span>
@@ -241,7 +241,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                     initial={{ opacity: 0, height: 0 }} 
                     animate={{ opacity: 1, height: 'auto' }} 
                     exit={{ opacity: 0, height: 0 }}
-                    className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2 text-sm text-red-600 dark:text-red-400"
+                    className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2 text-sm text-destructive dark:text-destructive"
                   >
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                     <span>Warning: Your connection limit ({connLimit}) is higher than your message limit ({msgLimit}). This is an unusual configuration that may lead to imbalanced outreach.</span>
@@ -387,7 +387,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 p-4 rounded-xl flex items-start gap-3"
+                className="bg-success/10 border border-success/20 text-success dark:text-success p-4 rounded-xl flex items-start gap-3"
               >
                 <CheckCircle2 className="shrink-0 mt-0.5" size={20} />
                 <div>

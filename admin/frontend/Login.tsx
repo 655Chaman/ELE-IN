@@ -49,14 +49,14 @@ export function Login() {
 
   return (
     <div className="min-h-screen bg-[#070809] flex flex-col items-center justify-center relative overflow-hidden text-white font-sans">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-success/10 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 px-6">
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center mb-4 shadow-xl backdrop-blur-md">
-            <Sparkles className="text-indigo-400" size={24} />
+            <Sparkles className="text-primary" size={24} />
           </div>
           <h1 className="text-3xl font-bold tracking-tight mb-2">Ele-in</h1>
           <p className="text-zinc-400 text-center text-sm">
@@ -80,7 +80,7 @@ export function Login() {
                       required
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
-                      className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-zinc-600"
+                      className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all placeholder:text-zinc-600"
                       placeholder="Acme Corp"
                     />
                   </div>
@@ -99,7 +99,7 @@ export function Login() {
                       type="text"
                       value={companyDomain}
                       onChange={(e) => setCompanyDomain(e.target.value)}
-                      className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-zinc-600"
+                      className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all placeholder:text-zinc-600"
                       placeholder="acmecorp.com"
                     />
                   </div>
@@ -118,7 +118,7 @@ export function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-zinc-600"
+                  className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all placeholder:text-zinc-600"
                   placeholder="you@company.com"
                 />
               </div>
@@ -135,7 +135,7 @@ export function Login() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-zinc-600"
+                  className="w-full bg-black/50 border border-white/10 text-white rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all placeholder:text-zinc-600"
                   placeholder="••••••••"
                 />
               </div>
@@ -144,7 +144,7 @@ export function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2.5 font-semibold transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+              className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary text-white rounded-lg py-2.5 font-semibold transition-all shadow-[0_0_20px_var(--primary),0.3)] hover:shadow-[0_0_25px_var(--primary),0.5)] disabled:opacity-50 disabled:cursor-not-allowed mt-6"
             >
               {loading ? (
                 <Loader2 className="animate-spin" size={18} />

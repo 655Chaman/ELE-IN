@@ -88,7 +88,7 @@ export function AcceptInvite() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 max-w-md w-full text-center"
         >
-          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
           <h2 className="text-xl font-medium text-white mb-2">Invalid Invite Link</h2>
           <p className="text-zinc-400 mb-6">This invite link is missing or malformed.</p>
           <Button onClick={() => navigate("/")} className="w-full">
@@ -107,7 +107,7 @@ export function AcceptInvite() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 max-w-md w-full text-center"
         >
-          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
           <h2 className="text-xl font-medium text-white mb-2">Invite Failed</h2>
           <p className="text-zinc-400 mb-6">{errorMessage}</p>
           <Button onClick={() => navigate("/")} className="w-full">
@@ -130,7 +130,7 @@ export function AcceptInvite() {
           animate={{ scale: 1 }}
           transition={{ type: "spring", delay: 0.2 }}
         >
-          <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto mb-6" />
+          <CheckCircle2 className="h-16 w-16 text-success mx-auto mb-6" />
         </motion.div>
         <h2 className="text-2xl font-semibold text-white mb-2">You're In!</h2>
         <p className="text-zinc-400">You've joined the workspace successfully. Redirecting...</p>

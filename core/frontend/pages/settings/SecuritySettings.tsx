@@ -154,7 +154,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                   cx="100"
                   cy="100"
                   r={radius}
-                  className={require2fa ? "stroke-emerald-500" : "stroke-primary"}
+                  className={require2fa ? "stroke-success" : "stroke-primary"}
                   strokeWidth="12"
                   fill="none"
                   strokeLinecap="round"
@@ -176,9 +176,9 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                 >
                   {require2fa ? (
                     <>
-                      <Lock className="w-8 h-8 text-emerald-500 mb-1" />
-                      <span className="text-2xl font-bold text-emerald-500">{scorePercentage}%</span>
-                      <span className="text-xs font-medium text-emerald-500/80 uppercase tracking-wider">Fully Secured</span>
+                      <Lock className="w-8 h-8 text-success mb-1" />
+                      <span className="text-2xl font-bold text-success">{scorePercentage}%</span>
+                      <span className="text-xs font-medium text-success/80 uppercase tracking-wider">Fully Secured</span>
                     </>
                   ) : (
                     <>
@@ -195,16 +195,16 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
             <div className="flex flex-col gap-4 text-left bg-background/50 p-6 rounded-xl border border-border/50 w-full max-w-sm">
               <h3 className="text-lg font-bold tracking-tight text-foreground">Security Checklist</h3>
               <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
                 <span className="text-sm font-medium text-foreground">Workspace Created</span>
               </div>
               <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
                 <span className="text-sm font-medium text-foreground">Email Verified</span>
               </div>
               <div className="flex items-center gap-3">
                 {require2fa ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
                 ) : (
                   <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0" />
                 )}
@@ -224,11 +224,11 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="bg-emerald-500/10 border-b border-emerald-500/20 overflow-hidden"
+              className="bg-success/10 border-b border-success/20 overflow-hidden"
             >
               <div className="p-4 flex items-start sm:items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
-                <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+                <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5 sm:mt-0" />
+                <p className="text-sm text-success dark:text-success font-medium">
                   Your workspace is now protected. Members without 2FA will be prompted to enroll on their next login.
                 </p>
               </div>
@@ -241,7 +241,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
             
             <div className="flex-1 space-y-4">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${require2fa ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
+                <div className={`p-2.5 rounded-xl ${require2fa ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
                   {require2fa ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
                 </div>
                 <div>
@@ -254,7 +254,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                       Industry Standard
                     </span>
                     {require2fa && (
-                      <span className="px-2 py-0.5 text-xs bg-emerald-500/10 text-emerald-500 rounded font-bold uppercase tracking-wider">
+                      <span className="px-2 py-0.5 text-xs bg-success/10 text-success rounded font-bold uppercase tracking-wider">
                         Enforced
                       </span>
                     )}
@@ -280,7 +280,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                     className="mt-4 p-4 rounded-xl border border-primary/30 bg-primary/5 flex gap-3"
                   >
                     <AlertTriangle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <p className="text-sm text-amber-600 dark:text-primary/80/90 leading-relaxed">
+                    <p className="text-sm text-warning dark:text-primary/80/90 leading-relaxed">
                       <strong className="font-semibold block mb-1">High Risk Exposure</strong>
                       Without 2FA enforcement, any compromised password can give an attacker full access to all LinkedIn accounts connected to this workspace.
                     </p>
@@ -295,7 +295,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                 onClick={handleToggleClick}
                 disabled={saving || showConfirm}
                 className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed ${
-                  require2fa ? "bg-emerald-500" : "bg-muted-foreground/30"
+                  require2fa ? "bg-success" : "bg-muted-foreground/30"
                 }`}
                 role="switch"
                 aria-checked={require2fa}
@@ -308,7 +308,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                   }`}
                 />
               </button>
-              <span className={`text-xs font-semibold mt-2 ${require2fa ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              <span className={`text-xs font-semibold mt-2 ${require2fa ? 'text-success' : 'text-muted-foreground'}`}>
                 {require2fa ? 'SECURED' : 'UNSECURED'}
               </span>
             </div>

@@ -136,7 +136,7 @@ export function EleInWelcome() {
           {allDone ? (
             <>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-muted/30 mb-6">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
                 <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-muted-foreground">Live</span>
               </div>
               <h1 className="text-5xl md:text-7xl font-light tracking-tighter leading-[1.05] mb-5">

@@ -65,7 +65,7 @@ export function EleInIntegrations() {
                   <Zap size={20} className="text-primary opacity-80" />
                 </div>
                 {app.status === "connected" ? (
-                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
+                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-success/10 text-success text-[10px] font-bold">
                     <CheckCircle2 size={12} /> Connected
                   </span>
                 ) : app.status === "coming_soon" ? (

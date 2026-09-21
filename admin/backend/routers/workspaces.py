@@ -697,11 +697,20 @@ def get_workspace_members(
             display_name = profiles_map.get(m["user_id"]) or m["user_id"][:8] + "..."
             members.append({**m, "display_name": display_name})
 
-        invites_res = svc.table("workspace_invites") \
-            .select("id, email, role, expires_at, status, created_at") \
-            .eq("workspace_id", workspace_id).eq("status", "pending").execute()
+        # Attempt to fetch invites, gracefully fallback if table is missing (PGRST205)
+        try:
+            invites_res = svc.table("workspace_invites") \
+                .select("id, email, role, expires_at, status, created_at") \
+                .eq("workspace_id", workspace_id).eq("status", "pending").execute()
+            invites = invites_res.data or []
+        except Exception as e:
+            # If the table is missing or schema cache is stale, fallback to empty list
+            if "PGRST205" in str(e) or "Could not find the table" in str(e):
+                invites = []
+            else:
+                raise
 
-        return {"members": members, "invites": invites_res.data or []}
+        return {"members": members, "invites": invites}
 
     except HTTPException:
         raise

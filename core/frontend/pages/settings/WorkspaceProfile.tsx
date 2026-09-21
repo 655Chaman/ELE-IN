@@ -16,11 +16,11 @@ const getGradient = (name: string) => {
   if (!name) return "from-muted to-muted-foreground";
   const hash = Array.from(name).reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const gradients = [
-    "from-blue-500 to-indigo-500",
-    "from-purple-500 to-fuchsia-500",
+    "from-primary to-primary/80",
+    "from-primary to-primary/60",
     "from-primary/80 to-primary",
-    "from-emerald-400 to-teal-500",
-    "from-rose-400 to-red-500",
+    "from-success to-success/80",
+    "from-destructive to-destructive/80",
   ];
   return gradients[hash % gradients.length];
 };
@@ -117,7 +117,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
     <div className="space-y-6">
       <motion.div
         animate={{
-          borderColor: savedSuccess ? "var(--color-emerald-500, #10b981)" : "var(--color-border, #262626)",
+          borderColor: savedSuccess ? "var(--success, #00FF00)" : "var(--color-border, #262626)",
           boxShadow: savedSuccess ? "0 0 15px -3px rgba(16, 185, 129, 0.3)" : "0 0 0px 0px rgba(0,0,0,0)",
         }}
         transition={{ duration: 0.5, ease: "easeOut" }}
@@ -170,7 +170,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
                     </button>
                     <button
                       onClick={handleSave}
-                      className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-md hover:bg-amber-600 transition-colors shadow-sm"
+                      className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-md hover:bg-warning transition-colors shadow-sm"
                       disabled={saving || isEmpty || isTooLong}
                     >
                       Save
@@ -234,7 +234,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
               <div className="text-xs text-muted-foreground">
                 {lastSaved ? (
                   <span className="flex items-center gap-1">
-                    <Check size={14} className="text-emerald-500" /> Last saved {format(lastSaved, "HH:mm")}
+                    <Check size={14} className="text-success" /> Last saved {format(lastSaved, "HH:mm")}
                   </span>
                 ) : (
                   <span>Data synced with server</span>
