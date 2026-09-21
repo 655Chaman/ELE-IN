@@ -58,7 +58,14 @@ def list_workspaces(
     user_id: str = Depends(get_current_user_id)
 ):
     try:
-        ws_res = supabase.table("workspaces").select("*").execute()
+        svc = get_service_client()
+        memberships = svc.table("workspace_members").select("workspace_id").eq("user_id", user_id).execute()
+        my_ws_ids = [m["workspace_id"] for m in (memberships.data or [])]
+        
+        if not my_ws_ids:
+            return []
+            
+        ws_res = svc.table("workspaces").select("*").in_("id", my_ws_ids).execute()
         if not ws_res.data:
             return []
             

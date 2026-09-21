@@ -17,11 +17,12 @@ import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
 import { GlowingEffect } from './ui/glowing-effect';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
-import { PauseOctagon, Building2 } from 'lucide-react';
+import { PauseOctagon, Building2, ChevronDown } from 'lucide-react';
 export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeMarket, setActiveMarket] = useState("biotech");
   const [isModalOpen, setModalOpen] = useState(false);
+  const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
 
   const { signOut } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -135,21 +136,64 @@ export function AppLayout() {
                   </button>
                 )}
               </div>
-              <select 
-                className="w-full bg-sidebar-accent/30 border border-sidebar-border rounded-md text-xs px-2 py-1.5 text-sidebar-foreground outline-none focus:border-primary/50 cursor-pointer"
-                value={activeWorkspaceId || ""}
-                onChange={(e) => setActiveWorkspaceId(e.target.value)}
-              >
-                {workspaces.length === 0 ? (
-                  <option value="" disabled>Loading workspace...</option>
-                ) : (
-                  workspaces.map(ws => (
-                    <option key={ws.id} value={ws.id}>
-                      {ws.name} ({ws.account_count} accounts)
-                    </option>
-                  ))
+
+              <div className="relative w-full" id="workspace-dropdown-container">
+                {/* Invisible backdrop for closing when clicking outside */}
+                {isWorkspaceDropdownOpen && (
+                  <div className="fixed inset-0 z-40" onClick={() => setIsWorkspaceDropdownOpen(false)}></div>
                 )}
-              </select>
+                
+                <button 
+                  onClick={() => setIsWorkspaceDropdownOpen(!isWorkspaceDropdownOpen)}
+                  className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-sidebar-accent/40 transition-colors border border-transparent hover:border-sidebar-border/50 group relative z-50"
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
+                      {workspaces.find(w => w.id === activeWorkspaceId)?.name?.substring(0, 2).toUpperCase() || "WS"}
+                    </div>
+                    <div className="flex flex-col items-start truncate">
+                      <span className="text-sm font-semibold text-sidebar-foreground truncate">{workspaces.find(w => w.id === activeWorkspaceId)?.name || "Loading..."}</span>
+                      <span className="text-[10px] text-sidebar-foreground/60 font-medium tracking-wide">
+                        {workspaces.find(w => w.id === activeWorkspaceId)?.account_count || 0} Connected Account{workspaces.find(w => w.id === activeWorkspaceId)?.account_count !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown size={14} className={`text-sidebar-foreground/40 transition-transform duration-200 group-hover:text-sidebar-foreground/80 shrink-0 ${isWorkspaceDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {isWorkspaceDropdownOpen && (
+                  <div className="absolute z-50 w-[260px] left-0 mt-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-3 py-2 border-b border-border/50">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Switch Workspace</span>
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
+                      {workspaces.map(ws => (
+                        <button
+                          key={ws.id}
+                          onClick={() => { 
+                            setActiveWorkspaceId(ws.id);
+                            setIsWorkspaceDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all ${ws.id === activeWorkspaceId ? 'bg-primary/10' : 'hover:bg-muted'}`}
+                        >
+                          <div className={`w-8 h-8 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${ws.id === activeWorkspaceId ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted-foreground/10 text-muted-foreground'}`}>
+                            {ws.name.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col truncate">
+                            <span className={`text-sm truncate ${ws.id === activeWorkspaceId ? 'font-bold text-foreground' : 'font-medium text-foreground/80'}`}>{ws.name}</span>
+                            <span className="text-[10px] text-muted-foreground">{ws.account_count} account{ws.account_count !== 1 ? 's' : ''}</span>
+                          </div>
+                          {ws.id === activeWorkspaceId && (
+                             <div className="ml-auto shrink-0 text-primary">
+                               <CheckCircle size={14} strokeWidth={2.5} />
+                             </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="px-2 pt-4 pb-2 flex justify-center">
@@ -250,7 +294,7 @@ export function AppLayout() {
                   toast.error("Failed to pause campaigns.");
                 }
               }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors font-bold shadow-sm border border-red-700"
+              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-lg transition-colors font-bold shadow-sm"
               title={!isSidebarOpen ? "Panic Pause All" : undefined}
             >
               <div className="shrink-0"><PauseOctagon size={14} strokeWidth={2.5} /></div>
