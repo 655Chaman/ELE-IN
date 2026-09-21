@@ -441,35 +441,75 @@ def get_master_view_stats(
         try:
             # Layer 0 & 1: Safely fetch the most recent activity with a strict limit
             action_log_res = supabase.table("action_log") \
-                .select("action_type, result, executed_at, error_detail, lead_states(leads(first_name, last_name, company_name))") \
+                .select("*") \
                 .eq("workspace_id", workspace_id) \
                 .order("executed_at", desc=True) \
                 .limit(15) \
                 .execute()
                 
-            for act in (action_log_res.data or []):
-                action_type_str = act.get("action_type", "Action")
+            acts = action_log_res.data or []
+            
+            # Extract execution_state_ids and lead_ids
+            exec_state_ids = [a['execution_state_id'] for a in acts if a.get('execution_state_id')]
+            
+            lead_id_map = {} # exec_state_id -> lead_id
+            if exec_state_ids:
+                ces_res = supabase.table("campaign_execution_states") \
+                    .select("id, enrollment_id, campaign_enrollments(lead_id)") \
+                    .in_("id", exec_state_ids) \
+                    .execute()
+                for ces in (ces_res.data or []):
+                    enrollment = ces.get("campaign_enrollments") or {}
+                    if enrollment.get("lead_id"):
+                        lead_id_map[ces['id']] = enrollment['lead_id']
+            
+            # Gather all lead IDs
+            lead_ids = set()
+            for a in acts:
+                if a.get("metadata") and a["metadata"].get("lead_id"):
+                    lead_ids.add(a["metadata"]["lead_id"])
+                elif a.get("execution_state_id") and a["execution_state_id"] in lead_id_map:
+                    lead_ids.add(lead_id_map[a["execution_state_id"]])
+                    
+            # Fetch lead details
+            leads_data = {}
+            if lead_ids:
+                leads_res = supabase.table("leads") \
+                    .select("id, first_name, last_name, company_name") \
+                    .in_("id", list(lead_ids)) \
+                    .execute()
+                for ld in (leads_res.data or []):
+                    leads_data[ld['id']] = ld
+
+            for act in acts:
+                action_type_str = act.get("action_type", "Action").replace("_", " ").title()
                 
-                # Safely navigate nested relations
-                lead_data = (act.get("lead_states") or {}).get("leads") or {}
-                first = lead_data.get('first_name') or ''
-                last = lead_data.get('last_name') or ''
+                # Determine lead_id
+                l_id = None
+                if act.get("metadata") and act["metadata"].get("lead_id"):
+                    l_id = act["metadata"]["lead_id"]
+                elif act.get("execution_state_id"):
+                    l_id = lead_id_map.get(act["execution_state_id"])
+                
+                ld = leads_data.get(l_id) if l_id else {}
+                first = ld.get('first_name') or ''
+                last = ld.get('last_name') or ''
                 name = f"{first} {last}".strip() or "Unknown Lead"
                 
-                company = lead_data.get('company_name')
+                company = ld.get('company_name')
                 company_str = f" at {company}" if company else ""
                 
                 dt = act.get("executed_at")
                 
                 if act.get("result") != "success" or act.get("error_detail"):
                     error_feed.append({
-                        "text": f"Failed to {action_type_str} for {name}{company_str}",
+                        "text": f"Failed to {action_type_str.lower()} for {name}{company_str}",
                         "time": dt,
                         "type": "error"
                     })
                 else:
                     live_feed.append({
-                        "text": f"Successfully executed {action_type_str} for {name}{company_str}",
+                        "text": f"{action_type_str} for {name}{company_str}",
                         "time": dt,
                         "type": "activity"
                     })
