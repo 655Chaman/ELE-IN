@@ -43,3 +43,4 @@ def rate_limit(cost: int = 1, capacity: int = 100, refill_rate_per_second: float
             return True
             
     return _rate_limit_dep
+enforce_ai_rate_limit = rate_limit(cost=1, capacity=50, refill_rate_per_second=0.5)
