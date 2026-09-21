@@ -851,6 +851,7 @@ Reject: {reject_link}
                 synthesis_layer += "PROOF POINTS:\n" + ", ".join(synthesis.get('proof_points', [])) + "\n\n"
                 
             rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + "\n".join(chunk_texts)
+            context_str = synthesis_layer + rag_layer
             
             system_prompt = f"""You are an expert sales representative answering a prospect's message based ONLY on the knowledge below.
 {context_str}
@@ -937,10 +938,14 @@ Respond ONLY with valid JSON."""
                     self.supabase.table("campaign_execution_states").update({
                         "status": "awaiting_approval"
                     }).eq("id", execution_state_id).execute()
+                except Exception as e:
+                    return {"status": "error", "error": f"Failed to queue for approval DB write: {e}"}
                     
+                try:
                     self._send_approval_email(workspace_id, lead_id, clean_reply, lead_message, approval_id)
                 except Exception as e:
-                    return {"status": "error", "error": f"Failed to queue for approval: {e}"}
+                    import logging
+                    logging.getLogger(__name__).error(f"Failed to send approval email: {e}")
                     
                 msg = f"Queued for review. Conf: {confidence}, Grounded: {grounded}, Overlap: {overlap_pass} ({overlap_reason})"
                 return {"status": "awaiting_approval", "message": msg}

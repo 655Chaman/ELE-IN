@@ -705,6 +705,10 @@ class EleInOrchestrator:
             )
             return
             
+        if action_result.get("status") == "awaiting_approval":
+            self.update_state(state["id"], current_node["id"], "awaiting_approval", None, lease_token, tz_str=state.get('tz_str', 'UTC'))
+            return
+
         if action_result.get("status") == "skipped":
             # Used when account is locked. Reschedule quickly.
             self.update_state(state["id"], current_node["id"], "pending", datetime.utcnow() + timedelta(seconds=45), lease_token=lease_token)
@@ -1015,7 +1019,7 @@ class EleInOrchestrator:
             res = executor.execute(action, resolved_data, linkedin_url)
             
             # Coerce unhandled statuses to error so process_lead doesn't silently advance the graph
-            if res.get("status") not in ("success", "waiting", "rate_limited", "account_disconnected", "security_challenge", "error", "skipped", "suppressed"):
+            if res.get("status") not in ("success", "waiting", "rate_limited", "account_disconnected", "security_challenge", "error", "skipped", "suppressed", "awaiting_approval"):
                 res = {"status": "error", "error": f"DEFINITIVE_EXTERNAL_FAILURE: Unhandled executor status '{res.get('status')}'"}
             
             # --- 6. Durable Result Update ---
