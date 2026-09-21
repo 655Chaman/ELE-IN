@@ -824,9 +824,19 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
 // Added timezone support
 const COMMON_TIMEZONES = [
   "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
-  "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Dubai",
-  "Asia/Kolkata", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney"
-];
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Kolkata", "Asia/Singapore", "Asia/Tokyo",
+  "Australia/Sydney"
+]
+
+const formatTimezone = (tzName: string) => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en', { timeZone: tzName, timeZoneName: 'shortOffset' });
+    const offset = formatter.formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value;
+    return offset ? `(${offset}) ${tzName}` : tzName;
+  } catch (e) {
+    return tzName;
+  }
+};
 
 function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v: any) => void }) {
   const [localTz, setLocalTz] = useState<string>("");
@@ -859,17 +869,32 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
               className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               {localTz && !COMMON_TIMEZONES.includes(localTz) && (
-                <option value={localTz}>{localTz} (Auto-detected)</option>
+                <option value={localTz}>{formatTimezone(localTz)} (Auto-detected)</option>
               )}
               {COMMON_TIMEZONES.map(tz => (
-                <option key={tz} value={tz}>{tz}{tz === localTz ? " (Auto-detected)" : ""}</option>
+                <option key={tz} value={tz}>{formatTimezone(tz)}{tz === localTz ? " (Auto-detected)" : ""}</option>
               ))}
             </select>
           </div>
 
           <div className="space-y-2 pt-4 border-t border-border/50">
-             <label className="text-sm font-medium">Sending Hours</label>
-             <p className="text-xs text-muted-foreground">Default Schedule: Mon-Fri, 9:00 AM - 5:00 PM</p>
+             <label className="text-sm font-medium">Sending Hours (Mon-Fri)</label>
+             <div className="flex items-center gap-3">
+               <input 
+                 type="time" 
+                 value={state.schedule?.startTime || "09:00"}
+                 onChange={(e) => onChange("schedule", { ...state.schedule, startTime: e.target.value })}
+                 className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+               />
+               <span className="text-muted-foreground text-sm">to</span>
+               <input 
+                 type="time" 
+                 value={state.schedule?.endTime || "17:00"}
+                 onChange={(e) => onChange("schedule", { ...state.schedule, endTime: e.target.value })}
+                 className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+               />
+             </div>
+             <p className="text-[11px] text-muted-foreground mt-1">Campaigns will pause outside these hours.</p>
           </div>
         </div>
       </div>
