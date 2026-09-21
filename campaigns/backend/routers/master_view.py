@@ -711,7 +711,7 @@ def get_funnel_leads(
             if req.step == "Connected":
                 sq = sq.in_("status", ["running", "completed", "exited"])
             elif req.step == "Booked":
-                sq = sq.eq("status", "exited").in_("error_reason", ["mark_converted", "hubspot_deal_won"])
+                sq = sq.eq("status", "exited").in_("error_reason", ["mark_converted", "hubspot_deal_won", "meeting_booked"])
                 
             res = sq.order("updated_at", desc=True).limit(50).execute()
             

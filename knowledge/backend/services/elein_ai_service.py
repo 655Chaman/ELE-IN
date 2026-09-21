@@ -176,7 +176,7 @@ ROUTING_CONFIG = {
     "synthesis": ["meta/llama-3.2-11b-vision-instruct", "google/gemma-4-31b-it"],
     "scoring": ["nvidia/nemotron-3.5-lightning-30b-a3b"],
     "personalize": ["nvidia/nemotron-3.5-lightning-30b-a3b", "mistralai/mistral-nemotron"],
-    "intent": ["openai/gpt-oss-20b"],
+    "intent": ["meta/llama-3.2-11b-vision-instruct", "openai/gpt-oss-20b"],
     "drafting": ["nvidia/nemotron-3-super-120b-a12b"]
 }
 
@@ -376,6 +376,7 @@ INTENT_LABELS = {
     "objection": {"emoji": "🤔", "label": "Has Objection", "color": "amber"},
     "question":  {"emoji": "❓", "label": "Has Question",  "color": "blue"},
     "negative":  {"emoji": "⛔", "label": "Not Interested","color": "red"},
+    "booking_confirmation": {"emoji": "📅", "label": "Meeting Booked", "color": "purple"},
     "unknown":   {"emoji": "💬", "label": "Neutral",       "color": "zinc"},
 }
 
@@ -397,10 +398,11 @@ CLASSIFICATION RULES:
 - "objection": They are pushing back but still engaging ("not the right time", "too expensive", "we already use X", "our budget is locked")
 - "question": They are curious and asking for specifics ("how does it work?", "what's the pricing?", "do you integrate with X?")
 - "negative": Hard rejection, hostile, or final dismissal ("not interested", "please remove me", "stop messaging me")
+- "booking_confirmation": The prospect explicitly confirmed a specific date and time for a meeting (e.g. "Tuesday at 2 works", "Let's do 10am tomorrow").
 - "unknown": Ambiguous, off-topic, or auto-reply
 
 Respond ONLY with this exact JSON structure (no markdown, no preamble):
-{{"intent": "<one of: positive|objection|question|negative|unknown>", "confidence": <0.0-1.0 float>, "reasoning": "<one precise sentence explaining the signal that drove your classification>"}}
+{{"intent": "<one of: positive|objection|question|negative|booking_confirmation|unknown>", "confidence": <0.0-1.0 float>, "reasoning": "<one precise sentence explaining the signal that drove your classification>", "confirmed_time": "<ISO8601 string if intent is booking_confirmation, else null>"}}
 
 LinkedIn Reply to classify:
 {_sanitize_and_bound_input(message_text, max_chars=1500, label="prospect_message")}
@@ -416,23 +418,30 @@ LinkedIn Reply to classify:
                     temperature=0.0,
                     max_tokens=150,
                 )
-                raw = resp.choices[0].message.content.strip()
+                raw_content = resp.choices[0].message.content
+                raw = raw_content.strip() if raw_content else ''
                 try:
                     from core.backend.api.auth_dep import get_service_client
                     t_used = getattr(resp.usage, 'total_tokens', 0) if hasattr(resp, 'usage') and resp.usage else 0
-                    _log_ai_generation(
-                        supabase=get_service_client(),
-                        workspace_id=workspace_id,
-                        lead_id="",
-                        node_id="classify_intent",
-                        prompt=prompt,
-                        output=raw,
-                        model=current_model,
-                        tokens_used=t_used
-                    )
+                    if raw:
+                        _log_ai_generation(
+                            supabase=get_service_client(),
+                            workspace_id=workspace_id,
+                            lead_id="00000000-0000-0000-0000-000000000000",
+                            node_id="classify_intent",
+                            prompt=prompt,
+                            output=raw,
+                            model=current_model,
+                            tokens_used=t_used
+                        )
                 except Exception:
                     pass
                 data = _extract_json_from_slop(raw)
+                
+                # Retry silently if the model returned an empty string or completely invalid JSON
+                if not raw or "intent" not in data:
+                    continue
+                    
                 intent = data.get("intent", "unknown")
                 if intent not in INTENT_LABELS:
                     intent = "unknown"
@@ -440,6 +449,7 @@ LinkedIn Reply to classify:
                     "intent": intent,
                     "confidence": float(data.get("confidence", 0.7)),
                     "reasoning": data.get("reasoning", ""),
+                    "confirmed_time": data.get("confirmed_time"),
                     **INTENT_LABELS[intent]
                 }
             except Exception as e:

@@ -467,12 +467,61 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
     if messages:
         try:
             from knowledge.backend.services.elein_ai_service import classify_intent
+            from core.backend.services.calendar_adapter import get_calendar_adapter
             for m in messages:
                 if m.get("direction") == "inbound":
+
                     intent_data = await classify_intent(m["message_text"], workspace_id=workspace_id)
                     m["intent"] = intent_data.get("intent", "unknown")
                     m["intent_confidence"] = intent_data.get("confidence", 0.0)
                     classified += 1
+
+                    if m["intent"] == "booking_confirmation" and intent_data.get("confirmed_time"):
+                        try:
+                            # 1. Get calendar adapter
+                            acc_res = supabase.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("id", account_id).limit(1).execute()
+                            if acc_res.data and acc_res.data[0].get("calendar_provider"):
+                                adapter = get_calendar_adapter(acc_res.data[0])
+                                if adapter:
+                                    # 2. Mock booking execution
+                                    start_time = intent_data.get("confirmed_time")
+                                    # Fallback end time mock
+                                    end_time = start_time 
+                                    
+                                    # 3. Find lead_id
+                                    lead_res = supabase.table("leads").select("id, email, first_name, last_name").eq("workspace_id", workspace_id).limit(100).execute()
+                                    
+                                    # Match sender_name locally since we can't concatenate in PostgREST easily
+                                    matched_lead = None
+                                    if lead_res.data:
+                                        for row in lead_res.data:
+                                            full_name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
+                                            if full_name.lower() == str(m.get("sender_name", "")).lower():
+                                                matched_lead = row
+                                                break
+                                                
+                                    if matched_lead:
+                                        # Mock write-path call
+                                        full_name = f"{matched_lead.get('first_name', '')} {matched_lead.get('last_name', '')}".strip()
+                                        booking_res = await adapter.create_booking(
+                                            lead_email=matched_lead.get("email", "unknown@test.com"),
+                                            lead_name=full_name,
+                                            start_time=start_time,
+                                            end_time=end_time
+                                        )
+                                        
+                                        if booking_res and booking_res.get("status") == "confirmed":
+                                            # 4. Transition campaign state
+                                            enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
+                                            if enroll_res.data:
+                                                enroll_ids = [e["id"] for e in enroll_res.data]
+                                                supabase.table("campaign_execution_states").update({
+                                                    "status": "exited",
+                                                    "error_reason": "meeting_booked"
+                                                }).in_("enrollment_id", enroll_ids).execute()
+                        except Exception as e:
+                            logger.error(f"Failed to process booking confirmation: {e}")
+
 
             res = bulk_upsert_messages(supabase, workspace_id, account_id, messages)
             return {"status": "success", "scraped": len(messages), "new_saved": res["new_saved"],
