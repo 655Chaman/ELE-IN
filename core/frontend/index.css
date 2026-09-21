@@ -188,14 +188,14 @@
   --chart-4: #9CA3AF;
   --chart-5: #D1D5DB;
   --radius: 0.625rem;
-  --sidebar: #001507; /* Dark Forest Green sidebar in light mode too! */
-  --sidebar-foreground: #FFFFFF;
-  --sidebar-primary: #8FFF83;
-  --sidebar-primary-foreground: #001507;
-  --sidebar-accent: rgba(255, 255, 255, 0.1);
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #001507;
-  --sidebar-ring: #8FFF83;
+  --sidebar: #F9FAFB;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #00A63E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E5E7EB;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #00A63E;
 }
 
 .dark {
@@ -232,7 +232,7 @@
   --sidebar-primary-foreground: #001507;
   --sidebar-accent: rgba(255, 255, 255, 0.1);
   --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #001507;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: #8FFF83;
 }
 ::view-transition-old(root),
