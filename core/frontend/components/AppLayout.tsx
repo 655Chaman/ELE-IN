@@ -88,12 +88,12 @@ export function AppLayout() {
       )}
       <div className="flex-1 flex overflow-hidden">
         {/* Global Left Sidebar */}
-        <aside className={`flex flex-col border-r border-border bg-background transition-all duration-300 ease-in-out shrink-0 z-20 ${isSidebarOpen ? 'w-[240px]' : 'w-16'}`}>
+        <aside className={`flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out shrink-0 z-20 ${isSidebarOpen ? 'w-[240px]' : 'w-16'}`}>
           
           {/* Brand Header */}
-          <div className="h-[60px] flex items-center justify-between px-4 border-b border-border shrink-0">
+          <div className="h-[60px] flex items-center justify-between px-4 border-b border-sidebar-border shrink-0">
             {isSidebarOpen ? (
-              <div className="flex items-center gap-2 font-semibold text-[13px] tracking-widest uppercase text-foreground">
+              <div className="flex items-center gap-2 font-semibold text-[13px] tracking-widest uppercase text-sidebar-foreground">
                 <img src="/logo-icon.png" alt="Ele-in" className="w-6 h-6 object-cover rounded-md" />
                 ELE-IN
               </div>
@@ -106,7 +106,7 @@ export function AppLayout() {
             {isSidebarOpen && (
               <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                className="p-1 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
                 title="Toggle Sidebar (Cmd+X)"
               >
                 <ChevronLeft size={16} />
@@ -118,7 +118,7 @@ export function AppLayout() {
           {isSidebarOpen ? (
             <div className="px-3 pt-4 pb-2">
               <div className="flex items-center justify-between px-1 mb-1.5">
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest">
+                <p className="text-[9px] font-semibold text-sidebar-foreground/60 uppercase tracking-widest">
                   Current Workspace
                 </p>
                 {myAgencies && myAgencies.some(a => a.role === 'owner' || a.role === 'admin') && (
@@ -127,7 +127,7 @@ export function AppLayout() {
                       e.preventDefault();
                       window.location.href = '/elein/agency';
                     }}
-                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest"
+                    className="text-sidebar-foreground/60 hover:text-primary transition-colors flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest"
                     title="Agency Management"
                   >
                     <Building2 size={10} />
@@ -136,7 +136,7 @@ export function AppLayout() {
                 )}
               </div>
               <select 
-                className="w-full bg-accent/30 border border-border rounded-md text-xs px-2 py-1.5 text-foreground outline-none focus:border-primary/50 cursor-pointer"
+                className="w-full bg-sidebar-accent/30 border border-sidebar-border rounded-md text-xs px-2 py-1.5 text-sidebar-foreground outline-none focus:border-primary/50 cursor-pointer"
                 value={activeWorkspaceId || ""}
                 onChange={(e) => setActiveWorkspaceId(e.target.value)}
               >
@@ -174,7 +174,7 @@ export function AppLayout() {
             {navCategories.map((category, idx) => (
               <div key={idx} className="space-y-1">
                 {isSidebarOpen && (
-                  <p className="px-3 text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">
+                  <p className="px-3 text-[9px] font-semibold text-sidebar-foreground/60 uppercase tracking-widest mb-3">
                     {category.title}
                   </p>
                 )}
@@ -184,8 +184,8 @@ export function AppLayout() {
                     
                     const className = `w-full flex items-center gap-3 px-3 py-1.5 transition-colors group relative rounded-lg ${
                       isActive 
-                        ? 'bg-accent/50 text-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+                        ? 'bg-sidebar-accent/50 text-sidebar-foreground'
+                        : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/30'
                     }`;
 
                     const innerContent = (
@@ -201,7 +201,7 @@ export function AppLayout() {
                             variant="white"
                           />
                         )}
-                        <div className={`shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                        <div className={`shrink-0 ${isActive ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`}>
                           {item.icon}
                         </div>
                         {isSidebarOpen && <span className="whitespace-nowrap text-[12px] font-medium">{item.label}</span>}
@@ -236,7 +236,7 @@ export function AppLayout() {
           </nav>
 
           {/* User Profile */}
-          <div className="p-3 border-t border-border shrink-0 space-y-2">
+          <div className="p-3 border-t border-sidebar-border shrink-0 space-y-2">
             <button 
               onClick={async () => {
                 if (!window.confirm("PANIC PAUSE: Are you sure you want to pause ALL active campaigns immediately? This will stop all outgoing connections and messages.")) return;
@@ -257,12 +257,12 @@ export function AppLayout() {
               {isSidebarOpen && <span className="text-[12px]">Panic Pause All</span>}
             </button>
             <div className="w-full flex items-center justify-between px-2">
-               {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-widest">Theme</span>}
+               {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-sidebar-foreground/60 tracking-widest">Theme</span>}
                <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
             </div>
             <button 
               onClick={() => signOut()}
-              className="w-full flex items-center gap-3 px-3 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
               title={!isSidebarOpen ? "Sign Out" : undefined}
             >
               <div className="shrink-0"><User size={14} strokeWidth={1.5} /></div>
