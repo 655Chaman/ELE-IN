@@ -74,39 +74,40 @@ def get_extension_tasks(
         if account_id in senders:
             valid_campaigns.append(c["id"])
             
+    
     if not valid_campaigns:
         return {"tasks": []}
         
-    # 2. Get one pending lead_state
-    states_res = supabase.table("lead_states") \
-        .select("id, opportunity_id, campaign_id, current_node_id, variables_json") \
-        .in_("campaign_id", valid_campaigns) \
+    # 2. Get pending execution states for this workspace
+    states_res = supabase.table("campaign_execution_states") \
+        .select("id, current_node_id, variables, enrollment_id, campaign_enrollments(campaign_id, lead_id, leads(linkedin_url, first_name))") \
+        .eq("workspace_id", workspace_id) \
         .eq("status", "pending") \
         .lte("next_run_at", datetime.utcnow().isoformat()) \
-        .limit(1) \
+        .limit(20) \
         .execute()
         
-    if not states_res.data:
+    state = None
+    lead = None
+    for s in (states_res.data or []):
+        enr = s.get("campaign_enrollments")
+        if enr and enr.get("campaign_id") in valid_campaigns:
+            state = s
+            lead = enr.get("leads")
+            break
+            
+    if not state or not lead:
         return {"tasks": []}
         
-    state = states_res.data[0]
-    
-    # 3. Get the actual lead data (LinkedIn URL)
-    lead_res = supabase.table("leads").select("linkedin_url, first_name").eq("id", state["opportunity_id"]).execute()
-    if not lead_res.data:
-        return {"tasks": []}
-        
-    lead = lead_res.data[0]
-    
-    # Mark it as 'processing' so no other worker picks it up
-    supabase.table("lead_states").update({"status": "processing"}).eq("id", state["id"]).execute()
+    # Mark it as 'running' so no other worker picks it up
+    supabase.table("campaign_execution_states").update({"status": "running"}).eq("id", state["id"]).execute()
     
     # Return as a task payload for the extension
     task = {
         "task_id": state["id"],
         "type": "linkedin_connect", # In a full system, this depends on current_node_id
-        "linkedin_url": lead["linkedin_url"],
-        "first_name": lead["first_name"],
+        "linkedin_url": lead.get("linkedin_url"),
+        "first_name": lead.get("first_name"),
         "message": f"Hi {lead.get('first_name', '')}, I'd love to connect!" # AI generated in real system
     }
     
