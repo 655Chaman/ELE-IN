@@ -56,6 +56,45 @@ class EleInNodeExecutor:
         self.worker = linkedin_worker
         self.supabase = supabase  # needed for C7 idempotency and E1 suppression checks
 
+
+    def _log_outbound_message(self, data: Dict[str, Any], text: str, direction: str = "outbound"):
+        workspace_id = data.get("_workspace_id") or data.get("workspace_id")
+        account_id = data.get("_account_id")
+        lead_id = data.get("_lead_id")
+        profile = data.get("lead_profile", {})
+        
+        # Derive prospect name for the scraper to match against
+        first_name = profile.get("first_name", "")
+        last_name = profile.get("last_name", "")
+        sender_name = f"{first_name} {last_name}".strip()
+        
+        if not sender_name:
+            # Fallback if profile is empty, try to get from db
+            if lead_id and self.supabase:
+                try:
+                    res = self.supabase.table("leads").select("first_name, last_name").eq("id", lead_id).execute()
+                    if res.data:
+                        sender_name = f"{res.data[0].get('first_name', '')} {res.data[0].get('last_name', '')}".strip()
+                except Exception:
+                    pass
+        
+        if not sender_name:
+            sender_name = "AI Assistant" # Ultimate fallback
+            
+        import uuid
+        try:
+            self.supabase.table("messages").insert({
+                "id": str(uuid.uuid4()),
+                "workspace_id": workspace_id,
+                "account_id": account_id,
+                "lead_id": lead_id,
+                "sender_name": sender_name,
+                "message_text": text,
+                "direction": direction
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log outbound message: {e}")
+
     def execute(self, action: str, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         # C2 Safety Net: After substitution, if ANY {{...}} pattern still remains unreplaced, do NOT send
         unresolved = []
@@ -617,7 +656,10 @@ class EleInNodeExecutor:
     def handle_send_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
-        return self.worker.send_message(linkedin_url, data.get('body', ''))
+        res = self.worker.send_message(linkedin_url, data.get('body', ''))
+        if res.get('status') == 'success':
+            self._log_outbound_message(data, data.get('body', ''))
+        return res
 
     def handle_send_ai_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         prompt = data.get("prompt") or data.get("pitch")
@@ -655,6 +697,7 @@ class EleInNodeExecutor:
             res = self.worker.send_message(linkedin_url, generated_msg.strip())
             
             if res.get("status") == "success":
+                self._log_outbound_message(data, generated_msg.strip())
                 return {"status": "success", "branch": "Sent"}
             else:
                 return {"status": "error", "error": res.get("error", "Unknown error sending message"), "branch": "Failed"}
@@ -694,6 +737,7 @@ class EleInNodeExecutor:
                     "error": res.get("error", "Worker returned error during send_voice_note"),
                     "branch": "Failed"
                 }
+            self._log_outbound_message(data, "[Voice Note]")
             return {"status": "success", "branch": "No reply yet"} 
         except LinkedInActionOutcomeUnknown:
             raise
@@ -704,17 +748,26 @@ class EleInNodeExecutor:
     def handle_send_inmail(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
-        return self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
+        res = self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
+        if res.get('status') == 'success':
+            self._log_outbound_message(data, data.get('body', ''))
+        return res
 
     def handle_send_paid_inmail(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
-        return self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
+        res = self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
+        if res.get('status') == 'success':
+            self._log_outbound_message(data, data.get('body', ''))
+        return res
 
     def handle_send_message_with_doc(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
-        return self.worker.send_message_with_attachment(linkedin_url, data.get('body', ''), data.get('doc_url', ''), 'document')
+        res = self.worker.send_message_with_attachment(linkedin_url, data.get('body', ''), data.get('doc_url', ''), 'document')
+        if res.get('status') == 'success':
+            self._log_outbound_message(data, data.get('body', ''))
+        return res
 
     def handle_send_intro_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         logger.warning(f"Action 'send_intro_message' called on {linkedin_url} but has no worker method")
@@ -956,24 +1009,9 @@ Respond ONLY with valid JSON."""
         
         # Dispatch to LinkedIn
         res = self.worker.send_message(linkedin_url, clean_reply)
-        
         # Log the outbound message to the messages table
-        import uuid
-        account_id = data.get("_account_id")
         if res.get("status") == "success":
-            try:
-                self.supabase.table("messages").insert({
-                    "id": str(uuid.uuid4()),
-                    "workspace_id": workspace_id,
-                    "account_id": account_id,
-                    "lead_id": lead_id,
-                    "sender_name": "AI Assistant",
-                    "message_text": clean_reply,
-                    "direction": "outbound"
-                }).execute()
-            except Exception as db_e:
-                import logging
-                logging.error(f"Failed to log outbound AI message: {db_e}")
+            self._log_outbound_message(data, clean_reply)
                 
         return res
     def handle_ai_buying_signal(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
