@@ -330,6 +330,19 @@ class EleInOrchestrator:
 
         try:
             self.supabase.rpc("recover_stale_leases", {"p_timeout_minutes": 5}).execute()
+            
+            # Phase 3: Expire 48h pending AI reply approvals
+            import datetime
+            cutoff = (datetime.datetime.utcnow() - datetime.timedelta(hours=48)).isoformat()
+            expired_res = self.supabase.table("ai_reply_approvals").select("id, execution_state_id").eq("status", "pending").lt("created_at", cutoff).execute()
+            if expired_res.data:
+                for row in expired_res.data:
+                    self.supabase.table("ai_reply_approvals").update({"status": "expired", "resolved_at": "now()"}).eq("id", row["id"]).execute()
+                    if row.get("execution_state_id"):
+                        self.supabase.table("campaign_execution_states").update({
+                            "status": "exited",
+                            "error_reason": "ai_reply_approval_expired"
+                        }).eq("id", row["execution_state_id"]).execute()
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator", "stage": "stale_recovery"})
 
@@ -995,6 +1008,9 @@ class EleInOrchestrator:
             resolved_data["_lead_id"] = state.get("lead_id")
             resolved_data["_enrollment_id"] = state.get("enrollment_id")
             resolved_data["_account_id"] = state.get("account_id")
+            resolved_data["_execution_state_id"] = state.get("id")
+            if state.get("variables") and state["variables"].get("approved_ai_reply"):
+                resolved_data["approved_ai_reply"] = state["variables"]["approved_ai_reply"]
             executor = EleInNodeExecutor(worker, supabase=self.supabase)
             res = executor.execute(action, resolved_data, linkedin_url)
             

@@ -399,6 +399,19 @@ def _exec_rag_inbox_monitor(node: WorkflowNode, context: Dict, run_id: str) -> D
     return {"status": "success", "branch": classification, "email_text": email_text}
 
 
+def _exec_if_phone_found(node: WorkflowNode, context: dict, run_id: str) -> dict:
+    lead = context.get("lead", {})
+    phone = ""
+    if isinstance(lead, dict) and lead.get("phone"):
+        phone = lead.get("phone")
+    elif context.get("phone"):
+        phone = context.get("phone")
+        
+    has_phone = bool(phone and str(phone).strip())
+    branch = "Phone found" if has_phone else "Not found"
+    logger.info("if_phone_found.evaluated", phone=phone, result=branch)
+    return {"branch": branch, "evaluated": has_phone, "field_value": phone}
+
 def _exec_if_email_found(node: WorkflowNode, context: dict, run_id: str) -> dict:
     lead = context.get("lead", {})
     email = ""
@@ -433,6 +446,7 @@ _EXECUTORS = {
     "enrich_leads":         _exec_enrich_leads,
     "send_email":           _exec_send_email,
     "if_email_found":       _exec_if_email_found,
+    "if_phone_found":       _exec_if_phone_found,
     "find_businesses":      _exec_find_businesses,
     "gohighlevel":          _exec_gohighlevel,
     "rag_inbox_monitor":    _exec_rag_inbox_monitor,

@@ -526,8 +526,15 @@ class EleInNodeExecutor:
         return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
 
     def handle_if_phone_found(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        logger.warning(f"Action 'if_phone_found' called on {linkedin_url} but has no worker method")
-        return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
+        try:
+            lead = data.get("lead", {}) or {}
+            phone = lead.get("phone", "") or data.get("phone", "")
+            has_phone = bool(phone and str(phone).strip())
+            branch = "Phone found" if has_phone else "Not found"
+            return {"status": "success", "branch": branch, "message": f"Phone check: {branch}"}
+        except Exception as e:
+            logger.error(f"handle_if_phone_found error: {e}")
+            return {"status": "error", "branch": "Not found", "error": str(e)}
 
     def handle_open_profile_check(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
@@ -729,66 +736,216 @@ class EleInNodeExecutor:
         logger.warning(f"Action 'send_message_with_image' called on {linkedin_url} but has no worker method")
         return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
 
+
+    def _send_approval_email(self, workspace_id: str, lead_id: str, generated_reply: str, prospect_message: str, approval_id: str):
+        import os, json, urllib.request, time
+        import jwt
+        
+        sendgrid_key = os.environ.get("SENDGRID_API_KEY")
+        from_email = os.environ.get("SENDGRID_FROM_EMAIL", "noreply@example.com")
+        jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+        if not sendgrid_key or not jwt_secret:
+            logger.warning("Missing SENDGRID_API_KEY or SUPABASE_JWT_SECRET. Cannot send approval email.")
+            return
+
+        # Fetch workspace owner's email
+        ws_res = self.supabase.table("workspaces").select("user_id").eq("id", workspace_id).execute()
+        if not ws_res.data:
+            return
+        user_id = ws_res.data[0]["user_id"]
+        user_res = self.supabase.table("user_profiles").select("email").eq("id", user_id).execute()
+        if not user_res.data or not user_res.data[0].get("email"):
+            return
+        to_email = user_res.data[0]["email"]
+
+        # Generate signed magic links
+        approve_token = jwt.encode({"approval_id": approval_id, "action": "approve", "exp": time.time() + 172800}, jwt_secret, algorithm="HS256")
+        reject_token = jwt.encode({"approval_id": approval_id, "action": "reject", "exp": time.time() + 172800}, jwt_secret, algorithm="HS256")
+        
+        base_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+        approve_link = f"{base_url}/api/approvals/approve?token={approve_token}"
+        reject_link = f"{base_url}/api/approvals/reject?token={reject_token}"
+
+        subject = "Action Required: AI Reply Needs Approval"
+        body = f"""An AI reply was generated with low confidence and requires your approval.
+
+Prospect Message:
+"{prospect_message}"
+
+Proposed AI Reply:
+"{generated_reply}"
+
+Click below to approve or reject (No login required):
+Approve: {approve_link}
+Reject: {reject_link}
+"""
+        payload = json.dumps({
+            "personalizations": [{"to": [{"email": to_email}]}],
+            "from": {"email": from_email},
+            "subject": subject,
+            "content": [{"type": "text/plain", "value": body}],
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.sendgrid.com/v3/mail/send",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {sendgrid_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                logger.info(f"Approval email sent to {to_email}")
+        except Exception as e:
+            logger.error(f"Approval email failed: {e}")
+
+
     def handle_ai_generate_reply(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         workspace_id = data.get("_workspace_id")
         lead_id = data.get("_lead_id")
+        enrollment_id = data.get("_enrollment_id")
+        execution_state_id = data.get("_execution_state_id")
         
         if not workspace_id or not lead_id:
             return {"status": "error", "error": "Missing workspace_id or lead_id in context"}
             
-        msg_res = self.supabase.table("messages").select("message_text").eq("lead_id", lead_id).eq("direction", "inbound").order("created_at", desc=True).limit(1).execute()
-        if not msg_res.data:
-            return {"status": "error", "error": "No inbound message found for lead"}
+        approved_reply = data.get("approved_ai_reply")
+        if approved_reply:
+            clean_reply = approved_reply
+        else:
+            msg_res = self.supabase.table("messages").select("message_text").eq("lead_id", lead_id).eq("direction", "inbound").order("created_at", desc=True).limit(1).execute()
+            if not msg_res.data:
+                return {"status": "error", "error": "No inbound message found for lead"}
+                
+            lead_message = msg_res.data[0]["message_text"]
             
-        lead_message = msg_res.data[0]["message_text"]
-        
-        from knowledge.backend.services.vector_store import SemanticBrain
-        from knowledge.backend.services.knowledge_service import KnowledgeService
-        
-        vs = SemanticBrain(self.supabase)
-        chunks = vs.retrieve(query=lead_message, workspace_id=workspace_id, top_k=3)
-        chunk_texts = [c.get("content", "") for c in chunks]
-        
-        synthesis = KnowledgeService.get_synthesis(self.supabase, workspace_id)
-        if not synthesis:
-            synthesis = {}
+            from knowledge.backend.services.vector_store import SemanticBrain
+            from knowledge.backend.services.knowledge_service import KnowledgeService
             
-        synthesis_layer = "CORE VALUE PROP:\n" + synthesis.get('core_value_prop', '') + "\n\n"
-        if isinstance(synthesis.get('key_differentiators'), list):
-            synthesis_layer += "KEY DIFFERENTIATORS:\n" + ", ".join(synthesis.get('key_differentiators', [])) + "\n\n"
-        if isinstance(synthesis.get('proof_points'), list):
-            synthesis_layer += "PROOF POINTS:\n" + ", ".join(synthesis.get('proof_points', [])) + "\n\n"
+            vs = SemanticBrain(self.supabase)
+            chunks = vs.retrieve(query=lead_message, workspace_id=workspace_id, top_k=3)
+            chunk_texts = [c.get("content", "") for c in chunks]
             
-        rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + "\n".join(chunk_texts)
-        
-        system_prompt = f"""You are an expert sales representative. Your goal is to reply to the prospect's message.
-{synthesis_layer}
-{rag_layer}
+            # Determine max similarity
+            max_similarity = max([c.get("similarity", 0.0) for c in chunks]) if chunks else 0.0
+            
+            # Fetch workspace threshold gracefully (in case migration hasn't run yet)
+            threshold = 0.65
+            try:
+                ws_res = self.supabase.table("workspaces").select("ai_reply_confidence_threshold").eq("id", workspace_id).execute()
+                if ws_res.data and ws_res.data[0].get("ai_reply_confidence_threshold") is not None:
+                    threshold = ws_res.data[0]["ai_reply_confidence_threshold"]
+            except Exception:
+                pass
+            
+            synthesis = KnowledgeService.get_synthesis(self.supabase, workspace_id)
+            if not synthesis:
+                synthesis = {}
+                
+            synthesis_layer = "CORE VALUE PROP:\n" + synthesis.get('core_value_prop', '') + "\n\n"
+            if isinstance(synthesis.get('key_differentiators'), list):
+                synthesis_layer += "KEY DIFFERENTIATORS:\n" + ", ".join(synthesis.get('key_differentiators', [])) + "\n\n"
+            if isinstance(synthesis.get('proof_points'), list):
+                synthesis_layer += "PROOF POINTS:\n" + ", ".join(synthesis.get('proof_points', [])) + "\n\n"
+                
+            rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + "\n".join(chunk_texts)
+            
+            system_prompt = f"""You are an expert sales representative answering a prospect's message based ONLY on the knowledge below.
+{context_str}
 
 EXECUTION RULES:
-1. Acknowledge what the prospect said.
-2. Pivot to the key differentiators or proof points if applicable.
-3. Close with a soft, low-friction Call to Action (CTA).
-4. Keep it concise, friendly, and under 100 words.
-5. You MUST output your final message wrapped exactly in <reply>...</reply> tags. No prefixes before the tag."""
+1. Acknowledge the prospect's message.
+2. If the message is irrelevant, nonsensical, or cannot be answered using the knowledge base, politely decline or pivot, and set confidence=1, grounded_in_knowledge=false.
+3. If it is relevant, answer concisely using ONLY the provided facts.
+4. Output your response as a JSON object with EXACTLY these keys:
+   "reply": (string) Your response to the prospect (under 3 sentences).
+   "confidence": (integer 1-10) How confident you are that this perfectly answers their query using ONLY the provided facts.
+   "grounded_in_knowledge": (boolean) True ONLY if every specific claim in your reply is directly supported by the knowledge base. Do not hallucinate.
 
-        from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
-        try:
-            generated_reply = _run_llm_with_failover(system_prompt=system_prompt, user_prompt=f"Prospect message: {lead_message}", workspace_id=workspace_id)
-        except Exception as e:
-            return {"status": "error", "error": f"LLM Generation failed: {str(e)}"}
+Respond ONLY with valid JSON."""
+
+            from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
+            try:
+                raw_response = _run_llm_with_failover(system_prompt=system_prompt, user_prompt=f"Prospect message: {lead_message}", workspace_id=workspace_id, max_tokens=500, task="generation")
+            except Exception as e:
+                return {"status": "error", "error": f"LLM Generation failed: {str(e)}"}
+                
+            if not raw_response or "Error" in raw_response:
+                return {"status": "error", "error": f"LLM Generation failed: {raw_response}"}
+                
+            import re, json
+            match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+            if not match:
+                return {"status": "error", "error": "LLM failed to output JSON format."}
+                
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                return {"status": "error", "error": "LLM output invalid JSON."}
+                
+            clean_reply = data.get("reply", "")
+            confidence = data.get("confidence", 0)
+            grounded = data.get("grounded_in_knowledge", False)
             
-        if not generated_reply or "Error" in generated_reply:
-            return {"status": "error", "error": f"LLM Generation failed: {generated_reply}"}
+            # Reject suspiciously short replies
+            alphanumeric = [c for c in clean_reply if c.isalnum()]
+            if len(clean_reply) < 15 or len(alphanumeric) < 5:
+                return {"status": "error", "error": f"LLM output rejected as invalid/hallucinated: {clean_reply}"}
+                
+            # OVERLAP CHECK
+            def check_overlap(reply_text, context_text):
+                reply_lower = reply_text.lower()
+                context_lower = context_text.lower()
+                # 1. Number check (strict)
+                numbers = set(re.findall(r'\b\d+[\.,]?\d*\b', reply_lower))
+                for num in numbers:
+                    if num not in context_lower:
+                        return False, f"Number '{num}' not in context"
+                # 2. Substantive word overlap
+                words = re.findall(r'\b[a-z]{5,}\b', reply_lower)
+                stopwords = {"there", "their", "about", "would", "could", "should", "which", "where", "hello", "thanks", "please", "reach", "looking", "these", "those", "because", "cannot", "using", "provided", "really", "going"}
+                substantive = [w for w in words if w not in stopwords]
+                if not substantive:
+                    return True, "No substantive words to check"
+                overlap_count = sum(1 for w in substantive if w in context_lower)
+                ratio = overlap_count / len(substantive)
+                if ratio < 0.4:
+                    return False, f"Overlap ratio too low: {ratio:.2f}"
+                return True, "Overlap ok"
+                
+            overlap_pass, overlap_reason = check_overlap(clean_reply, context_str)
             
-        import re
-        match = re.search(r'<reply>(.*?)</reply>', generated_reply, re.DOTALL)
-        if match:
-            clean_reply = match.group(1).strip()
-        else:
-            # Fallback fail-closed if LLM goes completely off the rails
-            return {"status": "error", "error": "LLM failed to output <reply> tags. Output was unsafe for sending."}
+            # THE GATE
+            approved_by_gate = (confidence >= 9) and grounded and overlap_pass
             
+            if not approved_by_gate:
+                import uuid
+                approval_id = str(uuid.uuid4())
+                try:
+                    self.supabase.table("ai_reply_approvals").insert({
+                        "id": approval_id,
+                        "workspace_id": workspace_id,
+                        "lead_id": lead_id,
+                        "enrollment_id": enrollment_id,
+                        "execution_state_id": execution_state_id,
+                        "generated_reply": clean_reply,
+                        "retrieval_score": max_similarity
+                    }).execute()
+                    
+                    self.supabase.table("campaign_execution_states").update({
+                        "status": "awaiting_approval"
+                    }).eq("id", execution_state_id).execute()
+                    
+                    self._send_approval_email(workspace_id, lead_id, clean_reply, lead_message, approval_id)
+                except Exception as e:
+                    return {"status": "error", "error": f"Failed to queue for approval: {e}"}
+                    
+                msg = f"Queued for review. Conf: {confidence}, Grounded: {grounded}, Overlap: {overlap_pass} ({overlap_reason})"
+                return {"status": "awaiting_approval", "message": msg}
+                
+        # HIGH CONFIDENCE PATH OR APPROVED PATH
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
         
@@ -805,16 +962,15 @@ EXECUTION RULES:
                     "workspace_id": workspace_id,
                     "account_id": account_id,
                     "lead_id": lead_id,
-                    "sender_name": "AI Agent",
+                    "sender_name": "AI Assistant",
                     "message_text": clean_reply,
                     "direction": "outbound"
                 }).execute()
-            except Exception as e:
+            except Exception as db_e:
                 import logging
-                logging.getLogger(__name__).warning(f"Failed to log outbound AI reply to messages table: {e}")
+                logging.error(f"Failed to log outbound AI message: {db_e}")
                 
         return res
-
     def handle_ai_buying_signal(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         logger.warning(f"Action 'ai_buying_signal' called on {linkedin_url} but has no worker method")
         return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}

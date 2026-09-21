@@ -1985,6 +1985,57 @@ def pause_all_campaigns(workspace_id: str = Depends(get_current_workspace), clie
     client.table("campaigns").update({"status": "PAUSED"}).eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
     return {"status": "all_paused"}
 
+def _pause_lead_execution_core(
+    lead_id: str,
+    workspace_id: str,
+    client: Client,
+    status_override: str = "paused",
+    error_reason_override: str = None
+):
+    """
+    Core internal logic for pausing/exiting a lead's execution states.
+    """
+    enr_res = client.table("campaign_enrollments") \
+        .select("id") \
+        .eq("lead_id", lead_id) \
+        .eq("workspace_id", workspace_id) \
+        .execute()
+        
+    if not enr_res.data:
+        return {"status": "success", "paused_count": 0}
+        
+    enr_ids = [r["id"] for r in enr_res.data]
+    
+    update_payload = {"status": status_override}
+    if error_reason_override:
+        update_payload["error_reason"] = error_reason_override
+
+    # We exclude 'running' because of a known lease-token race condition: 
+    # if we pause a 'running' row here, the in-flight worker will blindly 
+    # overwrite our 'paused' status with 'pending' via release_lead_claim 
+    # when it finishes seconds later.
+    # We exclude 'completed' and 'exited' as they are terminal states.
+    # We exclude 'processing' as it is a legacy/dead value.
+    res = client.table("campaign_execution_states") \
+        .update(update_payload) \
+        .in_("enrollment_id", enr_ids) \
+        .in_("status", ["pending", "error", "waiting_for_reply", "paused"]) \
+        .execute()
+
+    return {"status": "success", "paused_count": len(res.data)}
+
+@router.post("/leads/{lead_id}/pause", response_model=dict)
+def pause_lead_execution(
+    lead_id: str,
+    workspace_id: str = Depends(get_current_workspace),
+    client: Client = Depends(get_supabase_client)
+):
+    """
+    Pauses all active campaign executions for a single lead.
+    (Used by manual UI pause)
+    """
+    return _pause_lead_execution_core(lead_id, workspace_id, client)
+
 @router.patch("/campaigns/{campaign_id}/activate", response_model=dict)
 def activate_campaign(campaign_id: str, workspace_id: str = Depends(get_current_workspace), client: Client = Depends(get_supabase_client)):
     client.table("campaigns").update({"status": "ACTIVE"}).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
@@ -2623,3 +2674,86 @@ def get_my_notifications(user_id: str = Depends(get_current_user_id)):
         if e.get('payload', {}).get('user_id') == user_id
     ]
     return {"notifications": user_notifs}
+
+import jwt
+import time
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+
+
+@router.get("/approvals/approve")
+async def approve_ai_reply(token: str, request: Request, supabase: Client = Depends(get_supabase_client)):
+    import jwt, os
+    jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+    try:
+        payload = jwt.decode(token, jwt_secret, algorithms=["HS256"])
+    except Exception as e:
+        return HTMLResponse("Invalid or expired token.", status_code=400)
+        
+    if payload.get("action") != "approve":
+        return HTMLResponse("Invalid action.", status_code=400)
+        
+    approval_id = payload.get("approval_id")
+    
+    # Fetch approval row
+    appr_res = supabase.table("ai_reply_approvals").select("*").eq("id", approval_id).execute()
+    if not appr_res.data:
+        return HTMLResponse("Approval request not found.", status_code=404)
+        
+    approval = appr_res.data[0]
+    if approval["status"] != "pending":
+        return HTMLResponse(f"This request has already been {approval['status']}.")
+        
+    # Mark as approved
+    supabase.table("ai_reply_approvals").update({"status": "approved", "resolved_at": "now()"}).eq("id", approval_id).execute()
+    
+    # Resume execution state. By updating variables, the orchestrator will bypass LLM generation
+    # and immediately dispatch this text next time it processes the lead.
+    if approval.get("execution_state_id"):
+        # We need to fetch the existing variables first
+        state_res = supabase.table("campaign_execution_states").select("variables").eq("id", approval["execution_state_id"]).execute()
+        if state_res.data:
+            variables = state_res.data[0].get("variables") or {}
+            variables["approved_ai_reply"] = approval["generated_reply"]
+            
+            supabase.table("campaign_execution_states").update({
+                "status": "pending",
+                "next_run_at": "now()",
+                "variables": variables
+            }).eq("id", approval["execution_state_id"]).execute()
+            
+    return HTMLResponse("Reply approved! It will be sent shortly.")
+
+@router.get("/approvals/reject")
+async def reject_ai_reply(token: str, request: Request, supabase: Client = Depends(get_supabase_client)):
+    import jwt, os
+    jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+    try:
+        payload = jwt.decode(token, jwt_secret, algorithms=["HS256"])
+    except Exception as e:
+        return HTMLResponse("Invalid or expired token.", status_code=400)
+        
+    if payload.get("action") != "reject":
+        return HTMLResponse("Invalid action.", status_code=400)
+        
+    approval_id = payload.get("approval_id")
+    
+    appr_res = supabase.table("ai_reply_approvals").select("*").eq("id", approval_id).execute()
+    if not appr_res.data:
+        return HTMLResponse("Approval request not found.", status_code=404)
+        
+    approval = appr_res.data[0]
+    if approval["status"] != "pending":
+        return HTMLResponse(f"This request has already been {approval['status']}.")
+        
+    # Mark as rejected
+    supabase.table("ai_reply_approvals").update({"status": "rejected", "resolved_at": "now()"}).eq("id", approval_id).execute()
+    
+    # Resume execution state as skipped
+    if approval.get("execution_state_id"):
+        supabase.table("campaign_execution_states").update({
+            "status": "exited",
+            "error_reason": "ai_reply_rejected"
+        }).eq("id", approval["execution_state_id"]).execute()
+        
+    return HTMLResponse("Reply rejected. Lead will move to the next step.")
