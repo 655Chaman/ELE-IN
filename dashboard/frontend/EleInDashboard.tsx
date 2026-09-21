@@ -21,17 +21,17 @@ function DashboardErrorBanner({ error, entityName, onRetry, onSeedDemo, onLoginR
     : error?.message || 'An unexpected error occurred.';
 
   return (
-    <div className="p-4 mb-6 bg-red-500/10 border border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm flex items-center justify-between gap-4">
+    <div className="p-4 mb-6 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm flex items-center justify-between gap-4">
       <div className="flex items-center gap-2">
         <Activity className="w-4 h-4 shrink-0" />
         <span>Failed to load {entityName}. {isAuthError ? '' : 'Your campaigns are safe — please refresh or try again in a moment. '}{message}</span>
       </div>
       {isAuthError ? (
-        <button onClick={onLoginRedirect} className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 rounded-lg whitespace-nowrap transition-colors">
+        <button onClick={onLoginRedirect} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-lg whitespace-nowrap transition-colors">
           Go to Login
         </button>
       ) : onRetry ? (
-        <button onClick={onRetry} className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 rounded-lg whitespace-nowrap transition-colors">
+        <button onClick={onRetry} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-lg whitespace-nowrap transition-colors">
           Retry
         </button>
       ) : null}
@@ -366,8 +366,8 @@ export function EleInDashboard() {
             {stats?.last_rolled_up_at && (
               <div className="text-xs text-muted-foreground flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/75 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 Data as of {new Date(stats.last_rolled_up_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
@@ -392,7 +392,7 @@ export function EleInDashboard() {
       {/* Layer 0: Guaranteed Escape Hatch */}
       {showEscapeHatch && (
         <div className="max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10 mb-[-2rem]">
-          <div className="p-8 bg-card border-2 border-red-500/50 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center">
+          <div className="p-8 bg-card border-2 border-destructive/50 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center">
             <h2 className="text-2xl font-bold text-foreground mb-4">Your account has no workspace yet.</h2>
             <p className="text-muted-foreground mb-8 max-w-lg">
               It looks like you haven't completed onboarding or your workspace was deleted. 
@@ -430,7 +430,7 @@ export function EleInDashboard() {
                 localStorage.removeItem('onboarding_dismissed');
                 window.location.reload();
               }}
-              className="text-xs text-muted-foreground hover:text-red-500 transition-colors underline underline-offset-4"
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors underline underline-offset-4"
             >
               Nuclear Reset: Clear Workspace Cache & Reload
             </button>

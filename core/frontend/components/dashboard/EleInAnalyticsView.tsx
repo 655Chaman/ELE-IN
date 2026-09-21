@@ -135,7 +135,7 @@ export function LimitProgressBar({ used, limit, pct, label }: { used: number, li
   const width = pct ?? (limit > 0 ? (used / limit) * 100 : 0);
   const clampedWidth = Math.min(width, 100);
   let colorClass = 'bg-primary';
-  if (clampedWidth >= 90) colorClass = 'bg-rose-500';
+  if (clampedWidth >= 90) colorClass = 'bg-destructive';
   else if (clampedWidth >= 70) colorClass = 'bg-primary';
 
   return (
@@ -357,20 +357,20 @@ export function EleInAnalyticsView({
         </div>
 
         {/* AI Insight Box */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-100 dark:border-blue-800/30 p-6 flex items-start gap-4">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 dark:bg-blue-600 rounded-l-2xl" />
-          <div className="p-2.5 bg-blue-100 dark:bg-blue-800/50 text-blue-600 dark:text-blue-400 rounded-xl shrink-0">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/5 border border-primary/20 dark:border-primary/30 p-6 flex items-start gap-4">
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l-2xl" />
+          <div className="p-2.5 bg-primary/20 text-primary rounded-xl shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
           <div className="flex-1 space-y-1.5">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-blue-900 dark:text-blue-300">Captain's Brief</h3>
-              <span className="text-[10px] font-bold tracking-wider uppercase bg-blue-200 dark:bg-blue-800/80 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">AI Generated</span>
+              <h3 className="font-semibold text-foreground">Captain's Brief</h3>
+              <span className="text-[10px] font-bold tracking-wider uppercase bg-primary/20 text-primary px-2 py-0.5 rounded-full">AI Generated</span>
             </div>
-            <p className="text-sm text-blue-800/80 dark:text-blue-200/80 leading-relaxed max-w-4xl">
+            <p className="text-sm text-foreground/80 leading-relaxed max-w-4xl">
               {aiInsight}
             </p>
-              <button className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-white/50 dark:bg-blue-950/50 hover:bg-white dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800/50 transition-colors flex items-center gap-1.5">
+              <button className="text-xs font-semibold text-primary bg-background/50 hover:bg-background px-3 py-1.5 rounded-lg border border-primary/20 transition-colors flex items-center gap-1.5">
                 A/B Test New Hook <ArrowRight size={12} />
               </button>
             </div>
@@ -404,7 +404,7 @@ export function EleInAnalyticsView({
         {accountHealth?.accounts && accountHealth.accounts.length > 0 && (
           <div className="space-y-4">
             <h3 className="text-lg font-medium tracking-tight text-foreground flex items-center gap-2">
-              <ShieldCheck size={18} className="text-emerald-500" /> Account Throttle Status
+              <ShieldCheck size={18} className="text-primary" /> Account Throttle Status
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {(accountHealth?.accounts || []).map((acc: any, i: number) => {
@@ -413,14 +413,14 @@ export function EleInAnalyticsView({
                 const msgPct = acc.message_pct ?? (acc.messages_limit > 0 ? (acc.messages_used / acc.messages_limit) * 100 : 0)
                 const maxPct = Math.max(connPct, msgPct)
                 
-                let dotColor = 'bg-emerald-500'
-                if (maxPct >= 90) dotColor = 'bg-rose-500'
+                let dotColor = 'bg-primary'
+                if (maxPct >= 90) dotColor = 'bg-destructive'
                 else if (maxPct >= 70) dotColor = 'bg-primary'
 
                 return (
                   <div key={i} className="rounded-2xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none relative">
                     {acc.throttled && (
-                      <div className="absolute top-4 right-4 bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md flex items-center gap-1">
+                      <div className="absolute top-4 right-4 bg-destructive/10 text-destructive text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md flex items-center gap-1">
                         <AlertTriangle size={10} /> Approaching Limit
                       </div>
                     )}
@@ -482,7 +482,7 @@ export function EleInAnalyticsView({
                   onMouseEnter={() => setHoveredSeries('inmails')}
                   onMouseLeave={() => setHoveredSeries(null)}
                 >
-                  <div className="w-2.5 h-2.5 rounded-full shadow-sm bg-purple-500" />
+                  <div className="w-2.5 h-2.5 rounded-full shadow-sm bg-[#FFB020]" />
                   <span className="text-foreground">Inmails</span>
                 </button>
                 {/* TODO: Re-add Replied area when rollup_daily_stats populates daily replied counts */}
@@ -546,8 +546,8 @@ export function EleInAnalyticsView({
               {mergedFeed.map((item: any, index: number) => {
                 const isError = item.type === 'error';
                 return (
-                <div key={index} className={`flex gap-3 text-sm p-3 rounded-xl border ${isError ? 'bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20' : 'bg-slate-50 dark:bg-muted/30 border-slate-100 dark:border-border/50'}`}>
-                  <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${isError ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'}`}>
+                <div key={index} className={`flex gap-3 text-sm p-3 rounded-xl border ${isError ? 'bg-destructive/10 border-destructive/20' : 'bg-muted/30 border-border/50'}`}>
+                  <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${isError ? 'bg-destructive/20 text-destructive' : 'bg-primary/20 text-primary'}`}>
                     {isError ? <AlertTriangle size={12} /> : <MessageSquareHeart size={12} />}
                   </div>
                   <div>
@@ -559,7 +559,7 @@ export function EleInAnalyticsView({
               {/* PARANOIA: live_feed_error distinguishes a DB failure from genuine zero activity. Never merge these two states into a single 'empty' UI. */}
               {mergedFeed.length === 0 && liveFeedError && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-4">
-                  <div className="bg-amber-50 dark:bg-primary/10 border border-amber-200 dark:border-primary/20 rounded-lg p-3 text-amber-700 dark:text-primary/80 flex items-center gap-2 text-sm font-medium">
+                  <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 text-warning flex items-center gap-2 text-sm font-medium">
                     <AlertTriangle size={16} /> Activity feed temporarily unavailable
                   </div>
                 </div>
