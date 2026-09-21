@@ -51,3 +51,7 @@ Because the Supabase Python client REST API (PostgREST) does not support executi
 4. Copy the exact SQL contents of the migration files in the **Recommended Order** shown above.
 5. Paste the SQL into the editor and click **Run**.
 6. Once successfully executed, update the **Current Status** of the migration in this document.
+
+### Migration 051 (Phase C)
+**Recommended Order:**
+1. `051_calendar_integration.sql` (**pending**) - Adds calendar_provider, calendar_token, and calendar_link to accounts for autonomous meeting booking.

@@ -88,7 +88,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
             {step === 1 && (
               <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-500 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center">
                     <Eye size={24} />
                   </div>
                   <div>
@@ -117,7 +117,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
             {step === 2 && (
               <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center">
                     <User size={24} />
                   </div>
                   <div>
@@ -146,7 +146,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
             {step === 3 && (
               <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-2xl bg-pink-500/20 text-pink-500 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center">
                     <Heart size={24} />
                   </div>
                   <div>
@@ -186,7 +186,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
             {step === 4 && (
               <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-2xl bg-success/20 text-success flex items-center justify-center">
                     <ThumbsUp size={24} />
                   </div>
                   <div>
@@ -220,7 +220,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
             {step === 5 && (
               <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                 <div className="text-center py-8">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto mb-6">
+                  <div className="w-16 h-16 rounded-full bg-success/20 text-success flex items-center justify-center mx-auto mb-6">
                     <Check size={32} />
                   </div>
                   <h3 className="text-2xl font-bold text-foreground mb-3">You're all set!</h3>

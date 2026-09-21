@@ -150,14 +150,14 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
             <label className="block text-xs font-semibold text-foreground mb-1">Select Lead List</label>
             <p className="text-[10px] text-muted-foreground mb-2">The LinkedIn profiles you want to reach — enrolled into your sequence below.</p>
             {hasError ? (
-              <div className="p-4 rounded-lg border border-red-500/50 bg-red-500/10 text-center space-y-3">
-                <p className="text-xs text-red-500 font-medium">Could not load your lead lists. Check your connection and try again.</p>
+              <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-center space-y-3">
+                <p className="text-xs text-destructive font-medium">Could not load your lead lists. Check your connection and try again.</p>
                 <button
                   onClick={() => {
                     setTimedOut(false);
                     mutate();
                   }}
-                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-md transition-colors"
+                  className="px-4 py-2 bg-destructive hover:bg-destructive text-white text-xs font-bold rounded-md transition-colors"
                 >
                   Retry
                 </button>
@@ -350,9 +350,9 @@ function TemplateBrowser({ onClose, onImport }: {
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <span className={cn(
                       "text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest",
-                      t.difficulty === "beginner" ? "bg-emerald-500/15 text-emerald-400" :
+                      t.difficulty === "beginner" ? "bg-success/15 text-success" :
                       t.difficulty === "intermediate" ? "bg-primary/15 text-primary/80" :
-                      "bg-rose-500/15 text-rose-400"
+                      "bg-destructive/15 text-destructive"
                     )}>
                       {t.difficulty}
                     </span>
@@ -363,10 +363,10 @@ function TemplateBrowser({ onClose, onImport }: {
                   <p className="text-xs font-bold text-foreground mb-1 leading-tight">{t.name}</p>
                   <p className="text-[10px] text-gray-500 mb-2 line-clamp-2">{t.description}</p>
                   <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                    <span className="flex items-center gap-1 text-[10px] text-success bg-success/10 px-1.5 py-0.5 rounded">
                       <Users size={9} /> {t.connectionRate}%
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                    <span className="flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                       <MessageSquare size={9} /> {t.replyRate}%
                     </span>
                     <span className="ml-auto flex items-center gap-1 text-[10px] text-gray-600">
@@ -705,9 +705,9 @@ function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v:
         </div>
 
         {error ? (
-          <div className="bg-red-500/10 border border-red-500/50 rounded-2xl p-12 text-center shadow-sm">
-            <h3 className="text-lg font-bold text-red-500 mb-2">Error loading accounts</h3>
-            <p className="text-sm text-red-400 mb-6">{error.message || "Failed to fetch accounts from the server."}</p>
+          <div className="bg-destructive/10 border border-destructive/50 rounded-2xl p-12 text-center shadow-sm">
+            <h3 className="text-lg font-bold text-destructive mb-2">Error loading accounts</h3>
+            <p className="text-sm text-destructive mb-6">{error.message || "Failed to fetch accounts from the server."}</p>
           </div>
         ) : !accounts ? (
           <div className="flex justify-center p-12">
@@ -834,7 +834,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
             <select 
               value={state.timezone || localTz || "America/New_York"}
               onChange={(e) => onChange("timezone", e.target.value)}
-              className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               {localTz && !COMMON_TIMEZONES.includes(localTz) && (
                 <option value={localTz}>{localTz} (Auto-detected)</option>
@@ -884,11 +884,11 @@ class CampaignErrorBoundary extends React.Component<{children: React.ReactNode},
     if (this.state.hasError) {
       return (
         <div className="h-[100dvh] bg-background text-foreground flex flex-col items-center justify-center">
-          <div className="bg-red-500/10 border border-red-500/50 p-8 rounded-2xl text-center max-w-md">
-            <h2 className="text-xl font-bold text-red-500 mb-2">Something went wrong</h2>
-            <p className="text-sm text-red-400 mb-6">Something went wrong loading this campaign. Click here to go back.</p>
+          <div className="bg-destructive/10 border border-destructive/50 p-8 rounded-2xl text-center max-w-md">
+            <h2 className="text-xl font-bold text-destructive mb-2">Something went wrong</h2>
+            <p className="text-sm text-destructive mb-6">Something went wrong loading this campaign. Click here to go back.</p>
             {/* Kept as window.location.href because CampaignErrorBoundary is a class component without hook access */}
-            <button onClick={() => window.location.href = '/elein/campaigns'} className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors">
+            <button onClick={() => window.location.href = '/elein/campaigns'} className="px-6 py-2 bg-destructive hover:bg-destructive text-white rounded-xl font-medium transition-colors">
               Go Back
             </button>
           </div>
@@ -1127,10 +1127,10 @@ function EleInCreateCampaignInner() {
       </div>
 
       {draftErrors.length > 0 && (
-        <div className="bg-yellow-500/10 border-b border-yellow-500/50 p-3 z-50">
+        <div className="bg-warning/10 border-b border-warning/50 p-3 z-50">
           <div className="max-w-4xl mx-auto flex items-start gap-3">
-            <AlertTriangle className="text-yellow-500 shrink-0 mt-0.5" size={16} />
-            <div className="text-xs text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle className="text-warning shrink-0 mt-0.5" size={16} />
+            <div className="text-xs text-warning dark:text-warning">
               <span className="font-bold">Your draft has issues that must be fixed before activating:</span>
               <ul className="list-disc pl-4 mt-1">
                 {draftErrors.map((err, i) => <li key={i}>{err}</li>)}
@@ -1147,20 +1147,20 @@ function EleInCreateCampaignInner() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="w-full max-w-md rounded-2xl bg-background border border-red-500/50 shadow-2xl overflow-hidden p-6"
+              className="w-full max-w-md rounded-2xl bg-background border border-destructive/50 shadow-2xl overflow-hidden p-6"
             >
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="text-red-500" size={20} />
+                <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="text-destructive" size={20} />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-foreground">Cannot Launch Campaign</h2>
                   <p className="text-xs text-muted-foreground">Please fix the following errors:</p>
                 </div>
               </div>
-              <ul className="bg-red-500/5 rounded-xl border border-red-500/20 p-4 space-y-2 mb-6 max-h-60 overflow-y-auto">
+              <ul className="bg-destructive/5 rounded-xl border border-destructive/20 p-4 space-y-2 mb-6 max-h-60 overflow-y-auto">
                 {activationErrors.map((err, i) => (
-                  <li key={i} className="text-xs text-red-500 flex gap-2">
+                  <li key={i} className="text-xs text-destructive flex gap-2">
                     <span className="shrink-0">•</span> <span>{err}</span>
                   </li>
                 ))}
@@ -1231,10 +1231,10 @@ function EleInCreateCampaignInner() {
           <button
             onClick={step === STEPS.length - 1 ? () => handleSaveDraft("ACTIVE") : handleNext}
             disabled={isSaving}
-            className="flex items-center gap-2 bg-foreground text-background px-6 py-2.5 rounded-xl font-semibold hover:bg-foreground/90 transition-all shadow-xl shadow-foreground/10 hover:shadow-foreground/20 active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2.5 rounded-xl font-semibold transition-all shadow-xl shadow-primary/10 hover:shadow-primary/20 active:scale-95 disabled:opacity-50"
           >
             {step === STEPS.length - 1 ? (
-              isSaving ? <><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-background" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Launching...</> : <><Zap size={16} className="text-yellow-500 fill-yellow-500" /> Launch Campaign</>
+              isSaving ? <><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-background" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Launching...</> : <><Zap size={16} className="text-warning fill-warning" /> Launch Campaign</>
             ) : (
               <>Continue <ArrowRight size={16} /></>
             )}

@@ -109,7 +109,7 @@ export const useHRTreeStore = create<EITreeStore>()(persist((set) => ({
 
   addStickyNote: (x, y) => set(state => {
     const id = uuidv4()
-    const newNote: StickyNote = { id, x, y, text: "", color: "bg-yellow-200" }
+    const newNote: StickyNote = { id, x, y, text: "", color: "bg-warning/20" }
     return { stickyNotes: [...state.stickyNotes, newNote] }
   }),
   

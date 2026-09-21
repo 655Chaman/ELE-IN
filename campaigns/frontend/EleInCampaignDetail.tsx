@@ -114,11 +114,11 @@ export function EleInCampaignDetail() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">{campaign.name}</h1>
             <span className={cn(
               "px-2.5 py-1 text-xs font-semibold uppercase tracking-wider rounded-full border flex items-center gap-1.5",
-              campaign.status === 'ACTIVE' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+              campaign.status === 'ACTIVE' ? "bg-success/10 text-success border-success/20" :
               campaign.status === 'PAUSED' ? "bg-primary/10 text-primary/80 border-primary/20" :
               "bg-muted text-muted-foreground border-border"
             )}>
-              {campaign.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              {campaign.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />}
               {campaign.status}
             </span>
           </div>
@@ -145,10 +145,10 @@ export function EleInCampaignDetail() {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: "Enrolled", value: campaign.stats?.total_leads ?? 0, icon: Users, color: "text-blue-400" },
+          { label: "Enrolled", value: campaign.stats?.total_leads ?? 0, icon: Users, color: "text-primary" },
           { label: "Running", value: campaign.stats?.running ?? 0, icon: Activity, color: "text-primary/80" },
-          { label: "Completed", value: campaign.stats?.completed ?? 0, icon: CheckCircle2, color: "text-emerald-400" },
-          { label: "Conversion", value: `${((campaign.stats?.conversion_rate ?? 0) * 100).toFixed(1)}%`, icon: RefreshCw, color: "text-purple-400" }
+          { label: "Completed", value: campaign.stats?.completed ?? 0, icon: CheckCircle2, color: "text-success" },
+          { label: "Conversion", value: `${((campaign.stats?.conversion_rate ?? 0) * 100).toFixed(1)}%`, icon: RefreshCw, color: "text-primary" }
         ].map((stat, i) => (
           <div key={i} className="bg-black/20 border border-border p-5 rounded-xl flex items-center gap-4">
             <div className={cn("p-3 rounded-lg bg-white/5", stat.color)}>
@@ -192,7 +192,7 @@ export function EleInCampaignDetail() {
             {campaign.accounts && campaign.accounts.length > 0 ? (
               campaign.accounts.map((acc: any) => (
                 <div key={acc.id} className="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-white/[0.02]">
-                  <div className="w-8 h-8 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs uppercase">
+                  <div className="w-8 h-8 rounded bg-primary/20 text-primary flex items-center justify-center font-bold text-xs uppercase">
                     {acc.name.substring(0, 2)}
                   </div>
                   <div className="truncate">
@@ -272,8 +272,8 @@ export function EleInCampaignDetail() {
                     <td className="px-6 py-4">
                       <span className={cn(
                         "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",
-                        lead.status === 'completed' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                        lead.status === 'error' ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                        lead.status === 'completed' ? "bg-success/10 text-success border-success/20" :
+                        lead.status === 'error' ? "bg-destructive/10 text-destructive border-destructive/20" :
                         lead.status === 'running' ? "bg-primary/10 text-primary/80 border-primary/20" :
                         "bg-muted/50 text-muted-foreground border-transparent"
                       )}>

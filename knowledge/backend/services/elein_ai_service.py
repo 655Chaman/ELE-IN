@@ -1,3 +1,5 @@
+import json
+from core.backend.services.calendar_adapter import get_calendar_adapter
 """
 elein_ai_service.py — Production AI engine for Ele-in
 
@@ -446,7 +448,6 @@ LinkedIn Reply to classify:
                 err_str = str(e)
                 _mark_key_failed(k_obj["id"], err_str)
                 
-                import json
                 if isinstance(e, json.JSONDecodeError):
                     logger.warning(f"[EleInAI] Model {current_model} hallucinated invalid JSON. Breaking key loop, trying next model.")
                     break # Break inner key loop, try next model
@@ -509,8 +510,24 @@ async def stream_reply_draft(
     secure_history = _sanitize_and_bound_input(history_str, max_chars=1500, label="CONVERSATION_HISTORY")
     secure_profile = _sanitize_and_bound_input(json.dumps(lead_profile or {}, indent=2), max_chars=800, label="PROSPECT_PROFILE")
 
+    # Phase C: Calendar Integration for positive intents
+    calendar_layer = ""
+    if intent == "positive" and workspace_id:
+        try:
+            from core.backend.api.auth_dep import get_service_client
+            sc = get_service_client()
+            acc_res = sc.table("accounts").select("calendar_provider, calendar_token, calendar_link").eq("workspace_id", workspace_id).eq("name", sender_name).limit(1).execute()
+            if acc_res.data:
+                adapter = get_calendar_adapter(acc_res.data[0])
+                if adapter:
+                    slots = await adapter.get_availability("2024-03-25", "2024-03-30", "UTC")
+                    slot_strs = [f"- {s['start_time']} to {s['end_time']}" for s in slots]
+                    calendar_layer = "\n--- LAYER X: SENDER AVAILABILITY ---\n" + "\n".join(slot_strs) + "\n"
+        except Exception as e:
+            logger.error(f"[EleInAI] Calendar fetch failed: {e}")
+
     intent_strategy = {
-        "positive":  "They have shown interest. Your job is to confirm momentum and lock in a specific next step (e.g., a calendar link or a concrete question about their availability). Do NOT oversell. Be warm and direct.",
+        "positive":  "They have shown interest. Your job is to confirm momentum and propose exactly two specific times strictly from the AVAILABLE SLOTS provided in LAYER X. Format them naturally. Do NOT ask for a generic 'when are you free?'.",
         "objection": "They are pushing back but still engaged. Acknowledge their concern with genuine empathy FIRST. Then pivot to a key differentiator that directly addresses their specific objection. Never be defensive. End with a re-engagement question.",
         "question":  "Answer their question with confidence and specificity — use data from the company context if available. Then use a bridging question to move the conversation toward a meeting.",
         "negative":  "They have declined. Be gracious, professional, and leave the door open with zero pressure. Maximum 2 sentences. Do not re-pitch.",
@@ -537,6 +554,7 @@ async def stream_reply_draft(
 
     system_prompt = f"""{persona}
 
+{calendar_layer}
 --- LAYER 1: WORKSPACE CONSTITUTION ---
 {synthesis_layer if synthesis_layer else "Not available."}
 
@@ -596,7 +614,6 @@ USER EXECUTION RULES:
                 err_str = str(e)
                 _mark_key_failed(k_obj["id"], err_str)
                 
-                import json
                 if isinstance(e, json.JSONDecodeError):
                     logger.warning(f"[EleInAI] Model {current_model} hallucinated invalid JSON. Breaking key loop, trying next model.")
                     break # Break inner key loop, try next model

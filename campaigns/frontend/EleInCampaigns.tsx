@@ -18,8 +18,8 @@ import StarBorder from "@/components/StarBorder"
 
 
 const STATUS_CONFIG: Record<string, any> = {
-  ACTIVE: { label: "Active", dot: "bg-emerald-400", text: "text-emerald-400" },
-  PAUSED: { label: "Paused", dot: "bg-yellow-400", text: "text-yellow-400" },
+  ACTIVE: { label: "Active", dot: "bg-success", text: "text-success" },
+  PAUSED: { label: "Paused", dot: "bg-warning", text: "text-warning" },
   DRAFT: { label: "Draft", dot: "bg-zinc-500", text: "text-zinc-400" },
 }
 
@@ -137,8 +137,8 @@ export function EleInCampaigns() {
                     onClick={() => setStatusTooltipOpen(!statusTooltipOpen)}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:bg-muted/30 transition-colors"
                   >
-                    <div className={`w-2 h-2 rounded-full ${workerStatus.stalled ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
-                    <span className={workerStatus.stalled ? 'text-red-500' : 'text-emerald-500'}>
+                    <div className={`w-2 h-2 rounded-full ${workerStatus.stalled ? 'bg-destructive animate-pulse' : 'bg-success'}`} />
+                    <span className={workerStatus.stalled ? 'text-destructive' : 'text-success'}>
                       {workerStatus.stalled ? 'Engine Stalled' : 'Engine Live'}
                     </span>
                   </button>
@@ -147,7 +147,7 @@ export function EleInCampaigns() {
                     statusTooltipOpen ? "opacity-100 pointer-events-auto" : "opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto"
                   )}>
                     {workerStatus.message}
-                    {workerStatus.stalled && <div className="mt-1 font-semibold text-red-500">Action: Start the backend worker script (e.g., ./start.sh)</div>}
+                    {workerStatus.stalled && <div className="mt-1 font-semibold text-destructive">Action: Start the backend worker script (e.g., ./start.sh)</div>}
                   </div>
                 </div>
               );
@@ -185,10 +185,10 @@ export function EleInCampaigns() {
       {/* ─── CAMPAIGNS LIST ─────────────────────────────────────────────────────── */}
       <>
         {draftExists && (
-          <div className="mb-6 p-5 rounded-2xl border border-indigo-500/30 bg-indigo-500/5 flex items-center justify-between">
+          <div className="mb-6 p-5 rounded-2xl border border-primary/30 bg-primary/5 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Clock size={16} className="text-indigo-400" /> Unsaved Campaign Draft
+                <Clock size={16} className="text-primary" /> Unsaved Campaign Draft
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
                 You have an unsaved workflow from {draftTime}.
@@ -208,14 +208,14 @@ export function EleInCampaigns() {
                     }
                   });
                 }}
-                className="px-4 py-2 text-xs font-semibold text-red-400 hover:text-red-300 transition-colors"
+                className="px-4 py-2 text-xs font-semibold text-destructive hover:text-destructive transition-colors"
               >
                 Discard
               </button>
               {draftExists ? (
                 <button
                   onClick={() => navigate("/elein/campaigns/new?resume=true")}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md"
+                  className="px-4 py-2 rounded-xl bg-primary hover:hover:bg-primary/90 text-white text-xs font-bold transition-all shadow-md"
                 >
                   Resume Draft
                 </button>
@@ -335,10 +335,10 @@ export function EleInCampaigns() {
                               <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/40 border border-border/40 text-[11px] font-medium text-foreground">
                                 <Clock size={12} className="text-muted-foreground" /> {pending}
                               </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-indigo-500/10 border border-indigo-500/20 text-[11px] font-medium text-indigo-400">
+                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
                                 <Activity size={12} /> {running}
                               </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-medium text-emerald-400">
+                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-success/10 border border-success/20 text-[11px] font-medium text-success">
                                 <CheckCircle2 size={12} /> {completed}
                               </div>
                             </div>
@@ -349,7 +349,7 @@ export function EleInCampaigns() {
                             {c.senders && c.senders.length > 0 ? (
                               <div className="flex -space-x-2 overflow-hidden">
                                 {c.senders.map((s: any, idx: number) => (
-                                  <div key={idx} className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs font-bold shadow-sm" title={s.name}>
+                                  <div key={idx} className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-xs font-bold shadow-sm" title={s.name}>
                                     {s.name.substring(0, 2).toUpperCase()}
                                   </div>
                                 ))}
@@ -380,7 +380,7 @@ export function EleInCampaigns() {
                               </button>
                               <button
                                 onClick={() => remove(c.id)}
-                                className="p-1.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all"
+                                className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -413,7 +413,7 @@ export function EleInCampaigns() {
               </button>
               <button 
                 onClick={confirmModal.onConfirm}
-                className="px-4 py-2 rounded-xl text-sm font-medium bg-red-500 hover:bg-red-600 text-white transition-colors shadow-sm"
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-destructive hover:bg-destructive text-white transition-colors shadow-sm"
               >
                 Delete
               </button>
