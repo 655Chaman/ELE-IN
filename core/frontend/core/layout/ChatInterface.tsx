@@ -6,6 +6,7 @@ import {
   Search, Plus, Paperclip, Mic, ArrowUp, MessageSquare, PanelLeftClose, Home, ChevronRight, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { friendlyToast } from '../../components/FriendlyError';
 
 const API_BASE = "/api/elein/inbox";
 ;
@@ -104,7 +105,7 @@ export function ChatInterface() {
       setInputText("");
       toast.success("AI response drafted!");
     } catch (err: any) {
-      toast.error(err.message);
+      friendlyToast('Message send failed — please try again.', err);
     } finally {
       setIsDrafting(false);
     }

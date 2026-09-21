@@ -57,9 +57,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
             {/* Error snippet (collapsible or just subtle) */}
             <div className="text-left bg-black/40 border border-white/5 rounded-lg p-3 overflow-auto max-h-32 mt-4 relative z-10">
-               <code className="text-[11px] font-mono text-red-400/80 whitespace-pre-wrap">
-                  {this.state.error?.message || "Unknown rendering error"}
-               </code>
+               <details>
+                 <summary className="text-xs text-zinc-400 cursor-pointer hover:text-zinc-300">Technical details (click to expand)</summary>
+                 <code className="text-[11px] font-mono text-red-400/80 whitespace-pre-wrap mt-2 block">
+                    {this.state.error?.message || "Unknown rendering error"}
+                 </code>
+               </details>
             </div>
 
             <div className="flex items-center gap-3 pt-2 relative z-10">

@@ -3,6 +3,7 @@ import { motion } from "motion/react"
 import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
+import { friendlyToast } from "../../core/frontend/components/FriendlyError"
 import { LayoutTemplate, CheckCircle, XCircle, Clock, Key, Plus, Trash2, RefreshCw, AlertCircle } from "lucide-react"
 import SpotlightCard from "@/components/SpotlightCard"
 import ShinyText from "@/components/ShinyText"
@@ -46,7 +47,7 @@ export function EleInAdmin() {
       toast.success(`Template ${action}d successfully!`)
       mutateTemplates()
     } catch (e: any) {
-      toast.error(e.message)
+      friendlyToast('Failed to update template status — please try again.', e)
     } finally {
       setLoadingId(null)
     }
@@ -73,7 +74,7 @@ export function EleInAdmin() {
       setNewKey("")
       mutateKeys()
     } catch (e: any) {
-      toast.error(e.message)
+      friendlyToast('Failed to add API key — please try again.', e)
     } finally {
       setIsAddingKey(false)
     }

@@ -3,6 +3,7 @@ import { motion } from "motion/react"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 import { fetchWithAuth } from "@/lib/apiClient"
+import { friendlyToast } from "../FriendlyError"
 
 export function DeleteConfirmationModal({ list, onClose, onConfirm }: { list: any; onClose: () => void; onConfirm: () => void }) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -15,7 +16,7 @@ export function DeleteConfirmationModal({ list, onClose, onConfirm }: { list: an
       toast.success("List deleted successfully");
       onConfirm();
     } catch (e: any) {
-      toast.error(e.message);
+      friendlyToast('Failed to delete lead — please try again.', e);
     }
     setIsDeleting(false);
     onClose();

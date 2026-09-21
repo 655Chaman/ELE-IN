@@ -3,6 +3,7 @@ import { motion } from "motion/react"
 import { X, CheckCircle2, AlertCircle, Info, RefreshCw } from "lucide-react"
 import SpotlightCard from "../SpotlightCard"
 import { fetchWithAuth } from "@/lib/apiClient"
+import { InlineError } from "../FriendlyError"
 
 interface ReconnectModalProps {
   accountId: string
@@ -71,7 +72,7 @@ export default function ReconnectModal({ accountId, accountName, onClose, onSucc
       if (e.name === 'AbortError') {
         // do nothing
       } else {
-        setError(e.message)
+        setError('Connection failed. Please check your credentials and try again.')
       }
     } finally {
       clearTimeout(timeoutId)
@@ -129,7 +130,7 @@ export default function ReconnectModal({ accountId, accountName, onClose, onSucc
               {error && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs">
                   <AlertCircle size={14} className="shrink-0" />
-                  <p>{error}</p>
+                  <InlineError message={error} />
                 </div>
               )}
 
