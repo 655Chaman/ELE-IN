@@ -15,7 +15,7 @@ import os
 import json
 import time
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, AsyncGenerator
 from core.backend.api.auth_dep import get_service_client
 
@@ -404,6 +404,12 @@ CLASSIFICATION RULES:
 Respond ONLY with this exact JSON structure (no markdown, no preamble):
 {{"intent": "<one of: positive|objection|question|negative|booking_confirmation|unknown>", "confidence": <0.0-1.0 float>, "reasoning": "<one precise sentence explaining the signal that drove your classification>", "confirmed_time": "<ISO8601 string if intent is booking_confirmation, else null>"}}
 
+CURRENT CONTEXT:
+Today's Date: {datetime.utcnow().strftime('%Y-%m-%d %A')} UTC.
+Upcoming days for reference:
+{chr(10).join([(datetime.utcnow() + timedelta(days=i)).strftime('- %Y-%m-%d (%A)') for i in range(1, 8)])}
+Use this reference to map day names (like "Tuesday") to the exact upcoming ISO8601 date.
+
 LinkedIn Reply to classify:
 {_sanitize_and_bound_input(message_text, max_chars=1500, label="prospect_message")}
 """
@@ -649,7 +655,7 @@ def check_ai_rate_limit_db(workspace_id: str, supabase) -> bool:
     WARNING: Do NOT replace with in-memory dict. In-memory state is NOT shared
     across Uvicorn workers. Each worker gets an isolated copy, defeating limits.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
     
     # AI calls are expensive; hard limit is 500 per day
     DAILY_AI_LIMIT = 500
