@@ -45,7 +45,7 @@ export function LeadTable({
       <div className="mb-6 flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/10 text-warning">
         <div className="flex items-center gap-2 text-sm font-medium">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          {error instanceof Error ? error.message : String(error) || "Backend connection lost. Retrying..."}
+          {"Backend connection lost. Retrying..."}
         </div>
         <button onClick={() => mutate()} className="text-xs font-bold hover:underline">Reconnect</button>
       </div>

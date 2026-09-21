@@ -63,7 +63,7 @@ export function AcceptInvite() {
 
       } catch (err: any) {
         setStatus("error")
-        setErrorMessage(err.message || "An unexpected error occurred")
+        setErrorMessage("Failed to accept the invite — the link may have expired. Please request a new invitation.")
         sessionStorage.removeItem("pending_invite_token")
       }
     }

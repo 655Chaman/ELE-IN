@@ -166,7 +166,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
           setPrefs(data.preferences);
         }
         mutate(); 
-        return err.message || "Failed to save preference";
+        return "Failed to save preference — please try again.";
       }
     });
   };
