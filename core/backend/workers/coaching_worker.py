@@ -139,14 +139,6 @@ def run_daily_digest(supabase):
         # Chunking: sleep to avoid hammering the LLM API between workspaces
         time.sleep(2)
 
-if __name__ == "__main__":
-    supabase = get_service_client()
-    run_throttle_and_burnout_checks(supabase)
-    print("\n-------------------\n")
-    run_daily_digest(supabase)
-    print("\n-------------------\n")
-    run_funnel_bottleneck_alerts(supabase)
-
 def run_funnel_bottleneck_alerts(supabase):
     print("Running Funnel Bottleneck Alerts (Task #16 - #1)...")
     workspaces_res = supabase.table('workspaces').select('id, status').eq('status', 'active').execute()
@@ -257,3 +249,11 @@ Keep it under 3 sentences. Do not use generic filler. Do not prefix with 'Hypoth
                     }
                 )
 
+
+if __name__ == "__main__":
+    supabase = get_service_client()
+    run_throttle_and_burnout_checks(supabase)
+    print("\n-------------------\n")
+    run_daily_digest(supabase)
+    print("\n-------------------\n")
+    run_funnel_bottleneck_alerts(supabase)
