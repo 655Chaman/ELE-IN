@@ -86,7 +86,7 @@ export default function AccountTags({ accountId }: { accountId: string }) {
         </div>
       </div>
       {validationError && (
-        <div className="text-[10px] text-red-500 mt-1">{validationError}</div>
+        <div className="text-[10px] text-destructive mt-1">{validationError}</div>
       )}
     </div>
   )

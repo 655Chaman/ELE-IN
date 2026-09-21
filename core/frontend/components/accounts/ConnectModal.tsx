@@ -340,7 +340,7 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
                               </div>
 
                               {error && (
-                                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-xs mt-2">
+                                <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs mt-2">
                                   <AlertCircle size={14} className="shrink-0" />
                                   <p>{error}</p>
                                 </div>
@@ -354,14 +354,14 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
                               )}
 
                               {validated?.valid && (
-                                <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mt-2">
-                                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                                    <CheckCircle2 size={16} className="text-emerald-500" />
+                                <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20 mt-2">
+                                  <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center shrink-0">
+                                    <CheckCircle2 size={16} className="text-success" />
                                   </div>
                                   <div className="min-w-0">
-                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">Session Connected Successfully!</p>
+                                    <p className="text-xs text-success dark:text-success font-bold">Session Connected Successfully!</p>
                                     {validated.profile_url && (
-                                      <p className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5 truncate">{validated.profile_url}</p>
+                                      <p className="text-[10px] text-success/70 dark:text-success/70 mt-0.5 truncate">{validated.profile_url}</p>
                                     )}
                                   </div>
                                 </div>

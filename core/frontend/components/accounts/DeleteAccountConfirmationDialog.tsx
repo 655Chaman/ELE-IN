@@ -73,7 +73,7 @@ export default function DeleteAccountConfirmationDialog({
                         <Dialog.Description className="mt-1 text-sm text-muted-foreground leading-relaxed">
                           This will disconnect <span className="font-semibold text-foreground">{accountName}</span> from Ele-in. Any campaigns using this account will be paused.
                         </Dialog.Description>
-                        {deleteError && <p className='text-red-500 text-xs mt-2'>{deleteError}</p>}
+                        {deleteError && <p className='text-destructive text-xs mt-2'>{deleteError}</p>}
                       </div>
                     </div>
                     <Dialog.Close asChild>

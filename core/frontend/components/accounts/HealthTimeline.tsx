@@ -18,9 +18,9 @@ const CHECK_LABELS: Record<string, string> = {
 }
 
 const RESULT_CONFIG = {
-  pass: { icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  pass: { icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
   warn: { icon: AlertTriangle, color: "text-primary", bg: "bg-primary/10" },
-  fail: { icon: AlertCircle, color: "text-red-500", bg: "bg-red-500/10" },
+  fail: { icon: AlertCircle, color: "text-destructive", bg: "bg-destructive/10" },
 }
 
 import { formatRelativeTime } from "@/lib/utils/date";
@@ -49,7 +49,7 @@ export default function HealthTimeline({ accountId }: { accountId: string }) {
   }
 
   if (error) {
-    return <div className="p-4 text-xs text-red-500">Failed to load health history.</div>
+    return <div className="p-4 text-xs text-destructive">Failed to load health history.</div>
   }
 
   return (

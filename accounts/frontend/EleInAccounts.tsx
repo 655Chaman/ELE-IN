@@ -28,12 +28,12 @@ import AccountTags from "@/components/accounts/AccountTags"
 import DeleteAccountConfirmationDialog from "@/components/accounts/DeleteAccountConfirmationDialog"
 
 const STATUS_CONFIG: Record<string, { label: string, icon: any, color: string }> = {
-  ACTIVE: { label: "Connected", icon: CheckCircle2, color: "text-emerald-400" },
-  DISCONNECTED: { label: "Session Expired", icon: AlertCircle, color: "text-red-400" },
-  PENDING: { label: "Verifying…", icon: Clock, color: "text-yellow-400" },
-  BANNED: { label: "Account Banned", icon: Ban, color: "text-red-500" },
-  RATE_LIMITED: { label: "Rate Limited", icon: AlertTriangle, color: "text-amber-500" },
-  MANUAL_MODE: { label: "Manual Mode", icon: PauseCircle, color: "text-blue-400" },
+  ACTIVE: { label: "Connected", icon: CheckCircle2, color: "text-success" },
+  DISCONNECTED: { label: "Session Expired", icon: AlertCircle, color: "text-destructive" },
+  PENDING: { label: "Verifying…", icon: Clock, color: "text-warning" },
+  BANNED: { label: "Account Banned", icon: Ban, color: "text-destructive" },
+  RATE_LIMITED: { label: "Rate Limited", icon: AlertTriangle, color: "text-warning" },
+  MANUAL_MODE: { label: "Manual Mode", icon: PauseCircle, color: "text-primary" },
 }
 
 
@@ -53,9 +53,9 @@ function AccountHealthBadge({ accountId }: { accountId: string }) {
 
   if (!data && !error) return <span className="text-[10px] text-muted-foreground animate-pulse">Checking health...</span>
   if (error || data?.status === 'DISCONNECTED') {
-    return <span className="text-[10px] text-red-500 font-semibold flex items-center gap-1"><AlertCircle size={10} /> Action Required: Reconnect</span>
+    return <span className="text-[10px] text-destructive font-semibold flex items-center gap-1"><AlertCircle size={10} /> Action Required: Reconnect</span>
   }
-  return <span className="text-[10px] text-emerald-500 flex items-center gap-1"><CheckCircle2 size={10} /> Healthy</span>
+  return <span className="text-[10px] text-success flex items-center gap-1"><CheckCircle2 size={10} /> Healthy</span>
 }
 
 import { formatRelativeTime } from "@/lib/utils/date";
@@ -128,10 +128,10 @@ export function EleInAccounts() {
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-start gap-3 p-4 rounded-xl border border-red-500/20 bg-red-500/10 mb-6"
+          className="flex items-start gap-3 p-4 rounded-xl border border-destructive/20 bg-destructive/10 mb-6"
         >
-          <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-          <p className="text-xs text-red-500 leading-relaxed font-medium">
+          <AlertCircle size={14} className="text-destructive shrink-0 mt-0.5" />
+          <p className="text-xs text-destructive leading-relaxed font-medium">
             One or more of your LinkedIn accounts have expired sessions (LinkedIn logged them out). Please remove and reconnect them to resume imports and campaigns.
           </p>
         </motion.div>
@@ -200,13 +200,13 @@ export function EleInAccounts() {
               >
                 <SpotlightCard className={`p-4 rounded-xl border ${isSelected ? 'border-primary/50 bg-primary/5' : 'border-border bg-muted/30 dark:bg-background/50'} backdrop-blur-md hover:border-border/80 transition-all shadow-sm`} >
                   {acc.manualSendSuspected && (
-                    <div className="flex items-start gap-3 p-3 mb-4 rounded-lg border border-red-500/20 bg-red-500/10">
-                      <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-3 p-3 mb-4 rounded-lg border border-destructive/20 bg-destructive/10">
+                      <AlertCircle size={14} className="text-destructive shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-xs text-red-500 font-medium">⚠️ Manual sending detected. Your account may be at risk. Pause your campaign immediately.</p>
-                        <p className="text-[10px] text-red-400 mt-1">We detected a discrepancy between campaign-sent and actual activity on your LinkedIn account.</p>
+                        <p className="text-xs text-destructive font-medium">⚠️ Manual sending detected. Your account may be at risk. Pause your campaign immediately.</p>
+                        <p className="text-[10px] text-destructive mt-1">We detected a discrepancy between campaign-sent and actual activity on your LinkedIn account.</p>
                       </div>
-                      <button onClick={() => clearManualSendWarning(acc.id)} className="text-[10px] font-medium text-red-500 hover:text-red-600 px-2 py-1 bg-red-500/10 rounded-md transition-colors whitespace-nowrap">
+                      <button onClick={() => clearManualSendWarning(acc.id)} className="text-[10px] font-medium text-destructive hover:text-destructive px-2 py-1 bg-destructive/10 rounded-md transition-colors whitespace-nowrap">
                         I understand
                       </button>
                     </div>
@@ -254,7 +254,7 @@ export function EleInAccounts() {
                     {(acc.accountStatus === "DISCONNECTED") && (
                       <button
                         onClick={() => setRefreshAccountId(acc.id)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-all opacity-0 group-hover:opacity-100"
+                        className="p-2 rounded-lg text-muted-foreground hover:text-success hover:bg-success/10 transition-all opacity-0 group-hover:opacity-100"
                         title="Reconnect Account"
                       >
                         <RefreshCw size={13} />
@@ -268,7 +268,7 @@ export function EleInAccounts() {
                             <button
                                 disabled={acc.accountStatus !== 'ACTIVE' && acc.accountStatus !== 'MANUAL_MODE'}
                                 onClick={() => toggleManualMode(acc.id, acc.accountStatus)}
-                                className={`p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100 ${(acc.accountStatus !== 'ACTIVE' && acc.accountStatus !== 'MANUAL_MODE') ? 'opacity-50 cursor-not-allowed text-muted-foreground' : acc.accountStatus === 'MANUAL_MODE' ? 'text-blue-500 bg-blue-500/10 opacity-100' : 'text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10'}`}
+                                className={`p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100 ${(acc.accountStatus !== 'ACTIVE' && acc.accountStatus !== 'MANUAL_MODE') ? 'opacity-50 cursor-not-allowed text-muted-foreground' : acc.accountStatus === 'MANUAL_MODE' ? 'text-primary bg-primary/10 opacity-100' : 'text-muted-foreground hover:text-primary hover:bg-primary/10'}`}
                                 title={acc.accountStatus === 'MANUAL_MODE' ? "Resume Automation" : "Pause Automation for Manual Login"}
                               >
                                 <PauseCircle size={13} />

@@ -6,10 +6,10 @@ import { cn } from "@/lib/utils"
 // ── Warmup Timeline Card ──────────────────────────────────────────────────────
 const PHASE_COLORS: Record<string, string> = {
   observe: "bg-zinc-600",
-  seed: "bg-amber-600",
-  ramp: "bg-blue-600",
-  cruise: "bg-emerald-600",
-  active: "bg-emerald-500",
+  seed: "bg-warning",
+  ramp: "bg-primary",
+  cruise: "bg-success",
+  active: "bg-success",
 }
 const PHASE_LABELS: Record<string, string> = {
   observe: "Observing", seed: "Seeding", ramp: "Ramping", cruise: "Full Cruise", active: "Active"
@@ -25,7 +25,7 @@ export default function WarmupTimeline({ accountId }: { accountId: string }) {
   const phases = data.phases || []
   const currentPhase = data.phase || 'observe'
   const safety = data.safety_score ?? 100
-  const safetyColor = safety >= 80 ? 'text-emerald-400' : safety >= 50 ? 'text-primary/80' : 'text-red-400'
+  const safetyColor = safety >= 80 ? 'text-success' : safety >= 50 ? 'text-primary/80' : 'text-destructive'
   const isActivePhase = currentPhase === 'active'
 
   return (
@@ -33,7 +33,7 @@ export default function WarmupTimeline({ accountId }: { accountId: string }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isActivePhase ? (
-             <Shield size={11} className="text-emerald-500" />
+             <Shield size={11} className="text-success" />
           ) : (
              <TrendingUp size={11} className="text-muted-foreground" />
           )}

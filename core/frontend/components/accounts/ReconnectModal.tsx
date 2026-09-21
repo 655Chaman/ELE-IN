@@ -93,7 +93,7 @@ export default function ReconnectModal({ accountId, accountName, onClose, onSucc
         <SpotlightCard className="p-6 rounded-2xl bg-card border border-border shadow-2xl overflow-hidden" spotlightColor="rgba(255, 255, 255, 0.05)">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-card-foreground flex items-center gap-2">
-              <RefreshCw size={18} className="text-emerald-500" />
+              <RefreshCw size={18} className="text-success" />
               Reconnect {accountName}
             </h2>
             <button onClick={onClose} className="p-1 rounded-md text-muted-foreground hover:bg-muted transition-colors">
@@ -103,9 +103,9 @@ export default function ReconnectModal({ accountId, accountName, onClose, onSucc
 
           {!success ? (
             <div className="space-y-4">
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex gap-2">
-                <Info size={14} className="text-blue-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-blue-500 leading-relaxed">
+              <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg flex gap-2">
+                <Info size={14} className="text-primary shrink-0 mt-0.5" />
+                <p className="text-xs text-primary leading-relaxed">
                   Your LinkedIn session has expired. You need to re-export your cookies. Don't worry, <strong>your warmup progress, limits, and campaigns are all preserved.</strong>
                 </p>
               </div>
@@ -127,7 +127,7 @@ export default function ReconnectModal({ accountId, accountName, onClose, onSucc
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-xs">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs">
                   <AlertCircle size={14} className="shrink-0" />
                   <p>{error}</p>
                 </div>
@@ -143,8 +143,8 @@ export default function ReconnectModal({ accountId, accountName, onClose, onSucc
             </div>
           ) : (
             <div className="py-8 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <CheckCircle2 size={24} className="text-emerald-500" />
+              <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center">
+                <CheckCircle2 size={24} className="text-success" />
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">Session Reconnected!</p>
