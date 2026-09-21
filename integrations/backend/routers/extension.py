@@ -3,25 +3,22 @@ from supabase import Client
 from core.backend.api.auth_dep import get_service_client
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import hashlib
 
 router = APIRouter()
 
 def verify_extension_api_key(x_api_key: str = Header(...), supabase: Client = Depends(get_service_client)) -> str:
     """Verifies the extension API key and returns the workspace_id"""
-    # Note: the user's schema stores hashes in api_keys, but for simplicity
-    # during development we'll do a simple check. If they are storing plain 
-    # text or matching it, we adjust here. For now, assuming direct match or matching key_prefix
+    x_api_key_hash = hashlib.sha256(x_api_key.encode('utf-8')).hexdigest()
     
-    # Check api_keys table
-    # Since they use key_hash, they probably hash it. If this fails, we will adjust.
-    res = supabase.table("api_keys").select("workspace_id, is_active").eq("key_hash", x_api_key).execute()
+    res = supabase.table("api_keys").select("workspace_id, is_active").eq("key_hash", x_api_key_hash).execute()
     if not res.data or not res.data[0]["is_active"]:
         raise HTTPException(status_code=401, detail="Invalid or inactive API Key")
     
     # Update last_used_at
     supabase.table("api_keys").update({
         "last_used_at": datetime.utcnow().isoformat()
-    }).eq("key_hash", x_api_key).execute()
+    }).eq("key_hash", x_api_key_hash).execute()
     
     return res.data[0]["workspace_id"]
 
