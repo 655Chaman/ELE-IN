@@ -113,14 +113,30 @@ async def process_single_job(job, sync_supabase):
                             for m in messages:
                                 existing = sync_supabase.table("messages").select("id").eq("account_id", account_id).eq("sender_name", m["sender_name"]).eq("message_text", m["message_text"]).eq("direction", m["direction"]).execute()
                                 if not existing.data:
-                                    sync_supabase.table("messages").insert({
+                                    insert_payload = {
                                         "id": str(uuid.uuid4()),
                                         "workspace_id": ws_id,
                                         "account_id": account_id,
                                         "sender_name": m["sender_name"],
                                         "message_text": m["message_text"],
                                         "direction": m["direction"],
-                                    }).execute()
+                                    }
+                                    
+                                    # --- Change 1: Resolve node_id for inbound messages ---
+                                    if m["direction"] == "inbound":
+                                        msg_res = sync_supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("sender_name", m["sender_name"]).not_.is_("lead_id", "null").limit(1).execute()
+                                        if msg_res.data and msg_res.data[0].get("lead_id"):
+                                            lead_id = msg_res.data[0]["lead_id"]
+                                            insert_payload["lead_id"] = lead_id
+                                            
+                                            enroll_res = sync_supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+                                            if enroll_res.data:
+                                                enroll_ids = [e["id"] for e in enroll_res.data]
+                                                state_res = sync_supabase.table("campaign_execution_states").select("current_node_id").in_("enrollment_id", enroll_ids).in_("status", ["running", "paused", "completed"]).order("updated_at", desc=True).limit(1).execute()
+                                                if state_res.data and state_res.data[0].get("current_node_id"):
+                                                    insert_payload["node_id"] = state_res.data[0]["current_node_id"]
+                                                    
+                                    sync_supabase.table("messages").insert(insert_payload).execute()
                         elif job_type == 'inbox_action':
                             action = payload.get('action')
                             payload_data = payload.get('payload_data', {})

@@ -591,6 +591,20 @@ class EleInOrchestrator:
             current_node["id"]
         )
 
+
+
+        
+        if action == "if_connected" and action_result.get("status") == "success" and action_result.get("branch") == "Yes":
+            try:
+                self.supabase.table("action_log").insert({
+                    "execution_state_id": state["id"],
+                    "action_type": "connection_accepted",
+                    "workspace_id": state["workspace_id"],
+                    "metadata": {"node_id": current_node_id, "opportunity_id": state.get("opportunity_id")}
+                }).execute()
+            except Exception as e:
+                logger.error(f"Failed to record connection_accepted to action_log: {e}")
+
         if "variables" in action_result:
             vars_dict = state.get("variables") or {}
             if isinstance(vars_dict, str):

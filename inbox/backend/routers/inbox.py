@@ -235,6 +235,25 @@ def bulk_upsert_messages(supabase: Client, workspace_id: str, account_id: str, m
                 "message_text": m.get("message_text"),
                 "direction": m.get("direction"),
             }
+            
+            # --- Change 1: Resolve node_id for inbound messages ---
+            if m.get("direction") == "inbound":
+                lead_id = None
+                # First try to get lead_id from previous messages in thread
+                msg_res = supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("sender_name", m.get("sender_name")).not_.is_("lead_id", "null").limit(1).execute()
+                if msg_res.data and msg_res.data[0].get("lead_id"):
+                    lead_id = msg_res.data[0]["lead_id"]
+                    
+                if lead_id:
+                    record["lead_id"] = lead_id
+                    # Now get the current node_id
+                    enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+                    if enroll_res.data:
+                        enroll_ids = [e["id"] for e in enroll_res.data]
+                        state_res = supabase.table("campaign_execution_states").select("current_node_id").in_("enrollment_id", enroll_ids).in_("status", ["running", "paused", "completed"]).order("updated_at", desc=True).limit(1).execute()
+                        if state_res.data and state_res.data[0].get("current_node_id"):
+                            record["node_id"] = state_res.data[0]["current_node_id"]
+
             if "intent" in m:
                 record["intent"] = m["intent"]
             if "intent_confidence" in m:
