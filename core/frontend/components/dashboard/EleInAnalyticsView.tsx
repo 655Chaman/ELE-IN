@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { 
   Users, Target, Zap, TrendingUp, MessageSquareHeart, ShieldCheck,
@@ -61,6 +61,37 @@ const timeAgo = (dateString: string) => {
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 };
+
+// --- Animated Number (count-up on mount) ---
+function AnimatedNumber({ value, duration = 800 }: { value: string | number; duration?: number }) {
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  const isNumeric = !isNaN(numericValue) && typeof value !== 'string';
+  const [display, setDisplay] = useState(isNumeric ? 0 : value);
+  const rafRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isNumeric) {
+      setDisplay(value);
+      return;
+    }
+    const target = numericValue;
+    startTimeRef.current = null;
+    const animate = (timestamp: number) => {
+      if (!startTimeRef.current) startTimeRef.current = timestamp;
+      const elapsed = timestamp - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(eased * target));
+      if (progress < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [numericValue, duration, isNumeric, value]);
+
+  return <>{display}</>;
+}
 
 // --- Components ---
 
@@ -393,7 +424,9 @@ export function EleInAnalyticsView({
                 </div>
               </div>
               <div>
-                <p className="text-2xl font-light tracking-tight text-foreground mb-1 tabular-nums">{stat.value}</p>
+                <p className="text-2xl font-light tracking-tight text-foreground mb-1 tabular-nums">
+                  <AnimatedNumber value={stat.value} />
+                </p>
                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider line-clamp-1">{stat.label}</p>
               </div>
             </motion.div>
