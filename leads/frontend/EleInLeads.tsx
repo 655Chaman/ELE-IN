@@ -37,9 +37,11 @@ export function EleInLeads() {
     safeLists.forEach(list => {
       const prev = prevListsRef.current.get(list.id)
       
-      if (prev && (prev.row_count === -1 || (prev as any).status === 'importing') && list.row_count === -2) {
+      const prevWasImporting = prev.row_count === -1 || (prev as any).status === 'importing';
+      const isNowError = list.row_count === -2 || (list as any).status === 'error' || (list as any).status === 'failed';
+      if (prev && prevWasImporting && isNowError) {
         if (!errorShownRef.current.has(list.id)) {
-          toast.error(`Import failed for ${list.name}. Please try re-uploading your CSV.`, { duration: 8000 })
+          toast.error(`Import failed for ${list.name}. Please try again.`, { duration: 8000 })
           errorShownRef.current.add(list.id)
         }
       }

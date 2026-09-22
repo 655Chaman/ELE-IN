@@ -18,6 +18,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string; icon?: bo
   throttled:       { label: "Throttled",       className: "bg-primary/10 text-warning" },
   daily_limit:     { label: "Daily Limit",     className: "bg-primary/10 text-destructive" },
   error:           { label: "Error",           className: "bg-destructive text-white shadow-sm flex items-center gap-1", icon: true, title: "Import failed. Click to retry or re-upload." },
+  failed:          { label: "Failed",          className: "bg-destructive text-white shadow-sm flex items-center gap-1", icon: true, title: "Import failed. Click to retry or re-upload." },
   session_expired: { label: "Session Expired", className: "bg-destructive/10 text-destructive" },
 }
 
@@ -157,7 +158,7 @@ export function LeadTable({
                     if (st === 'throttled') return <span className="flex items-center gap-1.5 text-warning"><AlertCircle size={11} /> LinkedIn throttled — will retry</span>
                     if (st === 'daily_limit') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> Daily limit reached</span>
                     if (st === 'session_expired') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> LinkedIn session expired — reconnect account</span>
-                    if (st === 'error') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> {(list as any).error_message || "Import failed. Please retry."}</span>
+                    if (st === 'error' || st === 'failed') return <span className="flex items-center gap-1.5 text-destructive"><AlertCircle size={11} /> {(list as any).error_message || "Import failed. Please retry."}</span>
                     if (st.startsWith('completed') && st.includes('duplicates')) return <span className="text-muted-foreground">{list.row_count.toLocaleString()} leads <span className="text-warning">· {st.split('—')[1]?.trim()}</span></span>
                     return `${list.row_count.toLocaleString()} leads`
                   })()}
