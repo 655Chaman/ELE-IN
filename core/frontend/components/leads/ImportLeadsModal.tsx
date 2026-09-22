@@ -222,6 +222,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
               {method === "linkedin_url" && <RawProfilesImport />}
 
             </div>
+            </div>
 
             {method !== "hubspot" && (
               <div className="p-6 border-t bg-muted/5 flex items-center justify-between shrink-0">
@@ -251,7 +252,6 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                 </button>
               </div>
             )}
-            </div>
           </div>
         )}
       </motion.div>

@@ -165,7 +165,7 @@ export function LeadTable({
                 </span>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 pr-2 relative z-10">
+            <div className="flex items-center justify-end gap-3 pr-2 relative z-10 group-hover:-translate-x-6 transition-transform duration-300">
               <span className="text-[11px] text-muted-foreground font-medium">
                 {new Date(list.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
