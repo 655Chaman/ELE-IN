@@ -1,3 +1,4 @@
+_SN_CACHE = {}
 import json
 import time
 import random
@@ -1273,10 +1274,91 @@ class LinkedInWorker:
                         logger.warning(f"Error parsing conversation: {e}")
                         continue
                     
+                self.sync_sales_nav_inbox(page, max_threads)
                 return results
             except Exception as e:
                 logger.error(f"Error syncing inbox: {e}")
                 return results
+
+
+
+    def sync_sales_nav_inbox(self, page: Page, max_threads: int = 10) -> List[Dict[str, Any]]:
+        global _SN_CACHE
+        now = time.time()
+        cached = _SN_CACHE.get(self.account_id)
+        if cached is not None:
+            has_sn, timestamp = cached
+            if now - timestamp < 24 * 3600:
+                if not has_sn:
+                    return []
+        
+        try:
+            page.goto("https://www.linkedin.com/sales/inbox", wait_until="domcontentloaded")
+            self._check_for_challenge(page)
+            
+            url = page.url
+            if "/sales/products" in url or "/premium" in url or "paywall" in url.lower():
+                _SN_CACHE[self.account_id] = (False, now)
+                return []
+            
+            _SN_CACHE[self.account_id] = (True, now)
+            
+            self._human_delay(4, 6)
+            
+            conversations = page.locator(".thread-list-item").all()
+            if not conversations:
+                logger.warning("Sales Nav inbox selectors missed, DOM may have changed")
+                return []
+                
+            from core.backend.core.supabase_client import get_supabase
+            supabase = get_supabase()
+            ws_res = supabase.table("accounts").select("workspace_id").eq("id", self.account_id).execute()
+            if not ws_res.data:
+                return []
+            workspace_id = ws_res.data[0]["workspace_id"]
+                
+            results = []
+            for conv in conversations[:max_threads]:
+                try:
+                    name_el = conv.locator(".artdeco-entity-lockup__title")
+                    if not name_el.first.is_visible(timeout=2000):
+                        continue
+                    name = name_el.first.inner_text().strip()
+                    
+                    msg_el = conv.locator(".artdeco-entity-lockup__subtitle")
+                    if not msg_el.first.is_visible(timeout=2000):
+                        continue
+                    msg_text = msg_el.first.inner_text().strip()
+                    
+                    if msg_text.startswith("You: "):
+                        direction = "outbound"
+                        msg_text = msg_text[5:]
+                    else:
+                        direction = "inbound"
+                    
+                    existing = supabase.table("messages").select("id").eq("workspace_id", workspace_id).eq("sender_name", name).eq("message_text", msg_text).execute()
+                    if not existing.data:
+                        supabase.table("messages").insert({
+                            "workspace_id": workspace_id,
+                            "account_id": self.account_id,
+                            "sender_name": name,
+                            "message_text": msg_text,
+                            "direction": direction
+                        }).execute()
+                        
+                    results.append({
+                        "sender_name": name,
+                        "message_text": msg_text,
+                        "direction": direction
+                    })
+                except Exception as e:
+                    logger.warning(f"Error parsing SN conversation: {e}")
+                    continue
+                    
+            return results
+        except Exception as e:
+            logger.error(f"Error syncing SN inbox: {e}")
+            return []
 
 
     @linkedin_action_safe
