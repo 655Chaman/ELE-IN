@@ -41,8 +41,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const data = await fetcher('/api/workspaces');
       setWorkspaces(data);
-      if (data.length > 0 && !activeWorkspaceId) {
-        setActiveWorkspaceId(data[0].id);
+      if (data.length > 0) {
+        const currentId = localStorage.getItem('elein_active_workspace');
+        if (!currentId || !data.some(w => w.id === currentId)) {
+          setActiveWorkspaceId(data[0].id);
+        } else if (currentId !== activeWorkspaceId) {
+          // If the React state is out of sync with valid localStorage state, update it
+          setActiveWorkspaceIdState(currentId);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch workspaces:", error);

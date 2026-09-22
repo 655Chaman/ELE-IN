@@ -148,15 +148,22 @@ export function AppLayout() {
                   className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-sidebar-accent/40 transition-colors border border-transparent hover:border-sidebar-border/50 group relative z-50"
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
-                      {workspaces.find(w => w.id === activeWorkspaceId)?.name?.substring(0, 2).toUpperCase() || "WS"}
-                    </div>
-                    <div className="flex flex-col items-start truncate">
-                      <span className="text-sm font-semibold text-sidebar-foreground truncate">{workspaces.find(w => w.id === activeWorkspaceId)?.name || "Loading..."}</span>
-                      <span className="text-[10px] text-sidebar-foreground/60 font-medium tracking-wide">
-                        {workspaces.find(w => w.id === activeWorkspaceId)?.account_count || 0} Connected Account{workspaces.find(w => w.id === activeWorkspaceId)?.account_count !== 1 ? 's' : ''}
-                      </span>
-                    </div>
+                    {(() => {
+                      const activeWs = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+                      return (
+                        <>
+                          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
+                            {activeWs?.name?.substring(0, 2).toUpperCase() || "WS"}
+                          </div>
+                          <div className="flex flex-col items-start truncate">
+                            <span className="text-sm font-semibold text-sidebar-foreground truncate">{activeWs?.name || "Loading..."}</span>
+                            <span className="text-[10px] text-sidebar-foreground/60 font-medium tracking-wide">
+                              {activeWs?.account_count || 0} Connected Account{activeWs?.account_count !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                   <ChevronDown size={14} className={`text-sidebar-foreground/40 transition-transform duration-200 group-hover:text-sidebar-foreground/80 shrink-0 ${isWorkspaceDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
