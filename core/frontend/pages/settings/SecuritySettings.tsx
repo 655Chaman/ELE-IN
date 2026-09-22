@@ -183,9 +183,9 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                     </>
                   ) : (
                     <>
-                      <Unlock className="w-8 h-8 text-primary mb-1" />
-                      <span className="text-2xl font-bold text-primary">{scorePercentage}%</span>
-                      <span className="text-xs font-medium text-primary/80 uppercase tracking-wider">Vulnerable</span>
+                      <Unlock className="w-8 h-8 text-destructive mb-1" />
+                      <span className="text-2xl font-bold text-destructive">{scorePercentage}%</span>
+                      <span className="text-xs font-medium text-destructive/80 uppercase tracking-wider">Vulnerable</span>
                     </>
                   )}
                 </motion.div>
@@ -278,10 +278,10 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="mt-4 p-4 rounded-xl border border-primary/30 bg-primary/5 flex gap-3"
+                    className="mt-4 p-4 rounded-xl border border-destructive/30 bg-destructive/5 flex gap-3"
                   >
-                    <AlertTriangle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <p className="text-sm text-warning dark:text-primary/80/90 leading-relaxed">
+                    <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-sm text-destructive dark:text-destructive/90 leading-relaxed">
                       <strong className="font-semibold block mb-1">High Risk Exposure</strong>
                       Without 2FA enforcement, any compromised password can give an attacker full access to all LinkedIn accounts connected to this workspace.
                     </p>
