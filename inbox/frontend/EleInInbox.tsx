@@ -2,7 +2,7 @@ import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { MessageSquare, Send, Sparkles, RefreshCw } from 'lucide-react';
+import { MessageSquare, Send, Sparkles, RefreshCw, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 ;
@@ -12,6 +12,7 @@ interface ThreadSummary {
   last_message: string;
   direction: string;
   created_at: string;
+  type?: string;
 }
 
 interface Message {
@@ -19,6 +20,7 @@ interface Message {
   message_text: string;
   direction: string;
   created_at: string;
+  type?: string;
 }
 
 export function EleInInbox() {
@@ -134,9 +136,13 @@ export function EleInInbox() {
                   {new Date(thread.created_at).toLocaleDateString()}
                 </span>
               </div>
-              <p className="text-sm text-zinc-400 line-clamp-2 leading-relaxed">
-                {thread.direction === 'outbound' ? 'You: ' : ''}{thread.last_message}
-              </p>
+              <div className="text-sm text-zinc-400 line-clamp-2 leading-relaxed flex items-center gap-1.5">
+                {thread.type === 'connection_accepted' ? (
+                  <><UserCheck size={14} className="text-primary" /> <span className="italic text-primary/80">Connection Accepted</span></>
+                ) : (
+                  <>{thread.direction === 'outbound' ? 'You: ' : ''}{thread.last_message}</>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -159,20 +165,33 @@ export function EleInInbox() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {safeMessages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[70%] rounded-2xl p-4 ${
-                    msg.direction === 'outbound' 
-                      ? 'bg-primary/20 text-primary-foreground border border-primary/20 rounded-tr-sm' 
-                      : 'bg-zinc-800/50 text-zinc-200 border border-white/5 rounded-tl-sm'
-                  }`}>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.message_text}</p>
-                    <div className="mt-2 text-[10px] opacity-50 flex items-center justify-end gap-1">
-                      {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              {safeMessages.map(msg => {
+                if (msg.type === "connection_accepted") {
+                  return (
+                    <div key={msg.id} className="flex justify-center my-4">
+                      <div className="px-4 py-2 bg-primary/10 border border-primary/20 rounded-full flex items-center gap-2 text-xs font-medium text-primary shadow-sm">
+                        <UserCheck size={14} />
+                        <span>Connection Accepted</span>
+                        <span className="opacity-50 ml-2">{new Date(msg.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={msg.id} className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[70%] rounded-2xl p-4 ${
+                      msg.direction === 'outbound' 
+                        ? 'bg-primary/20 text-primary-foreground border border-primary/20 rounded-tr-sm' 
+                        : 'bg-zinc-800/50 text-zinc-200 border border-white/5 rounded-tl-sm'
+                    }`}>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.message_text}</p>
+                      <div className="mt-2 text-[10px] opacity-50 flex items-center justify-end gap-1">
+                        {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="p-4 border-t border-white/5 bg-surface/40 backdrop-blur-md">

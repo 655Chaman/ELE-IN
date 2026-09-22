@@ -352,7 +352,6 @@ def get_inbox_threads(supabase: Client = Depends(get_supabase_client), workspace
     try:
         res = supabase.table("messages").select("sender_name, message_text, direction, created_at").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
         
-        # Group by sender_name to get latest
         threads_dict = {}
         for r in res.data:
             sn = r["sender_name"]
@@ -361,10 +360,49 @@ def get_inbox_threads(supabase: Client = Depends(get_supabase_client), workspace
                     "sender_name": sn,
                     "last_message": r["message_text"],
                     "direction": r["direction"],
-                    "created_at": r["created_at"]
+                    "created_at": r["created_at"],
+                    "type": "message"
                 }
+
+        # Fetch connection_accepted events
+        action_res = supabase.table("action_log") \
+            .select("id, executed_at, campaign_execution_states(campaign_enrollments(leads(first_name, last_name)))") \
+            .eq("workspace_id", workspace_id) \
+            .eq("action_type", "connection_accepted") \
+            .order("executed_at", desc=True) \
+            .execute()
+            
+        for a in action_res.data or []:
+            first = ""
+            last = ""
+            try:
+                lead = a.get("campaign_execution_states", {}).get("campaign_enrollments", {}).get("leads", {})
+                if lead:
+                    first = lead.get("first_name", "")
+                    last = lead.get("last_name", "")
+            except Exception:
+                pass
+                
+            if first or last:
+                sn = f"{first} {last}".strip()
+                event_time = a.get("executed_at")
+                if sn not in threads_dict:
+                    threads_dict[sn] = {
+                        "sender_name": sn,
+                        "last_message": "Connection Accepted",
+                        "direction": "inbound",
+                        "created_at": event_time,
+                        "type": "connection_accepted"
+                    }
+                else:
+                    if event_time > threads_dict[sn]["created_at"]:
+                        threads_dict[sn]["last_message"] = "Connection Accepted"
+                        threads_dict[sn]["direction"] = "inbound"
+                        threads_dict[sn]["created_at"] = event_time
+                        threads_dict[sn]["type"] = "connection_accepted"
                 
         threads = list(threads_dict.values())
+        threads.sort(key=lambda x: x["created_at"], reverse=True)
         return threads
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
@@ -374,7 +412,40 @@ def get_inbox_threads(supabase: Client = Depends(get_supabase_client), workspace
 def get_thread_messages(sender_name: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
         res = supabase.table("messages").select("id, message_text, direction, created_at").eq("workspace_id", workspace_id).eq("sender_name", sender_name).order("created_at").execute()
-        return res.data or []
+        messages = res.data or []
+        for m in messages:
+            m["type"] = "message"
+            
+        action_res = supabase.table("action_log") \
+            .select("id, executed_at, campaign_execution_states(campaign_enrollments(leads(first_name, last_name)))") \
+            .eq("workspace_id", workspace_id) \
+            .eq("action_type", "connection_accepted") \
+            .execute()
+            
+        for a in action_res.data or []:
+            first = ""
+            last = ""
+            try:
+                lead = a.get("campaign_execution_states", {}).get("campaign_enrollments", {}).get("leads", {})
+                if lead:
+                    first = lead.get("first_name", "")
+                    last = lead.get("last_name", "")
+            except Exception:
+                pass
+                
+            if first or last:
+                sn = f"{first} {last}".strip()
+                if sn == sender_name:
+                    messages.append({
+                        "id": a["id"],
+                        "message_text": "Connection Accepted",
+                        "direction": "inbound",
+                        "created_at": a["executed_at"],
+                        "type": "connection_accepted"
+                    })
+                    
+        messages.sort(key=lambda x: x["created_at"])
+        return messages
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
