@@ -409,30 +409,45 @@ export function EleInCampaigns() {
       </>
 
       {/* Custom Confirmation Modal */}
-      {confirmModal && confirmModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">{confirmModal.title}</h3>
-              <p className="text-sm text-muted-foreground">{confirmModal.message}</p>
-            </div>
-            <div className="px-6 py-4 bg-muted/30 border-t border-border flex items-center justify-end gap-3">
-              <button 
-                onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 rounded-xl text-sm font-medium hover:bg-muted text-foreground transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmModal.onConfirm}
-                className="px-4 py-2 rounded-xl text-sm font-medium bg-destructive hover:bg-destructive text-white transition-colors shadow-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {confirmModal && confirmModal.isOpen && (
+          <motion.div
+            key="confirm-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-xl overflow-hidden"
+            >
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-2">{confirmModal.title}</h3>
+                <p className="text-sm text-muted-foreground">{confirmModal.message}</p>
+              </div>
+              <div className="px-6 py-4 bg-muted/30 border-t border-border flex items-center justify-end gap-3">
+                <button 
+                  onClick={() => setConfirmModal(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-medium hover:bg-muted text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmModal.onConfirm}
+                  className="px-4 py-2 rounded-xl text-sm font-medium bg-destructive hover:bg-destructive/90 text-white transition-colors shadow-sm active:scale-95"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
