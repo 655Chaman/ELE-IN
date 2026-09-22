@@ -37,7 +37,7 @@ export function EleInLeads() {
     safeLists.forEach(list => {
       const prev = prevListsRef.current.get(list.id)
       
-      const prevWasImporting = prev.row_count === -1 || (prev as any).status === 'importing';
+      const prevWasImporting = prev?.row_count === -1 || (prev as any)?.status === 'importing';
       const isNowError = list.row_count === -2 || (list as any).status === 'error' || (list as any).status === 'failed';
       if (prev && prevWasImporting && isNowError) {
         if (!errorShownRef.current.has(list.id)) {
