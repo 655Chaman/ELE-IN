@@ -103,11 +103,11 @@ export function EleInLeads() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-background/50 backdrop-blur-md shadow-sm">
             <Database size={14} className="text-primary" />
-            <span className="text-xs font-medium">{totalLists} Lists</span>
+            <span className="text-xs font-medium">{totalLists} {totalLists === 1 ? 'list' : 'lists'}</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-background/50 backdrop-blur-md shadow-sm">
             <Users size={14} className="text-primary" />
-            <span className="text-xs font-medium">{totalLeads.toLocaleString()} Leads</span>
+            <span className="text-xs font-medium">{totalLeads.toLocaleString()} {totalLeads === 1 ? 'lead' : 'leads'}</span>
           </div>
           {importingCount > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-primary/10 text-primary backdrop-blur-md shadow-sm">
