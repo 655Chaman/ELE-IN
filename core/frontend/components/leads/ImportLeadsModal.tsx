@@ -88,8 +88,9 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         toast.success(`${data.row_count || urls.length} URLs uploaded successfully to "${name}"!`)
       } else if (method === "sales_nav") {
         if (!salesNavUrl.trim()) { toast.error("Please enter a Sales Navigator URL"); setIsSubmitting(false); return; }
+        if (!activeAccount) { toast.error("No active LinkedIn account connected. Go to Accounts to connect one."); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_sales_nav", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl, target_timezone: targetTimezone, target_region_label: regionLabel })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl, account_id: activeAccount.id, target_timezone: targetTimezone, target_region_label: regionLabel })
         })
         if (!res.ok) throw new Error(await res.text())
         toast.success(`Sales Navigator import started for "${name}"!`)
