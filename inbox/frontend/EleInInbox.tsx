@@ -75,12 +75,22 @@ export function EleInInbox() {
           <p className="text-sm text-zinc-400 mb-8 leading-relaxed">
             When prospects reply to your outreach campaigns, their messages will appear here. The AI will analyze each reply and suggest the perfect response.
           </p>
-          <button 
-            onClick={() => navigate('/elein/campaigns')}
-            className="px-6 py-3 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-primary/20"
-          >
-            Launch a Campaign
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => navigate('/elein/campaigns')}
+              className="px-6 py-3 bg-primary/10 hover:bg-primary/20 text-primary text-sm font-semibold rounded-xl transition-colors border border-primary/20"
+            >
+              Launch a Campaign
+            </button>
+            <button 
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-primary/20 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+              <span>Sync Inbox</span>
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -95,16 +105,17 @@ export function EleInInbox() {
           <button 
             onClick={handleSync}
             disabled={isSyncing}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-zinc-400 hover:text-white disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg transition-colors text-zinc-400 hover:text-white disabled:opacity-50 text-sm font-medium"
             title="Sync latest messages via Playwright"
           >
             <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+            <span>Sync</span>
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {safeThreads.length === 0 && (
             <div className="p-8 text-center text-zinc-500 text-sm">
-              No threads found. Click sync to scrape LinkedIn.
+              No threads found. Click "Sync" to scrape LinkedIn.
             </div>
           )}
           {safeThreads.map(thread => (
