@@ -45,19 +45,6 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
     }
   };
 
-  const handleRequestDeletion = () => {
-    setShowConfirmModal(true);
-    // Auto-fill after a tiny delay for effect
-    setTimeout(() => {
-      let i = 0;
-      const target = "DELETE_NOW";
-      const interval = setInterval(() => {
-        setConfirmText(target.substring(0, i + 1));
-        i++;
-        if (i >= target.length) clearInterval(interval);
-      }, 50);
-    }, 300);
-  };
 
   const confirmDeletion = async () => {
     const isConfirmedCheck = (confirmText === activeWsName || confirmText === "DELETE_NOW");
@@ -262,7 +249,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
 
                 <div className="pt-2 flex justify-end">
                   <button
-                    onClick={handleRequestDeletion}
+                    onClick={confirmDeletion}
                     disabled={!isConfirmed || requesting}
                     className={`
                       relative flex items-center justify-center gap-2 px-8 py-3 font-bold rounded-xl transition-all duration-300
