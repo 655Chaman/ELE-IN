@@ -209,6 +209,9 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     if (searchParams.department.length > 0) {
       params.append("function", JSON.stringify(searchParams.department));
     }
+    if (searchParams.companySize.length > 0) {
+      params.append("companySize", JSON.stringify(searchParams.companySize));
+    }
     if (searchParams.seniority.length > 0) {
       params.append("seniority", JSON.stringify(searchParams.seniority));
     }

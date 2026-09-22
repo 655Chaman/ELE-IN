@@ -209,6 +209,8 @@ class VoyagerScraper:
             url += f"&industry={urllib.parse.quote(search_params['industry'])}"
         if search_params.get("function"):
             url += f"&function={urllib.parse.quote(search_params['function'])}"
+        if search_params.get("companySize"):
+            url += f"&companySize={urllib.parse.quote(search_params['companySize'])}"
         if search_params.get("seniority"):
             url += f"&seniority={urllib.parse.quote(search_params['seniority'])}"
 

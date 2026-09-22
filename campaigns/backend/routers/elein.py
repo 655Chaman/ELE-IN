@@ -499,6 +499,8 @@ def process_voyager_search_background(
             search_params["industry"] = qs["industry"][0]
         if qs.get("function"):
             search_params["function"] = qs["function"][0]
+        if qs.get("companySize"):
+            search_params["companySize"] = qs["companySize"][0]
         if qs.get("seniority"):
             search_params["seniority"] = qs["seniority"][0]
 
