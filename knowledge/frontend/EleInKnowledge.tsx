@@ -48,7 +48,7 @@ interface Persona {
 }
 
 export default function EleInKnowledge() {
-  const { data: assets, mutate: mutateAssets, isLoading: isAssetsLoading } = useSWR("/api/assets/knowledge/assets", fetcher, {
+  const { data: assets, error: assetsError, mutate: mutateAssets, isLoading: isAssetsLoading } = useSWR("/api/assets/knowledge/assets", fetcher, {
     revalidateOnFocus: false
   });
   const { data: synthesis, mutate: mutateSynthesis, isLoading: isSynthesisLoading } = useSWR("/api/assets/knowledge/synthesis", fetcher, {
@@ -511,9 +511,17 @@ export default function EleInKnowledge() {
                       <div className="pt-6 border-t border-slate-100 dark:border-border/50">
                         <h4 className="text-sm font-semibold mb-1 text-foreground">What the AI has learned so far</h4>
                         <p className="text-xs text-muted-foreground mb-4">Each item below is part of your AI's memory. Delete any that are outdated.</p>
-                        {isAssetsLoading ? (
+                        {(!assets && !assetsError) ? (
                           <div className="space-y-3">
                             {[1,2,3].map(i => <div key={i} className="h-16 w-full bg-slate-100 dark:bg-muted/50 rounded-2xl animate-pulse" />)}
+                          </div>
+                        ) : (!assets || (Array.isArray(assets) && assets.length === 0)) ? (
+                          <div className="py-12 flex flex-col items-center justify-center text-center border-2 border-dashed border-slate-200 dark:border-border/50 rounded-3xl bg-slate-50/50 dark:bg-muted/5 mt-4">
+                            <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-muted flex items-center justify-center mb-4">
+                              <BrainCircuit className="text-muted-foreground/40 w-6 h-6" />
+                            </div>
+                            <p className="text-sm font-semibold text-foreground">No knowledge items yet</p>
+                            <p className="text-xs text-muted-foreground mt-1 max-w-xs">Add your website, a PDF, or paste some text above — the AI will learn from it instantly.</p>
                           </div>
                         ) : (
                           <KnowledgeAssetList assets={Array.isArray(assets) ? assets : []} onDelete={handleDeleteAsset} onRetry={handleRetryAsset} />

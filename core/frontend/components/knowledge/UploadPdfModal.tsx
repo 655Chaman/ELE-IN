@@ -46,7 +46,7 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
       </button>
       <UploadCloud size={24} className={`text-blue-600 dark:text-blue-500 mb-3 group-hover:scale-110 transition-transform ${isUploading ? 'animate-bounce' : ''}`} />
       <h3 className="font-semibold text-sm text-foreground">{isUploading ? "Uploading..." : "Upload a Document"}</h3>
-      <p className="text-xs text-muted-foreground mt-1">Sales deck, pitch doc, PDF<br /><span className="text-blue-500 font-medium">up to 10MB</span></p>
+      <p className="text-xs text-muted-foreground mt-1">Sales deck, pitch doc, PDF<br /><span className="text-muted-foreground font-medium">up to 10MB</span></p>
       <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleFileUpload} />
     </div>
   )
