@@ -165,8 +165,8 @@ export function LeadTable({
                 </span>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 pr-2 relative z-10 group-hover:-translate-x-6 transition-transform duration-300">
-              <span className="text-[11px] text-muted-foreground font-medium">
+            <div className="flex items-center justify-end gap-2 pr-2 relative z-10">
+              <span className="text-[11px] text-muted-foreground font-medium mr-1">
                 {new Date(list.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
               <button
@@ -175,9 +175,12 @@ export function LeadTable({
               >
                 <Trash2 size={16} />
               </button>
+              <div className="w-5 flex items-center justify-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                <ChevronRight size={18} className="text-muted-foreground" />
+              </div>
             </div>
             
-            <ChevronRight size={18} className="text-muted-foreground opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 absolute right-4" />
+            
             
             {(list.row_count === -1 || list.row_count < -2) && (
               <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-muted/30 overflow-hidden">
