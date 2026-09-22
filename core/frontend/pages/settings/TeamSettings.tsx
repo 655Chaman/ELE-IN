@@ -351,9 +351,8 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                             key={member.user_id} 
                             className={`group relative transition-colors ${isOwner ? "bg-primary/[0.02]" : "hover:bg-muted/10"}`}
                           >
-                            <td className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                            
-                            <td className="px-5 py-4">
+                            <td className="px-5 py-4 relative">
+                              <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                               <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm border
                                   ${isOwner ? "bg-primary/10 text-primary border-primary/20" : 
