@@ -170,6 +170,7 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
                 </button>
               </div>
             ) : (
+            <>
             <div className="relative">
               <select
                 value={state.leadListId || ""}
@@ -197,6 +198,7 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
             {state.leadListId && lists.find((l: any) => l.id === state.leadListId)?.row_count === 0 && (
               <p className="mt-2 text-xs text-amber-500 font-medium">⚠️ This lead list is empty. You cannot launch a campaign with 0 leads.</p>
             )}
+            </>
             )}
           </div>
         </div>
