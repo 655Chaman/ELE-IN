@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Activity, Clock, ShieldAlert, Users, User, Megaphone, AlertTriangle, ChevronDown, ChevronUp, Lock, SearchX, ServerCrash } from "lucide-react";
+import { Activity, Clock, ShieldAlert, Users, User, Megaphone, AlertTriangle, ChevronDown, ChevronUp, Lock, Search, ServerCrash } from "lucide-react";
 import useSWR from "swr";
 import SpotlightCard from "@/components/SpotlightCard";
 import { fetcher } from "@/lib/apiClient";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/EmptyState";
 type Category = 'Security' | 'Team' | 'Account' | 'Campaign' | 'Deletion' | 'Other';
 
 const getCategory = (action: string): Category => {
+  if (!action || typeof action !== "string") return "Other";
   if (action.includes('deletion_')) return 'Deletion';
   if (action.includes('2fa') || action === 'member.removed') return 'Security';
   if (action.startsWith('member.') || action.startsWith('workspace.invite_')) return 'Team';
@@ -237,7 +238,7 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
           <EmptyState 
             title="No activity found" 
             description={filter === 'All' ? "No audit logs have been recorded in this workspace yet." : `No events matching the "${filter}" filter were found.`} 
-            icon={SearchX} 
+            icon={Search} 
           />
         ) : (
           <div className="flex flex-col gap-6">
