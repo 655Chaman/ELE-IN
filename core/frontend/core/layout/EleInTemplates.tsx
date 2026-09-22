@@ -24,8 +24,8 @@ export function EleInTemplates() {
   const [activeTab, setActiveTab] = useState<"community" | "mine">("community")
   const [search, setSearch] = useState("")
 
-  const { data: communityTemplates, mutate: mutateCommunity } = useSWR<Template[]>('/api/assets/templates/community', fetcher)
-  const { data: myTemplates, mutate: mutateMine } = useSWR<Template[]>('/api/assets/templates/mine', fetcher)
+  const { data: communityTemplates, isLoading: communityLoading, mutate: mutateCommunity } = useSWR<Template[]>('/api/assets/templates/community', fetcher)
+  const { data: myTemplates, isLoading: mineLoading, mutate: mutateMine } = useSWR<Template[]>('/api/assets/templates/mine', fetcher)
 
   const handleClone = async (id: string) => {
     try {
@@ -42,6 +42,7 @@ export function EleInTemplates() {
   const safeCommunity = Array.isArray(communityTemplates) ? communityTemplates : []
   const safeMine = Array.isArray(myTemplates) ? myTemplates : []
 
+  const isLoading = activeTab === "community" ? communityLoading : mineLoading
   const displayTemplates = activeTab === "community" ? safeCommunity : safeMine
   const filtered = displayTemplates.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
 
@@ -49,8 +50,8 @@ export function EleInTemplates() {
     <div className="min-h-[100dvh] bg-background text-foreground px-8 py-10 max-w-6xl mx-auto font-sans">
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-6 flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold mb-1">
-            <ShinyText text="Template Hub" disabled={false} speed={3} className="" />
+          <h1 className="text-2xl font-bold tracking-tight mb-1">
+            <ShinyText text="Template Hub" disabled={false} speed={3} className="text-foreground" />
           </h1>
           <p className="text-xs text-muted-foreground">Discover high-performing community sequences or manage your own custom templates.</p>
         </div>
@@ -147,11 +148,27 @@ export function EleInTemplates() {
             </SpotlightCard>
           </motion.div>
         ))}
-        {filtered.length === 0 && (
+        {isLoading && filtered.length === 0 && (
+          <div className="col-span-full py-20 text-center flex flex-col items-center gap-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="w-full max-w-sm h-40 rounded-2xl bg-muted/30 animate-pulse" />
+            ))}
+          </div>
+        )}
+        {!isLoading && filtered.length === 0 && search.trim() !== "" && (
           <div className="col-span-full py-20 text-center flex flex-col items-center">
             <LayoutTemplate size={32} className="text-muted-foreground/30 mb-4" />
             <h3 className="text-sm font-bold text-foreground mb-1">No templates found</h3>
             <p className="text-xs text-muted-foreground">Try adjusting your search criteria.</p>
+          </div>
+        )}
+        {!isLoading && filtered.length === 0 && search.trim() === "" && (
+          <div className="col-span-full py-20 text-center flex flex-col items-center">
+            <LayoutTemplate size={32} className="text-muted-foreground/30 mb-4" />
+            <h3 className="text-sm font-bold text-foreground mb-1">No templates yet</h3>
+            <p className="text-xs text-muted-foreground">
+              {activeTab === "community" ? "No community templates are available yet." : "You haven't saved any templates to your workspace yet."}
+            </p>
           </div>
         )}
       </div>
