@@ -139,15 +139,13 @@ export function EleInAccounts() {
 
       {/* Action bar */}
       <div className="flex items-center justify-end mb-6">
-        <StarBorder
-          as="button"
+        <button
           onClick={() => setShowModal(true)}
-          innerClassName="flex items-center gap-2 px-4 py-2 rounded-[18px] bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-all shadow-lg"
-          
+          className="flex items-center gap-2 px-4 py-2 rounded-[18px] border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-bold text-foreground transition-all shadow-sm"
         >
           <Plus size={14} />
           Connect account
-        </StarBorder>
+        </button>
       </div>
 
       {/* Empty state */}
