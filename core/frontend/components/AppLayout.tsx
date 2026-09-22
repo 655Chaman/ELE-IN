@@ -234,29 +234,36 @@ export function AppLayout() {
                   {category.items.map(item => {
                     const isActive = item.href ? ((item.href === '/' || item.href === '/elein') ? location.pathname === item.href : location.pathname.startsWith(item.href)) : false;
                     
-                    const className = `w-full flex items-center gap-3 px-3 py-1.5 transition-colors group relative rounded-lg ${
+                    const className = `w-full flex items-center gap-3 px-3 py-1.5 group relative rounded-lg ${
                       isActive 
-                        ? 'bg-sidebar-accent/50 text-sidebar-foreground'
-                        : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/30'
+                        ? 'text-sidebar-foreground'
+                        : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
                     }`;
 
                     const innerContent = (
                       <>
                         {isActive && (
-                          <GlowingEffect
-                            spread={20}
-                            glow={true}
-                            disabled={false}
-                            proximity={40}
-                            inactiveZone={0.01}
-                            borderWidth={1}
-                            variant="white"
-                          />
+                          <>
+                            <motion.div
+                              layoutId="sidebar-active-pill"
+                              className="absolute inset-0 rounded-lg bg-sidebar-accent/50"
+                              transition={{ type: "spring", bounce: 0.2, duration: 0.45 }}
+                            />
+                            <GlowingEffect
+                              spread={20}
+                              glow={true}
+                              disabled={false}
+                              proximity={40}
+                              inactiveZone={0.01}
+                              borderWidth={1}
+                              variant="white"
+                            />
+                          </>
                         )}
-                        <div className={`shrink-0 ${isActive ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`}>
+                        <div className={`shrink-0 relative z-10 ${isActive ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'} transition-colors`}>
                           {item.icon}
                         </div>
-                        {isSidebarOpen && <span className="whitespace-nowrap text-[12px] font-medium">{item.label}</span>}
+                        {isSidebarOpen && <span className="whitespace-nowrap text-[12px] font-medium relative z-10">{item.label}</span>}
                       </>
                     );
 
