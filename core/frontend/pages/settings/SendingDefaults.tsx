@@ -405,7 +405,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
             <button
               onClick={handleSave}
               disabled={!hasChanges || saving}
-              className="flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary/20"
+              className="flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary/20 active:scale-95"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               {saving ? "Saving..." : "Save Defaults"}

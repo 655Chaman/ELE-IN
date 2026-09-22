@@ -246,7 +246,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
                 <button
                   onClick={handleSave}
                   disabled={!hasChanges || saving || isEmpty || isTooLong}
-                  className="w-full sm:w-auto relative overflow-hidden flex items-center justify-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed shadow-md"
+                  className="w-full sm:w-auto relative overflow-hidden flex items-center justify-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed shadow-md active:scale-95"
                 >
                   <AnimatePresence mode="popLayout" initial={false}>
                     {saving ? (
