@@ -49,7 +49,7 @@ function FadeContent({ children, blur = false, duration = 0.5, className = "" }:
 
 // ─── Step progress header ─────────────────────────────────────────────────────
 const STEPS = [
-  { id: "leads", label: "Leads" },
+  { id: "leads", label: "Setup" },
   { id: "sequence", label: "Sequence" },
   { id: "senders", label: "LinkedIn Senders" },
   { id: "schedule", label: "Schedule" },
@@ -187,13 +187,16 @@ function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: stri
                 )}
                 
                 {lists.map((list: any) => (
-                  <option key={list.id} value={list.id}>
-                    {list.name} ({list.row_count} leads)
+                  <option key={list.id} value={list.id} disabled={list.row_count === 0}>
+                    {list.name} ({list.row_count} leads{list.row_count === 0 ? " — Empty" : ""})
                   </option>
                 ))}
               </select>
               <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 rotate-90 pointer-events-none" />
             </div>
+            {state.leadListId && lists.find((l: any) => l.id === state.leadListId)?.row_count === 0 && (
+              <p className="mt-2 text-xs text-amber-500 font-medium">⚠️ This lead list is empty. You cannot launch a campaign with 0 leads.</p>
+            )}
             )}
           </div>
         </div>
@@ -1144,7 +1147,9 @@ function EleInCreateCampaignInner() {
     if (step === 1) {
       const { rootNodes } = useHRTreeStore.getState()
       if (rootNodes.length === 0) {
-        toast.error("Your sequence is empty. Add at least one node.")
+        toast.error("Please choose a starting option or add at least one node.", {
+          position: "top-center"
+        })
         return
       }
       const { errors, warnings } = validateTree(rootNodes)
