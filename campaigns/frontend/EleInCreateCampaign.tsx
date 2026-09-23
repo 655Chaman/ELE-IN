@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { ReactFlowProvider } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
-import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight , ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle} from "lucide-react"
+import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight, ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle, Briefcase, Link as LinkIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHRTreeStore, dagToTree, treeToDag } from "@campaigns/eiTreeStore"
 import { validateTree } from "@/lib/treeValidator"
@@ -536,7 +536,9 @@ function LivePreviewSidebar() {
 // ─── Step 2: Sequence (canvas + entry point chooser) ─────────────────────────
 function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   const { reset: resetTree, loadTree, rootNodes } = useHRTreeStore()
-  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard" | "preview">(rootNodes.length > 0 ? (new URLSearchParams(window.location.search).has("start") ? "preview" : "build") : "choose")
+  const startParam = new URLSearchParams(window.location.search).get("start");
+  const initialMode = startParam || rootNodes.length > 0 ? "preview" : "choose";
+  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard" | "preview">(initialMode as any)
   const [showBrowser, setShowBrowser] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   
@@ -591,37 +593,45 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
       <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
         <div className="max-w-4xl w-full">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">How would you like to start?</h2>
-            <p className="text-sm text-muted-foreground">Choose a template or build from scratch.</p>
+            <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">Start outreach</h2>
+            <p className="text-sm text-muted-foreground">Pick a goal to load a proven day-one sequence.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Blank Canvas */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => { loadTree([]); setMode("build") }}>
-              <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <Plus size={24} className="text-foreground" />
+            {/* Option A */}
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+              const template = HR_TEMPLATES.find(t => t.id === 'get_customers');
+              if (template) { loadTree(dagToTree(template.nodes, template.edges), []); setMode("preview"); }
+            }}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Users size={24} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Blank Canvas</h3>
-              <p className="text-xs text-muted-foreground">Start fresh and build your own custom sequence</p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Get customers</h3>
+              <p className="text-xs text-muted-foreground">Message people who can buy. Goal: book a meeting.</p>
             </SpotlightCard>
 
-            {/* Guided Warm-up Wizard */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => setMode("wizard")}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 text-primary flex items-center justify-center mb-6 group-hover:scale-110 transition-transform relative overflow-hidden">
-                <Zap size={24} className="relative z-10" />
+            {/* Option B */}
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+              const template = HR_TEMPLATES.find(t => t.id === 'hire_people');
+              if (template) { loadTree(dagToTree(template.nodes, template.edges), []); setMode("preview"); }
+            }}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Briefcase size={24} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Guided Warm-up</h3>
-              <p className="text-xs text-muted-foreground">Step-by-step wizard to build a proven warm-up flow</p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Hire people</h3>
+              <p className="text-xs text-muted-foreground">Message people you want on the team. Goal: a hire.</p>
             </SpotlightCard>
 
-            {/* Template Library */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group" onClick={() => setShowBrowser(true)}>
-              <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform relative overflow-hidden">
-                <Meteors number={10} />
-                <FileText size={24} className="text-foreground relative z-10" />
+            {/* Option C */}
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+              const template = HR_TEMPLATES.find(t => t.id === 'get_intros');
+              if (template) { loadTree(dagToTree(template.nodes, template.edges), []); setMode("preview"); }
+            }}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <LinkIcon size={24} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Template Library</h3>
-              <p className="text-xs text-muted-foreground">Choose from pre-built high-converting sequences</p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Get intros</h3>
+              <p className="text-xs text-muted-foreground">Message people who can open a door — investor, partner, or their network.</p>
             </SpotlightCard>
           </div>
         </div>

@@ -12,6 +12,7 @@ import {
   CheckCircle2, Clock, Activity, MoreVertical, Settings
 } from "lucide-react"
 
+import { StartOutreachMenu } from "@/components/elein/StartOutreachMenu"
 import SpotlightCard from "@/components/SpotlightCard"
 import ShinyText from "@/components/ShinyText"
 import StarBorder from "@/components/StarBorder"
@@ -243,26 +244,10 @@ export function EleInCampaigns() {
             <div className="w-16 h-16 rounded-2xl bg-muted/40 border border-border flex items-center justify-center mb-6">
               <Megaphone size={24} className="text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">Your first campaign is one click away.</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mb-6 leading-relaxed">
-              Set your sequence, assign a sender, schedule a time window. Then let it run. You'll wake up to replies.
-            </p>
-            <p className="text-xs text-muted-foreground mb-8">
-              Not sure where to start?{' '}
-              <Link to="/elein/templates" className="text-foreground underline underline-offset-2 hover:no-underline">
-                Browse our ready-to-use templates →
-              </Link>
-            </p>
-              <StarBorder
-                as="button"
-                onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
-                className="group flex-shrink-0"
-                innerClassName="flex items-center gap-2 px-6 py-3 rounded-[18px] bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-all shadow-lg"
-                
-                speed="3s"
-              >
-                <Plus size={14} /> Start a campaign
-              </StarBorder>
+            <h3 className="text-lg font-medium text-foreground mb-6">Start your first outreach campaign.</h3>
+            <div className="flex justify-center">
+              <StartOutreachMenu onSelect={(id) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }} />
+            </div>
             </motion.div>
           ) : filtered.length === 0 ? (
             <motion.div
