@@ -318,11 +318,7 @@ export function EleInCampaigns() {
               />
             </div>
             
-            {workerStatus?.stalled && (
-              <p className="mt-8 text-xs text-muted-foreground/60">
-                Backend systems are currently unavailable. Sequence sending may be delayed.
-              </p>
-            )}
+            
           </motion.div>
         ) : filtered.length === 0 ? (
             <motion.div

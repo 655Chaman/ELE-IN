@@ -151,35 +151,39 @@ export function LinearTemplatePreview({ template, errors = {} }: Props) {
           ))}
         </div>
         <p className="text-[11px] text-zinc-400 leading-relaxed mb-1">{template.description}</p>
+        {template.id !== "preview" && (
         <p className="text-[10px] text-zinc-600">
           <span className="text-zinc-500 font-semibold">Best for: </span>
           {template.bestFor}
         </p>
+      )}
       </div>
 
       {/* Stats bar */}
-      <div className="flex items-center gap-4 p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] mb-4">
-        <div className="text-center">
-          <p className="text-sm font-bold text-emerald-400">{template.connectionRate}%</p>
-          <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Accept rate</p>
+      {template.id !== "preview" && (
+        <div className="flex items-center gap-4 p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] mb-4">
+          <div className="text-center">
+            <p className="text-sm font-bold text-emerald-400">{template.connectionRate}%</p>
+            <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Accept rate</p>
+          </div>
+          <div className="w-px h-6 bg-zinc-800" />
+          <div className="text-center">
+            <p className="text-sm font-bold text-blue-400">{template.replyRate}%</p>
+            <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Reply rate</p>
+          </div>
+          <div className="w-px h-6 bg-zinc-800" />
+          <div className="text-center">
+            <p className="text-sm font-bold text-zinc-300">{template.uses.toLocaleString()}</p>
+            <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Uses</p>
+          </div>
+          <div className="ml-auto text-[10px] text-zinc-600">
+            {template.nodes.filter(n => n.data?.type !== "start" && n.data?.type !== "end").length} steps
+          </div>
         </div>
-        <div className="w-px h-6 bg-zinc-800" />
-        <div className="text-center">
-          <p className="text-sm font-bold text-blue-400">{template.replyRate}%</p>
-          <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Reply rate</p>
-        </div>
-        <div className="w-px h-6 bg-zinc-800" />
-        <div className="text-center">
-          <p className="text-sm font-bold text-zinc-300">{template.uses.toLocaleString()}</p>
-          <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Uses</p>
-        </div>
-        <div className="ml-auto text-[10px] text-zinc-600">
-          {template.nodes.filter(n => n.data?.type !== "start" && n.data?.type !== "end").length} steps
-        </div>
-      </div>
+      )}
 
       {/* Sticky note legend */}
-      {template.stickyNotes && Object.keys(template.stickyNotes).length > 0 && (
+      {template.id !== "preview" && template.stickyNotes && Object.keys(template.stickyNotes).length > 0 && (
         <div className="flex items-center gap-1.5 mb-3">
           <StickyNote size={10} className="text-primary/80" />
           <span className="text-[10px] text-primary/80/70">Yellow cards explain what each step does and why it works</span>

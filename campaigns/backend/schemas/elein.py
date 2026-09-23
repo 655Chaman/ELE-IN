@@ -21,6 +21,8 @@ class CampaignCreate(BaseModel):
     senders: Optional[List[str]] = []
     status: Optional[str] = "DRAFT"
     timezone: Optional[str] = None
+    schedule: Optional[Dict[str, Any]] = None
+    limit: Optional[int] = 50
 
 class CampaignResponse(BaseModel):
     id: str

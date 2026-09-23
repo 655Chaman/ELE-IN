@@ -1782,7 +1782,7 @@ def create_campaign(
             "id": campaign_id,
             "name": name,
             "status": campaign.status or "DRAFT",
-            "metadata": {"timezone": campaign.timezone} if campaign.timezone else {},
+            "metadata": {"timezone": campaign.timezone, "schedule": campaign.schedule, "limit": campaign.limit},
             "workspace_id": workspace_id,
         }
         # Insert campaign

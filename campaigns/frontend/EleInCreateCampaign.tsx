@@ -204,6 +204,16 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
         </div>
       </SpotlightCard>
 
+      {lists.length === 0 && !isLoading && !hasError && (
+              <div className="mt-4 p-3 rounded-xl border border-primary/20 bg-primary/5 flex flex-col gap-2 text-center">
+                <p className="text-sm font-medium text-foreground">You need an audience list before launching.</p>
+                <Link to="/elein/leads" target="_blank" className="text-xs font-semibold text-primary hover:underline">
+                  Create a Lead List \{/* Right */}rarr;
+                </Link>
+                <p className="text-[10px] text-muted-foreground">After creating your list, return here and refresh.</p>
+              </div>
+            )}
+
       {/* Right */}
       <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50 backdrop-blur-md">
         <div className="space-y-5">
@@ -1156,7 +1166,9 @@ function EleInCreateCampaignInner() {
           edges,
           senders: state.senderIds || [],
           timezone: state.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-          status
+          status,
+          schedule: state.schedule,
+          limit: state.limit
         })
       });
       if (!res.ok) {
