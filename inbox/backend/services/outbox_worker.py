@@ -13,18 +13,11 @@ MAX_ATTEMPTS = 3
 
 
 def _process_in_app_notification(event: dict) -> bool:
-    return True
+    raise NotImplementedError("In-app notifications are not implemented.")
 
 
 def _process_email_notification(event: dict) -> bool:
-    payload = event.get('payload', {})
-    user_id = payload.get('user_id', 'unknown')
-    event_type = payload.get('event_type', 'unknown')
-    logger.warning(
-        f'[EMAIL STUB] Email notification not yet delivered. '
-        f'user_id={user_id} event_type={event_type} outbox_id={event["id"]}'
-    )
-    return True
+    raise NotImplementedError("Email notifications are not configured (stubbed).")
 
 
 def poll_outbox_once() -> int:

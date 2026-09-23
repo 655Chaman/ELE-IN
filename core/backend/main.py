@@ -31,8 +31,8 @@ setup_logging()
 
 # 2. Initialize FastAPI app
 app = FastAPI(
-    title="LeadGen OS API - Production",
-    description="Backend API for the HIPAA Lead Generation Dashboard, hardened with agent skills.",
+    title="Ele-in API",
+    description="Backend API for Ele-in.",
     version="3.0.0"
 )
 
