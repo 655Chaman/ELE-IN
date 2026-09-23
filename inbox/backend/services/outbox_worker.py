@@ -13,8 +13,8 @@ MAX_ATTEMPTS = 3
 
 
 def _process_in_app_notification(event: dict) -> bool:
-    from core.backend.core.supabase_client import get_supabase
-    supabase = get_supabase()
+    from core.backend.api.auth_dep import get_service_client
+    supabase = get_service_client()
     
     payload = event.get('payload', {})
     if not payload.get("title") or not payload.get("body") or not payload.get("event_type"):
