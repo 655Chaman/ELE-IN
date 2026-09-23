@@ -2,18 +2,15 @@ import { useHRTreeStore } from "@campaigns/eiTreeStore";
 import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "motion/react"
 import { Link, useNavigate } from "react-router-dom"
-import {
-  Megaphone, Plus, Search, Play, Pause,
+import { Megaphone, Plus, Search, Play, Pause,
   Trash2, ChevronRight, BarChart2, Users,
   CheckCircle2, Clock, Activity, MoreVertical, Settings
-} from "lucide-react"
+, Briefcase, Link as LinkIcon, Info, Zap } from "lucide-react"
 
-import { StartOutreachMenu } from "@/components/elein/StartOutreachMenu"
-import SpotlightCard from "@/components/SpotlightCard"
 import ShinyText from "@/components/ShinyText"
 import StarBorder from "@/components/StarBorder"
 
@@ -39,6 +36,61 @@ export interface Campaign {
   created_at?: string
   leads_completed?: number
   conversion_rate?: number
+}
+
+
+function EmptyCampaignCard({ id, icon: Icon, title, desc, onSelect }: any) {
+  const [showInfo, setShowInfo] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setShowInfo(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  return (
+    <motion.div 
+      whileHover={{ y: -4 }}
+      className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 hover:bg-card/50 hover:shadow-sm transition-all flex flex-col items-center justify-center text-center group relative h-full" 
+      onClick={() => onSelect(id)}
+    >
+      <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+        <Icon size={24} className="text-primary" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-[13px] text-muted-foreground leading-relaxed">{desc}</p>
+      
+      <div 
+        ref={ref}
+        className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors p-1"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowInfo(!showInfo);
+        }}
+      >
+        <Info size={16} />
+        <AnimatePresence>
+          {showInfo && (
+            <motion.div 
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.15 }}
+              className="absolute right-0 top-full mt-2 w-48 p-2 bg-card border border-border rounded-[8px] shadow-xl z-50 text-left pointer-events-auto text-[12px]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {desc}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
 }
 
 export function EleInCampaigns() {
@@ -173,16 +225,14 @@ export function EleInCampaigns() {
                 />
               </div>
             )}
-            <StarBorder
-              as="button"
-              onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
-              className="group flex-shrink-0"
-              innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-[18px] bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-all shadow-lg"
-              
-              speed="3s"
-            >
-              <Plus size={14} /> Start new campaign
-            </StarBorder>
+            {campaigns.length > 0 && (
+              <button
+                onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
+                className="flex items-center gap-2 bg-success hover:bg-success/90 text-success-foreground px-4 py-2.5 rounded-2xl font-bold transition-all shadow-md active:scale-95"
+              >
+                <Zap size={16} className="fill-current text-success-foreground" /> Start outreach
+              </button>
+            )}
           </div>
       </div>
 
@@ -239,17 +289,41 @@ export function EleInCampaigns() {
         {campaigns.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-border/50 bg-muted/30 dark:bg-background/50 backdrop-blur-md"
+            className="flex flex-col items-center justify-center p-12 rounded-3xl"
           >
-            <div className="w-16 h-16 rounded-2xl bg-muted/40 border border-border flex items-center justify-center mb-6">
-              <Megaphone size={24} className="text-muted-foreground" />
+            <h2 className="text-3xl font-light tracking-tight text-foreground mb-12">Start outreach</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+              <EmptyCampaignCard 
+                id="get_customers"
+                icon={Users}
+                title="Get customers"
+                desc="Message people who can buy. Goal: book a meeting."
+                onSelect={(id: string) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }}
+              />
+              <EmptyCampaignCard 
+                id="hire_people"
+                icon={Briefcase}
+                title="Hire people"
+                desc="Message people you want on the team. Goal: a hire."
+                onSelect={(id: string) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }}
+              />
+              <EmptyCampaignCard 
+                id="get_intros"
+                icon={LinkIcon}
+                title="Get intros"
+                desc="Message people who can open a door — investor, partner, or their network."
+                onSelect={(id: string) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }}
+              />
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-6">Start your first outreach campaign.</h3>
-            <div className="flex justify-center">
-              <StartOutreachMenu onSelect={(id) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }} />
-            </div>
-            </motion.div>
-          ) : filtered.length === 0 ? (
+            
+            {workerStatus?.stalled && (
+              <p className="mt-8 text-xs text-muted-foreground/60">
+                Engine is stalled. You may need to start the backend worker script before launching.
+              </p>
+            )}
+          </motion.div>
+        ) : filtered.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
               className="flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-border/50 bg-muted/30 dark:bg-background/50 backdrop-blur-md"
