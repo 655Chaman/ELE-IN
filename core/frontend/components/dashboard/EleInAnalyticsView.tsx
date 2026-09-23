@@ -487,7 +487,12 @@ export function EleInAnalyticsView({
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Area Chart: Volume */}
 
-          <div className="xl:col-span-2 rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="xl:col-span-2 rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none"
+          >
             <div className="flex items-center justify-between mb-6 z-10">
               <div>
                 <h3 className="text-lg font-medium tracking-tight mb-1 text-foreground">Network Velocity</h3>
@@ -568,7 +573,7 @@ export function EleInAnalyticsView({
                 <div className="h-full flex items-center justify-center text-muted-foreground/50"><BarChart2 className="mb-2 opacity-50" /></div>
               )}
             </div>
-          </div>
+          </motion.div>
 
           {/* Live Feed */}
           <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none min-h-[400px] overflow-hidden">
