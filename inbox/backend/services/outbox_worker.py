@@ -55,10 +55,13 @@ def poll_outbox_once() -> int:
                 else:
                     logger.warning(f'Unknown outbox event type: {event_type} id={event_id}')
                     success = True
+            except NotImplementedError as e:
+                logger.error(f'Outbox event {event_id} is a stub and cannot be processed: {e}')
+                success = False
+                attempts = MAX_ATTEMPTS  # Force immediate failure, do not retry
             except Exception as e:
                 logger.error(f'Error processing outbox event {event_id}: {e}')
                 success = False
-
             if success:
                 svc.table('outbox_events').update({
                     'status': 'delivered',
