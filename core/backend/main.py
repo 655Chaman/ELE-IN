@@ -7,6 +7,7 @@ from leads.backend.routers import leads
 from admin.backend.routers import settings
 from campaigns.backend.routers import elein
 from inbox.backend.routers import inbox
+from inbox.backend.routers import notifications
 from core.backend.api.routers import approvals
 from knowledge.backend.routers import assets
 from core.backend.api.routers import infrastructure
@@ -59,6 +60,7 @@ app.include_router(leads.router, prefix="/api/leads", tags=["leads"], dependenci
 
 app.include_router(elein.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 app.include_router(inbox.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(notifications.router, prefix="/api/elein")
 from core.backend.api.rate_limit import enforce_ai_rate_limit
 app.include_router(ai_routes.router, prefix="/api/elein/inbox", dependencies=[Depends(get_current_workspace), Depends(enforce_ai_rate_limit)])
 

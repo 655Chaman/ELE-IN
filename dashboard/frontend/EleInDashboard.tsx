@@ -3,6 +3,7 @@ import useSWR from 'swr'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
+import { NotificationBell } from "@/components/NotificationBell"
 import ShinyText from "@/components/ShinyText"
 import { Activity, Send, MessageSquare, X, Zap, RefreshCw } from 'lucide-react'
 
@@ -373,6 +374,7 @@ export function EleInDashboard() {
               </div>
             )}
             
+            <NotificationBell />
             {!isShowingOnboarding && (
               <button
                 onClick={() => {

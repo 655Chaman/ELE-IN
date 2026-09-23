@@ -13,7 +13,34 @@ MAX_ATTEMPTS = 3
 
 
 def _process_in_app_notification(event: dict) -> bool:
-    raise NotImplementedError("In-app notifications are not implemented.")
+    from core.backend.core.supabase_client import get_supabase
+    supabase = get_supabase()
+    
+    payload = event.get('payload', {})
+    if not payload.get("user_id") or not payload.get("title") or not payload.get("body") or not payload.get("event_type"):
+        return False
+        
+    workspace_id = event.get("workspace_id") or payload.get("workspace_id")
+    if not workspace_id:
+        return False
+        
+    try:
+        res = supabase.table("notifications").insert({
+            "workspace_id": workspace_id,
+            "user_id": payload["user_id"],
+            "title": payload["title"],
+            "body": payload["body"],
+            "link": payload.get("link"),
+            "event_type": payload["event_type"],
+            "outbox_event_id": event["id"]
+        }).execute()
+        return True
+    except Exception as e:
+        if "duplicate key value" in str(e) or "UniqueViolation" in str(e):
+            return True
+        import logging
+        logging.getLogger(__name__).error(f"Error inserting notification: {e}")
+        return False
 
 
 def _process_email_notification(event: dict) -> bool:
