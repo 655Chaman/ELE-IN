@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from core.backend.core.supabase_client import get_supabase
@@ -31,7 +32,7 @@ def mark_notification_read(
     user_id: str = Depends(get_current_user_id)
 ):
     supabase = get_supabase()
-    res = supabase.table("notifications").update({"read_at": "now()"}).eq("id", notification_id).eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    res = supabase.table("notifications").update({"read_at": datetime.now(timezone.utc).isoformat()}).eq("id", notification_id).eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"status": "ok"}
