@@ -24,7 +24,8 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     const nodeErrors: string[] = [];
     const nodeWarnings: string[] = [];
 
-    if (node.type === state.lastAction && node.type !== 'sequence_end') {
+    const exemptIdentical = ['send_message', 'send_message_with_doc', 'send_message_with_image', 'sequence_end'];
+    if (node.type === state.lastAction && !exemptIdentical.includes(node.type)) {
       nodeErrors.push(`This '${node.type.replace(/_/g, ' ')}' step is identical to the immediate previous step. This is usually a mistake. How to correct: Delete this node or change its action type.`);
     }
 
@@ -236,7 +237,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
         const unprotected = findUnprotectedVariables(node.data[field] as string);
         for (const varName of unprotected) {
           // Note: match case-insensitively, wait, findUnprotectedVariables extracted it exactly as typed, trimmed.
-          nodeWarnings.push(`Message contains {{${varName}}} with no fallback. If a lead's data is missing this field, broken text will be sent. Add a fallback: {{${varName}|Your fallback}}`);
+          nodeErrors.push(`Message contains {{${varName}}} with no fallback. If a lead's data is missing this field, broken text will be sent. Add a fallback: {{${varName}|Your fallback}}`);
         }
       }
     }

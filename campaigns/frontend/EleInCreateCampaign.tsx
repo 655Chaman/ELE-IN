@@ -1,6 +1,6 @@
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import React, { useState, useEffect } from "react"
-import { useNavigate, useSearchParams, useLocation } from "react-router-dom"
+import { useNavigate, useSearchParams, useLocation, Link } from "react-router-dom"
 import useSWR from "swr"
 
 import { motion, AnimatePresence } from "motion/react"
@@ -655,6 +655,9 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
       id: "preview", name: "Sequence", description: "", connectionRate: 0, replyRate: 0, uses: 0, difficulty: "beginner" as any, tags: [],
       nodes: treeToDag(rootNodes).nodes, edges: treeToDag(rootNodes).edges
     };
+    
+    const { errors } = validateTree(rootNodes);
+    const hasErrors = Object.values(errors).some(e => e.length > 0);
     return (
       <div className="flex-1 flex flex-col items-center p-8 bg-background relative z-10 h-full overflow-y-auto">
         <div className="max-w-2xl w-full">
@@ -667,7 +670,19 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
               Edit Sequence (Graph Wizard)
             </button>
           </div>
-          <LinearTemplatePreview template={templateForPreview} />
+          {hasErrors && (
+            <div className="mb-6 p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-destructive mt-0.5 shrink-0" />
+              <div>
+                <h4 className="text-sm font-semibold text-destructive mb-1">Sequence contains errors</h4>
+                <p className="text-xs text-destructive/80 mb-3">Please fix the highlighted errors below before continuing.</p>
+                <button onClick={() => setMode("build")} className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-white text-xs font-semibold rounded-lg transition-colors">
+                  Edit Sequence
+                </button>
+              </div>
+            </div>
+          )}
+          <LinearTemplatePreview template={templateForPreview} errors={errors} />
         </div>
       </div>
     )
@@ -782,11 +797,13 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
             </div>
             <h3 className="text-lg font-bold text-foreground mb-2">No LinkedIn accounts connected</h3>
             <p className="text-sm text-muted-foreground mb-6">You need to connect at least one LinkedIn account to launch a campaign.</p>
-            <button 
-              onClick={() => navigate('/elein/accounts')}
-              className="px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors">
+            <Link 
+              to="/elein/accounts"
+              target="_blank"
+              className="inline-flex items-center justify-center px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors shadow-sm">
               Connect Account
-            </button>
+            </Link>
+            <p className="text-[10px] text-muted-foreground/60 mt-3">After connecting, return here and refresh.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1053,10 +1070,14 @@ function EleInCreateCampaignInner() {
             ...prev,
             campaignName: data.name || "Untitled Campaign",
             senderIds: data.sender_account_ids_json ? (typeof data.sender_account_ids_json === "string" ? JSON.parse(data.sender_account_ids_json) : data.sender_account_ids_json) : [],
-            timezone: data.metadata?.timezone || ""
+            timezone: data.metadata?.timezone || "",
+            leadListId: data.lead_list_id || "",
+            searchUrl: data.sales_nav_url || "",
+            limit: data.metadata?.limit || 50,
+            schedule: data.metadata?.schedule || {}
           }))
-          // Jump directly to the Sequence builder
-          setStep(1)
+          // Jump directly to the Sequence builder (now Step 0)
+          setStep(0)
         })
         .catch(err => {
           console.error(err)
@@ -1069,11 +1090,8 @@ function EleInCreateCampaignInner() {
     if (params.get("resume") !== "true") return
     
     // Draft restore is handled automatically by Zustand persist!
-    // But we should ensure we jump to step 1 if we were at step 0 to match old behavior
-    const currentStep = useHRTreeStore.getState().campaignStep
-    if (currentStep === 0 && useHRTreeStore.getState().rootNodes.length > 0) {
-      setStep(1)
-    }
+    // Force step to 0 to gracefully handle old local storage state and start at the beginning.
+    setStep(0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])
 

@@ -55,7 +55,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         },
         "data": {
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name}}, saw what you're doing at {{company}} and would love to connect.",
+          "note": "Hi {{first_name|there}}, saw what you're doing at {{company|your company}} and would love to connect.",
           "delayDays": 0
         }
       },
@@ -67,7 +67,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 300
         },
         "data": {
-          "body": "Thanks for connecting, {{first_name}}. We're helping companies similar to {{company}} scale their pipeline. Would you be open to a quick chat this week?",
+          "body": "Thanks for connecting, {{first_name|there}}. We're helping companies similar to {{company|yours}} scale their pipeline. Would you be open to a quick chat this week?",
           "delayDays": 0
         }
       },
@@ -79,7 +79,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 500
         },
         "data": {
-          "body": "Just bubbling this up, {{first_name}}. Let me know if you have 10 mins next week.",
+          "body": "Just bubbling this up, {{first_name|there}}. Let me know if you have 10 mins next week.",
           "delayDays": 3
         }
       }
@@ -95,7 +95,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "id": "e_gc_2_3",
         "source": "gc_2",
         "target": "gc_3",
-        "sourceHandle": "Not Replied Yet"
+        "sourceHandle": "then"
       }
     ]
   },
@@ -120,7 +120,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         },
         "data": {
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name}}, really impressed by your background. Would love to connect.",
+          "note": "Hi {{first_name|there}}, really impressed by your background. Would love to connect.",
           "delayDays": 0
         }
       },
@@ -144,7 +144,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 500
         },
         "data": {
-          "body": "I know you're probably busy, {{first_name}}, but wanted to follow up. Let me know if you'd be open to a quick intro call.",
+          "body": "I know you're probably busy, {{first_name|there}}, but wanted to follow up. Let me know if you'd be open to a quick intro call.",
           "delayDays": 3
         }
       }
@@ -160,7 +160,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "id": "e_hp_2_3",
         "source": "hp_2",
         "target": "hp_3",
-        "sourceHandle": "Not Replied Yet"
+        "sourceHandle": "then"
       }
     ]
   },
@@ -185,7 +185,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         },
         "data": {
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name}}, building my network in the space and would love to connect.",
+          "note": "Hi {{first_name|there}}, building my network in the space and would love to connect.",
           "delayDays": 0
         }
       },
@@ -197,7 +197,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 300
         },
         "data": {
-          "body": "Thanks for the connection, {{first_name}}. I'm currently exploring some strategic partnerships and would love to get your thoughts, or an intro to someone in your network who might be a fit.",
+          "body": "Thanks for the connection, {{first_name|there}}. I'm currently exploring some strategic partnerships and would love to get your thoughts, or an intro to someone in your network who might be a fit.",
           "delayDays": 0
         }
       },
@@ -209,7 +209,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 500
         },
         "data": {
-          "body": "Just following up here, {{first_name}}. No worries if you're swamped right now, but would appreciate any pointers!",
+          "body": "Just following up here, {{first_name|there}}. No worries if you're swamped right now, but would appreciate any pointers!",
           "delayDays": 3
         }
       }
@@ -225,7 +225,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "id": "e_gi_2_3",
         "source": "gi_2",
         "target": "gi_3",
-        "sourceHandle": "Not Replied Yet"
+        "sourceHandle": "then"
       }
     ]
   }

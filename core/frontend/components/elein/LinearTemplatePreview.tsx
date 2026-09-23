@@ -20,12 +20,14 @@ const NODE_TYPE_CONFIG: Record<string, { label: string; icon: React.ComponentTyp
 
 interface Props {
   template: EITemplate
+  errors?: Record<string, string[]>
 }
 
-function StepCard({ node, stickyNote, delay }: {
+function StepCard({ node, stickyNote, delay, errors = [] }: {
   node: any
   stickyNote?: { title: string; body: string; why: string }
   delay?: number
+  errors?: string[]
 }) {
   const typeKey = (node.type || node.data?.type) as string
   let cfg = NODE_TYPE_CONFIG[typeKey]
@@ -88,6 +90,21 @@ function StepCard({ node, stickyNote, delay }: {
         </div>
       </div>
 
+      {/* Errors */}
+      {errors.length > 0 && (
+        <div className="mx-4 mb-4 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <XCircle size={12} className="text-destructive shrink-0" />
+            <span className="text-xs font-bold text-destructive">Step has errors</span>
+          </div>
+          <ul className="list-disc pl-4 space-y-1">
+            {errors.map((err, i) => (
+              <li key={i} className="text-[11px] text-destructive/90 leading-relaxed">{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Sticky note */}
       {stickyNote && (
         <div className="mx-4 mb-4 rounded-lg bg-primary/80/[0.07] border border-primary/80/20 px-3 py-2.5">
@@ -106,7 +123,7 @@ function StepCard({ node, stickyNote, delay }: {
   )
 }
 
-export function LinearTemplatePreview({ template }: Props) {
+export function LinearTemplatePreview({ template, errors = {} }: Props) {
   // Build display order: start → middle steps → branch ends by Y position
   const orderedNodes = [...template.nodes].sort((a, b) => {
     const ay = a.position?.y ?? 0
@@ -177,7 +194,7 @@ export function LinearTemplatePreview({ template }: Props) {
 
         return (
           <div key={node.id}>
-            <StepCard node={node} stickyNote={sticky} delay={delay} />
+            <StepCard node={node} stickyNote={sticky} delay={delay} errors={errors[node.id]} />
             {!isLast && (node.type !== "end" && node.data?.type !== "end") && (
               <div className="flex justify-center py-1">
                 <ArrowDown size={12} className="text-zinc-700" />
