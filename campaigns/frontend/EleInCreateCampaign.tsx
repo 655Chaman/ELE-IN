@@ -536,7 +536,7 @@ function LivePreviewSidebar() {
 // ─── Step 2: Sequence (canvas + entry point chooser) ─────────────────────────
 function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   const { reset: resetTree, loadTree, rootNodes } = useHRTreeStore()
-  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard">(rootNodes.length > 0 ? "build" : "choose")
+  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard" | "preview">(rootNodes.length > 0 ? (new URLSearchParams(window.location.search).has("start") ? "preview" : "build") : "choose")
   const [showBrowser, setShowBrowser] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   
@@ -634,6 +634,31 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
             />
           )}
         </AnimatePresence>
+      </div>
+    )
+  }
+
+  
+  if (mode === "preview") {
+    // Generate an EITemplate from the current tree state
+    const templateForPreview = {
+      id: "preview", name: "Sequence", description: "", connectionRate: 0, replyRate: 0, uses: 0, difficulty: "beginner" as any, tags: [],
+      nodes: treeToDag(rootNodes).nodes, edges: treeToDag(rootNodes).edges
+    };
+    return (
+      <div className="flex-1 flex flex-col items-center p-8 bg-background relative z-10 h-full overflow-y-auto">
+        <div className="max-w-2xl w-full">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h2 className="text-2xl font-light tracking-tight text-foreground">Sequence Preview</h2>
+              <p className="text-sm text-muted-foreground mt-1">This is the sequence that will be sent to your leads.</p>
+            </div>
+            <button onClick={() => setMode("build")} className="px-4 py-2 bg-muted/50 hover:bg-muted text-foreground text-sm font-semibold rounded-lg transition-colors border border-border/50">
+              Edit Sequence (Graph Wizard)
+            </button>
+          </div>
+          <LinearTemplatePreview template={templateForPreview} />
+        </div>
       </div>
     )
   }
@@ -979,6 +1004,18 @@ function EleInCreateCampaignInner() {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const editId = params.get("edit")
+    const startId = params.get("start")
+    
+    if (startId) {
+      const template = HR_TEMPLATES.find(t => t.id === startId)
+      if (template) {
+        useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges), [])
+        setState((prev: any) => ({ ...prev, campaignName: template.name }))
+      }
+      // clear url without reload
+      window.history.replaceState({}, '', '/elein/campaigns/new')
+      return
+    }
     
     if (editId) {
       // Edit mode: fetch campaign from API

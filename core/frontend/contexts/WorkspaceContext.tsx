@@ -43,7 +43,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setWorkspaces(data);
       if (data.length > 0) {
         const currentId = localStorage.getItem('elein_active_workspace');
-        if (!currentId || !data.some(w => w.id === currentId)) {
+        if (!currentId || !data.some((w: any) => w.id === currentId)) {
           setActiveWorkspaceId(data[0].id);
         } else if (currentId !== activeWorkspaceId) {
           // If the React state is out of sync with valid localStorage state, update it
