@@ -49,8 +49,8 @@ function FadeContent({ children, blur = false, duration = 0.5, className = "" }:
 
 // ─── Step progress header ─────────────────────────────────────────────────────
 const STEPS = [
-  { id: "leads", label: "Setup" },
   { id: "sequence", label: "Sequence" },
+  { id: "leads", label: "Audience" },
   { id: "senders", label: "LinkedIn Senders" },
   { id: "schedule", label: "Schedule" },
   { id: "preview", label: "Preview" },
@@ -109,7 +109,7 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
 
 // ─── Step 1: Leads ────────────────────────────────────────────────────────────
 
-function StepLeads({ state, onChange, onNext }: { state: any; onChange: (k: string, v: any) => void; onNext?: () => void }) {
+function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChange: (k: string, v: any) => void; onNext?: () => void; showErrors?: boolean }) {
   const { data, error, isLoading, mutate } = useSWR("/api/elein/leads/lists", fetcher)
   const lists = data || []
   
@@ -713,7 +713,7 @@ function calculateDailyLimits(acc: any) {
   return { connLimit, msgLimit };
 }
 
-function StepSenders({ state, onChange }: { state: any; onChange: (k: string, v: any) => void }) {
+function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k: string, v: any) => void; showErrors?: boolean }) {
   const navigate = useNavigate();
   const { data: accounts, error } = useSWR("/api/elein/accounts", fetcher)
   
@@ -988,6 +988,7 @@ class CampaignErrorBoundary extends React.Component<{children: React.ReactNode},
 
 function EleInCreateCampaignInner() {
   const navigate = useNavigate()
+  const [showErrors, setShowErrors] = useState(false)
   const step = useHRTreeStore(s => s.campaignStep);
   const setStep = useHRTreeStore(s => s.setCampaignStep);
   const state = useHRTreeStore(s => s.formState);
@@ -1021,8 +1022,7 @@ function EleInCreateCampaignInner() {
       if (template) {
         useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges), [])
         setState((prev: any) => ({ ...prev, campaignName: template.name }))
-        useHRTreeStore.getState().setCampaignStep(1)
-      }
+              }
       // clear url without reload
       window.history.replaceState({}, '', '/elein/campaigns/new')
       return
@@ -1188,32 +1188,35 @@ function EleInCreateCampaignInner() {
   }
 
   const handleNext = () => {
-    if (step === 0) {
-      if (!state.campaignName || !state.campaignName.trim()) {
-        toast.error("Please enter a campaign name")
-        return
-      }
-    }
     if (step === 1) {
+      if (!state.campaignName || !state.campaignName.trim() || !state.leadListId) {
+        setShowErrors(true);
+        toast.error("Please provide the required setup information before continuing.");
+        return;
+      }
+      setShowErrors(false);
+    }
+    if (step === 0) {
       const { rootNodes } = useHRTreeStore.getState()
       if (rootNodes.length === 0) {
-        toast.error("Please choose a starting option or add at least one node.", {
-          position: "top-center"
-        })
+        toast.error("Please add at least one node.", { position: "top-center" })
         return
       }
-      const { errors, warnings } = validateTree(rootNodes)
+      const { errors } = validateTree(rootNodes)
       const hasErrors = Object.values(errors).some(e => e.length > 0)
       if (hasErrors) {
-        toast.error("Please fix the highlighted errors in your sequence before continuing.")
+        // DO NOT show generic error. Focus on the canvas.
+        toast.error("There are unmet prerequisites in your sequence.", { description: "Please fix the red errors on the nodes before continuing." })
         return
       }
     }
     if (step === 2) {
       if (!state.senderIds || state.senderIds.length === 0) {
-        toast.error("You must connect at least one LinkedIn sender account.")
+        setShowErrors(true);
+        toast.error("Please connect at least one LinkedIn sender account.");
         return
       }
+      setShowErrors(false);
     }
     if (step < STEPS.length - 1) setStep(step + 1)
   }
@@ -1303,21 +1306,21 @@ function EleInCreateCampaignInner() {
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="absolute inset-0 flex flex-col"
           >
-            {step === 0 && (
+            {step === 0 && <StepSequence onSave={() => handleSaveDraft("DRAFT")} />}
+            {step === 1 && (
               <div className="flex-1 overflow-auto p-8 relative z-10 flex flex-col items-center justify-center min-h-0">
                 <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center">
                   <div className="mb-10 text-center">
-                    <h1 className="text-4xl font-light tracking-tight text-foreground mb-3">Campaign Setup</h1>
+                    <h1 className="text-4xl font-light tracking-tight text-foreground mb-3">Audience Setup</h1>
                     <p className="text-base text-muted-foreground">Give your campaign a name and select your target audience.</p>
                   </div>
                   <div className="w-full">
-                    <StepLeads state={state} onChange={handleStateChange} onNext={handleNext} />
+                    <StepLeads state={state} onChange={handleStateChange} onNext={handleNext} showErrors={showErrors} />
                   </div>
                 </div>
               </div>
             )}
-            {step === 1 && <StepSequence onSave={() => handleSaveDraft("DRAFT")} />}
-            {step === 2 && <StepSenders state={state} onChange={handleStateChange} />}
+            {step === 2 && <StepSenders state={state} onChange={handleStateChange} showErrors={showErrors} />}
             {step === 3 && <StepSchedule state={state} onChange={handleStateChange} />}
             {step === 4 && <StepPreview state={state} onChange={handleStateChange} />}
           </motion.div>

@@ -162,10 +162,12 @@ export function LinearTemplatePreview({ template }: Props) {
       </div>
 
       {/* Sticky note legend */}
-      <div className="flex items-center gap-1.5 mb-3">
-        <StickyNote size={10} className="text-primary/80" />
-        <span className="text-[10px] text-primary/80/70">Yellow cards explain what each step does and why it works</span>
-      </div>
+      {template.stickyNotes && Object.keys(template.stickyNotes).length > 0 && (
+        <div className="flex items-center gap-1.5 mb-3">
+          <StickyNote size={10} className="text-primary/80" />
+          <span className="text-[10px] text-primary/80/70">Yellow cards explain what each step does and why it works</span>
+        </div>
+      )}
 
       {/* Step cards */}
       {orderedNodes.map((node, i) => {

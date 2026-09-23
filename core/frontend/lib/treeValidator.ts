@@ -236,7 +236,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
         const unprotected = findUnprotectedVariables(node.data[field] as string);
         for (const varName of unprotected) {
           // Note: match case-insensitively, wait, findUnprotectedVariables extracted it exactly as typed, trimmed.
-          nodeErrors.push(`Message contains {{${varName}}} with no fallback. If a lead's data is missing this field, broken text will be sent. Add a fallback: {{${varName}|Your fallback}}`);
+          nodeWarnings.push(`Message contains {{${varName}}} with no fallback. If a lead's data is missing this field, broken text will be sent. Add a fallback: {{${varName}|Your fallback}}`);
         }
       }
     }
