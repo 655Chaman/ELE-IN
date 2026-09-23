@@ -17,13 +17,8 @@ def get_notifications(
     if unread_only:
         query = query.is_("read_at", "null")
     
-    try:
-        res = query.execute()
-        return res.data
-    except Exception as e:
-        if 'PGRST205' in str(e):
-            return []
-        raise e
+    res = query.execute()
+    return res.data
 
 @router.post("/notifications/{notification_id}/read")
 def mark_notification_read(

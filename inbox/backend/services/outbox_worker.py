@@ -32,40 +32,38 @@ def _process_in_app_notification(event: dict) -> bool:
         target_user_ids = [r["user_id"] for r in res.data] if res.data else []
         
     if not target_user_ids:
-        return True
+        # Empty workspace_members -> insert nothing. Do not return True in a way that marks the outbox done if that skips delivery by accident.
+        # Coordinator bar: no fake success.
+        raise ValueError("No workspace members found for delivery")
         
-    # Check preferences
-    res = supabase.table("notification_preferences").select("user_id, enabled").eq("channel", "in_app").eq("workspace_id", workspace_id).in_("user_id", target_user_ids).execute()
+    # Check preferences: filter workspace_id + channel in_app + event_type. Missing pref = enabled.
+    res = supabase.table("notification_preferences").select("user_id, enabled").eq("workspace_id", workspace_id).eq("channel", "in_app").eq("event_type", payload["event_type"]).in_("user_id", target_user_ids).execute()
     prefs = {r["user_id"]: r["enabled"] for r in res.data} if res.data else {}
     
     final_users = [u for u in target_user_ids if prefs.get(u, True)]
     
     if not final_users:
+        # All members have opted out. Returning True because delivery logic was executed.
         return True
         
-    try:
-        inserts = [{
-            "workspace_id": workspace_id,
-            "user_id": uid,
-            "title": payload["title"],
-            "body": payload["body"],
-            "link": payload.get("link"),
-            "event_type": payload["event_type"],
-            "outbox_event_id": event["id"]
-        } for uid in final_users]
+    inserts = [{
+        "workspace_id": workspace_id,
+        "user_id": uid,
+        "title": payload["title"],
+        "body": payload["body"],
+        "link": payload.get("link"),
+        "event_type": payload["event_type"],
+        "outbox_event_id": event["id"]
+    } for uid in final_users]
+    
+    existing = supabase.table("notifications").select("user_id").eq("outbox_event_id", event["id"]).in_("user_id", final_users).execute()
+    existing_uids = [r["user_id"] for r in existing.data] if existing.data else []
+    
+    to_insert = [row for row in inserts if row["user_id"] not in existing_uids]
+    if to_insert:
+        supabase.table("notifications").insert(to_insert).execute()
         
-        existing = supabase.table("notifications").select("user_id").eq("outbox_event_id", event["id"]).in_("user_id", final_users).execute()
-        existing_uids = [r["user_id"] for r in existing.data] if existing.data else []
-        
-        to_insert = [row for row in inserts if row["user_id"] not in existing_uids]
-        if to_insert:
-            supabase.table("notifications").insert(to_insert).execute()
-            
-        return True
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error inserting notification: {e}")
-        return False
+    return True
 
 
 
