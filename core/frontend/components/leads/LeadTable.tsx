@@ -95,7 +95,7 @@ export function LeadTable({
           key={list.id}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0, overflow: 'hidden', transition: { duration: 0.25 } }}
+          exit={{ opacity: 0, x: -20, transition: { duration: 0.25 } }}
           transition={{ delay: i * 0.06 }}
         >
           <SpotlightCard className="relative overflow-hidden flex items-center gap-4 px-5 py-4 border border-border/50 bg-background/50 backdrop-blur-md cursor-pointer hover:border-primary/30 transition-transform hover:scale-[1.005] group" onClick={() => onSelectList(list)}>
@@ -192,7 +192,6 @@ export function LeadTable({
       ))}
       </AnimatePresence>
       </div>
-    </div>
           </motion.div>
         )}
       </AnimatePresence>

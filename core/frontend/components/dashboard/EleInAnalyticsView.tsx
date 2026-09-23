@@ -607,10 +607,10 @@ export function EleInAnalyticsView({
                   const isError = item.type === 'error';
                   return (
                   <motion.div
-                    key={index}
+                    key={item.id || `${item.time}-${item.text}`}
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8, height: 0, marginBottom: 0, padding: 0, overflow: 'hidden' }}
+                    exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                     className={`flex gap-3 text-sm p-3 rounded-xl border ${isError ? 'bg-destructive/10 border-destructive/20' : 'bg-muted/30 border-border/50'}`}
                   >
