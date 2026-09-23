@@ -41,38 +41,35 @@ export function LeadTable({
   onSelectList,
   onDeleteList
 }: LeadTableProps) {
-  if (error) {
     return (
-      <div className="mb-6 flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/10 text-warning">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          {"Backend connection lost. Retrying..."}
-        </div>
-        <button onClick={() => mutate()} className="text-xs font-bold hover:underline">Reconnect</button>
-      </div>
-    )
-  }
-
-  if (isLoading && lists.length === 0) {
-    return <TableSkeleton rows={5} />
-  }
-
-  if (lists.length === 0) {
-    return (
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <SpotlightCard className="flex flex-col items-center justify-center py-24 border border-border/50 bg-background/50 text-center px-8">
-          <div className="w-16 h-16 rounded-2xl border border-border/50 bg-muted/50 flex items-center justify-center mb-6 backdrop-blur-sm">
-            <Users size={24} className="text-primary" />
-          </div>
-          <h2 className="text-xl font-light tracking-tight text-foreground mb-2">
-            Who do you want to reach?
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed max-w-md mb-2">
-            Import your targets from a CSV, paste LinkedIn URLs, or sync from Sales Navigator.
-            We validate and prepare them for outreach automatically.
-          </p>
-          <a
-            href="/template_leads.csv"
+      <AnimatePresence mode="wait">
+        {error ? (
+          <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} className="mb-6 flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/10 text-warning">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              {"Backend connection lost. Retrying..."}
+            </div>
+            <button onClick={() => mutate()} className="text-xs font-bold hover:underline">Reconnect</button>
+          </motion.div>
+        ) : isLoading && lists.length === 0 ? (
+          <motion.div key="skeleton" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
+            <TableSkeleton rows={5} />
+          </motion.div>
+        ) : lists.length === 0 ? (
+          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
+            <SpotlightCard className="flex flex-col items-center justify-center py-24 border border-border/50 bg-background/50 text-center px-8">
+              <div className="w-16 h-16 rounded-2xl border border-border/50 bg-muted/50 flex items-center justify-center mb-6 backdrop-blur-sm">
+                <Users size={24} className="text-primary" />
+              </div>
+              <h2 className="text-xl font-light tracking-tight text-foreground mb-2">
+                Who do you want to reach?
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-md mb-2">
+                Import your targets from a CSV, paste LinkedIn URLs, or sync from Sales Navigator.
+                We validate and prepare them for outreach automatically.
+              </p>
+              <a
+                href="/template_leads.csv"
             download
             className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-8"
           >
@@ -85,11 +82,9 @@ export function LeadTable({
             <Plus size={14} /> Import a lead list
           </button>
         </SpotlightCard>
-      </motion.div>
-    )
-  }
-
-  return (
+          </motion.div>
+        ) : (
+          <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-4 mt-2">
         <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Showing {lists.length} list{lists.length !== 1 ? 's' : ''}</span>
@@ -196,6 +191,10 @@ export function LeadTable({
         </motion.div>
       ))}
       </AnimatePresence>
+      </div>
     </div>
-  )
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
 }

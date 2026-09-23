@@ -113,37 +113,58 @@ export function DataSectionWrapper({
   skeletonHeightClass?: string,
   gridCols?: number
 }) {
-  if (isLoading) {
-    return (
-      <div className={`w-full ${skeletonHeightClass} flex items-center justify-center animate-pulse bg-muted/20 rounded-md border border-border/30`}>
-        <div className="text-muted-foreground text-sm flex items-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
-        </div>
-      </div>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <div className={`w-full ${skeletonHeightClass} relative rounded-md border border-border/30 overflow-hidden bg-background`}>
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
-          <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-md border border-border/50 text-muted-foreground text-sm shadow-sm font-medium text-center">
-            {emptyLabel}
-            {emptySubtext && <div className="text-xs mt-0.5 opacity-80">{emptySubtext}</div>}
+  return (
+    <AnimatePresence mode="wait">
+      {isLoading ? (
+        <motion.div
+          key="loading"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className={`w-full ${skeletonHeightClass} flex items-center justify-center animate-pulse bg-muted/20 rounded-md border border-border/30`}
+        >
+          <div className="text-muted-foreground text-sm flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
           </div>
-        </div>
-        <div className="absolute inset-0 p-1 opacity-20 pointer-events-none flex gap-1 overflow-hidden">
-          <div className="grid grid-rows-7 grid-flow-col gap-1 w-full h-full">
-            {Array.from({ length: 7 * gridCols }).map((_, i) => (
-              <div key={i} className="w-full h-full rounded-[2px] bg-muted/30" />
-            ))}
+        </motion.div>
+      ) : !data || data.length === 0 ? (
+        <motion.div
+          key="empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className={`w-full ${skeletonHeightClass} relative rounded-md border border-border/30 overflow-hidden bg-background`}
+        >
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+            <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-md border border-border/50 text-muted-foreground text-sm shadow-sm font-medium text-center">
+              {emptyLabel}
+              {emptySubtext && <div className="text-xs mt-0.5 opacity-80">{emptySubtext}</div>}
+            </div>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
+          <div className="absolute inset-0 p-1 opacity-20 pointer-events-none flex gap-1 overflow-hidden">
+            <div className="grid grid-rows-7 grid-flow-col gap-1 w-full h-full">
+              {Array.from({ length: 7 * gridCols }).map((_, i) => (
+                <div key={i} className="w-full h-full rounded-[2px] bg-muted/30" />
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="content"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className="w-full h-full"
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 }
 
 function formatKpiValue(value: string | number | undefined | null, options?: { unit?: 'count' | 'percentage' }): string {
