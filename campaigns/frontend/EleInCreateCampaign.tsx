@@ -1021,6 +1021,7 @@ function EleInCreateCampaignInner() {
       if (template) {
         useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges), [])
         setState((prev: any) => ({ ...prev, campaignName: template.name }))
+        useHRTreeStore.getState().setCampaignStep(1)
       }
       // clear url without reload
       window.history.replaceState({}, '', '/elein/campaigns/new')

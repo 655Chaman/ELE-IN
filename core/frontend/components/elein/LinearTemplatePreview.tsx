@@ -27,7 +27,7 @@ function StepCard({ node, stickyNote, delay }: {
   stickyNote?: { title: string; body: string; why: string }
   delay?: number
 }) {
-  const typeKey = node.data?.type as string
+  const typeKey = (node.type || node.data?.type) as string
   let cfg = NODE_TYPE_CONFIG[typeKey]
   if (!cfg) {
     console.warn(`Unknown node type encountered: ${typeKey}. Falling back to send_message.`)
@@ -176,7 +176,7 @@ export function LinearTemplatePreview({ template }: Props) {
         return (
           <div key={node.id}>
             <StepCard node={node} stickyNote={sticky} delay={delay} />
-            {!isLast && node.data?.type !== "end" && (
+            {!isLast && (node.type !== "end" && node.data?.type !== "end") && (
               <div className="flex justify-center py-1">
                 <ArrowDown size={12} className="text-zinc-700" />
               </div>
