@@ -23,3 +23,6 @@ DROP POLICY IF EXISTS notifications_ws_update ON public.notifications;
 CREATE POLICY notifications_ws_update ON public.notifications FOR UPDATE USING (workspace_id IN (SELECT public.my_workspace_ids()) AND user_id = auth.uid()) WITH CHECK (workspace_id IN (SELECT public.my_workspace_ids()) AND user_id = auth.uid());
 
 NOTIFY pgrst, 'reload schema';
+
+-- For idempotency
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_user ON public.notifications(outbox_event_id, user_id) WHERE outbox_event_id IS NOT NULL;

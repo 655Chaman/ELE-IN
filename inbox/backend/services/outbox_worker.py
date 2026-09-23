@@ -17,30 +17,62 @@ def _process_in_app_notification(event: dict) -> bool:
     supabase = get_supabase()
     
     payload = event.get('payload', {})
-    if not payload.get("user_id") or not payload.get("title") or not payload.get("body") or not payload.get("event_type"):
+    if not payload.get("title") or not payload.get("body") or not payload.get("event_type"):
         return False
         
     workspace_id = event.get("workspace_id") or payload.get("workspace_id")
     if not workspace_id:
         return False
         
+    # Check if a single user_id is provided, else fan out to workspace members
+    target_user_ids = []
+    if payload.get("user_id"):
+        target_user_ids = [payload["user_id"]]
+    else:
+        res = supabase.table("workspace_members").select("user_id").eq("workspace_id", workspace_id).execute()
+        target_user_ids = [r["user_id"] for r in res.data] if res.data else []
+        
+    if not target_user_ids:
+        return True # Nothing to do
+        
+    # Check preferences
+    res = supabase.table("notification_preferences").select("user_id, in_app_enabled").in_("user_id", target_user_ids).execute()
+    prefs = {r["user_id"]: r["in_app_enabled"] for r in res.data} if res.data else {}
+    
+    final_users = [u for u in target_user_ids if prefs.get(u, True)]
+    
+    if not final_users:
+        return True
+        
     try:
-        res = supabase.table("notifications").insert({
+        inserts = [{
             "workspace_id": workspace_id,
-            "user_id": payload["user_id"],
+            "user_id": uid,
             "title": payload["title"],
             "body": payload["body"],
             "link": payload.get("link"),
             "event_type": payload["event_type"],
             "outbox_event_id": event["id"]
-        }).execute()
+        } for uid in final_users]
+        
+        # Idempotency check: we need to ensure we don't insert duplicate (outbox_event_id, user_id)
+        # But we can just use upsert if we had a unique constraint.
+        # The prompt says "Idempotent on (outbox_event_id, user_id)". Let's add that to the migration.
+        
+        # We can also check existing
+        existing = supabase.table("notifications").select("user_id").eq("outbox_event_id", event["id"]).in_("user_id", final_users).execute()
+        existing_uids = [r["user_id"] for r in existing.data] if existing.data else []
+        
+        to_insert = [row for row in inserts if row["user_id"] not in existing_uids]
+        if to_insert:
+            supabase.table("notifications").insert(to_insert).execute()
+            
         return True
     except Exception as e:
-        if "duplicate key value" in str(e) or "UniqueViolation" in str(e):
-            return True
         import logging
         logging.getLogger(__name__).error(f"Error inserting notification: {e}")
         return False
+
 
 
 def _process_email_notification(event: dict) -> bool:
