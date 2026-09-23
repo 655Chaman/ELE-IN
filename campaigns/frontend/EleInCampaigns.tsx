@@ -187,8 +187,9 @@ export function EleInCampaigns() {
                 );
               }
               
+              if (campaigns.length === 0) return null;
               return (
-                <div className="relative group">
+<div className="relative group">
                   <button 
                     onClick={() => setStatusTooltipOpen(!statusTooltipOpen)}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:bg-muted/30 transition-colors"
@@ -203,7 +204,7 @@ export function EleInCampaigns() {
                     statusTooltipOpen ? "opacity-100 pointer-events-auto" : "opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto"
                   )}>
                     {workerStatus.message}
-                    {workerStatus.stalled && <div className="mt-1 font-semibold text-destructive">Action: Start the backend worker script (e.g., ./start.sh)</div>}
+                    {workerStatus.stalled && <div className="mt-1 font-semibold text-destructive">Please contact support if this persists.</div>}
                   </div>
                 </div>
               );
@@ -319,7 +320,7 @@ export function EleInCampaigns() {
             
             {workerStatus?.stalled && (
               <p className="mt-8 text-xs text-muted-foreground/60">
-                Engine is stalled. You may need to start the backend worker script before launching.
+                Backend systems are currently unavailable. Sequence sending may be delayed.
               </p>
             )}
           </motion.div>
