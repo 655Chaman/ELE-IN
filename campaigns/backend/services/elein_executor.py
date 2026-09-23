@@ -41,7 +41,48 @@ def assert_fully_interpolated(message: str, lead_id: str = "", node_id: str = ""
         )
 
 
+
+ACTION_TYPE_MAP = {
+    "connection_request":         "connection_request",
+    "connection_no_note":         "connection_request",
+    "connection_ai_note":         "connection_request",
+    "send_message":               "message",
+    "ai_generate_reply":          "message",
+    "send_ai_message":            "message",
+    "send_message_ab":            "message",
+    "send_followup":              "message",
+    "send_breakup_message":       "message",
+    "send_reengage_message":      "message",
+    "send_intro_message":         "message",
+    "send_message_with_doc":      "message",
+    "send_message_with_image":    "message",
+    "congratulate_new_job":       "message",
+    "congratulate_anniversary":   "message",
+    "send_inmail":                "inmail",
+    "send_paid_inmail":           "paid_inmail",
+    "send_intro_call_invite":     "meeting_invite",
+    "send_voice_note":            "voice_note",
+    "view_profile":               "view_profile",
+    "view_profile_repeat":        "view_profile",
+    "follow_profile":             "follow_profile",
+    "follow_company":             "follow_company",
+    "like_post":                  "react_post",
+    "like_top_3_posts":           "react_post",
+    "react_to_post":              "react_post",
+    "react_insightful":           "react_post",
+    "react_celebrate":            "react_post",
+    "endorse_skill":              "endorse_skill",
+    "endorse_3_skills":           "endorse_skill",
+    "comment_on_post":            "comment_post",
+    "share_post":                 "share_post",
+    "withdraw_request":           "withdraw_request",
+    "remove_connection":          "remove_connection",
+    "get_linkedin_activity":      "activity_check",
+    "invite_to_event":            "event_invite",
+}
+
 class EleInNodeExecutor:
+
     """
     Full 100-node execution registry for the EleIn automation engine.
     Every node defined in eiNodeDefs.ts has a matching handler here.
@@ -55,6 +96,26 @@ class EleInNodeExecutor:
     def __init__(self, linkedin_worker: Optional[LinkedInWorker] = None, supabase=None):
         self.worker = linkedin_worker
         self.supabase = supabase  # needed for C7 idempotency and E1 suppression checks
+
+    def _check_limit(self, action_type: str) -> Optional[str]:
+        if not self.worker or not self.worker.account_id:
+            return "No LinkedIn account bound to executor — cannot enforce limits."
+        if not self.supabase:
+            return "No database connection bound to executor."
+            
+        try:
+            res = self.supabase.rpc("try_consume_daily_action", {
+                "p_account_id": self.worker.account_id,
+                "p_action_type": action_type
+            }).execute()
+            
+            if res.data is True:
+                return None
+            else:
+                return f"Daily limit reached for action: {action_type}"
+        except Exception as e:
+            logger.error(f"Error checking limit for {action_type}: {e}")
+            return f"Failed to verify rate limits: {e}"
 
 
     def _log_outbound_message(self, data: Dict[str, Any], text: str, direction: str = "outbound"):
@@ -95,7 +156,16 @@ class EleInNodeExecutor:
         except Exception as e:
             logger.warning(f"Failed to log outbound message: {e}")
 
+
     def execute(self, action: str, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        # Limit check
+        mapped_action = ACTION_TYPE_MAP.get(action)
+        if mapped_action:
+            limit_err = self._check_limit(mapped_action)
+            if limit_err:
+                logger.warning(f"Rate limit hit for mapped action {mapped_action} on node {action}")
+                return {"status": "rate_limited", "error": limit_err, "branch": "Failed"}
+
         # C2 Safety Net: After substitution, if ANY {{...}} pattern still remains unreplaced, do NOT send
         unresolved = []
         def find_unresolved(d):
@@ -481,6 +551,8 @@ class EleInNodeExecutor:
         return self.worker.invite_to_event(linkedin_url, data.get('event_url', ''), data.get('invite_note', ''))
 
     def handle_connection_request(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        limit_err = self._check_limit("connection_request")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         note_strategy = data.get("note_strategy")
         if note_strategy == "No note":
             return self.handle_connection_no_note(data, linkedin_url)
@@ -516,6 +588,9 @@ class EleInNodeExecutor:
     def handle_connection_no_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": "Failed"}
+        
+        limit_err = self._check_limit("connection_request")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         
         try:
             res = self.worker.send_connection_request(linkedin_url, None, None)
@@ -656,12 +731,17 @@ class EleInNodeExecutor:
     def handle_send_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
+        
+        limit_err = self._check_limit("message")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_message(linkedin_url, data.get('body', ''))
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
         return res
 
     def handle_send_ai_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        limit_err = self._check_limit("message")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         prompt = data.get("prompt") or data.get("pitch")
         if not prompt:
             logger.error("AI message node has no prompt configured")
@@ -713,6 +793,8 @@ class EleInNodeExecutor:
         return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
 
     def handle_send_voice_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        limit_err = self._check_limit("voice_note")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         audio_url = data.get("audio_url", "")
         if not audio_url or not audio_url.startswith("https://"):
             logger.error(f"Voice note node has invalid audio_url: {audio_url!r}")
@@ -748,6 +830,9 @@ class EleInNodeExecutor:
     def handle_send_inmail(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
+        
+        limit_err = self._check_limit("inmail")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
@@ -756,6 +841,9 @@ class EleInNodeExecutor:
     def handle_send_paid_inmail(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
+        
+        limit_err = self._check_limit("inmail")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
@@ -764,6 +852,9 @@ class EleInNodeExecutor:
     def handle_send_message_with_doc(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
+        
+        limit_err = self._check_limit("message")
+        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_message_with_attachment(linkedin_url, data.get('body', ''), data.get('doc_url', ''), 'document')
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))

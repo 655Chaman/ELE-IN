@@ -141,11 +141,18 @@ async def process_single_job(job, sync_supabase):
                             action = payload.get('action')
                             payload_data = payload.get('payload_data', {})
                             if action == 'send_message':
+                                ok = sync_supabase.rpc("try_consume_daily_action", {"p_account_id": account_id, "p_action_type": "message"}).execute()
+                                if not ok.data: raise ValueError("Daily limit reached for action: message")
                                 worker.send_message(payload_data.get('profile_url'), payload_data.get('message'))
                             elif action == 'send_inmail':
+                                ok = sync_supabase.rpc("try_consume_daily_action", {"p_account_id": account_id, "p_action_type": "inmail"}).execute()
+                                if not ok.data: raise ValueError("Daily limit reached for action: inmail")
                                 worker.send_inmail(payload_data.get('profile_url'), payload_data.get('subject'), payload_data.get('body'))
                             elif action == 'send_message_with_attachment':
+                                ok = sync_supabase.rpc("try_consume_daily_action", {"p_account_id": account_id, "p_action_type": "message"}).execute()
+                                if not ok.data: raise ValueError("Daily limit reached for action: message")
                                 worker.send_message_with_attachment(payload_data.get('profile_url'), payload_data.get('body'), payload_data.get('attachment_url'), payload_data.get('attachment_type', 'document'))
+
                             else:
                                 raise ValueError(f"Unknown inbox_action: {action}")
                     except Exception as e:

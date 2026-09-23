@@ -1003,22 +1003,6 @@ class EleInOrchestrator:
                     except Exception as inner_e:
                         return {"status": "error", "error": f"Failed to resolve idempotency lock: {inner_e}"}
             
-            # --- 4. Quota Gate ---
-            if requires_linkedin:
-                action_type = ACTION_TYPE_MAP.get(action)
-                if action_type:
-                    quota_ok = self.supabase.rpc("try_consume_daily_action", {
-                        "p_account_id": chosen_sender_id,
-                        "p_action_type": action_type
-                    }).execute()
-                    if not quota_ok.data:
-                        logger.warning(f"Account {chosen_sender_id} reached limit for {action_type}.")
-                        if idemp_key:
-                            self.supabase.table("campaign_node_executions").update({
-                                "status": "failed",
-                                "error_code": "RATE_LIMITED"
-                            }).eq("idempotency_key", idemp_key).execute()
-                        return {"status": "rate_limited"}
 
             # --- 5. Execute Action ---
             from campaigns.backend.services.elein_executor import EleInNodeExecutor
@@ -1055,6 +1039,14 @@ class EleInOrchestrator:
                             "error_code": "SECURITY_CHALLENGE"
                         }).eq("idempotency_key", idemp_key).execute()
                     return {"status": "security_challenge"}
+                
+                elif res.get("status") == "rate_limited":
+                    if idemp_key:
+                        self.supabase.table("campaign_node_executions").update({
+                            "status": "failed",
+                            "error_code": "RATE_LIMITED"
+                        }).eq("idempotency_key", idemp_key).execute()
+                    return {"status": "rate_limited"}
             
             if requires_idempotency and idemp_key:
                 exec_status = "success" if res.get("status") == "success" else "failed"
