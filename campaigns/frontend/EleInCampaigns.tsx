@@ -300,21 +300,21 @@ export function EleInCampaigns() {
                 icon={Users}
                 title="Get customers"
                 desc="Message people who can buy. Goal: book a meeting."
-                onSelect={(id: string) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }}
+                onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
               />
               <EmptyCampaignCard 
                 id="hire_people"
                 icon={Briefcase}
                 title="Hire people"
                 desc="Message people you want on the team. Goal: a hire."
-                onSelect={(id: string) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }}
+                onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
               />
               <EmptyCampaignCard 
                 id="get_intros"
                 icon={LinkIcon}
                 title="Get intros"
                 desc="Message people who can open a door — investor, partner, or their network."
-                onSelect={(id: string) => { resetTree(); navigate('/elein/campaigns/new?start=' + id); }}
+                onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
               />
             </div>
             

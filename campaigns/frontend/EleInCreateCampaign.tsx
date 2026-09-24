@@ -547,10 +547,24 @@ function LivePreviewSidebar() {
 function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   const { reset: resetTree, loadTree, rootNodes } = useHRTreeStore()
   const startParam = new URLSearchParams(window.location.search).get("start");
-  const initialMode = startParam || rootNodes.length > 0 ? "preview" : "choose";
-  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard" | "preview">(initialMode as any)
+  const goalParam = new URLSearchParams(window.location.search).get("goal");
+  // Fix: correct operator precedence — only go to 'preview' if rootNodes has data AND no new goal/start was requested
+  const initialMode = goalParam
+    ? "template_choice"
+    : startParam || rootNodes.length > 0
+      ? "preview"
+      : "choose";
+  const [mode, setMode] = useState<"choose" | "build" | "template" | "wizard" | "preview" | "template_choice">(initialMode as any)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(goalParam)
   const [showBrowser, setShowBrowser] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // Clear ?goal= from URL on mount without page reload
+  useEffect(() => {
+    if (goalParam) {
+      window.history.replaceState({}, '', '/elein/campaigns/new')
+    }
+  }, [])
   
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -604,41 +618,14 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
         <div className="max-w-4xl w-full">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">Start outreach</h2>
-            <p className="text-sm text-muted-foreground">Choose how you want to build your campaign sequence.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              loadTree([]);
-              setMode("build");
-            }}>
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <Plus size={24} className="text-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Build from Scratch</h3>
-              <p className="text-xs text-muted-foreground">Start with an empty canvas and design your own sequence.</p>
-            </SpotlightCard>
-
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                <FileText size={24} className="text-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Use a Template</h3>
-              <p className="text-xs text-muted-foreground">Browse our library of proven day-one sequences.</p>
-            </SpotlightCard>
-          </div>
-
-          <div className="flex items-center gap-4 mb-6">
-            <div className="h-px bg-border/50 flex-1" />
-            <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">Or pick a quick start</span>
-            <div className="h-px bg-border/50 flex-1" />
+            <p className="text-sm text-muted-foreground">Pick a goal to load a proven day-one sequence.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Option A */}
             <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              const template = HR_TEMPLATES.find(t => t.id === 'get_customers');
-              if (template) { loadTree(dagToTree(template.nodes, template.edges), []); setMode("preview"); }
+              setSelectedTemplateId('get_customers');
+              setMode("template_choice");
             }}>
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Users size={24} className="text-primary" />
@@ -649,8 +636,8 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
 
             {/* Option B */}
             <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              const template = HR_TEMPLATES.find(t => t.id === 'hire_people');
-              if (template) { loadTree(dagToTree(template.nodes, template.edges), []); setMode("preview"); }
+              setSelectedTemplateId('hire_people');
+              setMode("template_choice");
             }}>
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Briefcase size={24} className="text-primary" />
@@ -661,8 +648,8 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
 
             {/* Option C */}
             <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              const template = HR_TEMPLATES.find(t => t.id === 'get_intros');
-              if (template) { loadTree(dagToTree(template.nodes, template.edges), []); setMode("preview"); }
+              setSelectedTemplateId('get_intros');
+              setMode("template_choice");
             }}>
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <LinkIcon size={24} className="text-primary" />
@@ -685,7 +672,64 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     )
   }
 
-  
+  if (mode === "template_choice") {
+    const goalNames: Record<string, string> = {
+      get_customers: "Get customers",
+      hire_people: "Hire people",
+      get_intros: "Get intros",
+    }
+    const goalName = selectedTemplateId ? (goalNames[selectedTemplateId] ?? selectedTemplateId) : ""
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
+        <div className="max-w-2xl w-full">
+          {/* Back button */}
+          <button
+            onClick={() => { setSelectedTemplateId(null); setMode("choose"); }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/50 hover:border-foreground/20 text-xs font-semibold text-muted-foreground transition-all hover:bg-muted/30 hover:text-foreground shadow-sm mb-10"
+          >
+            <ChevronLeft size={14} /> Back
+          </button>
+
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">How do you want to build this?</h2>
+            <p className="text-sm text-muted-foreground">Choose your starting point for <span className="font-medium text-foreground">{goalName}</span></p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+              loadTree([]);
+              setMode("build");
+            }}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Plus size={24} className="text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Start from Blank</h3>
+              <p className="text-xs text-muted-foreground">Start with an empty canvas and design your own sequence.</p>
+            </SpotlightCard>
+
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <FileText size={24} className="text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Use a Template</h3>
+              <p className="text-xs text-muted-foreground">Browse our library of proven day-one sequences.</p>
+            </SpotlightCard>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {showBrowser && (
+            <TemplateBrowser
+              onClose={() => setShowBrowser(false)}
+              onImport={handleImportTemplate}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+
   // Build mode
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative" style={{ height: "100%" }}>
