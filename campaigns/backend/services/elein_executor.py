@@ -551,8 +551,6 @@ class EleInNodeExecutor:
         return self.worker.invite_to_event(linkedin_url, data.get('event_url', ''), data.get('invite_note', ''))
 
     def handle_connection_request(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        limit_err = self._check_limit("connection_request")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         note_strategy = data.get("note_strategy")
         if note_strategy == "No note":
             return self.handle_connection_no_note(data, linkedin_url)
@@ -589,8 +587,6 @@ class EleInNodeExecutor:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": "Failed"}
         
-        limit_err = self._check_limit("connection_request")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         
         try:
             res = self.worker.send_connection_request(linkedin_url, None, None)
@@ -732,16 +728,12 @@ class EleInNodeExecutor:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
         
-        limit_err = self._check_limit("message")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_message(linkedin_url, data.get('body', ''))
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
         return res
 
     def handle_send_ai_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        limit_err = self._check_limit("message")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         prompt = data.get("prompt") or data.get("pitch")
         if not prompt:
             logger.error("AI message node has no prompt configured")
@@ -793,8 +785,6 @@ class EleInNodeExecutor:
         return {"status": "not_implemented", "error": "LinkedIn worker method not yet built"}
 
     def handle_send_voice_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        limit_err = self._check_limit("voice_note")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         audio_url = data.get("audio_url", "")
         if not audio_url or not audio_url.startswith("https://"):
             logger.error(f"Voice note node has invalid audio_url: {audio_url!r}")
@@ -831,8 +821,6 @@ class EleInNodeExecutor:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
         
-        limit_err = self._check_limit("inmail")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
@@ -842,8 +830,6 @@ class EleInNodeExecutor:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
         
-        limit_err = self._check_limit("inmail")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_inmail(linkedin_url, data.get('subject', ''), data.get('body', ''))
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
@@ -853,8 +839,6 @@ class EleInNodeExecutor:
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err}
         
-        limit_err = self._check_limit("message")
-        if limit_err: return {"status": "error", "error": limit_err, "branch": "Failed"}
         res = self.worker.send_message_with_attachment(linkedin_url, data.get('body', ''), data.get('doc_url', ''), 'document')
         if res.get('status') == 'success':
             self._log_outbound_message(data, data.get('body', ''))
