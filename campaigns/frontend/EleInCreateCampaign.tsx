@@ -604,7 +604,34 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
         <div className="max-w-4xl w-full">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">Start outreach</h2>
-            <p className="text-sm text-muted-foreground">Pick a goal to load a proven day-one sequence.</p>
+            <p className="text-sm text-muted-foreground">Choose how you want to build your campaign sequence.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+              loadTree([]);
+              setMode("build");
+            }}>
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Plus size={24} className="text-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Build from Scratch</h3>
+              <p className="text-xs text-muted-foreground">Start with an empty canvas and design your own sequence.</p>
+            </SpotlightCard>
+
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <FileText size={24} className="text-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Use a Template</h3>
+              <p className="text-xs text-muted-foreground">Browse our library of proven day-one sequences.</p>
+            </SpotlightCard>
+          </div>
+
+          <div className="flex items-center gap-4 mb-6">
+            <div className="h-px bg-border/50 flex-1" />
+            <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">Or pick a quick start</span>
+            <div className="h-px bg-border/50 flex-1" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -659,45 +686,6 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   }
 
   
-  if (mode === "preview") {
-    // Generate an EITemplate from the current tree state
-    const templateForPreview = {
-      id: "preview", name: "Sequence", description: "", connectionRate: 0, replyRate: 0, uses: 0, difficulty: "beginner" as any, tags: [],
-      nodes: treeToDag(rootNodes).nodes, edges: treeToDag(rootNodes).edges
-    };
-    
-    const { errors } = validateTree(rootNodes);
-    const hasErrors = Object.values(errors).some(e => e.length > 0);
-    return (
-      <div className="flex-1 flex flex-col items-center p-8 bg-background relative z-10 h-full overflow-y-auto">
-        <div className="max-w-2xl w-full">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-2xl font-light tracking-tight text-foreground">Sequence Preview</h2>
-              <p className="text-sm text-muted-foreground mt-1">This is the sequence that will be sent to your leads.</p>
-            </div>
-            <button onClick={() => setMode("build")} className="px-4 py-2 bg-muted/50 hover:bg-muted text-foreground text-sm font-semibold rounded-lg transition-colors border border-border/50">
-              Edit Sequence (Graph Wizard)
-            </button>
-          </div>
-          {hasErrors && (
-            <div className="mb-6 p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-              <AlertTriangle size={18} className="text-destructive mt-0.5 shrink-0" />
-              <div>
-                <h4 className="text-sm font-semibold text-destructive mb-1">Sequence contains errors</h4>
-                <p className="text-xs text-destructive/80 mb-3">Please fix the highlighted errors below before continuing.</p>
-                <button onClick={() => setMode("build")} className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-white text-xs font-semibold rounded-lg transition-colors">
-                  Edit Sequence
-                </button>
-              </div>
-            </div>
-          )}
-          <LinearTemplatePreview template={templateForPreview} errors={errors} />
-        </div>
-      </div>
-    )
-  }
-
   // Build mode
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative" style={{ height: "100%" }}>
