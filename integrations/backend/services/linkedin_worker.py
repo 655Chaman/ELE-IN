@@ -104,6 +104,16 @@ class LinkedInWorker:
         for ck in self.cookies:
                 if "sameSite" in ck and ck["sameSite"] not in ["Strict", "Lax", "None"]:
                     del ck["sameSite"]
+                    
+        li_at_cookie = next((c for c in self.cookies if c.get("name") == "li_at"), None)
+        if li_at_cookie and li_at_cookie.get("domain"):
+            if "linkedin.com" not in li_at_cookie["domain"].lower():
+                raise ValueError("Cookie 'li_at' present but not from linkedin.com domain")
+                
+        jsessionid_cookie = next((c for c in self.cookies if c.get("name") == "JSESSIONID"), None)
+        if jsessionid_cookie and jsessionid_cookie.get("domain"):
+            if "linkedin.com" not in jsessionid_cookie["domain"].lower():
+                raise ValueError("Cookie 'JSESSIONID' present but not from linkedin.com domain")
 
     def _setup_browser_headless(self, p):
         import os
