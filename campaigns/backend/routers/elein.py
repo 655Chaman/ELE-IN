@@ -754,7 +754,7 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
 
     from integrations.backend.services.linkedin_worker import LinkedInWorker
     try:
-        worker = LinkedInWorker(cookies_json=_json.dumps(cookies), proxy_url=proxy_url)
+        worker = LinkedInWorker(cookies_json=_json.dumps(cookies), proxy_url=proxy_url, account_id=f"validate-{__import__('uuid').uuid4()}")
         resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
         if resp.status_code == 200:
             data = resp.json()
