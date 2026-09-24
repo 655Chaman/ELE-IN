@@ -682,13 +682,6 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
         <div className="max-w-2xl w-full">
-          {/* Back button */}
-          <button
-            onClick={() => { setSelectedTemplateId(null); setMode("choose"); }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/50 hover:border-foreground/20 text-xs font-semibold text-muted-foreground transition-all hover:bg-muted/30 hover:text-foreground shadow-sm mb-10"
-          >
-            <ChevronLeft size={14} /> Back
-          </button>
 
           <div className="text-center mb-12">
             <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">How do you want to build this?</h2>
