@@ -162,6 +162,8 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
             user_aal = decoded.get("aal", "aal1")
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
+        except HTTPException:
+            raise
         except Exception as e:
             pass
             
