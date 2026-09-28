@@ -923,9 +923,9 @@ class EleInOrchestrator:
                         capture_error(e, context={"service": "elein_orchestrator", "detail": "system_api_keys table may not exist; falling back to COOKIE_PRIVATE_KEY"})
                     if cookie_secret_ref:
                         try:
-                            rpc_res = self.supabase.rpc("get_decrypted_account_payload", {"p_secret_id": cookie_secret_ref}).execute()
-                            if rpc_res.data:
-                                dek_bytes = base64.b64decode(rpc_res.data)
+                            rpc_res = self.supabase.rpc("get_decrypted_account_payload", {"p_account_id": chosen_sender_id}).execute()
+                            if rpc_res.data and rpc_res.data.get("dek"):
+                                dek_bytes = base64.b64decode(rpc_res.data["dek"])
                         except Exception as e:
                             capture_error(e, context={"service": "elein_orchestrator"})
                     

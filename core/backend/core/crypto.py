@@ -91,3 +91,16 @@ def decrypt_bytes(ciphertext: bytes, dek: bytes = None) -> bytes:
         return aesgcm.decrypt(nonce, ct, None)
     except (ValueError, KeyError) as e:
         raise VaultDecryptionError(f"Decryption failed: {str(e)}") from e
+
+def pg_hex_to_bytes(hex_str: str) -> bytes:
+    if hex_str.startswith(r"\x"):
+        return bytes.fromhex(hex_str[2:])
+    return hex_str.encode("utf-8")
+
+def bytes_to_pg_hex(b: bytes) -> str:
+    return "\\x" + b.hex()
+
+def pg_hex_to_bytes(hex_str: str) -> bytes:
+    if hex_str.startswith(r"\x"):
+        return bytes.fromhex(hex_str[2:])
+    return hex_str.encode("utf-8")

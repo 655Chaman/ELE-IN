@@ -858,7 +858,8 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                 "proxy_id": chosen_proxy_id,
                 "name": account.name,
                 "linkedin_profile_url": linkedin_profile_url,
-                "session_cookies_encrypted": crypto.encrypt_bytes(sanitized_cookies.encode("utf-8"), dek=dek_bytes),
+                "cookie_secret_ref": cookie_secret_ref,
+                "session_cookies_encrypted": crypto.bytes_to_pg_hex(crypto.encrypt_bytes(sanitized_cookies.encode("utf-8"), dek=dek_bytes)),
                 "is_warmup": account.is_warmup,
                 "warmup_start_date": warmup_start,
                 "warmup_target_days": warmup_target_days,
@@ -914,10 +915,18 @@ def refresh_account_cookies(account_id: str, payload: CookieRefreshRequest, work
     except:
         sanitized_cookies = payload.cookie_json
 
+    import base64
     from core.backend.core import crypto
+    
+    dek_b64 = crypto.generate_dek()
+    dek_bytes = base64.b64decode(dek_b64)
+    
+    rpc_res = supabase.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
+    cookie_secret_ref = rpc_res.data
+
     supabase.table("accounts").update({
-        # Encrypt cookies using AES-256-GCM
-        "session_cookies_encrypted": crypto.encrypt_bytes(sanitized_cookies.encode("utf-8")),
+        "cookie_secret_ref": cookie_secret_ref,
+        "session_cookies_encrypted": crypto.bytes_to_pg_hex(crypto.encrypt_bytes(sanitized_cookies.encode("utf-8"), dek=dek_bytes)),
         "status": "ACTIVE"
     }).eq("id", account_id).execute()
 
@@ -1011,7 +1020,8 @@ def complete_reconnect(payload: dict, supabase: Client = Depends(get_supabase_cl
     cookie_secret_ref = rpc_res.data
     
     update_data = {
-        "session_cookies_encrypted": crypto.encrypt_bytes(sanitized_cookies.encode("utf-8"), dek=dek_bytes),
+        "cookie_secret_ref": cookie_secret_ref,
+        "session_cookies_encrypted": crypto.bytes_to_pg_hex(crypto.encrypt_bytes(sanitized_cookies.encode("utf-8"), dek=dek_bytes)),
         "status": "ACTIVE",
         "session_locked_until": None,
         "updated_at": now

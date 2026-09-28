@@ -95,15 +95,15 @@ def run_health_check(supabase: Client, account_id: str, workspace_id: str) -> di
     
     if cookie_secret_ref:
         try:
-            rpc_res = supabase.rpc("get_decrypted_account_payload", {"p_secret_id": cookie_secret_ref}).execute()
-            if rpc_res.data:
+            rpc_res = supabase.rpc("get_decrypted_account_payload", {"p_account_id": account_id}).execute()
+            if rpc_res.data and rpc_res.data.get("dek"):
                 import base64
-                dek_bytes = base64.b64decode(rpc_res.data)
+                dek_bytes = base64.b64decode(rpc_res.data["dek"])
         except Exception as e:
             logger.error(f"Failed to fetch DEK from Vault: {e}")
             
     try:
-        raw_bytes = raw.encode("utf-8") if isinstance(raw, str) else raw
+        raw_bytes = crypto.pg_hex_to_bytes(raw) if isinstance(raw, str) else raw
         decrypted = crypto.decrypt_bytes(raw_bytes, dek=dek_bytes)
         cookies_json = decrypted.decode("utf-8")
     except (crypto.VaultDecryptionError, Exception) as e:
