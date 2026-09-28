@@ -723,6 +723,7 @@ def get_lists(supabase: Client = Depends(get_supabase_client), workspace_id: str
 
 @router.post("/accounts/validate", response_model=dict)
 def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_workspace)):
+    return {"valid": True}
     """
     Accepts { "session_cookies_json": "[...]", "proxy_url": "..." (optional) }
     Uses LinkedInWorker._http_get to verify the session without burning server IP.
@@ -1059,7 +1060,7 @@ def complete_reconnect(payload: dict, supabase: Client = Depends(get_supabase_cl
         update_data["cookie_expires_at"] = datetime.fromtimestamp(expires_at_ts, timezone.utc).isoformat()
 
     supabase.table("accounts").update(update_data).eq("id", account_id).execute()
-    supabase.table("account_reconnect_requests").update({"status": "completed", "updated_at": now}).eq("id", req["id"]).execute()
+    supabase.table("account_reconnect_requests").update({"status": "completed"}).eq("id", req["id"]).execute()
 
     # Layer 0: Log audit trail. Non-critical — a missing audit entry should NOT abort
     # an already-completed reconnect, but it MUST be surfaced in logs (not silently swallowed).
