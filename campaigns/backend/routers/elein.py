@@ -36,7 +36,8 @@ if not SUPABASE_JWT_SECRET:
 
 router = APIRouter(tags=["elein"])
 
-from core.backend.api.auth_dep import get_current_workspace
+from core.backend.api.auth_dep import get_current_workspace, get_current_user_id
+from admin.backend.routers.workspaces import log_audit
 
 def provision_workspace(user_id: str, supabase: Client, company_name: str = "My Workspace") -> str:
     import uuid
@@ -390,6 +391,8 @@ def upload_csv(
         'target_timezone': target_timezone
     })
 
+    log_audit(supabase, workspace_id, user_id, "lead_list.imported", "lead_list", list_id)
+
     return {"status": "processing", "list_id": list_id}
 
 
@@ -400,7 +403,7 @@ class UploadUrlsRequest(BaseModel):
     target_region_label: str
 
 @router.post("/leads/upload_urls", response_model=dict)
-def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace), user_id: str = Depends(get_current_user_id)):
     try:
         list_id = str(uuid.uuid4())
         supabase.table("lead_lists").insert({
@@ -426,6 +429,8 @@ def upload_urls(body: UploadUrlsRequest, supabase: Client = Depends(get_supabase
         else:
             row_count = 0
             
+        log_audit(supabase, workspace_id, user_id, "lead_list.imported", "lead_list", list_id)
+
         return {"list_id": list_id, "row_count": row_count}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -613,6 +618,7 @@ def upload_sales_nav(
     background_tasks: BackgroundTasks,
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id),
 ):
     try:
         # Pre-flight Validation (Layer 1)
@@ -660,6 +666,8 @@ def upload_sales_nav(
                 'target_timezone': body.target_timezone
             }
         )
+
+        log_audit(supabase, workspace_id, user_id, "lead_list.imported", "lead_list", list_id)
 
         return {"list_id": list_id, "message": "Import started via native Voyager scraper"}
     except Exception as e:
@@ -793,7 +801,7 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
 
 
 @router.post("/accounts", response_model=dict)
-def add_account(account: AccountCreate, request: Request, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def add_account(account: AccountCreate, request: Request, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace), user_id: str = Depends(get_current_user_id)):
     try:
         import json as _json
         try:
@@ -889,6 +897,8 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                 raise HTTPException(status_code=409, detail="This LinkedIn account is already connected to your workspace.")
             raise e
 
+        log_audit(supabase, workspace_id, user_id, "account.connected", "linkedin_account", account_id)
+
         return {"id": account_id, "status": "success"}
     except HTTPException:
         raise
@@ -951,7 +961,7 @@ def refresh_account_cookies(account_id: str, payload: CookieRefreshRequest, work
 
 
 @router.post("/accounts/{account_id}/reconnect/initiate")
-def initiate_reconnect(account_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def initiate_reconnect(account_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace), user_id: str = Depends(get_current_user_id)):
     """Creates a time-limited reconnect request. Returns a token the UI uses."""
     import secrets
     from datetime import datetime, timedelta, timezone
@@ -967,7 +977,7 @@ def initiate_reconnect(account_id: str, supabase: Client = Depends(get_supabase_
     try:
         supabase.table("account_reconnect_requests").insert({
             "account_id": account_id,
-            "requested_by": None,
+            "requested_by": user_id,
             "token": token,
             "status": "pending",
             "expires_at": expires_at
@@ -1053,18 +1063,8 @@ def complete_reconnect(payload: dict, supabase: Client = Depends(get_supabase_cl
 
     # Layer 0: Log audit trail. Non-critical — a missing audit entry should NOT abort
     # an already-completed reconnect, but it MUST be surfaced in logs (not silently swallowed).
-    try:
-        supabase.table("action_log").insert({
-            "account_id": account_id,
-            "workspace_id": workspace_id,
-            "action_type": "account_reconnected",
-            "created_at": now
-        }).execute()
-    except Exception as audit_err:
-        # Layer 1: Audit log failure is non-fatal (reconnect succeeded), but log for ops visibility
-        logger.warning(
-            f"complete_reconnect: failed to write audit log for account {account_id}: {audit_err}"
-        )
+    actor_id = req.get("requested_by") or "system"
+    log_audit(supabase, workspace_id, actor_id, "account.reconnected", "linkedin_account", account_id)
 
     return {"success": True, "account_id": account_id}
 
@@ -1770,7 +1770,8 @@ def validate_campaign_variables(nodes_raw: list):
 def create_campaign(
     campaign: CampaignCreate,
     supabase: Client = Depends(get_supabase_client),
-    workspace_id: str = Depends(get_current_workspace)
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id)
 ):
     try:
         campaign_id = str(uuid.uuid4())
@@ -1814,6 +1815,8 @@ def create_campaign(
         }
         # Insert campaign
         supabase.table("campaigns").insert(campaign_data).execute()
+
+        log_audit(supabase, workspace_id, user_id, "campaign.created", "campaign", campaign_id)
 
         try:
             # 1. Create Campaign Version
