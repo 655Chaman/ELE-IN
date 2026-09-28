@@ -76,7 +76,6 @@ def verify_token_and_get_user_id(token: str) -> str:
         if user_res and user_res.user:
             return user_res.user.id
     except Exception as e:
-        print("DEBUG TOKEN ERROR:", e)
         err_str = str(e).lower()
         logger.warning(f"Supabase auth fallback failed: {type(e).__name__}")
         if 'expired' in err_str or 'exp' in err_str:
@@ -88,21 +87,6 @@ def verify_token_and_get_user_id(token: str) -> str:
 
 def get_supabase_client(request: Request) -> Client:
     auth_header = request.headers.get("Authorization")
-    
-    # Debug print
-    print(f"DEBUG AUTH: {request.method} {request.url.path}")
-    safe_headers = dict(request.headers)
-    keys_to_delete = [k for k in safe_headers.keys() if k.lower() == "authorization"]
-    for k in keys_to_delete:
-        del safe_headers[k]
-    safe_headers["Authorization"] = "[REDACTED]"
-    
-    for k in list(safe_headers.keys()):
-        k_lower = k.lower()
-        if "cookie" in k_lower or k_lower == "x-workspace-id" or k_lower == "x-api-key":
-            safe_headers[k] = "[REDACTED]"
-
-    print(f"DEBUG HEADERS: {safe_headers}")
     
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail=f"Missing or invalid Authorization header: {auth_header}")
@@ -117,7 +101,6 @@ def get_supabase_client(request: Request) -> Client:
         )
         return client
     except Exception as e:
-        print("DEBUG TOKEN ERROR:", e)
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def get_async_supabase_client(request: Request) -> AsyncClient:
@@ -135,7 +118,6 @@ async def get_async_supabase_client(request: Request) -> AsyncClient:
         )
         return client
     except Exception as e:
-        print("DEBUG TOKEN ERROR:", e)
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def get_service_client() -> Client:
@@ -182,7 +164,6 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     except HTTPException:
         raise
     except Exception as e:
-        print("DEBUG TOKEN ERROR:", e)
         err_str = str(e).lower()
         if 'expired' in err_str or 'exp' in err_str:
             raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
@@ -196,7 +177,6 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
         else:
             res = await supabase.table("workspaces").select("id").order("created_at", desc=False).limit(1).execute()
     except Exception as e:
-        print("DEBUG TOKEN ERROR:", e)
         raise HTTPException(status_code=500, detail="Database error retrieving workspace")
         
     if not res.data:
