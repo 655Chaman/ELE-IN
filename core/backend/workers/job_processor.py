@@ -89,7 +89,18 @@ async def process_single_job(job, sync_supabase):
                         raise ValueError("Session cookies are null or empty. Account must be reconnected.")
                     
                     try:
-                        decrypted = crypto.decrypt_bytes(encrypted_cookies)
+                        # fetch dek from DB
+                        dek_bytes = None
+                        try:
+                            rpc_res = sync_supabase.rpc("get_decrypted_account_payload", {"p_account_id": account_id}).execute()
+                            if rpc_res.data and rpc_res.data.get("dek"):
+                                import base64
+                                dek_bytes = base64.b64decode(rpc_res.data["dek"])
+                        except Exception as e:
+                            logger.error(f"Failed to fetch DEK from Vault: {e}")
+                        
+                        raw_bytes = crypto.pg_hex_to_bytes(encrypted_cookies) if isinstance(encrypted_cookies, str) else encrypted_cookies
+                        decrypted = crypto.decrypt_bytes(raw_bytes, dek=dek_bytes)
                         cookie_json = decrypted.decode("utf-8")
                     except Exception as e:
                         raise ValueError("Cookie decryption failed. Account must be reconnected via the Chrome Extension.")
@@ -99,7 +110,20 @@ async def process_single_job(job, sync_supabase):
                     p = acc.get("proxies")
                     if p:
                         if p.get("username"):
-                            proxy_url = f"{p['protocol']}://{p['username']}@{p['host']}:{p['port']}"
+                            password_plain = ""
+                            try:
+                                rpc_res = sync_supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": acc["proxy_id"]}).execute()
+                                if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                                    import base64
+                                    raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                                    dek_bytes = None
+                                    if rpc_res.data.get("dek"):
+                                        dek_bytes = base64.b64decode(rpc_res.data["dek"])
+                                    password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+                            except Exception as e:
+                                logger.error(f"Failed to decrypt proxy password for {acc.get('proxy_id')}: {e}")
+                            
+                            proxy_url = f"{p['protocol']}://{p['username']}:{password_plain}@{p['host']}:{p['port']}"
                         else:
                             proxy_url = f"{p['protocol']}://{p['host']}:{p['port']}"
 

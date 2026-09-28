@@ -934,7 +934,7 @@ class EleInOrchestrator:
                         _raw_bytes = _raw if isinstance(_raw, (bytes, bytearray)) else _raw.encode("utf-8")
                         cookies_bytes = crypto.decrypt_bytes(_raw_bytes, dek=dek_bytes)
                         cookies = cookies_bytes.decode("utf-8")
-                        proxy_url = _build_proxy_url(account_row)
+                        proxy_url = _build_proxy_url(account_row, self.supabase)
                         worker = LinkedInWorker(cookies, proxy_url=proxy_url, account_id=chosen_sender_id)
                     except (crypto.VaultDecryptionError, Exception) as e:
                         logger.error(f"Account {chosen_sender_id} decryption failed: {e}.")
@@ -1119,10 +1119,32 @@ class EleInOrchestrator:
             self.update_state(state_id, node_id, "pending", next_run, lease_token, error_reason=error_msg, attempts=new_attempts, tz_str=tz_str, enforce_working_hours=enforce_working_hours)
 
 
-def _build_proxy_url(account_row: dict):
+def _build_proxy_url(account_row: dict, supabase_client):
     p = account_row.get("proxies")
     if not p:
         return None
+    
+    auth = ""
     if p.get("username"):
-        return f"{p['protocol']}://{p['username']}@{p['host']}:{p['port']}"
-    return f"{p['protocol']}://{p['host']}:{p['port']}"
+        password_plain = ""
+        proxy_id = account_row.get("proxy_id")
+        if proxy_id:
+            try:
+                rpc_res = supabase_client.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+                if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                    from core.backend.core import crypto
+                    import base64
+                    
+                    raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                    dek_bytes = None
+                    if rpc_res.data.get("dek"):
+                        dek_bytes = base64.b64decode(rpc_res.data["dek"])
+                    
+                    password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Failed to decrypt proxy password for {proxy_id}: {e}")
+                
+        auth = f"{p['username']}:{password_plain}@"
+        
+    return f"{p['protocol']}://{auth}{p['host']}:{p['port']}"

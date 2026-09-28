@@ -733,10 +733,27 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
             from supabase import create_client
             import os
             supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
-            res = supabase.table("proxies").select("protocol, host, port, username, password").eq("id", proxy_id).execute()
+            res = supabase.table("proxies").select("protocol, host, port, username, password_encrypted").eq("id", proxy_id).execute()
             if res.data:
                 p = res.data[0]
-                auth = f"{p.get('username', '')}:{p.get('password', '')}@" if p.get('username') else ""
+                
+                # Fetch DEK and decrypt password
+                password_plain = ""
+                if p.get("password_encrypted"):
+                    try:
+                        from core.backend.core import crypto
+                        import base64
+                        rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+                        if rpc_res.data and rpc_res.data.get("dek"):
+                            dek_bytes = base64.b64decode(rpc_res.data["dek"])
+                            raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                            password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+                    except Exception as dec_err:
+                        # Fallback or error logging
+                        import logging
+                        logging.getLogger(__name__).error(f"Failed to decrypt proxy password: {dec_err}")
+                
+                auth = f"{p.get('username', '')}:{password_plain}@" if p.get('username') else ""
                 proxy_url = f"{p.get('protocol', 'http')}://{auth}{p['host']}:{p['port']}"
         except:
             pass

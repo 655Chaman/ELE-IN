@@ -43,7 +43,18 @@ def _try_proxy_failover(supabase, acc: dict, cookies_json: str, country_code: st
 
         proxy_url = f"{proxy['protocol']}://{proxy['host']}:{proxy['port']}"
         if proxy.get("username"):
-            proxy_url = f"{proxy['protocol']}://{proxy['username']}@{proxy['host']}:{proxy['port']}"
+            password_plain = ""
+            try:
+                rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy['id']}).execute()
+                if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                    from core.backend.core import crypto
+                    import base64
+                    raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                    dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
+                    password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+            except Exception as e:
+                logger.error(f"Failed to decrypt failover proxy {proxy['id']}: {e}")
+            proxy_url = f"{proxy['protocol']}://{proxy['username']}:{password_plain}@{proxy['host']}:{proxy['port']}"
         
         logger.info(f"Trying failover proxy {proxy['host']} for account {acc_id}...")
         try:
@@ -113,7 +124,20 @@ def run_health_checks():
     for acc in accounts:
         acc_id = acc["id"]
         acc_name = acc["name"]
-        cookies_json = acc.get("session_cookies_encrypted")
+        encrypted_cookies = acc.get("session_cookies_encrypted")
+        cookies_json = ""
+        try:
+            from core.backend.core import crypto
+            rpc_res = supabase.rpc("get_decrypted_account_payload", {"p_account_id": acc_id}).execute()
+            dek_bytes = None
+            if rpc_res.data and rpc_res.data.get("dek"):
+                import base64
+                dek_bytes = base64.b64decode(rpc_res.data["dek"])
+            raw_bytes = crypto.pg_hex_to_bytes(encrypted_cookies) if isinstance(encrypted_cookies, str) else encrypted_cookies
+            cookies_json = crypto.decrypt_bytes(raw_bytes, dek=dek_bytes).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to decrypt cookies for account {acc_id}: {e}")
+            continue
         proxy_id = acc.get("proxy_id")
         
         proxy_url = None
@@ -123,8 +147,19 @@ def run_health_checks():
             host = p.get("host")
             port = p.get("port")
             username = p.get("username")
+            password_plain = ""
             if username:
-                proxy_url = f"{protocol}://{username}@{host}:{port}"
+                try:
+                    rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+                    if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                        from core.backend.core import crypto
+                        import base64
+                        raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                        dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
+                        password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+                except Exception as e:
+                    logger.error(f"Failed to decrypt proxy {proxy_id}: {e}")
+                proxy_url = f"{protocol}://{username}:{password_plain}@{host}:{port}"
             else:
                 proxy_url = f"{protocol}://{host}:{port}"
         

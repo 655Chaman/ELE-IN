@@ -68,6 +68,8 @@ app.include_router(ai_routes.router, prefix="/api/elein/inbox", dependencies=[De
 # app.include_router(approvals.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 
 app.include_router(master_view.router, dependencies=[Depends(get_current_workspace)])
+from core.backend.api.routers import proxies
+app.include_router(proxies.router, prefix="/api/proxies", dependencies=[Depends(get_current_workspace)])
 app.include_router(assets.router, prefix="/api/assets", dependencies=[Depends(get_current_workspace)])
 # Mounted at /api/system — matches frontend useDeepgram.ts expectation
 app.include_router(infrastructure.router, prefix="/api/system", dependencies=[Depends(get_current_workspace)])
