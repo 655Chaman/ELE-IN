@@ -191,7 +191,7 @@ export function ChatInterface() {
         {selectedLead ? (
           <>
             {/* Header */}
-            <div className="h-[60px] border-b border-white/[0.05] flex items-center justify-between px-8 shrink-0 bg-[#0f1115]/80 backdrop-blur-md sticky top-0 z-10">
+            <div className="h-[60px] border-b border-white/[0.05] flex items-center justify-between px-8 shrink-0 bg-[#0f1115]/80 sticky top-0 z-10">
               <span className="font-semibold text-[15px] text-white">Drafting Reply for {selectedLead.company_name}</span>
               <div className="flex items-center gap-3">
                  <select

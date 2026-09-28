@@ -88,7 +88,7 @@ export const EINode = memo(function EINode({ id, data, selected }: NodeProps) {
     <SpotlightCard
       onClick={() => selectNode(id)}
       style={{ borderColor: selected ? color : "rgba(255,255,255,0.1)" }}
-      className="!p-0 relative group min-w-[210px] max-w-[250px] !rounded-2xl !bg-zinc-900/80 backdrop-blur-md border transition-all duration-300 cursor-pointer select-none shadow-xl hover:shadow-2xl hover:!border-white/20 hover:-translate-y-0.5"
+      className="!p-0 relative group min-w-[210px] max-w-[250px] !rounded-2xl !bg-zinc-900/80 border transition-all duration-300 cursor-pointer select-none shadow-xl hover:shadow-2xl hover:!border-white/20 hover:-translate-y-0.5"
      
     >
       {/* Delete button */}
@@ -96,8 +96,8 @@ export const EINode = memo(function EINode({ id, data, selected }: NodeProps) {
         <button
           onClick={(e) => { e.stopPropagation(); deleteNode(id) }}
           className="absolute -top-2.5 -right-2.5 z-20 hidden group-hover:flex items-center justify-center
-                     w-5 h-5 rounded-full bg-zinc-900/90 backdrop-blur-sm border border-white/10 hover:border-red-500/50 hover:bg-red-500/10
-                     hover:text-red-400 text-zinc-500 transition-all shadow-sm"
+ w-5 h-5 rounded-full bg-zinc-900/90 border border-white/10 hover:border-red-500/50 hover:bg-red-500/10
+ hover:text-red-400 text-zinc-500 transition-all shadow-sm"
         >
           <Trash2 size={9} />
         </button>
@@ -117,7 +117,7 @@ export const EINode = memo(function EINode({ id, data, selected }: NodeProps) {
       <div className="p-3.5">
         {/* Delay badge */}
         {d.delay != null && d.delay > 0 && (
-          <div className="flex items-center gap-1 mb-2.5 px-2 py-0.5 rounded-md bg-white/5 backdrop-blur-sm border border-white/10 w-fit shadow-sm">
+          <div className="flex items-center gap-1 mb-2.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 w-fit shadow-sm">
             <Clock size={9} className="text-zinc-500" />
             <span className="text-[9px] text-zinc-400 font-mono">Wait {d.delay}d, then</span>
           </div>
@@ -150,7 +150,7 @@ export const EINode = memo(function EINode({ id, data, selected }: NodeProps) {
               {showMsg ? "Hide" : "View"} message
             </button>
             {showMsg && (
-              <p className="mt-1.5 text-[10px] text-zinc-400 leading-relaxed p-2 rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 line-clamp-3 shadow-inner">
+              <p className="mt-1.5 text-[10px] text-zinc-400 leading-relaxed p-2 rounded-lg bg-white/5 border border-white/10 line-clamp-3 shadow-inner">
                 {d.note || d.body}
               </p>
             )}

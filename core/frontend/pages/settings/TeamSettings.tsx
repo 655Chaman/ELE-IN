@@ -170,7 +170,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
 
   if (error) {
     return (
-      <SpotlightCard className="p-6 rounded-2xl border border-destructive/20 bg-destructive/5 backdrop-blur-md">
+      <SpotlightCard className="p-6 rounded-2xl border border-destructive/20 bg-destructive/5">
         <div className="flex items-center gap-3 text-destructive">
           <AlertTriangle className="w-5 h-5" />
           <p className="text-sm font-medium">Failed to load team members. Please check your connection.</p>
@@ -216,7 +216,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
 
   return (
     <div className="space-y-6">
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 backdrop-blur-md relative overflow-hidden">
+      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-1 h-full bg-primary/40 rounded-l-2xl"></div>
         
         {/* Header */}
@@ -526,7 +526,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
             {/* Modal for Removal Confirmation */}
             <AnimatePresence>
               {confirmRemoveId && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4">
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}

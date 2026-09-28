@@ -115,7 +115,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
         Psychological Principle: High Friction by Design
         Desaturated background, heavy red borders, warning iconography 
       */}
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 backdrop-blur-md relative overflow-hidden">
+      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
         
         {isPendingDeletion && (
           <div className="bg-destructive text-destructive-foreground px-6 py-4 flex items-center justify-between font-bold">

@@ -17,7 +17,7 @@ export function EleInBilling() {
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <SpotlightCard className="col-span-2 p-6 rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md flex flex-col justify-between">
+        <SpotlightCard className="col-span-2 p-6 rounded-2xl border border-border/50 bg-muted/10 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2 text-muted-foreground">
               <Zap size={16} className="text-warning" /> 
@@ -36,7 +36,7 @@ export function EleInBilling() {
           </div>
         </SpotlightCard>
         
-        <SpotlightCard className="p-6 rounded-2xl border border-primary/20 bg-primary/5 backdrop-blur-md flex flex-col items-center justify-center text-center">
+        <SpotlightCard className="p-6 rounded-2xl border border-primary/20 bg-primary/5 flex flex-col items-center justify-center text-center">
           <CircleDollarSign size={32} className="text-primary mb-3" />
           <h3 className="text-4xl font-bold text-foreground tracking-tighter mb-1">2,450</h3>
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-4">Credits Remaining</p>
@@ -47,7 +47,7 @@ export function EleInBilling() {
       </div>
 
       <h2 className="text-lg font-bold text-foreground mb-4">Billing History</h2>
-      <SpotlightCard className="rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md overflow-hidden">
+      <SpotlightCard className="rounded-2xl border border-border/50 bg-muted/10 overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-muted/50 border-b border-border/50 text-xs text-muted-foreground uppercase tracking-wider">
             <tr>

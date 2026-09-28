@@ -21,7 +21,7 @@ export function LeadFilters({
 }: LeadFiltersProps) {
   return (
     <div className="flex items-center gap-3 mb-6">
-      <div className="flex items-center gap-2 flex-1 max-w-xs rounded-lg border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2 shadow-sm">
+      <div className="flex items-center gap-2 flex-1 max-w-xs rounded-lg border border-border/50 bg-background/50 px-3 py-2 shadow-sm">
         <Search size={13} className="text-muted-foreground shrink-0" />
         <input
           value={search}
@@ -36,7 +36,7 @@ export function LeadFilters({
         <select 
           value={listTypeFilter}
           onChange={(e) => setListTypeFilter(e.target.value)}
-          className="appearance-none pl-8 pr-8 py-2 rounded-lg border border-border/50 bg-background/50 backdrop-blur-md text-xs text-muted-foreground hover:text-foreground transition-all shadow-sm focus:outline-none cursor-pointer"
+          className="appearance-none pl-8 pr-8 py-2 rounded-lg border border-border/50 bg-background/50 text-xs text-muted-foreground hover:text-foreground transition-all shadow-sm focus:outline-none cursor-pointer"
         >
           <option value="all">List type: All</option>
           <option value="csv">CSV Uploads</option>
@@ -52,7 +52,7 @@ export function LeadFilters({
         <select 
           value={campaignFilter}
           onChange={(e) => setCampaignFilter(e.target.value)}
-          className="appearance-none pl-8 pr-8 py-2 rounded-lg border border-border/50 bg-background/50 backdrop-blur-md text-xs text-muted-foreground hover:text-foreground transition-all shadow-sm focus:outline-none cursor-pointer"
+          className="appearance-none pl-8 pr-8 py-2 rounded-lg border border-border/50 bg-background/50 text-xs text-muted-foreground hover:text-foreground transition-all shadow-sm focus:outline-none cursor-pointer"
         >
           <option value="all">All campaigns</option>
           <option value="assigned">Assigned to campaign</option>

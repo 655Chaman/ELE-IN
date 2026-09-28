@@ -128,7 +128,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Hero Section: Security Command Center */}
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 backdrop-blur-md relative overflow-hidden">
+      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-border to-transparent opacity-20" />
         
         <div className="flex flex-col items-center text-center">
@@ -323,7 +323,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex justify-end"
+              className="fixed inset-0 z-50 bg-background/80 flex justify-end"
             >
               <motion.div
                 initial={{ x: '100%' }}

@@ -187,7 +187,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
 
   return (
     <div className="space-y-8 max-w-4xl">
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 backdrop-blur-md relative overflow-hidden">
+      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
         <div className="flex items-center gap-4 mb-8">
           <div className="p-3 bg-primary/10 rounded-xl">
             <Bell className="text-primary" size={24} />

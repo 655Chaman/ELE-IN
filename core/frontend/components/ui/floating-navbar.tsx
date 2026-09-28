@@ -57,7 +57,7 @@ export const FloatingNav = ({
           className
         )}
       >
-        <div className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/80 px-2 py-1.5 shadow-lg shadow-black/10 backdrop-blur-md dark:border-white/10 dark:bg-black/50">
+        <div className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/80 px-2 py-1.5 shadow-lg shadow-black/10 dark:border-white/10 dark:bg-black/50">
           {/* Nav items container */}
           <div className="flex items-center gap-1">
             {navItems.map((navItem, idx: number) => (

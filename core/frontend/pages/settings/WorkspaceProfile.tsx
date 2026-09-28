@@ -124,7 +124,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
         transition={{ duration: 0.5, ease: "easeOut" }}
         className="rounded-2xl"
       >
-        <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 backdrop-blur-md relative overflow-hidden">
+        <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-primary/60 to-primary/10"></div>
           
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-8">

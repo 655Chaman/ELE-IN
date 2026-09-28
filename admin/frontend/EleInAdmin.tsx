@@ -139,7 +139,7 @@ export function EleInAdmin() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
             >
-              <SpotlightCard className="h-full flex flex-col p-6 rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md hover:border-border transition-all">
+              <SpotlightCard className="h-full flex flex-col p-6 rounded-2xl border border-border/50 bg-muted/10 hover:border-border transition-all">
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center">
                     <LayoutTemplate size={18} className="text-primary" />
@@ -187,7 +187,7 @@ export function EleInAdmin() {
 
       {activeTab === "keys" && (
         <div className="space-y-6">
-          <SpotlightCard className="p-6 rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md">
+          <SpotlightCard className="p-6 rounded-2xl border border-border/50 bg-muted/10">
             <h3 className="text-sm font-bold mb-4 flex items-center gap-2"><Key size={16} className="text-primary" /> Add NVIDIA API Key</h3>
             <div className="flex gap-3">
               <input 

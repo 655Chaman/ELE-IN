@@ -76,7 +76,7 @@ export function Combobox({ value, options, placeholder, onSelect, disabled, clea
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full bg-black/40 border border-white/10 hover:border-white/30 rounded-xl pl-4 pr-10 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-zinc-500/50 focus:ring-1 focus:ring-zinc-500/50 transition-all disabled:opacity-50 placeholder-gray-600 backdrop-blur-md"
+          className="w-full bg-black/40 border border-white/10 hover:border-white/30 rounded-xl pl-4 pr-10 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-zinc-500/50 focus:ring-1 focus:ring-zinc-500/50 transition-all disabled:opacity-50 placeholder-gray-600"
         />
         <button 
           type="button" 
@@ -88,7 +88,7 @@ export function Combobox({ value, options, placeholder, onSelect, disabled, clea
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-full min-w-[250px] max-h-64 overflow-y-auto bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 py-2">
+        <div className="absolute top-full left-0 mt-2 w-full min-w-[250px] max-h-64 overflow-y-auto bg-black/80 border border-white/10 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 py-2">
           {filteredOptions.length > 0 ? (
             filteredOptions.map((opt) => (
               <div

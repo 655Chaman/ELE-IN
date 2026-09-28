@@ -59,7 +59,7 @@ const STEPS = [
 function StepHeader({ current, onBack, onStepClick }: { current: number, onBack: () => void, onStepClick?: (step: number) => void }) {
   const { theme, setTheme } = useTheme()
   return (
-    <div className="relative flex items-center justify-center gap-0 py-5 border-b border-border/50 bg-background/50 backdrop-blur-md z-10 shrink-0">
+    <div className="relative flex items-center justify-center gap-0 py-5 border-b border-border/50 bg-background/50 z-10 shrink-0">
       {/* Top Left Back Button */}
       <button
         onClick={onBack}
@@ -135,7 +135,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-4xl mx-auto py-8 px-6">
       {/* Left */}
-      <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50 backdrop-blur-md">
+      <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50">
         <div className="space-y-5">
           <div>
             <label className="block text-xs font-semibold text-foreground mb-2">Campaign name</label>
@@ -150,7 +150,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
               }}
               placeholder="e.g. BIOTECH Q3 OUTREACH"
               className="w-full rounded-lg bg-background/50 border border-border/50 px-3 py-2.5 text-sm text-foreground
-                         placeholder-muted-foreground focus:outline-none focus:border-foreground/30 transition-colors"
+ placeholder-muted-foreground focus:outline-none focus:border-foreground/30 transition-colors"
             />
           </div>
           <div>
@@ -177,7 +177,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
                 onChange={e => onChange("leadListId", e.target.value)}
                 disabled={isLoading || lists.length === 0}
                 className="w-full appearance-none rounded-lg bg-background/50 border border-border/50 px-3 py-2.5 text-sm
-                           text-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-50"
+ text-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-50"
               >
                 {isLoading ? (
                   <option value="">Loading your lists...</option>
@@ -215,7 +215,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
             )}
 
       {/* Right */}
-      <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50 backdrop-blur-md">
+      <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50">
         <div className="space-y-5">
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1">Exclude list</label>
@@ -226,7 +226,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
               onChange={e => onChange("excludeListId", e.target.value)}
               disabled={isLoading || hasError || lists.length === 0}
               className="w-full appearance-none rounded-lg bg-muted/30 border border-border px-3 py-2.5 text-sm
-                         text-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-50"
+ text-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-50"
             >
                 {isLoading ? (
                   <option value="">Loading your lists...</option>
@@ -310,7 +310,7 @@ function TemplateBrowser({ onClose, onImport }: {
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -950,7 +950,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
       <div className="w-full max-w-2xl mx-auto text-center">
         <h2 className="text-3xl font-light mb-4">Campaign Schedule</h2>
         <p className="text-muted-foreground mb-8">Ensure your campaign runs during the correct business hours.</p>
-        <div className="bg-card/30 border border-border/50 rounded-2xl p-8 backdrop-blur-md space-y-6 text-left">
+        <div className="bg-card/30 border border-border/50 rounded-2xl p-8 space-y-6 text-left">
           
           <div className="space-y-2">
             <label className="text-sm font-medium">Target Timezone</label>
@@ -1000,7 +1000,7 @@ function StepPreview({ state, onChange }: { state: any; onChange: (k: string, v:
       <div className="w-full max-w-2xl mx-auto text-center">
         <h2 className="text-3xl font-light mb-4">Review & Launch</h2>
         <p className="text-muted-foreground mb-8">Verify your campaign settings before going live.</p>
-        <div className="bg-card/30 border border-border/50 rounded-2xl p-8 backdrop-blur-md">
+        <div className="bg-card/30 border border-border/50 rounded-2xl p-8">
           <p className="text-sm text-muted-foreground">Campaign: {state.campaignName || "Untitled"}</p>
         </div>
       </div>
@@ -1302,7 +1302,7 @@ function EleInCreateCampaignInner() {
 
       <AnimatePresence>
         {activationErrors.length > 0 && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1384,7 +1384,7 @@ function EleInCreateCampaignInner() {
 
       {/* Footer Navigation */}
       {(true) && (
-        <div className="relative z-10 flex items-center justify-between p-6 border-t border-border/50 bg-background/50 backdrop-blur-md shrink-0">
+        <div className="relative z-10 flex items-center justify-between p-6 border-t border-border/50 bg-background/50 shrink-0">
           <div className="text-sm text-muted-foreground">
             Step {step + 1} of {STEPS.length}
           </div>

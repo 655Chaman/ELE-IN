@@ -58,7 +58,7 @@ export function LeadTable({
         ) : lists.length === 0 ? (
           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
             <SpotlightCard className="flex flex-col items-center justify-center py-24 border border-border/50 bg-background/50 text-center px-8">
-              <div className="w-16 h-16 rounded-2xl border border-border/50 bg-muted/50 flex items-center justify-center mb-6 backdrop-blur-sm">
+              <div className="w-16 h-16 rounded-2xl border border-border/50 bg-muted/50 flex items-center justify-center mb-6">
                 <Users size={24} className="text-primary" />
               </div>
               <h2 className="text-xl font-light tracking-tight text-foreground mb-2">
@@ -98,7 +98,7 @@ export function LeadTable({
           exit={{ opacity: 0, x: -20, transition: { duration: 0.25 } }}
           transition={{ delay: i * 0.06 }}
         >
-          <SpotlightCard className="relative overflow-hidden flex items-center gap-4 px-5 py-4 border border-border/50 bg-background/50 backdrop-blur-md cursor-pointer hover:border-primary/30 transition-transform hover:scale-[1.005] group" onClick={() => onSelectList(list)}>
+          <SpotlightCard className="relative overflow-hidden flex items-center gap-4 px-5 py-4 border border-border/50 bg-background/50 cursor-pointer hover:border-primary/30 transition-transform hover:scale-[1.005] group" onClick={() => onSelectList(list)}>
             <div className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
               switch(list.type) {
                 case 'csv': return 'text-success bg-success/10 border-success/20';

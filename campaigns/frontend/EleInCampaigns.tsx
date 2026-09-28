@@ -323,7 +323,7 @@ export function EleInCampaigns() {
         ) : filtered.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-border/50 bg-muted/30 dark:bg-background/50 backdrop-blur-md"
+              className="flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-border/50 bg-muted/30 dark:bg-background/50"
             >
               <div className="w-16 h-16 rounded-2xl bg-muted/40 border border-border flex items-center justify-center mb-6">
                 <Search size={24} className="text-muted-foreground" />
@@ -473,7 +473,7 @@ export function EleInCampaigns() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}

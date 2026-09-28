@@ -77,7 +77,7 @@ export function EleInTemplates() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 mb-6 max-w-md rounded-lg border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-sm">
+      <div className="flex items-center gap-2 mb-6 max-w-md rounded-lg border border-border/50 bg-background/50 px-3 py-2.5 shadow-sm">
         <Search size={14} className="text-muted-foreground shrink-0" />
         <input
           value={search}
@@ -95,7 +95,7 @@ export function EleInTemplates() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
           >
-            <SpotlightCard className="h-full flex flex-col p-6 rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md hover:border-border transition-all">
+            <SpotlightCard className="h-full flex flex-col p-6 rounded-2xl border border-border/50 bg-muted/10 hover:border-border transition-all">
               <div className="flex justify-between items-start mb-4">
                 <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center">
                   <LayoutTemplate size={18} className="text-primary" />

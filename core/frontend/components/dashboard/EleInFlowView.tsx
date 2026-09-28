@@ -99,7 +99,7 @@ export function EleInFlowView() {
         <div className="flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 w-full mt-12 px-4 md:px-12">
           
           {/* Left Visualizer */}
-          <div className="flex-1 max-w-md w-full aspect-[4/3] lg:aspect-square bg-card/40 backdrop-blur-sm rounded-[40px] border border-white/5 flex items-center justify-center relative overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.2)]">
+          <div className="flex-1 max-w-md w-full aspect-[4/3] lg:aspect-square bg-card/40 rounded-[40px] border border-white/5 flex items-center justify-center relative overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.2)]">
              {/* Subtle background glow based on active step */}
              <motion.div 
                className="absolute inset-0 blur-[100px] rounded-full opacity-30 bg-primary"
@@ -222,7 +222,7 @@ export function EleInFlowView() {
           {/* Right Content Card */}
           <div className="flex-1 max-w-md w-full aspect-[4/3] lg:aspect-square flex flex-col justify-center">
             <Link to={stepData.link} className="block outline-none group w-full h-full">
-              <div className="w-full h-full bg-card/80 backdrop-blur-2xl border border-white/10 text-card-foreground rounded-[40px] overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.3)] transition-all duration-300 hover:border-white/20 hover:shadow-[0_16px_60px_rgba(0,0,0,0.4)]">
+              <div className="w-full h-full bg-card/80 border border-white/10 text-card-foreground rounded-[40px] overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.3)] transition-all duration-300 hover:border-white/20 hover:shadow-[0_16px_60px_rgba(0,0,0,0.4)]">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeStepIndex}

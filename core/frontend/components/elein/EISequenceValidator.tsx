@@ -88,7 +88,7 @@ export function EISequenceValidator() {
             initial={{ opacity: 0, y: -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className={`pointer-events-auto flex items-start gap-3 p-3 rounded-lg border shadow-lg backdrop-blur-md ${
+            className={`pointer-events-auto flex items-start gap-3 p-3 rounded-lg border shadow-lg  ${
               w.type === "error" 
                 ? "bg-red-500/10 border-red-500/20 text-red-500" 
                 : "bg-primary/10 border-primary/20 text-primary"

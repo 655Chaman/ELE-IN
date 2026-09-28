@@ -29,7 +29,7 @@ export default function WarmupTimeline({ accountId }: { accountId: string }) {
   const isActivePhase = currentPhase === 'active'
 
   return (
-    <div className="mt-3 p-3 rounded-lg bg-background/40 border border-border/50 backdrop-blur-sm space-y-2.5">
+    <div className="mt-3 p-3 rounded-lg bg-background/40 border border-border/50 space-y-2.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isActivePhase ? (

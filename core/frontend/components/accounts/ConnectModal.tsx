@@ -102,7 +102,7 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -231,7 +231,7 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
                                   onChange={e => setName(e.target.value)}
                                   placeholder='Internal label (Defaults to real LinkedIn name)'
                                   className="w-full rounded-lg bg-background border border-input px-3 py-2.5 text-xs text-foreground
-                                             placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+ placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                                 />
                               </div>
                               
@@ -243,7 +243,7 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
                                   rows={4}
                                   placeholder={`[{"domain":".linkedin.com","name":"li_at","value":"AQEDA...","path":"/"}]`}
                                   className="w-full rounded-lg bg-background border border-input px-3 py-2.5 text-xs font-mono text-foreground
-                                             placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none transition-all"
+ placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none transition-all"
                                 />
                               </div>
                               

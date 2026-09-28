@@ -18,8 +18,7 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
   return (
     <div className="md:col-span-1 group outline-none">
-      <div className="h-full bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-[40px] p-8 overflow-hidden relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl">
-        <div className="absolute top-0 right-0 w-64 h-64 -mr-16 -mt-16 rounded-full bg-orange-100 dark:bg-primary/10 blur-[60px] pointer-events-none" />
+      <div className="h-full bg-white dark:bg-card/40 border border-slate-200 dark:border-border/50 rounded-[40px] p-8 overflow-hidden relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl">
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-6">
 

@@ -41,8 +41,6 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="min-h-screen bg-[#070809] flex flex-col items-center justify-center p-6 text-zinc-300 font-sans">
           <div className="max-w-md w-full bg-[#0d0f11] border border-white/5 rounded-2xl shadow-2xl p-8 text-center space-y-6 relative overflow-hidden">
             {/* Ambient Background Glow */}
-            <div className="absolute -top-24 -left-24 w-48 h-48 bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
-            
             <div className="mx-auto w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4 relative">
                <AlertTriangle className="w-8 h-8 text-red-500" />
             </div>

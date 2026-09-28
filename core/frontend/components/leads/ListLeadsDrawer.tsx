@@ -29,7 +29,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
     <div className="fixed inset-0 z-[60] flex justify-end">
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60"
         onClick={onClose}
       />
       <motion.div 

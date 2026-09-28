@@ -14,7 +14,7 @@ import {
 const CustomAreaTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white/95 dark:bg-background/95 backdrop-blur-xl border border-border/60 dark:border-border/50 p-4 rounded-xl shadow-xl shadow-black/5 dark:shadow-2xl">
+      <div className="bg-white/95 dark:bg-background/95 border border-border/60 dark:border-border/50 p-4 rounded-xl shadow-xl shadow-black/5 dark:shadow-2xl">
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center justify-between gap-6 mb-2 last:mb-0">
@@ -138,7 +138,7 @@ export function DataSectionWrapper({
           className={`w-full ${skeletonHeightClass} relative rounded-md border border-border/30 overflow-hidden bg-background`}
         >
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
-            <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-md border border-border/50 text-muted-foreground text-sm shadow-sm font-medium text-center">
+            <div className="bg-background/80 px-3 py-1.5 rounded-md border border-border/50 text-muted-foreground text-sm shadow-sm font-medium text-center">
               {emptyLabel}
               {emptySubtext && <div className="text-xs mt-0.5 opacity-80">{emptySubtext}</div>}
             </div>
@@ -372,7 +372,7 @@ export function EleInAnalyticsView({
             <p className="text-sm text-muted-foreground mt-1">Real-time performance tracking and network actions</p>
           </div>
           
-          <div className="inline-flex items-center p-1 bg-white dark:bg-muted/50 backdrop-blur-md rounded-xl border border-slate-200 dark:border-border/50 shadow-sm" role="group" aria-label="Time range selection">
+          <div className="inline-flex items-center p-1 bg-white dark:bg-muted/50 rounded-xl border border-slate-200 dark:border-border/50 shadow-sm" role="group" aria-label="Time range selection">
             {TIME_RANGES.map((range) => (
               <button
                 key={range.value}
@@ -436,9 +436,8 @@ export function EleInAnalyticsView({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4, delay: i * 0.05 }}
-              className="relative overflow-hidden rounded-2xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-4 group transition-colors shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none hover:border-slate-300 dark:hover:bg-card/60"
+              className="relative overflow-hidden rounded-2xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-4 group transition-colors shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none hover:border-slate-300 dark:hover:bg-card/60"
             >
-              <div className={`absolute top-0 right-0 w-20 h-20 -mr-6 -mt-6 rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition-opacity ${stat.bg}`} />
               <div className="flex justify-between items-start mb-3">
                 <div className={`p-2 rounded-xl ${stat.bg} ${stat.color} shrink-0 ring-1 ring-inset ring-foreground/5`}>
                   <stat.icon size={16} strokeWidth={2} />
@@ -472,7 +471,7 @@ export function EleInAnalyticsView({
                 else if (maxPct >= 70) dotColor = 'bg-primary'
 
                 return (
-                  <div key={i} className="rounded-2xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none relative">
+                  <div key={i} className="rounded-2xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none relative">
                     {acc.throttled && (
                       <div className="absolute top-4 right-4 bg-destructive/10 text-destructive text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md flex items-center gap-1">
                         <AlertTriangle size={10} /> Approaching Limit
@@ -512,7 +511,7 @@ export function EleInAnalyticsView({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="xl:col-span-2 rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none"
+            className="xl:col-span-2 rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-6 flex flex-col relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none"
           >
             <div className="flex items-center justify-between mb-6 z-10">
               <div>
@@ -597,7 +596,7 @@ export function EleInAnalyticsView({
           </motion.div>
 
           {/* Live Feed */}
-          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none min-h-[400px] overflow-hidden">
+          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none min-h-[400px] overflow-hidden">
             <h3 className="text-lg font-medium tracking-tight mb-4 text-foreground flex items-center gap-2">
               <Activity size={16} className="text-primary animate-pulse" /> Live Feed
             </h3>
@@ -646,7 +645,7 @@ export function EleInAnalyticsView({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Feature 3: Interactive Drill-Down Funnel */}
-          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
+          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
             <div className="mb-6 flex justify-between items-start">
               <div>
                 <h3 className="text-lg font-medium tracking-tight mb-1 text-foreground">Conversion Funnel</h3>
@@ -699,7 +698,7 @@ export function EleInAnalyticsView({
           </div>
 
           {/* Feature 1 & 2: Heatmaps */}
-          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
+          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-lg font-medium tracking-tight mb-1 text-foreground">Activity Topography</h3>
@@ -774,7 +773,7 @@ export function EleInAnalyticsView({
           </div>
 
           {/* Radar Chart: Campaign Health */}
-          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 backdrop-blur-md p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
+          <div className="rounded-3xl border border-slate-200 dark:border-border/50 bg-white dark:bg-card/40 p-6 flex flex-col shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none">
             <div className="mb-2">
               <h3 className="text-lg font-medium tracking-tight mb-1 text-foreground">Campaign AI Health</h3>
               <p className="text-xs text-muted-foreground">Performance Profile Metrics</p>
@@ -807,7 +806,7 @@ export function EleInAnalyticsView({
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex justify-end bg-background/80 backdrop-blur-sm"
+              className="fixed inset-0 z-50 flex justify-end bg-background/80"
               onClick={() => setSelectedFunnelStep(null)}
             >
               <motion.div 

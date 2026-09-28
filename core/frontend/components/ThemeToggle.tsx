@@ -11,7 +11,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   return (
     <button
       onClick={toggleTheme}
-      className={`p-2 rounded-full border border-border shadow-sm bg-background/50 backdrop-blur-md text-foreground hover:bg-muted/50 transition-colors ${className}`}
+      className={`p-2 rounded-full border border-border shadow-sm bg-background/50  text-foreground hover:bg-muted/50 transition-colors ${className}`}
       title="Toggle Theme"
     >
       {theme === "dark" ? <Sun size={14} strokeWidth={1.5} /> : <Moon size={14} strokeWidth={1.5} />}

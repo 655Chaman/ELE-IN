@@ -100,7 +100,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       whileHover={{ scale: isDragging ? 1.05 : 1.01 }}
-      className={`absolute rounded-2xl border backdrop-blur-xl transition-colors group ${activeStyle} ${isDragging ? 'cursor-grabbing z-[100] ring-2 ring-white/20' : 'cursor-grab z-40'}`}
+      className={`absolute rounded-2xl border  transition-colors group ${activeStyle} ${isDragging ? 'cursor-grabbing z-[100] ring-2 ring-white/20' : 'cursor-grab z-40'}`}
       style={{ left: note.x, top: note.y, minWidth: 240, maxWidth: 320 }}
       onMouseDown={handleMouseDown}
       onClick={(e) => e.stopPropagation()}
@@ -114,7 +114,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 2 }}
-            className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-1.5 rounded-xl bg-background/90 backdrop-blur-md border border-border shadow-xl z-50"
+            className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-1.5 rounded-xl bg-background/90 border border-border shadow-xl z-50"
           >
             {Object.keys(colorMap).map(c => (
               <button

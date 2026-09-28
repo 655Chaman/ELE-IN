@@ -51,13 +51,11 @@ export function Login() {
 
   return (
     <div className="min-h-screen bg-[#070809] flex flex-col items-center justify-center relative overflow-hidden text-white font-sans">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-success/10 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 px-6">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center mb-4 shadow-xl backdrop-blur-md">
+          <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center mb-4 shadow-xl">
             <Sparkles className="text-primary" size={24} />
           </div>
           <h1 className="text-3xl font-bold tracking-tight mb-2">Ele-in</h1>
@@ -66,7 +64,7 @@ export function Login() {
           </p>
         </div>
 
-        <div className="bg-black/40 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl">
+        <div className="bg-black/40 border border-white/10 rounded-2xl p-8 shadow-2xl">
           <form onSubmit={handleAuth} className="space-y-4">
 
             {isSignUp && (

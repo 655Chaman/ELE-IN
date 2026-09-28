@@ -67,7 +67,7 @@ export function TestDriveSimulator() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm cursor-pointer"
+              className="absolute inset-0 bg-background/80 cursor-pointer"
               onClick={() => setIsTestOpen(false)}
             />
             <motion.div 

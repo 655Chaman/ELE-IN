@@ -111,7 +111,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 backdrop-blur-md relative overflow-hidden">
+      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-1 h-full bg-primary/40"></div>
         
         <div className="flex items-center gap-4 mb-6">

@@ -15,9 +15,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
 
   return (
     <>
-      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-[40px] p-8 lg:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 -mr-24 -mt-24 rounded-full bg-purple-100 dark:bg-purple-500/10 blur-[80px] pointer-events-none" />
-        
+      <div className="bg-white dark:bg-card/40 border border-slate-200 dark:border-border/50 rounded-[40px] p-8 lg:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex justify-between items-center mb-10">
             <div className="flex items-center gap-4">
@@ -127,7 +125,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm" 
+              className="fixed inset-0 bg-black/80" 
               onClick={() => setIsPersonaModalOpen(false)}
             />
             <motion.div 

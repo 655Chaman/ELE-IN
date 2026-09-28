@@ -266,7 +266,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                         {!(def as any).comingSoon && <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: `radial-gradient(circle at center, ${color}15 0%, transparent 70%)` }} />}
                         
                         <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-3 border backdrop-blur-sm z-10 transition-transform group-hover:scale-105"
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-3 border z-10 transition-transform group-hover:scale-105"
                           style={{ borderColor: `${color}33`, color, background: `${color}10` }}
                         >
                           <Icon size={18} strokeWidth={1.5} />
@@ -314,7 +314,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-background/80 backdrop-blur-sm"
+              className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-background/80"
               onClick={() => setInfoNode(null)}
             >
               <div 
@@ -645,7 +645,7 @@ function BranchPill({ label }: { label: string }) {
   const isPositive = label === "Connected" || label === "Replied" || label === "Booked" || label === "Email found" || label === "Open" || label === "Success" || label === "Yes"
 
   return (
-    <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase bg-background border border-border/60 shadow-sm z-10 backdrop-blur-md transition-all hover:border-foreground/30 hover:shadow-md">
+    <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase bg-background border border-border/60 shadow-sm z-10 transition-all hover:border-foreground/30 hover:shadow-md">
       <div className={`w-1.5 h-1.5 rounded-full ${isPositive ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}`} />
       <span className="text-foreground/80">{label}</span>
     </div>
@@ -719,7 +719,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
             
             {/* Drop-off badge */}
             {readOnly && parentAnalytics && nodeAnalytics?.[node.id] && parentAnalytics.sent > 0 && (
-              <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap px-2.5 py-1 rounded-lg bg-red-500/10 backdrop-blur-md border border-red-500/20 text-[10px] font-bold text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)] flex items-center gap-1.5">
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)] flex items-center gap-1.5">
                 Drop-off: {Math.max(0, parentAnalytics.sent - nodeAnalytics[node.id].sent)} ({parentAnalytics.sent > 0 ? Math.round(Math.max(0, parentAnalytics.sent - nodeAnalytics[node.id].sent) / parentAnalytics.sent * 100) : '0'}%)
               </div>
             )}
@@ -992,7 +992,7 @@ export function EISequenceTree({
       {/* Auto-withdraw Conflict Modal */}
       <AnimatePresence>
         {conflictModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
