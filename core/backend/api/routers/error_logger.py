@@ -4,6 +4,14 @@ import json
 import time
 from collections import defaultdict
 from typing import Optional, Any
+import logging
+from logging.handlers import RotatingFileHandler
+
+frontend_logger = logging.getLogger("frontend_error_logger")
+frontend_logger.setLevel(logging.INFO)
+# Max 5MB per file, keep 2 backups
+handler = RotatingFileHandler("frontend_errors.log", maxBytes=5*1024*1024, backupCount=2)
+frontend_logger.addHandler(handler)
 
 router = APIRouter()
 
@@ -48,6 +56,5 @@ async def log_error(request: Request, payload: ErrorLog):
     }
 
     print("FRONTEND ERROR:", json.dumps(data, indent=2))
-    with open("frontend_errors.log", "a") as f:
-        f.write(json.dumps(data) + "\n")
+    frontend_logger.info(json.dumps(data))
     return {"status": "ok"}
