@@ -113,7 +113,24 @@ def detect_route_collisions():
 # NOTE: The campaign execution engine runs as a separate process: run 'python -m core.backend.workers.orchestrator_worker'
 
 # 6. Instrument with Prometheus metrics
-Instrumentator().instrument(app).expose(app)
+import os
+import secrets
+from fastapi import Request, Depends, HTTPException
+
+def verify_metrics_token(request: Request):
+    expected_token = os.environ.get("METRICS_TOKEN")
+    if not expected_token:
+        raise HTTPException(status_code=403, detail="Metrics token not configured")
+    
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Invalid or missing Authorization header")
+    
+    token = auth_header.split(" ")[1]
+    if not secrets.compare_digest(token, expected_token):
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+Instrumentator().instrument(app).expose(app, dependencies=[Depends(verify_metrics_token)])
 
 import asyncio
 
