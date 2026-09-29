@@ -136,12 +136,12 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     
     # Extract user_id and AAL from the JWT
     user_aal = "aal1"
+    decoded_payload = None
     if HAS_PYJWT:
         try:
-            decoded = jwt.decode(token, options={"verify_signature": False})
-            if decoded.get("exp") and decoded["exp"] < time.time():
+            decoded_payload = jwt.decode(token, options={"verify_signature": False})
+            if decoded_payload.get("exp") and decoded_payload["exp"] < time.time():
                 raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
-            user_aal = decoded.get("aal", "aal1")
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
         except HTTPException:
@@ -152,15 +152,19 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     try:
         # Layer 1: We use the already injected AsyncClient to validate the token.
         # This prevents synchronous event-loop blocking from create_client.
+        # This call cryptographically validates the token signature via GoTrue.
         user_response = await supabase.auth.get_user(token)
         if not user_response or not user_response.user:
             raise HTTPException(status_code=401, detail="Authentication failed.")
         user_id = user_response.user.id
         
-        if not HAS_PYJWT:
-            amr = getattr(user_response.user, 'amr', None) or []
-            if any(a.get('method') == 'totp' for a in amr):
-                user_aal = 'aal2'
+        # Since get_user() succeeded, GoTrue has verified the JWT signature.
+        # It is now cryptographically safe to read the 'aal' claim from the payload.
+        if decoded_payload:
+            user_aal = decoded_payload.get("aal", "aal1")
+        else:
+            user_aal = "aal1"
+            
     except HTTPException:
         raise
     except Exception as e:

@@ -33,6 +33,14 @@ def extension_heartbeat(
     payload can contain account_id if the extension is linked to a specific sender account.
     """
     account_id = payload.get("account_id")
+    if account_id:
+        # SECURITY HIGH-7a: Verify account_id belongs to the authenticated workspace
+        acc_check = supabase.table("accounts").select("id") \
+            .eq("id", account_id) \
+            .eq("workspace_id", workspace_id) \
+            .execute()
+        if not acc_check.data:
+            raise HTTPException(status_code=403, detail="account_id does not belong to your workspace.")
     worker_id = f"ext-{account_id}" if account_id else f"ext-ws-{workspace_id}"
     
     supabase.table("worker_heartbeat").upsert({
@@ -59,6 +67,15 @@ def get_extension_tasks(
     # We need a proper dequeue logic for the extension.
     # To keep it simple in this MVP, we query lead_states that are 'pending' and due.
     
+    # SECURITY HIGH-7b: Validate account_id belongs to authenticated workspace directly
+    # before the indirect campaign walk — the indirect check is insufficient alone.
+    acc_check = supabase.table("accounts").select("id") \
+        .eq("id", account_id) \
+        .eq("workspace_id", workspace_id) \
+        .execute()
+    if not acc_check.data:
+        raise HTTPException(status_code=403, detail="account_id does not belong to your workspace.")
+
     # 1. Get campaigns using this account_id
     camp_res = supabase.table("campaigns").select("id").eq("workspace_id", workspace_id).execute()
     valid_campaigns = []
@@ -97,7 +114,8 @@ def get_extension_tasks(
         return {"tasks": []}
         
     # Mark it as 'running' so no other worker picks it up
-    supabase.table("campaign_execution_states").update({"status": "running"}).eq("id", state["id"]).execute()
+    # SECURITY HIGH-8: anchor UPDATE on workspace_id as defense-in-depth
+    supabase.table("campaign_execution_states").update({"status": "running"}).eq("id", state["id"]).eq("workspace_id", workspace_id).execute()
     
     # Return as a task payload for the extension
     task = {
@@ -134,7 +152,7 @@ def report_task_result(
             "status": new_status,
             "error_reason": None,
             "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", task_id).execute()
+        }).eq("id", task_id).eq("workspace_id", workspace_id).execute()  # SECURITY HIGH-8: double-anchor UPDATE
         
         # Log it
         supabase.table("action_log").insert({
@@ -150,7 +168,7 @@ def report_task_result(
             "status": new_status,
             "error_reason": error_detail,
             "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", task_id).execute()
+        }).eq("id", task_id).eq("workspace_id", workspace_id).execute()  # SECURITY HIGH-8: double-anchor UPDATE
         
         supabase.table("action_log").insert({
             "workspace_id": workspace_id,
