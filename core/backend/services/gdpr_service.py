@@ -18,6 +18,15 @@ async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
         # (Though ON DELETE CASCADE might handle it, explicitly logging it is required)
         kc_res = supabase_client.table('knowledge_chunks').delete().eq('workspace_id', workspace_id).execute()
         
+        # 2.5 Delete forgotten PII tables before core tables
+        tables_to_purge = [
+            'ai_generations', 'processing_jobs', 'webhook_endpoints', 'knowledge_assets',
+            'personas', 'objections', 'ai_reply_approvals', 'suppression_list',
+            'enrichment_results', 'voice_notes', 'profile_activity_snapshots', 'audit_log'
+        ]
+        for table in tables_to_purge:
+            supabase_client.table(table).delete().eq('workspace_id', workspace_id).execute()
+        
         # 3. Delete from PII tables in child-first dependency order
         # Action Logs
         al_res = supabase_client.table('action_log').delete().eq('workspace_id', workspace_id).execute()
