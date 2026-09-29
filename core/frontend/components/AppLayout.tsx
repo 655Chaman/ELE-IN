@@ -5,7 +5,7 @@ import {
   ChevronRight, ChevronLeft, Target, 
   Settings, User, Mail, Users, LayoutDashboard,
   BrainCircuit, Copy, Link as LinkIcon, Plug, CreditCard,
-  CheckCircle, Globe, AlertTriangle
+  CheckCircle, Globe, AlertTriangle, Shield
 } from 'lucide-react';
 
 import { ApiKeyModal } from './ApiKeyModal';
@@ -319,6 +319,16 @@ export function AppLayout() {
                {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-sidebar-foreground/60 tracking-widest">Theme</span>}
                <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
             </div>
+            
+            <Link 
+              to="/mfa-setup"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+              title={!isSidebarOpen ? "Personal Security (2FA)" : undefined}
+            >
+              <div className="shrink-0"><Shield size={14} strokeWidth={1.5} /></div>
+              {isSidebarOpen && <span className="text-[12px] font-medium">Personal Security</span>}
+            </Link>
+
             <button 
               onClick={() => signOut()}
               className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
