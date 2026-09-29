@@ -233,6 +233,61 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
     return workspace_id
 
 
+
+
+async def get_current_user_id_with_2fa(
+    request: Request,
+    workspace_id: str,
+    supabase: AsyncClient = Depends(get_async_supabase_client)
+) -> str:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = auth_header.split(" ")[1]
+    
+    user_aal = "aal1"
+    decoded_payload = None
+    if HAS_PYJWT:
+        try:
+            # Fix: extract claims properly
+            decoded_payload = jwt.decode(token, options={"verify_signature": False})
+            if decoded_payload.get("exp") and decoded_payload["exp"] < time.time():
+                raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+            
+    try:
+        user_response = await supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Authentication failed.")
+        user_id = user_response.user.id
+        if decoded_payload:
+            user_aal = decoded_payload.get("aal", "aal1")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Authentication failed.")
+        
+    try:
+        ws_res = await supabase.table("workspaces").select("require_2fa").eq("id", workspace_id).single().execute()
+        workspace_row = ws_res.data or {}
+    except Exception as e:
+        print("DB ERROR fetching require_2fa:", e)
+        workspace_row = {}
+
+    print(f"CHECK 2FA: workspace_id={workspace_id}, require_2fa={workspace_row.get('require_2fa')}, user_aal={user_aal}")
+
+    if workspace_row.get('require_2fa', False) and user_aal != 'aal2':
+        print("BLOCKING!")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                'code': 'MFA_REQUIRED',
+                'message': '2FA is required for this workspace. Please enable 2FA in your account security settings before continuing.'
+            }
+        )
+    return user_id
+
 def get_current_user_id(request: Request) -> str:
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):

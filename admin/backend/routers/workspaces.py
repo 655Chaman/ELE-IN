@@ -4,8 +4,10 @@ from typing import List, Optional
 from supabase import Client
 import uuid
 import json
+import os
+import httpx
 
-from core.backend.api.auth_dep import get_supabase_client, get_service_client, verify_token_and_get_user_id
+from core.backend.api.auth_dep import get_supabase_client, get_service_client, verify_token_and_get_user_id, get_current_user_id_with_2fa
 
 # ==============================================================================
 # 🚨 PARANOIA FRAMEWORK: SECURITY WARNING (LAYER 2) 🚨
@@ -116,7 +118,7 @@ def rename_workspace(
     workspace_id: str,
     payload: WorkspaceRename,
     supabase: Client = Depends(get_supabase_client),
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     # Verify access
     wm_res = supabase.table("workspace_members").select("role").eq("user_id", user_id).eq("workspace_id", workspace_id).execute()
@@ -129,6 +131,7 @@ def rename_workspace(
 
 @router.post("/assign-account")
 def assign_account_to_workspace(
+    request: Request,
     payload: AssignAccount,
     supabase: Client = Depends(get_supabase_client),
     user_id: str = Depends(get_current_user_id)
@@ -139,6 +142,23 @@ def assign_account_to_workspace(
     wm_target = supabase.table("workspace_members").select("role").eq("user_id", user_id).eq("workspace_id", payload.target_workspace_id).execute()
     if not wm_target.data or wm_target.data[0]["role"] not in ["owner", "admin"]:
         raise HTTPException(status_code=403, detail="Must be owner or admin of target workspace")
+
+    # 2FA Check for target workspace
+    ws_res = supabase.table("workspaces").select("require_2fa").eq("id", payload.target_workspace_id).execute()
+    if ws_res.data and ws_res.data[0].get("require_2fa"):
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                import jwt
+                decoded = jwt.decode(token, options={"verify_signature": False})
+                if decoded.get("aal") != "aal2":
+                    raise HTTPException(status_code=403, detail={'code': 'MFA_REQUIRED', 'message': '2FA is required for this workspace.'})
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=403, detail={'code': 'MFA_REQUIRED', 'message': '2FA is required for this workspace.'})
+
         
     # Check current account
     svc = get_service_client()
@@ -198,7 +218,7 @@ def invite_member(
     workspace_id: str,
     payload: InviteCreate,
     supabase: Client = Depends(get_supabase_client),
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -252,7 +272,7 @@ def invite_member(
 def revoke_invite(
     workspace_id: str,
     invite_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     try:
         svc = get_service_client()
@@ -330,7 +350,7 @@ def change_member_role(
     workspace_id: str,
     target_user_id: str,
     payload: RoleUpdate,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -364,7 +384,7 @@ def change_member_role(
 def remove_member(
     workspace_id: str,
     target_user_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -407,7 +427,7 @@ class SendingDefaultsUpdate(BaseModel):
 @router.get("/{workspace_id}/sending-defaults")
 def get_sending_defaults(
     workspace_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     """
     Return sending defaults for a workspace.
@@ -451,7 +471,7 @@ def get_sending_defaults(
 def update_sending_defaults(
     workspace_id: str,
     payload: SendingDefaultsUpdate,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -485,7 +505,7 @@ class Require2FAUpdate(BaseModel):
 def update_require_2fa(
     workspace_id: str,
     payload: Require2FAUpdate,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -526,7 +546,7 @@ class NotificationPreferenceUpdate(BaseModel):
 @router.get("/{workspace_id}/notification-preferences")
 def get_notification_preferences(
     workspace_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     try:
         svc = get_service_client()
@@ -550,7 +570,7 @@ def get_notification_preferences(
 def update_notification_preferences(
     workspace_id: str,
     payload: NotificationPreferenceUpdate,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -580,7 +600,7 @@ class DeletionRequest(BaseModel):
 def request_workspace_deletion(
     workspace_id: str,
     payload: DeletionRequest,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -633,7 +653,7 @@ def request_workspace_deletion(
 @router.post("/{workspace_id}/cancel-deletion")
 def cancel_workspace_deletion(
     workspace_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     svc = get_service_client()
     
@@ -659,7 +679,7 @@ def cancel_workspace_deletion(
 @router.get("/{workspace_id}/members")
 def get_workspace_members(
     workspace_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     """
     Return all workspace members + pending invites.
@@ -735,7 +755,7 @@ def get_audit_log(
     workspace_id: str,
     limit: int = 50,
     offset: int = 0,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     """
     Return paginated audit log entries for a workspace.
@@ -784,7 +804,7 @@ from core.backend.services.gdpr_service import purge_workspace_data
 @router.delete("/{workspace_id}")
 async def delete_workspace(
     workspace_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id_with_2fa)
 ):
     """
     Instantly deletes a workspace and purges all PII.
@@ -805,3 +825,36 @@ async def delete_workspace(
         raise HTTPException(status_code=500, detail="Failed to complete GDPR purge. It has been queued for background retry.")
         
     return {"status": "success", "message": "Workspace and all associated PII permanently deleted."}
+
+
+@router.delete("/{workspace_id}/members/{user_id}/2fa-reset")
+async def admin_reset_member_2fa(
+    workspace_id: str,
+    user_id: str,
+    current_user_id: str = Depends(get_current_user_id_with_2fa),
+):
+    """Workspace owner can force-reset a member's 2FA factor (e.g. lost device)."""
+    svc = get_service_client()
+    ws = await get_async_supabase_client().table("workspaces").select("owner_id").eq("id", workspace_id).single().execute()
+    if not ws.data or ws.data["owner_id"] != current_user_id:
+        raise HTTPException(status_code=403, detail="Only the workspace owner can reset member 2FA.")
+    
+    member = await get_async_supabase_client().table("workspace_members").select("user_id").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    if not member.data:
+        raise HTTPException(status_code=404, detail="User not found in this workspace.")
+        
+    user = svc.auth.admin.get_user_by_id(user_id).user
+    supa_url = os.environ['SUPABASE_URL']
+    supa_service = os.environ['SUPABASE_SERVICE_KEY']
+    
+    async with httpx.AsyncClient() as client:
+        for factor in (user.factors or []):
+            await client.delete(
+                f"{supa_url}/auth/v1/admin/users/{user_id}/factors/{factor.id}",
+                headers={"apikey": supa_service, "Authorization": f"Bearer {supa_service}"}
+            )
+            
+    # Auditing
+    log_audit(svc, workspace_id, current_user_id, "workspace.member_2fa_reset", "user", user_id)
+            
+    return {"status": "ok", "message": "2FA reset. User will be forced to re-enroll when their current session expires."}
