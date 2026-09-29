@@ -40,7 +40,8 @@ def rate_limit(cost: int = 1, capacity: int = 100, refill_rate_per_second: float
             # to avoid hard breaking endpoints during transition.
             if isinstance(e, HTTPException):
                 raise
-            return True
+            # Fail closed on DB errors
+            raise HTTPException(status_code=503, detail="Service Unavailable. Rate limit check failed.")
             
     return _rate_limit_dep
 enforce_ai_rate_limit = rate_limit(cost=1, capacity=50, refill_rate_per_second=0.5)
