@@ -261,7 +261,7 @@ def invite_member(
         log_audit(svc, workspace_id, user_id, "member.invited", "workspace_invite", invite["id"], after_state={"email": payload.email, "role": payload.role})
         
         # Mock send email
-        print(f"Simulating invite email to {payload.email} with token {token}")
+        print(f"Simulating invite email to {payload.email} with token [MASKED]")
         
         return {"status": "success", "invite_id": invite["id"], "token": token}
     except Exception as e:
