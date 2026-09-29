@@ -13,7 +13,10 @@ from supabase import create_client, create_async_client
 ZOMBIE_TIMEOUT_MINUTES = 120
 
 # Load environment variables
-load_dotenv("/Users/krdeeksha/Ele-in/backend/.env")
+import os
+from pathlib import Path
+env_path = Path(__file__).resolve().parent.parent.parent.parent / "backend" / ".env"
+load_dotenv(dotenv_path=env_path)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
