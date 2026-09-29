@@ -134,8 +134,10 @@ async def async_external_request(
                 
         except httpx.TimeoutException as e:
             if attempt < max_retries:
-                # Optionally retry on timeouts too, but spec says backoff on 429. 
-                pass 
+                backoff = base_backoff * (2 ** attempt) + random.uniform(0.1, 1.0)
+                logger.warning("external_api.timeout_retry", url=safe_url, attempt=attempt+1, backoff=backoff)
+                await asyncio.sleep(backoff)
+                continue
             logger.error("external_api.timeout", url=safe_url, error=str(e))
             raise HTTPException(
                 status_code=504,
