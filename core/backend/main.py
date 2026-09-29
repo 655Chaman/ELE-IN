@@ -75,12 +75,10 @@ app.include_router(assets.router, prefix="/api/assets", dependencies=[Depends(ge
 app.include_router(infrastructure.router, prefix="/api/system", dependencies=[Depends(get_current_workspace)])
 from admin.backend.routers import personas
 from integrations.backend.routers import hubspot
-from integrations.backend.routers import apollo
 from integrations.backend.routers import extension
 from admin.backend.routers import workspaces
 app.include_router(personas.router, prefix="/api/knowledge", dependencies=[Depends(get_current_workspace)])
 app.include_router(hubspot.router, prefix="/api/elein/hubspot", dependencies=[Depends(get_current_workspace)])
-app.include_router(apollo.router, prefix="/api/elein/apollo", dependencies=[Depends(get_current_workspace)])
 app.include_router(extension.router, prefix="/api/extension")
 app.include_router(workspaces.router, dependencies=[Depends(get_current_user_id)])
 
