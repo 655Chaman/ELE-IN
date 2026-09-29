@@ -695,8 +695,8 @@ def check_ai_rate_limit_db(workspace_id: str, supabase) -> bool:
         return current_count < DAILY_AI_LIMIT
     except Exception as e:
         logger.error(f"[EleInAI] check_ai_rate_limit_db failed: {e}")
-        # Layer 0 Paranoia: Fail open if DB is unavailable so we don't break the app
-        return True
+        # Fail closed on DB errors
+        return False
 
 class UsageLimitExceededError(Exception):
     pass
