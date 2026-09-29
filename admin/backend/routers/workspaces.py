@@ -7,7 +7,7 @@ import json
 import os
 import httpx
 
-from core.backend.api.auth_dep import get_supabase_client, get_service_client, verify_token_and_get_user_id, get_current_user_id_with_2fa
+from core.backend.api.auth_dep import get_supabase_client, get_service_client, verify_token_and_get_user_id, get_current_user_id_with_2fa, get_async_supabase_client
 
 # ==============================================================================
 # 🚨 PARANOIA FRAMEWORK: SECURITY WARNING (LAYER 2) 🚨
@@ -829,17 +829,19 @@ async def delete_workspace(
 
 @router.delete("/{workspace_id}/members/{user_id}/2fa-reset")
 async def admin_reset_member_2fa(
+    request: Request,
     workspace_id: str,
     user_id: str,
     current_user_id: str = Depends(get_current_user_id_with_2fa),
 ):
     """Workspace owner can force-reset a member's 2FA factor (e.g. lost device)."""
     svc = get_service_client()
-    ws = await get_async_supabase_client().table("workspaces").select("owner_id").eq("id", workspace_id).single().execute()
+    client = await get_async_supabase_client(request)
+    ws = await client.table("workspaces").select("owner_id").eq("id", workspace_id).single().execute()
     if not ws.data or ws.data["owner_id"] != current_user_id:
         raise HTTPException(status_code=403, detail="Only the workspace owner can reset member 2FA.")
     
-    member = await get_async_supabase_client().table("workspace_members").select("user_id").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    member = await client.table("workspace_members").select("user_id").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
     if not member.data:
         raise HTTPException(status_code=404, detail="User not found in this workspace.")
         
