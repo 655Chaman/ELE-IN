@@ -44,7 +44,7 @@ def process_delivery(delivery: Dict[str, Any], endpoint: Dict[str, Any]):
     success = False
     
     try:
-        resp = requests.post(url, json=delivery["payload"], headers=headers, timeout=10.0)
+        resp = requests.post(url, json=delivery["payload"], headers=headers, timeout=10.0, allow_redirects=False)
         status_code = resp.status_code
         response_body = resp.text[:1000]
         success = 200 <= status_code < 300

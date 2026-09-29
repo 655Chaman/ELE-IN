@@ -20,7 +20,8 @@ def create_webhook(
     supabase: Client = Depends(get_service_client)
 ):
     """Registers a new webhook endpoint."""
-    if not req.url.startswith("http"):
+    from core.backend.core.validators import is_safe_ssrf_url
+    if not is_safe_ssrf_url(req.url):
         raise HTTPException(status_code=400, detail="Invalid URL")
         
     # Generate a random signing secret (e.g. whsec_...)

@@ -94,8 +94,11 @@ class KnowledgeService:
         """Background task: scrape a URL with Jina.ai and index into vector store."""
         logger.info(f"[KB] Starting URL processing for asset {asset_id}: {url}")
         try:
+            from core.backend.core.validators import is_safe_ssrf_url
+            if not is_safe_ssrf_url(url):
+                raise ValueError("URL rejected due to SSRF safety constraints.")
             jina_url = f"https://r.jina.ai/{url}"
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
                 resp = await client.get(jina_url, headers={"Accept": "text/plain"})
             resp.raise_for_status()
             text = resp.text.strip()
