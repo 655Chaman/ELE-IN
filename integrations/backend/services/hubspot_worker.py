@@ -73,7 +73,8 @@ async def import_hubspot_list_bg(supabase, workspace_id: str, hubspot_list_id: i
         try:
             supabase.table("lead_lists").update({
                 "status": "failed",
-                "error_message": error_msg
+                "error_message": error_msg,
+                "row_count": -2
             }).eq("id", internal_list_id).execute()
         except Exception as update_err:
             logger.error(f"Also failed to mark lead_list {internal_list_id} as failed: {update_err}")
