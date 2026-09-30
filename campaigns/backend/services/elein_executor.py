@@ -1142,30 +1142,66 @@ Respond ONLY with valid JSON."""
 
         provider = data.get("provider", "HubSpot").lower().replace(" ", "")
         handler_map = {
-            "hubspot": self.handle_push_to_hubspot,
-            "salesforce": self.handle_push_to_salesforce,
-            "pipedrive": self.handle_push_to_pipedrive,
-            "notion": self.handle_push_to_notion,
-            "airtable": self.handle_push_to_airtable,
+            "hubspot": getattr(self, "handle_push_to_hubspot", None),
+            "salesforce": getattr(self, "handle_push_to_salesforce", None),
+            "pipedrive": getattr(self, "handle_push_to_pipedrive", None),
+            "notion": getattr(self, "handle_push_to_notion", None),
+            "airtable": getattr(self, "handle_push_to_airtable", None),
         }
         handler = handler_map.get(provider)
         if handler:
             return handler(data, linkedin_url)
         return {"status": "error", "output": "output", "error": f"Unknown CRM provider: {provider}"}
 
+    def handle_push_to_salesforce(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_push_to_salesforce' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Salesforce CRM integration is not yet implemented"}
+
+    def handle_push_to_pipedrive(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_push_to_pipedrive' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Pipedrive CRM integration is not yet implemented"}
+
+    def handle_push_to_notion(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_push_to_notion' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Notion CRM integration is not yet implemented"}
+
+    def handle_push_to_airtable(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_push_to_airtable' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Airtable CRM integration is not yet implemented"}
+
     def handle_add_to_email_sequencer(self, data: dict, linkedin_url: str) -> dict:
         provider = data.get("provider", "Smartlead").lower().replace(" ", "")
         handler_map = {
-            "smartlead": self.handle_add_to_smartlead,
-            "instantly": self.handle_add_to_instantly,
-            "emailbison": self.handle_add_to_emailbison,
-            "lemlist": self.handle_add_to_lemlist,
-            "apollo": self.handle_add_to_apollo,
+            "smartlead": getattr(self, "handle_add_to_smartlead", None),
+            "instantly": getattr(self, "handle_add_to_instantly", None),
+            "emailbison": getattr(self, "handle_add_to_emailbison", None),
+            "lemlist": getattr(self, "handle_add_to_lemlist", None),
+            "apollo": getattr(self, "handle_add_to_apollo", None),
         }
         handler = handler_map.get(provider)
         if handler:
             return handler(data, linkedin_url)
         return {"status": "error", "output": "output", "error": f"Unknown sequencer provider: {provider}"}
+
+    def handle_add_to_smartlead(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_add_to_smartlead' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Smartlead sequencer integration is not yet implemented"}
+
+    def handle_add_to_instantly(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_add_to_instantly' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Instantly sequencer integration is not yet implemented"}
+
+    def handle_add_to_emailbison(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_add_to_emailbison' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "EmailBison sequencer integration is not yet implemented"}
+
+    def handle_add_to_lemlist(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_add_to_lemlist' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Lemlist sequencer integration is not yet implemented"}
+
+    def handle_add_to_apollo(self, data: dict, linkedin_url: str) -> dict:
+        logger.error(f"[Executor] Action 'handle_add_to_apollo' called on {linkedin_url} but is not yet implemented")
+        return {"status": "error", "error": "Apollo sequencer integration is not yet implemented"}
 
     def handle_update_lead_status(self, data: dict, linkedin_url: str) -> dict:
         try:
