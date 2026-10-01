@@ -4,6 +4,9 @@ from core.backend.api.auth_dep import get_service_client
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import hashlib
+import json
+from pydantic import BaseModel
+from core.backend.core import crypto
 
 router = APIRouter()
 
@@ -21,6 +24,67 @@ def verify_extension_api_key(x_api_key: str = Header(...), supabase: Client = De
     }).eq("key_hash", x_api_key_hash).execute()
     
     return res.data[0]["workspace_id"]
+
+class ExtensionSyncPayload(BaseModel):
+    account_id: Optional[str] = None
+    account_name: Optional[str] = None
+    cookies_json: str
+
+@router.post("/sync", response_model=dict)
+def sync_cookies(
+    payload: ExtensionSyncPayload,
+    workspace_id: str = Depends(verify_extension_api_key),
+    supabase: Client = Depends(get_service_client)
+):
+    try:
+        cookies = json.loads(payload.cookies_json)
+        if not cookies:
+            raise ValueError()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid cookies payload")
+
+    has_li_at = any(isinstance(c, dict) and c.get("name") == "li_at" for c in cookies)
+    if not has_li_at:
+        raise HTTPException(status_code=400, detail="li_at cookie missing from LinkedIn session")
+
+    encrypted_cookies = crypto.encrypt_data(workspace_id, payload.cookies_json)
+
+    if payload.account_id:
+        acc_check = supabase.table("accounts").select("id").eq("id", payload.account_id).eq("workspace_id", workspace_id).execute()
+        if not acc_check.data:
+            raise HTTPException(status_code=403, detail="Account does not belong to your workspace.")
+        
+        supabase.table("accounts").update({
+            "session_cookies_encrypted": encrypted_cookies,
+            "status": "ACTIVE",
+            "is_active": True,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", payload.account_id).execute()
+        account_id = payload.account_id
+    else:
+        existing = supabase.table("accounts").select("id").eq("workspace_id", workspace_id).eq("status", "DISCONNECTED").limit(1).execute()
+        if existing.data:
+            account_id = existing.data[0]["id"]
+            supabase.table("accounts").update({
+                "session_cookies_encrypted": encrypted_cookies,
+                "status": "ACTIVE",
+                "is_active": True,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", account_id).execute()
+        else:
+            import uuid
+            account_id = str(uuid.uuid4())
+            supabase.table("accounts").insert({
+                "id": account_id,
+                "workspace_id": workspace_id,
+                "account_name": payload.account_name or "LinkedIn Sender",
+                "session_cookies_encrypted": encrypted_cookies,
+                "status": "ACTIVE",
+                "is_active": True,
+                "platform": "LINKEDIN"
+            }).execute()
+
+    return {"status": "ok", "account_id": account_id, "message": "LinkedIn account successfully synced and encrypted"}
 
 @router.post("/heartbeat")
 def extension_heartbeat(

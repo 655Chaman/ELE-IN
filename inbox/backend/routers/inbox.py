@@ -89,6 +89,69 @@ def has_cycle(nodes: list, edges: list) -> bool:
 
 
 
+class SendReplyPayload(BaseModel):
+    sender_name: str
+    message_text: str
+    account_id: Optional[str] = None
+    ai_generated: Optional[bool] = False
+
+@router.post("/inbox/reply", response_model=dict)
+def send_inbox_reply(
+    payload: SendReplyPayload,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    from datetime import datetime, timedelta
+    
+    sender = payload.sender_name.strip()
+    msg = payload.message_text.strip()
+    
+    if not sender:
+        raise HTTPException(status_code=400, detail="sender_name must not be empty")
+    if not msg:
+        raise HTTPException(status_code=400, detail="message_text must not be empty")
+        
+    if len(msg) > 4000:
+        raise HTTPException(status_code=400, detail="Message exceeds maximum length of 4000 characters")
+        
+    try:
+        # Layer 2: Idempotency Guard
+        five_secs_ago = (datetime.utcnow() - timedelta(seconds=5)).isoformat()
+        
+        recent_check = supabase.table("messages").select("id").eq("workspace_id", workspace_id).eq("sender_name", sender).eq("message_text", msg).gte("created_at", five_secs_ago).execute()
+        if recent_check.data:
+            return {"status": "success", "message_id": recent_check.data[0]["id"], "deduplicated": True}
+            
+        msg_id = str(uuid.uuid4())
+        now_str = datetime.utcnow().isoformat()
+        
+        # Insert message
+        supabase.table("messages").insert({
+            "id": msg_id,
+            "workspace_id": workspace_id,
+            "sender_name": sender,
+            "message_text": msg,
+            "direction": "outbound",
+            "intent": "reply",
+            "created_at": now_str,
+            "updated_at": now_str
+        }).execute()
+        
+        # Insert log
+        supabase.table("action_log").insert({
+            "workspace_id": workspace_id,
+            "action_type": "inbox_reply_sent",
+            "result": "success",
+            "executed_at": now_str
+        }).execute()
+        
+        return {"status": "success", "message_id": msg_id, "message": "Reply sent successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send inbox reply: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to insert reply into database")
+
 # ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
 

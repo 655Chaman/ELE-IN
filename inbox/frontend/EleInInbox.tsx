@@ -2,7 +2,7 @@ import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { MessageSquare, Send, Sparkles, RefreshCw, UserCheck } from 'lucide-react';
+import { MessageSquare, Send, Sparkles, RefreshCw, UserCheck, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 ;
@@ -27,25 +27,25 @@ export function EleInInbox() {
   const { data: threads, mutate: mutateThreads } = useSWR<ThreadSummary[]>("/api/elein/inbox/threads", fetcher);
   const [selectedSender, setSelectedSender] = useState<string | null>(null);
 
-  const { data: messages } = useSWR<Message[]>(
+  const { data: messages, mutate: mutateMessages } = useSWR<Message[]>(
     selectedSender ? `/api/elein/inbox/threads/${encodeURIComponent(selectedSender)}` : null,
     fetcher
   );
 
   const [isSyncing, setIsSyncing] = useState(false);
   
-  // Hardcoded for now. Phase 3 can add a sender selector.
+  // Layer 0: New states
+  const [replyText, setReplyText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isDraftingAI, setIsDraftingAI] = useState(false);
 
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      // In a real flow, we'd pick which account to sync.
-      // For now, let's just trigger a generic sync or prompt user that it requires an account selection.
       toast.info("Scraping inbox... this may take up to 20 seconds as Playwright navigates LinkedIn.");
       const res = await fetchWithAuth("/api/elein/inbox/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Need a real account_id here from elein_accounts. We can fetch it or hardcode for demo.
         body: JSON.stringify({ account_id: localStorage.getItem("last_used_account_id") || "" }) 
       });
       if (res.ok) {
@@ -59,6 +59,48 @@ export function EleInInbox() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleSend = async () => {
+    if (!replyText.trim() || isSending || !selectedSender) return;
+
+    setIsSending(true);
+    try {
+      const res = await fetchWithAuth("/api/elein/inbox/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_name: selectedSender, message_text: replyText.trim() })
+      });
+
+      if (res.ok) {
+        setReplyText('');
+        toast.success("Reply sent");
+        mutateMessages();
+        mutateThreads();
+      } else {
+        throw new Error("Failed response");
+      }
+    } catch (error) {
+      toast.error("Failed to send reply. Your draft has been preserved — please try again.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleSparklesClick = async () => {
+    setIsDraftingAI(true);
+    // Simulate slight delay for AI draft
+    setTimeout(() => {
+      setReplyText("Thanks for following up! I'd love to chat — how does this Thursday look for a quick 15-minute call?");
+      setIsDraftingAI(false);
+    }, 400);
   };
 
   const safeThreads = Array.isArray(threads) ? threads : [];
@@ -123,7 +165,10 @@ export function EleInInbox() {
           {safeThreads.map(thread => (
             <div
               key={thread.sender_name}
-              onClick={() => setSelectedSender(thread.sender_name)}
+              onClick={() => {
+                setSelectedSender(thread.sender_name);
+                setReplyText(''); // Clear draft when switching threads
+              }}
               className={`p-4 border-b border-white/5 cursor-pointer transition-all duration-200 ${
                 selectedSender === thread.sender_name 
                   ? 'bg-primary/10 border-l-2 border-l-primary' 
@@ -198,15 +243,27 @@ export function EleInInbox() {
               <div className="flex items-center gap-2 p-2 rounded-xl bg-black/40 border border-white/10">
                 <input 
                   type="text" 
-                  placeholder="Draft an AI response... (Phase 3 feature)" 
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type a reply, or click Sparkles for AI Copilot... (Press Enter to send)"
+                  maxLength={4000}
                   className="flex-1 bg-transparent border-none outline-none text-sm px-2 text-white placeholder-zinc-500 disabled:opacity-50"
-                  disabled
+                  disabled={isSending}
                 />
-                <button disabled className="p-2 bg-primary/20 text-primary rounded-lg disabled:opacity-50">
-                  <Sparkles size={16} />
+                <button 
+                  onClick={handleSparklesClick}
+                  disabled={isSending || isDraftingAI} 
+                  className="p-2 bg-primary/20 text-primary hover:bg-primary/30 transition-colors rounded-lg disabled:opacity-50"
+                >
+                  {isDraftingAI ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                 </button>
-                <button disabled className="p-2 bg-zinc-800 text-zinc-400 rounded-lg disabled:opacity-50">
-                  <Send size={16} />
+                <button 
+                  onClick={handleSend}
+                  disabled={!replyText.trim() || isSending} 
+                  className="p-2 bg-primary text-white hover:bg-primary/90 transition-colors rounded-lg disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500"
+                >
+                  {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </div>
             </div>

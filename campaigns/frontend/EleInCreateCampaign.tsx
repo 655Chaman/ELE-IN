@@ -1122,9 +1122,29 @@ function EleInCreateCampaignInner() {
 
     if (params.get("resume") !== "true") return
     
-    // Draft restore is handled automatically by Zustand persist!
-    // Force step to 0 to gracefully handle old local storage state and start at the beginning.
-    setStep(0)
+    // LAYER 0 + LAYER 2 Paranoia: Actually implement the Draft Restore that was missing
+    const draftStr = localStorage.getItem("elein_unsaved_draft")
+    if (draftStr) {
+      try {
+        const draft = JSON.parse(draftStr)
+        if (draft.nodes && draft.nodes.length > 0) {
+          useHRTreeStore.getState().loadTree(dagToTree(draft.nodes, draft.edges || []), [])
+        }
+        if (draft.formState) {
+          useHRTreeStore.getState().setFormState(draft.formState)
+        }
+        if (typeof draft.step === "number") {
+          setStep(draft.step)
+        } else {
+          setStep(0)
+        }
+      } catch (e) {
+        console.error("Failed to parse or restore draft:", e)
+        setStep(0)
+      }
+    } else {
+      setStep(0)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search])
 
@@ -1222,6 +1242,9 @@ function EleInCreateCampaignInner() {
         description: "You can find it in your Campaigns dashboard."
       });
       // Clear the local draft so the "Unsaved Draft" banner doesn't reappear
+      try {
+        localStorage.removeItem("elein_unsaved_draft");
+      } catch(e) {}
       
       useHRTreeStore.getState().reset();
       mutate("/api/elein/dashboard/stats");
