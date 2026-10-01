@@ -6,11 +6,11 @@
 CREATE TABLE IF NOT EXISTS public.knowledge_synthesis_drafts (
     workspace_id uuid PRIMARY KEY REFERENCES public.workspaces(id) ON DELETE CASCADE,
     core_value_prop text,
-    identified_tone text[],
+    identified_tone JSONB,
     target_customer_profile text,
-    key_differentiators text[],
-    proof_points text[],
-    primary_pain_points_solved text[],
+    key_differentiators JSONB,
+    proof_points JSONB,
+    primary_pain_points_solved JSONB,
     status text DEFAULT 'pending_review',
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
     updated_at timestamp with time zone DEFAULT timezone('utc'::text, now())

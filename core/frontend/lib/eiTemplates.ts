@@ -1,4 +1,5 @@
-import type { Node, Edge } from "@xyflow/react"
+import type { EINode, EIEdge } from "./eiTypes"
+
 
 export const TEMPLATE_TAGS = ["all", "cold-outreach", "recruiting", "agency", "partnerships", "re-engagement", "thought-leadership", "custom"]
 export const TEMPLATE_TAG_LABELS: Record<string, string> = {
@@ -28,8 +29,8 @@ export interface EITemplate {
   difficulty: "beginner" | "intermediate" | "advanced"
   tags: string[]
   bestFor?: string
-  nodes: Node[]
-  edges: Edge[]
+  nodes: EINode[]
+  edges: EIEdge[]
   stickyNotes?: Record<string, StickyNote>
 }
 

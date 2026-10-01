@@ -659,11 +659,6 @@ class EleInOrchestrator:
             self.update_state(state["id"], current_node_id, "pending", resume_at, lease_token=lease_token, variables=state.get("variables"))
             return
             
-        if action_result.get("branch") == "Wait For Reply":
-            # The node sent the message, but we must now pause and wait for the inbox sync to route the reply.
-            # We set the status to 'waiting_for_reply'. The sync cron will advance it.
-            self.update_state(state["id"], current_node["id"], "waiting_for_reply", None, lease_token, tz_str=state.get('tz_str', 'UTC'))
-            return
 
         if action_result.get("status") == "rate_limited":
             # Reschedule to tomorrow 9am in their timezone

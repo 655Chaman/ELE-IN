@@ -1,3 +1,5 @@
+import type { EINode } from "@/lib/eiTypes"
+
 import { type EITemplate } from "@/lib/eiTemplates"
 import {
   Eye, UserPlus, MessageSquare, CheckCircle2, XCircle,
@@ -125,7 +127,7 @@ function StepCard({ node, stickyNote, delay, errors = [] }: {
 
 export function LinearTemplatePreview({ template, errors = {} }: Props) {
   // Build display order: start → middle steps → branch ends by Y position
-  const orderedNodes = [...template.nodes].sort((a, b) => {
+  const orderedEINodes = [...template.nodes].sort((a, b) => {
     const ay = a.position?.y ?? 0
     const by = b.position?.y ?? 0
     return ay - by
@@ -191,8 +193,8 @@ export function LinearTemplatePreview({ template, errors = {} }: Props) {
       )}
 
       {/* Step cards */}
-      {orderedNodes.map((node, i) => {
-        const isLast = i === orderedNodes.length - 1
+      {orderedEINodes.map((node, i) => {
+        const isLast = i === orderedEINodes.length - 1
         const delay = node.data?.delay as number | undefined
         const sticky = template.stickyNotes?.[node.id]
 

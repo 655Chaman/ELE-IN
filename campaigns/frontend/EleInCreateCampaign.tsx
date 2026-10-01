@@ -4,8 +4,6 @@ import { useNavigate, useSearchParams, useLocation, Link } from "react-router-do
 import useSWR from "swr"
 
 import { motion, AnimatePresence } from "motion/react"
-import { ReactFlowProvider } from "@xyflow/react"
-import "@xyflow/react/dist/style.css"
 
 import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight, ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle, Briefcase, Link as LinkIcon } from "lucide-react"
 import { cn } from "@/lib/utils"

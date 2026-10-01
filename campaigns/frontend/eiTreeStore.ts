@@ -1,6 +1,5 @@
 import type { EINodeType } from "@/lib/eiNodeDefs";
 import { create } from "zustand"
-import { persist } from "zustand/middleware"
 import { v4 as uuidv4 } from "uuid"
 
 export interface StickyNote {
@@ -84,7 +83,7 @@ function removeFromTree(nodes: SeqTreeNode[], nodeId: string): SeqTreeNode[] {
     })
 }
 
-export const useHRTreeStore = create<EITreeStore>()(persist((set) => ({
+export const useHRTreeStore = create<EITreeStore>()((set) => ({
   rootNodes: [],
   stickyNotes: [],
   selectedNodeId: null,
@@ -320,10 +319,8 @@ export const useHRTreeStore = create<EITreeStore>()(persist((set) => ({
       rootNodes: next
     }
   })
-}), {
-  name: 'hr-tree-store',
-  partialize: (state) => ({ rootNodes: state.rootNodes, stickyNotes: state.stickyNotes, formState: state.formState, campaignStep: state.campaignStep })
 }))
+
 
 
 export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
@@ -423,10 +420,3 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
   return { nodes, edges }
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'hr-tree-store') {
-      useHRTreeStore.persist.rehydrate();
-    }
-  });
-}
