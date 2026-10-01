@@ -81,6 +81,16 @@ ACTION_TYPE_MAP = {
     "invite_to_event":            "event_invite",
 }
 
+import time
+
+_GLOBAL_BRAIN_CACHE = {}
+_GLOBAL_BRAIN_CACHE_TTL = 300
+
+import time
+
+_GLOBAL_BRAIN_CACHE = {}
+_GLOBAL_BRAIN_CACHE_TTL = 300
+
 class EleInNodeExecutor:
 
     """
@@ -254,11 +264,11 @@ class EleInNodeExecutor:
             return {}
             
         # Fast caching on the executor instance
-        if not hasattr(self, '_brain_cache'):
-            self._brain_cache = {}
-            
-        if workspace_id in self._brain_cache:
-            return self._brain_cache[workspace_id]
+        global _GLOBAL_BRAIN_CACHE
+        now = time.time()
+        cached = _GLOBAL_BRAIN_CACHE.get(workspace_id)
+        if cached and (now - cached['timestamp']) < _GLOBAL_BRAIN_CACHE_TTL:
+            return cached['brain']
             
         try:
             brain = {}
@@ -274,7 +284,7 @@ class EleInNodeExecutor:
             if obj_res.data:
                 brain["objections"] = obj_res.data
                 
-            self._brain_cache[workspace_id] = brain
+            _GLOBAL_BRAIN_CACHE[workspace_id] = {'brain': brain, 'timestamp': now}
             return brain
         except Exception as e:
             logger.error(f"[Brain] Failed to load unified brain for {workspace_id}: {e}")

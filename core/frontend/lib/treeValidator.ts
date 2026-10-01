@@ -198,7 +198,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
 
     function checkVariablesInString(text: string | undefined, fieldName: string, customError?: (varName: string) => string) {
       if (!text || typeof text !== 'string') return;
-      const matches = [...text.matchAll(/{{\s*([\w.]+)\s*}}/g)];
+      const matches = [...text.matchAll(/{{\s*([\w.]+)(?:\|.*?)?\s*}}/g)];
       for (const match of matches) {
         let varName = match[1].trim();
         // Drop any filter syntax like | fallback
@@ -223,7 +223,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     // ISSUE #5: Check unprotected variables in messaging fields
     function findUnprotectedVariables(text: string): string[] {
       if (!text) return [];
-      const matches = [...text.matchAll(/{{\s*([\w.]+)\s*}}/g)];
+      const matches = [...text.matchAll(/{{\s*([\w.]+)(?:\|.*?)?\s*}}/g)];
       const unprotected: string[] = [];
       for (const match of matches) {
         unprotected.push(match[1]);
