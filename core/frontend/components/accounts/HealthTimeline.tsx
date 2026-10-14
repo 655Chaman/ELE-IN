@@ -1,8 +1,9 @@
 import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
-import { CheckCircle2, AlertTriangle, AlertCircle, Clock, RefreshCw } from "lucide-react"
+import { CheckCircle2, AlertTriangle, AlertCircle, Clock, RefreshCw, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
+import { usePaywall } from "@/contexts/PaywallContext"
 
 interface HealthCheck {
   id: string
@@ -30,9 +31,19 @@ export default function HealthTimeline({ accountId }: { accountId: string }) {
     `/api/elein/accounts/${accountId}/health-history`,
     fetcher
   )
+  const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_run_manual_health_check?: boolean } }>(
+    '/api/elein/workspaces/billing',
+    fetcher
+  )
+  const { openPaywall } = usePaywall()
+  const isHealthCheckLocked = Boolean(billing && !billing.tier_limits?.can_run_manual_health_check)
   const [running, setRunning] = useState(false)
 
   const runCheck = async () => {
+    if (isHealthCheckLocked) {
+      openPaywall({ featureName: "Real-Time Account Health Diagnostics" })
+      return
+    }
     setRunning(true)
     try {
       await fetchWithAuth(`/api/elein/accounts/${accountId}/health-check`, { method: "POST" })
@@ -56,14 +67,25 @@ export default function HealthTimeline({ accountId }: { accountId: string }) {
     <div className="mt-4 p-3 rounded-lg bg-background/40 border border-border/50">
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Clock size={12} /> Health Checks</h4>
-        <button 
-          onClick={runCheck}
-          disabled={running}
-          className="flex items-center gap-1 px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[10px] font-medium transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={10} className={cn(running && "animate-spin")} />
-          Run Health Check
-        </button>
+        {isHealthCheckLocked ? (
+          <button 
+            onClick={runCheck}
+            className="flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded text-[10px] font-medium transition-colors cursor-pointer"
+          >
+            <Lock size={10} className="text-amber-500" />
+            <span>Run Health Check</span>
+            <span className="text-[9px] font-bold px-1 py-0.2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded">PRO</span>
+          </button>
+        ) : (
+          <button 
+            onClick={runCheck}
+            disabled={running}
+            className="flex items-center gap-1 px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[10px] font-medium transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={10} className={cn(running && "animate-spin")} />
+            Run Health Check
+          </button>
+        )}
       </div>
 
       {!checks || checks.length === 0 ? (

@@ -1,5 +1,3 @@
 #!/bin/bash
-cd "$(dirname "$0")"
-cd ..
-echo "Starting Ele-in Background Orchestrator Worker..."
-PYTHONPATH=. backend/venv/bin/python -m core.backend.workers.orchestrator_worker
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/start-worker.sh"

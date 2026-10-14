@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: elein-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    plan: standard # 2GB RAM required for Playwright
+    healthCheckPath: /
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MAX_CONCURRENT_BROWSERS
+        value: "3" # Prevent OOM crashes on Standard tier
+    startCommand: "uvicorn core.backend.main:app --host 0.0.0.0 --port $PORT"
+
+  - type: worker
+    name: elein-worker
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    plan: standard # 2GB RAM required for Playwright
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MAX_CONCURRENT_BROWSERS
+        value: "3" # Prevent OOM crashes on Standard tier
+    startCommand: "python -m core.backend.workers.job_processor"
+
+  - type: web
+    name: elein-frontend
+    env: docker
+    dockerfilePath: frontend/Dockerfile
+    plan: starter
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false

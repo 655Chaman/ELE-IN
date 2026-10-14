@@ -46,6 +46,12 @@ async def log_error(request: Request, payload: ErrorLog):
     
     _rate_limit_records[client_ip].append(current_time)
 
+    # Paranoia Layer 1: Bound memory - evict stale IPs if tracked set exceeds 1000
+    if len(_rate_limit_records) > 1000:
+        stale_ips = [ip for ip, timestamps in _rate_limit_records.items() if not timestamps or timestamps[-1] < window_start]
+        for ip in stale_ips:
+            _rate_limit_records.pop(ip, None)
+
     # Truncate strings
     data = {
         "message": _truncate(payload.message),

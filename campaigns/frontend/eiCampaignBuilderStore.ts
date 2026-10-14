@@ -9,6 +9,7 @@ export interface EICampaignBuilderState {
   excludeOtherCampaigns: boolean
   excludeOtherSenders: boolean
   excludeSameSender: boolean
+  stopOnReply: boolean
   senders: string[]
   activeDays: string[]
   startHour: string
@@ -28,6 +29,7 @@ const initialState = {
   excludeOtherCampaigns: true,
   excludeOtherSenders: false,
   excludeSameSender: false,
+  stopOnReply: true,
   senders: [],
   activeDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
   startHour: "09:00",

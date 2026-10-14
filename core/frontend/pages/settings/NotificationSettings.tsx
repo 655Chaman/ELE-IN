@@ -1,65 +1,98 @@
 import { useState, useEffect, useMemo } from "react";
-import { Bell, Lock, Smartphone, Mail, ShieldAlert, Activity, User } from "lucide-react";
+import { Bell, Lock, Smartphone, Mail, ShieldAlert, Activity, User, Zap } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import SpotlightCard from "@/components/SpotlightCard";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { SettingsLoadingSkeleton } from "@/components/SettingsLoadingSkeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { usePaywall } from "@/contexts/PaywallContext";
+import { NotificationPrePermissionTeaser } from "@/components/notifications/NotificationPrePermissionTeaser";
 
-const KNOWN_EVENT_TYPES = [
+export type EventTypeItem = {
+  id: string;
+  label: string;
+  group: 'critical' | 'activity';
+  desc: string;
+  recommended: { in_app: boolean; email: boolean };
+  isPro?: boolean;
+};
+
+const KNOWN_EVENT_TYPES: EventTypeItem[] = [
   { 
     id: "account_suspended", 
     label: "Account Suspended / Banned", 
     group: "critical", 
-    desc: "Without this, you won't know when LinkedIn restricts an account.",
-    recommended: { in_app: true, email: true }
+    desc: "Critical protection: alerts you immediately if LinkedIn restricts or suspends an account.",
+    recommended: { in_app: true, email: true },
+    isPro: false,
   },
   { 
     id: "account_needs_attention", 
     label: "Account Needs Attention", 
     group: "critical", 
-    desc: "If disabled, you'll miss rate-limit warnings and risk permanent bans.",
-    recommended: { in_app: true, email: true }
+    desc: "Alerts when an account hits rate ceilings, proxy disconnects, or manual activity is detected.",
+    recommended: { in_app: true, email: true },
+    isPro: false,
+  },
+  { 
+    id: "campaign_anomaly", 
+    label: "Campaign Anomaly & Health Spikes", 
+    group: "critical", 
+    desc: "Immediate warning if bounce rates spike or connection acceptance drops below safety thresholds.",
+    recommended: { in_app: true, email: true },
+    isPro: true,
+  },
+  { 
+    id: "lead_replied_instant", 
+    label: "Instant Prospect Reply Alerts", 
+    group: "activity", 
+    desc: "Real-time desktop push, synthesized audio chime, and email notification when a lead replies.",
+    recommended: { in_app: true, email: true },
+    isPro: false,
   },
   { 
     id: "approval_queue_pending", 
     label: "Approval Queue Pending", 
     group: "activity", 
-    desc: "Notifies you when messages need manual approval before sending.",
-    recommended: { in_app: true, email: false }
+    desc: "Notifies you when outgoing AI replies require operator approval before dispatch.",
+    recommended: { in_app: true, email: false },
+    isPro: false,
   },
   { 
     id: "campaign_completed", 
     label: "Campaign Completed", 
     group: "activity", 
-    desc: "Notifies you when a campaign finishes contacting all its leads.",
-    recommended: { in_app: true, email: false }
+    desc: "Notifies you when an outreach campaign finishes contacting all enrolled prospects.",
+    recommended: { in_app: true, email: false },
+    isPro: false,
   },
   { 
     id: "daily_digest", 
-    label: "Daily Digest", 
+    label: "Morning Executive Digest", 
     group: "activity", 
-    desc: "Morning summary of your workspace's performance.",
-    recommended: { in_app: false, email: true }
+    desc: "Consolidated morning summary of replies, sent messages, and booked meetings across accounts.",
+    recommended: { in_app: false, email: true },
+    isPro: true,
   },
 ];
 
 function Toggle({
   enabled,
   locked,
+  isProLocked,
   onClick,
 }: {
   enabled: boolean;
   locked?: boolean;
+  isProLocked?: boolean;
   onClick: () => void;
 }) {
   if (locked) {
     return (
       <div
-        title="This alert cannot be disabled for your safety."
-        className="flex items-center justify-center gap-1.5 w-[72px] h-6 rounded-full bg-success/10 text-success border border-success/20 font-bold text-[10px] uppercase tracking-wider cursor-not-allowed select-none"
+        title="This safety alert cannot be disabled."
+        className="flex items-center justify-center gap-1 w-14 h-5 rounded-full bg-primary/10 text-primary border border-primary/20 font-semibold text-[10px] uppercase tracking-wider cursor-not-allowed select-none"
       >
         <Lock size={10} /> ON
       </div>
@@ -70,19 +103,23 @@ function Toggle({
     <button
       type="button"
       onClick={onClick}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
-        enabled ? "bg-primary" : "bg-muted-foreground/30"
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors duration-200 focus:outline-none ${
+        enabled ? "bg-primary border-primary" : "bg-muted"
       }`}
     >
       <motion.span
         layout
         initial={false}
         animate={{
-          x: enabled ? 20 : 0,
+          x: enabled ? 16 : 2,
         }}
         transition={{ type: "spring", stiffness: 500, damping: 30 }}
-        className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-0"
-      />
+        className="pointer-events-none inline-flex items-center justify-center h-3.5 w-3.5 rounded-full bg-background shadow-xs"
+      >
+        {isProLocked && !enabled && (
+          <Lock size={8} className="text-muted-foreground" />
+        )}
+      </motion.span>
     </button>
   );
 }
@@ -92,19 +129,27 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
     workspaceId ? `/api/workspaces/${workspaceId}/notification-preferences` : null,
     fetcher
   );
+  const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_custom_notification_routing?: boolean } }>(
+    '/api/elein/workspaces/billing',
+    fetcher
+  );
+  const { openPaywall } = usePaywall();
+  const isNotificationLocked = Boolean(billing && !billing.tier_limits?.can_custom_notification_routing);
 
   const [prefs, setPrefs] = useState<any[]>([]);
 
   useEffect(() => {
-    if (data?.preferences) {
-      setPrefs(data.preferences);
+    const rawPrefs = Array.isArray(data) ? data : data?.preferences;
+    if (rawPrefs) {
+      setPrefs(rawPrefs);
     }
   }, [data]);
 
   const displayEventTypes = useMemo(() => {
-    if (!data?.preferences) return KNOWN_EVENT_TYPES;
+    const rawPrefs = Array.isArray(data) ? data : data?.preferences;
+    if (!rawPrefs) return KNOWN_EVENT_TYPES;
     
-    const backendTypes = new Set(data.preferences.map((p: any) => p.event_type));
+    const backendTypes = new Set(rawPrefs.map((p: any) => p.event_type));
     const knownIds = new Set(KNOWN_EVENT_TYPES.map(e => e.id));
     
     // Find any unknown types from backend
@@ -113,20 +158,28 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
       .map(id => ({
         id: id as string,
         label: (id as string).replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-        desc: 'Notification from backend',
+        desc: 'Notification from backend service',
         group: 'activity' as const,
-        recommended: { in_app: false, email: false }
+        recommended: { in_app: false, email: false },
+        isPro: false,
       }));
     
     return [...KNOWN_EVENT_TYPES, ...unknownFromBackend];
-  }, [data?.preferences]);
+  }, [data]);
 
   const handleToggle = async (eventType: string, channel: string, currentEnabled: boolean) => {
     if (!workspaceId) return;
     
-    // Paranoia Layer 2: physically enforce lock, double-check logic
+    // Paranoia Layer 2: physically enforce safety lock
     if (eventType === "account_suspended" && channel === "in_app") {
       toast.error("Critical safety alerts cannot be disabled.");
+      return;
+    }
+
+    // Paranoia Layer 1: Pro-gated notifications interception
+    const eventDef = displayEventTypes.find(e => e.id === eventType);
+    if (eventDef?.isPro && isNotificationLocked && !currentEnabled) {
+      openPaywall({ featureName: "Custom Notification Routing & Daily Digest" });
       return;
     }
 
@@ -152,7 +205,15 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
         enabled: !currentEnabled
       }),
     }).then(async (res) => {
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        if (res.status === 402 || res.status === 403) {
+          openPaywall({ featureName: "Custom Notification Routing & Daily Digest" });
+          const rawPrefs = Array.isArray(data) ? data : data?.preferences;
+          if (rawPrefs) setPrefs(rawPrefs);
+          throw new Error("PRO_LOCKED");
+        }
+        throw new Error(await res.text());
+      }
       mutate();
       return res;
     });
@@ -161,9 +222,13 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
       loading: 'Saving preference...',
       success: 'Preference updated successfully',
       error: (err) => {
+        if (err?.message === "PRO_LOCKED") {
+          return "Upgrade to Growth Pro to enable this notification.";
+        }
         // Revert optimistic update on failure (Paranoia Layer 1)
-        if (data?.preferences) {
-          setPrefs(data.preferences);
+        const rawPrefs = Array.isArray(data) ? data : data?.preferences;
+        if (rawPrefs) {
+          setPrefs(rawPrefs);
         }
         mutate(); 
         return "Failed to save preference — please try again.";
@@ -172,9 +237,20 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
   };
 
   const getPref = (eventType: string, channel: string) => {
-    // Paranoia Layer 1: Empty preferences default to false safely, except suspended in-app which defaults true physically.
+    // Paranoia Layer 1: Critical safety alerts cannot be disabled
     if (eventType === "account_suspended" && channel === "in_app") return true;
-    return prefs.find((p) => p.event_type === eventType && p.channel === channel)?.enabled ?? false;
+
+    const existing = prefs.find((p) => p.event_type === eventType && p.channel === channel);
+    if (existing !== undefined) {
+      return existing.enabled;
+    }
+
+    // Align with backend database schema DEFAULT true and recommended event settings
+    const eventDef = displayEventTypes.find((e) => e.id === eventType);
+    if (eventDef?.recommended) {
+      return (eventDef.recommended as any)[channel] ?? true;
+    }
+    return true;
   };
 
   if (!workspaceId) {
@@ -186,77 +262,187 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
   }
 
   return (
-    <div className="space-y-8 max-w-4xl">
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
-        <div className="flex items-center gap-4 mb-8">
-          <div className="p-3 bg-primary/10 rounded-xl">
-            <Bell className="text-primary" size={24} />
+    <div className="space-y-6 max-w-4xl text-foreground">
+      <div className="p-6 rounded-2xl border border-border bg-card shadow-xs">
+        <div className="flex items-center gap-3.5 mb-6">
+          <div className="p-2.5 bg-primary/10 rounded-xl text-primary border border-primary/20">
+            <Bell size={20} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Notification Preferences</h2>
-            <span className="inline-flex items-center gap-1 text-xs bg-muted/50 text-muted-foreground px-2 py-0.5 rounded-full font-medium mt-2 mb-1">
-              <User size={10} /> Personal to you
-            </span>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your personal notification preferences for this workspace. Each team member configures these independently.
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">Notification Preferences</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="inline-flex items-center gap-1 text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-medium">
+                <User size={10} /> Personal to you
+              </span>
+              <p className="text-xs text-muted-foreground">
+                Configured independently per team member in this workspace.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* High-Value Alert Teaser & Interactive Test Bench */}
+        <div className="mb-6">
+          <NotificationPrePermissionTeaser workspaceId={workspaceId} variant="compact" />
+        </div>
+
+        {/* In-Situ Pro Upgrade Banner (Minimal, token-aligned, zero gradient) */}
+        {isNotificationLocked && (
+          <div className="mb-6 p-4 rounded-xl bg-muted/30 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg text-primary shrink-0 mt-0.5 border border-primary/20">
+                <Lock size={16} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-semibold text-foreground">
+                    Growth Pro: Real-Time Lead Alerts & Executive Digest
+                  </h3>
+                  <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 bg-primary/10 text-primary rounded-full border border-primary/20">
+                    Pro
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 max-w-xl leading-relaxed">
+                  Upgrade to receive instant warm prospect reply alerts, campaign bounce anomaly triggers, and executive morning digest reports.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => openPaywall({ featureName: "Custom Notification Routing & Daily Digest" })}
+              className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium shrink-0 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <Zap size={12} className="fill-current" />
+              Upgrade to Pro
+            </button>
+          </div>
+        )}
+
+        {/* Critical Alerts Section */}
+        <div className="rounded-xl border border-border bg-card p-5 mb-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="p-1.5 bg-primary/10 rounded-lg text-primary border border-primary/20">
+              <ShieldAlert size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Critical Alerts</h3>
+              <p className="text-xs text-muted-foreground">Safety alerts that protect accounts and delivery health.</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {displayEventTypes.filter(e => e.group === "critical").map(evt => (
+              <EventRow 
+                key={evt.id}
+                evt={evt} 
+                getPref={getPref} 
+                handleToggle={handleToggle} 
+                isNotificationLocked={isNotificationLocked}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Activity Updates Section */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="p-1.5 bg-primary/10 rounded-lg text-primary border border-primary/20">
+              <Activity size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Activity Updates</h3>
+              <p className="text-xs text-muted-foreground">Inbound lead replies, completion milestones, and digests.</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {displayEventTypes.filter(e => e.group === "activity").map(evt => (
+              <EventRow 
+                key={evt.id}
+                evt={evt} 
+                getPref={getPref} 
+                handleToggle={handleToggle} 
+                isNotificationLocked={isNotificationLocked}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Real-time Multi-Channel Webhook & Slack Routing Cards */}
+      <div className="p-6 rounded-2xl border border-border bg-card shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">
+                Multi-Channel Real-time Alert Routing
+              </h3>
+              <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 bg-primary/10 text-primary rounded border border-primary/20">
+                Pro+
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Stream prospect replies, campaign anomalies, and pipeline events directly into team channels.
             </p>
           </div>
+          {isNotificationLocked && (
+            <button
+              onClick={() => openPaywall({ featureName: "Multi-Channel Alert Dispatcher" })}
+              className="px-3 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-medium shrink-0 flex items-center gap-1.5 transition-colors self-start sm:self-auto cursor-pointer border border-border"
+            >
+              <Lock size={12} className="text-muted-foreground" />
+              Unlock Multi-Channel
+            </button>
+          )}
         </div>
 
-      {/* Critical Alerts Section */}
-      <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-warning/5 shadow-sm">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-destructive" />
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <ShieldAlert size={24} />
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="p-4 rounded-xl border border-border bg-muted/20 flex flex-col justify-between">
             <div>
-              <h3 className="text-lg font-bold tracking-tight text-foreground">Critical Alerts</h3>
-              <p className="text-sm text-muted-foreground mt-1">Safety alerts that protect your accounts and campaigns.</p>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-foreground">Slack Real-Time</span>
+                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium border border-primary/20">Pro+</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Post high-intent replies into a shared sales channel with direct reply links.
+              </p>
+            </div>
+            <div className="mt-3.5 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Status</span>
+              <span className="font-medium text-foreground">{isNotificationLocked ? "Locked" : "Available"}</span>
             </div>
           </div>
-          <motion.div layout className="space-y-3">
-            {displayEventTypes.filter(e => e.group === "critical").map(evt => (
-              <motion.div key={evt.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <EventRow 
-                  evt={evt} 
-                  getPref={getPref} 
-                  handleToggle={handleToggle} 
-                />
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </div>
 
-      {/* Activity Updates Section */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-surface shadow-sm">
-        <div className="absolute top-0 bottom-0 left-0 w-1 bg-gradient-to-b from-primary to-primary/80" />
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <Activity size={24} />
-            </div>
+          <div className="p-4 rounded-xl border border-border bg-muted/20 flex flex-col justify-between">
             <div>
-              <h3 className="text-lg font-bold tracking-tight text-foreground">Activity Updates</h3>
-              <p className="text-sm text-muted-foreground mt-1">Stay informed about your workspace's progress and results.</p>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-foreground">Discord Webhooks</span>
+                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium border border-primary/20">Pro+</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Instant bot notifications for account health events and quota warnings.
+              </p>
+            </div>
+            <div className="mt-3.5 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Status</span>
+              <span className="font-medium text-foreground">{isNotificationLocked ? "Locked" : "Available"}</span>
             </div>
           </div>
-          <motion.div layout className="space-y-3">
-            {displayEventTypes.filter(e => e.group === "activity").map(evt => (
-              <motion.div key={evt.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <EventRow 
-                  evt={evt} 
-                  getPref={getPref} 
-                  handleToggle={handleToggle} 
-                />
-              </motion.div>
-            ))}
-          </motion.div>
+
+          <div className="p-4 rounded-xl border border-border bg-muted/20 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-foreground">Custom Webhooks</span>
+                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium border border-primary/20">Enterprise</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Raw signed JSON webhook payloads routed to custom internal automation or Zapier.
+              </p>
+            </div>
+            <div className="mt-3.5 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Status</span>
+              <span className="font-medium text-foreground">{isNotificationLocked ? "Locked" : "Configured in Integrations"}</span>
+            </div>
+          </div>
         </div>
       </div>
-      </SpotlightCard>
     </div>
   );
 }
@@ -264,55 +450,71 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
 function EventRow({ 
   evt, 
   getPref, 
-  handleToggle 
+  handleToggle, 
+  isNotificationLocked,
 }: { 
-  evt: typeof KNOWN_EVENT_TYPES[0], 
+  evt: EventTypeItem, 
   getPref: (evt: string, ch: string) => boolean, 
-  handleToggle: (evt: string, ch: string, enabled: boolean) => void 
+  handleToggle: (evt: string, ch: string, enabled: boolean) => void,
+  isNotificationLocked: boolean,
 }) {
   const inAppEnabled = getPref(evt.id, "in_app");
   const emailEnabled = getPref(evt.id, "email");
   const isLockedInApp = evt.id === "account_suspended";
+  const isProGated = Boolean(evt.isPro && isNotificationLocked);
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl hover:bg-muted/30 transition-colors border border-transparent hover:border-border/50 group bg-background/50 sm:bg-transparent">
-      <div className="flex-1 pr-6 mb-4 sm:mb-0">
-        <h4 className="font-semibold text-foreground">{evt.label}</h4>
-        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl hover:bg-muted/30 transition-colors border border-border/40 group">
+      <div className="flex-1 pr-4 mb-3 sm:mb-0">
+        <div className="flex items-center gap-2">
+          <h4 className="text-xs sm:text-sm font-medium text-foreground">{evt.label}</h4>
+          {evt.isPro && (
+            <span className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
+              isNotificationLocked 
+                ? "bg-muted text-muted-foreground border border-border" 
+                : "bg-primary/10 text-primary border border-primary/20"
+            }`}>
+              Pro
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
           {evt.desc}
         </p>
       </div>
       
-      <div className="flex items-center gap-6 bg-surface sm:bg-background/50 p-3 rounded-lg border border-border/40 shadow-sm sm:shadow-none">
-        <div className="flex flex-col items-center gap-2 min-w-[72px]">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Smartphone size={14} /> In-App
+      <div className="flex items-center gap-4 bg-muted/20 sm:bg-transparent p-2 sm:p-0 rounded-lg shrink-0">
+        <div className="flex flex-col items-center gap-1.5 min-w-[64px]">
+          <div className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground">
+            <Smartphone size={12} /> In-App
           </div>
           <Toggle 
             enabled={inAppEnabled} 
             locked={isLockedInApp} 
+            isProLocked={isProGated}
             onClick={() => handleToggle(evt.id, "in_app", inAppEnabled)} 
           />
-          <div className="h-4 flex items-center justify-center">
+          <div className="h-3 flex items-center justify-center">
             {evt.recommended.in_app && !isLockedInApp && (
-              <span className="text-[10px] text-muted-foreground/70 font-medium">Recommended</span>
+              <span className="text-[9px] text-muted-foreground/60">Rec</span>
             )}
           </div>
         </div>
         
-        <div className="w-px h-12 bg-border/50" />
+        <div className="w-px h-8 bg-border/40" />
         
-        <div className="flex flex-col items-center gap-2 min-w-[72px]">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Mail size={14} /> Email
+        <div className="flex flex-col items-center gap-1.5 min-w-[64px]">
+          <div className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground">
+            <Mail size={12} /> Email
           </div>
           <Toggle 
             enabled={emailEnabled} 
+            isProLocked={isProGated}
             onClick={() => handleToggle(evt.id, "email", emailEnabled)} 
           />
-          <div className="h-4 flex items-center justify-center">
+          <div className="h-3 flex items-center justify-center">
             {evt.recommended.email && (
-              <span className="text-[10px] text-muted-foreground/70 font-medium">Recommended</span>
+              <span className="text-[9px] text-muted-foreground/60">Rec</span>
             )}
           </div>
         </div>

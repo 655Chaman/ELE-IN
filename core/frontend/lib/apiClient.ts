@@ -15,6 +15,10 @@ async function refreshToken(): Promise<string | null> {
   return refreshPromise
 }
 
+// Layer 0 + Layer 1: Paranoia - Robust API Base URL normalization
+const rawApiBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ? String(import.meta.env.VITE_API_URL).trim() : ''
+const API_BASE = rawApiBase ? rawApiBase.replace(/\/+$/, '') : ''
+
 export async function fetchWithAuth(path: string, options: AuthRequestInit = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   const headers = new Headers(options.headers || {})
@@ -28,7 +32,14 @@ export async function fetchWithAuth(path: string, options: AuthRequestInit = {})
     headers.set('X-Workspace-Id', activeWorkspace)
   }
   
-  const res = await fetch(path, { ...options, headers })
+  // Layer 0 + 1 + 2: URL Normalization
+  // If absolute URL (http:// or https://), use as-is
+  // Otherwise, prepend API_BASE (if defined) ensuring clean slash separation
+  const resolvedUrl = (path.startsWith('http://') || path.startsWith('https://'))
+    ? path
+    : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`
+
+  const res = await fetch(resolvedUrl, { ...options, headers })
 
   // --- 401: Token expired — try a single silent refresh then retry ---
   if (res.status === 401 && !options._isRetry) {
@@ -46,7 +57,17 @@ export async function fetchWithAuth(path: string, options: AuthRequestInit = {})
     }
   }
 
-  // --- 403: Check for structured MFA_REQUIRED code so we can redirect to setup ---
+  // --- 402: Payment Required / Out of Credits Interceptor ---
+  if (res.status === 402) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
+        detail: { type: 'credits', reason: 'Credit balance exhausted' }
+      }))
+    }
+    return res
+  }
+
+  // --- 403: Check for structured MFA, Ghost Workspace, or Tier/Campaign Limits ---
   if (res.status === 403) {
     try {
       const errData = await res.clone().json()
@@ -54,6 +75,32 @@ export async function fetchWithAuth(path: string, options: AuthRequestInit = {})
         if (typeof window !== 'undefined') {
           const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
           window.dispatchEvent(new CustomEvent('auth:redirect', { detail: { path: `/mfa-setup?returnUrl=${returnUrl}` } }))
+        }
+        return res
+      }
+
+      // Paranoia Layer 1: Check for Tier Limits, Campaign Limits, or Credit Exhaustion
+      const detailStr = (typeof errData?.detail === 'string' ? errData.detail : JSON.stringify(errData || '')).toLowerCase();
+      const isCreditLimit = detailStr.includes('credit') || detailStr.includes('balance');
+      const isTierLimit = detailStr.includes('tier') || 
+                          detailStr.includes('growth') || 
+                          detailStr.includes('pro') || 
+                          detailStr.includes('campaign limit') || 
+                          detailStr.includes('1 active campaign') ||
+                          detailStr.includes('upgrade');
+
+      if (isCreditLimit) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
+            detail: { type: 'credits', reason: errData?.detail || 'Credit balance exhausted' }
+          }))
+        }
+        return res
+      } else if (isTierLimit) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
+            detail: { type: 'tier', reason: errData?.detail || 'Upgrade required to continue' }
+          }))
         }
         return res
       }

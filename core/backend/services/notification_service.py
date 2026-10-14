@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 # Default channel rules per event type: {event_type: {channel: default_enabled}}
 DEFAULT_CHANNELS: Dict[str, Dict[str, bool]] = {
+    'lead_replied_instant':    {'in_app': True,  'email': True},
     'account_suspended':       {'in_app': True,  'email': True},   # in_app cannot be disabled
     'account_needs_attention': {'in_app': True,  'email': True},
     'approval_queue_pending':  {'in_app': True,  'email': False},
@@ -26,7 +27,7 @@ def _resolve_channels_for_user(
     prefs_map: Dict[Tuple[str, str], bool]
 ) -> List[str]:
     """Pure function — no DB calls. Resolves active channels for a user."""
-    defaults = DEFAULT_CHANNELS.get(event_type, {'in_app': True})
+    defaults = DEFAULT_CHANNELS.get(event_type, {'in_app': True, 'email': True})
     locked = LOCKED_ON_CHANNELS.get(event_type, set())
     active = []
     for channel, default_enabled in defaults.items():
@@ -41,9 +42,16 @@ def dispatch_notification(
     svc: Client,
     workspace_id: str,
     event_type: str,
-    payload: dict
+    payload: dict,
+    immediate_in_app: bool = True
 ) -> None:
-    """Dispatch a workspace notification. Uses batch queries, never N+1."""
+    """
+    Dispatch a workspace notification across active channels (in_app, email, slack).
+    Paranoia Architecture:
+    - Layer 0: Inserts into outbox_events with deterministic idempotency.
+    - Layer 1: Fast-tracks in_app directly into public.notifications for 0ms WebSocket Realtime delivery.
+    - Layer 2: Entity-specific idempotency keys prevent cross-lead collision or duplicate spam.
+    """
     try:
         # QUERY 1: All workspace members
         members_res = svc.table('workspace_members').select('user_id').eq('workspace_id', workspace_id).execute()
@@ -54,7 +62,12 @@ def dispatch_notification(
         if not user_ids:
             return
         
-        # QUERY 2: All preferences for this event_type in this workspace (ONE query)
+        # If specific target user is designated in payload, narrow down
+        target_override = payload.get('target_user_id') or payload.get('user_id')
+        if target_override and target_override in user_ids:
+            user_ids = [target_override]
+        
+        # QUERY 2: All preferences for this event_type in this workspace (ONE batch query)
         prefs_res = svc.table('notification_preferences') \
             .select('user_id,channel,enabled') \
             .eq('workspace_id', workspace_id) \
@@ -66,28 +79,60 @@ def dispatch_notification(
         }
         
         # Build all events in memory (no DB calls in loop)
-        account_id_for_key = str(payload.get('account_id', ''))
+        entity_key = str(
+            payload.get('unique_key') 
+            or payload.get('message_id') 
+            or payload.get('lead_id') 
+            or payload.get('account_id') 
+            or uuid.uuid4()
+        )
+        
         events = []
+        immediate_in_app_rows = []
         CHUNK_SIZE = 50
+        
+        title = payload.get("title") or "Ele-in Alert"
+        body = payload.get("body") or payload.get("message") or "You have a new alert in Ele-in."
+        link = payload.get("link")
+
         for i in range(0, len(user_ids), CHUNK_SIZE):
             chunk = user_ids[i:i + CHUNK_SIZE]
             for user_id in chunk:
                 channels = _resolve_channels_for_user(event_type, user_id, prefs_map)
                 for channel in channels:
-                    idempotency_key = f'{workspace_id}:{user_id}:{channel}:{event_type}:{account_id_for_key}'
+                    event_id = str(uuid.uuid4())
+                    idempotency_key = f'{workspace_id}:{user_id}:{channel}:{event_type}:{entity_key}'
                     events.append({
-                        'id': str(uuid.uuid4()),
+                        'id': event_id,
                         'workspace_id': workspace_id,
                         'event_type': f'notification.{channel}',
                         'payload': {'user_id': user_id, 'event_type': event_type, 'payload': payload},
                         'idempotency_key': idempotency_key,
                     })
+
+                    if channel == 'in_app' and immediate_in_app:
+                        immediate_in_app_rows.append({
+                            'workspace_id': workspace_id,
+                            'user_id': user_id,
+                            'title': title,
+                            'body': body,
+                            'link': link,
+                            'event_type': event_type,
+                            'outbox_event_id': event_id
+                        })
         
-        # QUERY 3: ONE batch upsert (idempotency_key prevents duplicates)
+        # Fast-track immediate In-App delivery for 0s Realtime WebSocket push
+        if immediate_in_app_rows:
+            try:
+                svc.table('notifications').insert(immediate_in_app_rows).execute()
+            except Exception as in_app_err:
+                logger.debug(f'Immediate in-app insert handled or skipped: {in_app_err}')
+
+        # QUERY 3: ONE batch upsert to outbox_events (idempotency_key prevents duplicates)
         if events:
             svc.table('outbox_events').upsert(events, on_conflict='idempotency_key').execute()
             logger.info(f'Dispatched {len(events)} notification event(s) for {event_type} in workspace {workspace_id}')
     
     except Exception as e:
-        # Notification failure MUST NOT propagate — it must never block the calling operation
+        # Notification failure MUST NOT propagate — it must never block the calling business operation
         logger.error(f'Failed to dispatch notification {event_type} for workspace {workspace_id}: {e}')

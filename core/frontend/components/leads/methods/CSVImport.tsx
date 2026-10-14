@@ -1,6 +1,10 @@
 import Papa from "papaparse"
-import { Download, LayoutTemplate, Sparkles, Upload } from "lucide-react"
+import { motion } from "motion/react"
+import { toast } from "sonner"
+import { Download, LayoutTemplate, Sparkles, Upload, Rocket, ArrowRight, ShieldCheck, CheckCircle2, AlertTriangle, Table, Eye } from "lucide-react"
 import { useLeadImport } from "../LeadImportContext"
+import { usePaywall } from "@/contexts/PaywallContext"
+import { ElesiumLogo } from "@/components/ElesiumLogo"
 
 export function CSVImport() {
   const { 
@@ -8,34 +12,74 @@ export function CSVImport() {
     file, setFile, 
     cleanData, setCleanData, 
     headers, setHeaders, 
+    sampleRows, setSampleRows,
     mappings, setMappings, 
     billing, 
-    fileInputRef 
+    fileInputRef,
+    detectedRowCount, setDetectedRowCount,
+    name
   } = useLeadImport();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { openPaywall } = usePaywall();
+  const isPro = billing?.tier === 'PRO' || billing?.tier === 'ENTERPRISE';
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) {
+      if (!selected.name.toLowerCase().endsWith(".csv")) {
+        toast.error("Please select a .csv file. Excel spreadsheets (.xlsx) can be exported to CSV.");
+        return;
+      }
       setFile(selected);
+
+      // Fast non-blocking row count calculation
+      try {
+        if (selected.size < 5 * 1024 * 1024) {
+          const text = await selected.text();
+          const lines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
+          setDetectedRowCount(Math.max(0, lines.length - 1));
+        } else {
+          const slice = selected.slice(0, 256 * 1024);
+          const text = await slice.text();
+          const sampleLines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
+          const avgBytesPerLine = (256 * 1024) / Math.max(1, sampleLines.length);
+          setDetectedRowCount(Math.round(selected.size / avgBytesPerLine));
+        }
+      } catch (err) {
+        setDetectedRowCount(0);
+      }
+
       Papa.parse(selected, {
         header: true,
-        preview: 1,
+        preview: 5,
         complete: (results: any) => {
           if (results.meta.fields) {
             const fields: string[] = results.meta.fields;
             setHeaders(fields);
-            const guess = (keywords: string[]) => fields.find((f: string) => keywords.some((k: string) => f.toLowerCase().includes(k))) || "";
+            if (results.data && Array.isArray(results.data)) {
+              setSampleRows(results.data.slice(0, 5));
+            }
+            const guess = (keywords: string[]) => fields.find((f: string) => {
+              const lower = f.toLowerCase().trim();
+              return keywords.some((k: string) => lower === k || lower.includes(k));
+            }) || "";
+            const guessedFirst = guess(['first_name', 'first name', 'firstname', 'fname', 'first', 'given']);
+            const guessedLast = guess(['last_name', 'last name', 'lastname', 'lname', 'last', 'surname']);
+            const guessedFull = guess(['full_name', 'full name', 'fullname', 'contact name', 'lead name', 'prospect name', 'name']);
             setMappings({
-              first_name: guess(['first', 'fname']),
-              last_name: guess(['last', 'lname']),
-              linkedin_url: guess(['linkedin', 'url', 'profile']),
-              company_name: guess(['company', 'org'])
+              first_name: guessedFirst,
+              last_name: guessedLast,
+              full_name: (!guessedFirst && guessedFull) ? guessedFull : "",
+              linkedin_url: guess(['linkedin_url', 'linkedin url', 'linkedin', 'profile_url', 'profile url', 'url', 'profile', 'sales navigator url', 'sales_nav_url']),
+              company_name: guess(['company_name', 'company name', 'company', 'organization', 'org', 'account', 'employer'])
             });
           }
         }
       });
     }
   }
+
+  const hygieneCost = detectedRowCount > 0 ? Math.max(1, Math.ceil(detectedRowCount / 100)) : 1;
 
   return (
     <>
@@ -56,9 +100,78 @@ export function CSVImport() {
               </div>
             </div>
           </div>
+
+          {/* Lead Volume Pay Ramp: High-Intent Audience Priming */}
+          {file && detectedRowCount > 50 && !isPro && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background to-primary/5 p-5 shadow-lg relative overflow-hidden"
+            >
+              <div className="absolute -top-12 -right-12 w-32 h-32 bg-primary/20 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="flex items-start justify-between gap-4 relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
+                    <Rocket size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Audience Detected</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-primary-foreground">
+                        {detectedRowCount.toLocaleString()} Leads
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-foreground mt-0.5">
+                      Target ~{Math.max(1, Math.round(detectedRowCount * 0.035))} booked meetings from this list
+                    </h4>
+                  </div>
+                </div>
+              </div>
+
+              {/* Free vs Growth Breakdown */}
+              <div className="grid grid-cols-3 gap-2.5 my-4 relative z-10 text-center">
+                <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-xl p-2.5">
+                  <span className="text-[10px] font-medium text-muted-foreground block">Free Tier</span>
+                  <span className="text-xs font-bold text-muted-foreground">1 Campaign</span>
+                </div>
+                <div className="bg-background/80 backdrop-blur-sm border border-primary/30 rounded-xl p-2.5">
+                  <span className="text-[10px] font-bold text-primary block">Growth Scale</span>
+                  <span className="text-xs font-black text-foreground">20 Campaigns</span>
+                </div>
+                <div className="bg-background/80 backdrop-blur-sm border border-success/30 rounded-xl p-2.5">
+                  <span className="text-[10px] font-bold text-success block">Monthly Fuel</span>
+                  <span className="text-xs font-black text-foreground">5,000 Credits</span>
+                </div>
+              </div>
+
+              {/* Primary Call to Action */}
+              <div className="space-y-2 relative z-10">
+                <button
+                  type="button"
+                  onClick={() => openPaywall({ 
+                    campaignName: name || file?.name?.replace(/\.csv$/i, '') || "CSV Outreach",
+                    featureName: `${detectedRowCount.toLocaleString()} Prospect Outreach`
+                  })}
+                  className="w-full py-3 px-4 rounded-xl bg-foreground text-background font-bold text-xs hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md group"
+                >
+                  <span>Unlock Growth Tier to Outreach All {detectedRowCount.toLocaleString()} Prospects</span>
+                  <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+                <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
+                  <ShieldCheck size={11} className="text-primary" /> No commitment • Cancel anytime • Includes Apollo & Apify waterfall
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           <div className="border rounded-xl p-5 bg-gradient-to-r from-muted/50 to-muted/20 flex flex-col gap-2">
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2"><Sparkles size={18} className="text-primary" /><h4 className="font-semibold text-sm">AI Data Hygiene</h4></div>
+              <div className="flex items-center gap-2">
+                <ElesiumLogo size={16} />
+                <h4 className="font-semibold text-sm">Elesium Data Hygiene</h4>
+                <a href="https://elesium.online" target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline font-semibold">(elesium.online)</a>
+              </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" checked={cleanData} onChange={(e) => setCleanData(e.target.checked)} className="sr-only peer" />
                 <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
@@ -66,29 +179,200 @@ export function CSVImport() {
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">Clean messy data before it hits the database. Automatically removes emojis, fixes ALL CAPS formatting, and drops corporate suffixes like "LLC/Inc.".</p>
             <div className="text-[11px] text-muted-foreground flex justify-between mt-2 pt-2 border-t">
-              <span>Cost: 1 credit / 100 leads</span>
-              <span className="font-medium">Balance: {billing?.data_cleaning_credits ?? 1000}</span>
+              <span>Cost: {hygieneCost} credit{hygieneCost > 1 ? 's' : ''} ({detectedRowCount > 0 ? `${detectedRowCount.toLocaleString()} leads` : '100 leads / credit'})</span>
+              <span className="font-medium">Balance: {billing?.data_cleaning_credits ?? '...'}</span>
             </div>
           </div>
         </div>
       )}
 
       {step === 2 && (
-        <div className="space-y-6 animate-in fade-in max-w-xl">
-          <div className="border rounded-xl overflow-hidden bg-background shadow-sm">
-            {Object.entries({ first_name: "First Name", last_name: "Last Name", linkedin_url: "LinkedIn URL (Required)", company_name: "Company Name" }).map(([key, label], i) => (
-              <div key={key} className={`flex justify-between items-center p-4 ${i !== 0 ? 'border-t' : ''}`}>
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="p-2 rounded bg-muted"><LayoutTemplate size={16} className="text-muted-foreground" /></div>
-                  <label className="font-medium">{label}</label>
+        <div className="space-y-6 animate-in fade-in max-w-2xl">
+          {detectedRowCount > 50 && !isPro && (
+            <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
+                  <Rocket size={15} />
                 </div>
-                <select value={(mappings as any)[key]} onChange={e => setMappings({...mappings, [key]: e.target.value})} className="flex h-10 w-56 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                  <option value="">-- Ignore --</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
+                <div>
+                  <span className="font-bold text-foreground block">
+                    {detectedRowCount.toLocaleString()} prospects detected
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Free Tier outreach is limited to 1 campaign.
+                  </span>
+                </div>
               </div>
-            ))}
+              <button
+                type="button"
+                onClick={() => openPaywall({ 
+                  campaignName: name || file?.name?.replace(/\.csv$/i, '') || "CSV Outreach", 
+                  featureName: "Multi-Campaign Scale" 
+                })}
+                className="px-3 py-1.5 rounded-lg bg-foreground text-background font-bold text-xs hover:opacity-90 transition-all shrink-0 flex items-center gap-1.5"
+              >
+                <span>Upgrade</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
+          )}
+
+          {/* Column Mapping Section */}
+          <div className="border rounded-xl overflow-hidden bg-background shadow-sm">
+            <div className="px-4 py-3 bg-muted/30 border-b border-border/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LayoutTemplate size={14} className="text-primary" />
+                <span className="text-xs font-bold text-foreground">Map CSV Columns</span>
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Auto-matched with fuzzy detection
+              </span>
+            </div>
+
+            {Object.entries({
+              first_name: { label: "First Name", required: false, desc: "Used for personalized greetings {{first_name}}" },
+              last_name: { label: "Last Name", required: false, desc: "Used for formal outreach" },
+              full_name: { label: "Full Name (Auto-Split)", required: false, desc: "Auto-splits single column into First & Last Name" },
+              linkedin_url: { label: "LinkedIn URL", required: true, desc: "Required for automated connections & messages" },
+              company_name: { label: "Company Name", required: false, desc: "Used for company variables {{company}}" },
+            }).map(([key, meta], i) => {
+              const selectedCol = (mappings as any)[key]
+              const sampleVal = sampleRows.length > 0 && selectedCol ? sampleRows[0][selectedCol] : null
+
+              return (
+                <div key={key} className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 ${i !== 0 ? 'border-t border-border/50' : ''}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-foreground flex items-center gap-1">
+                        <span>{meta.label}</span>
+                        {meta.required && <span className="text-rose-500 font-bold">*</span>}
+                      </label>
+                      {selectedCol && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
+                          Mapped
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{meta.desc}</p>
+                    {sampleVal && (
+                      <p className="text-[10px] text-primary font-mono truncate max-w-sm mt-0.5">
+                        Sample: &quot;{sampleVal}&quot;
+                      </p>
+                    )}
+                  </div>
+
+                  <select
+                    value={selectedCol}
+                    onChange={e => setMappings({ ...mappings, [key]: e.target.value })}
+                    className="flex h-9 w-full sm:w-56 rounded-lg border border-input bg-card px-3 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary shadow-xs"
+                  >
+                    <option value="">-- Ignore --</option>
+                    {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </div>
+              )
+            })}
           </div>
+
+          {/* Validation Status Radar */}
+          {(() => {
+            const linkedinCol = mappings.linkedin_url
+            if (!linkedinCol) {
+              return (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">LinkedIn URL is required</p>
+                    <p className="text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                      Automated LinkedIn sequences require a profile URL. Please select the column holding LinkedIn URLs.
+                    </p>
+                  </div>
+                </div>
+              )
+            }
+
+            const sampleUrls = sampleRows.map(r => r[linkedinCol]).filter(Boolean)
+            const hasValidLinkedinSample = sampleUrls.some(u => /linkedin\.com\/(in|pub|profile)/i.test(u) || u.startsWith("http"))
+
+            if (sampleUrls.length > 0 && !hasValidLinkedinSample) {
+              return (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2.5">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">Format Warning on &quot;{linkedinCol}&quot;</p>
+                    <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                      Sample rows do not match standard LinkedIn URLs (e.g. <code>https://linkedin.com/in/username</code>). Please verify column selection.
+                    </p>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-xs flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
+                  <span className="font-medium">
+                    Valid LinkedIn column selected ({sampleUrls.length > 0 ? sampleUrls[0] : "Ready"})
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Ready to Import
+                </span>
+              </div>
+            )
+          })()}
+
+          {/* Pre-Flight 3-Row Sample Verification Table */}
+          {sampleRows.length > 0 && (
+            <div className="border border-border/80 rounded-xl overflow-hidden bg-card shadow-xs">
+              <div className="px-4 py-2.5 bg-muted/40 border-b border-border/60 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Table size={13} className="text-primary" />
+                  <span className="text-xs font-bold text-foreground">Pre-Flight Row Preview</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  Showing first {Math.min(3, sampleRows.length)} rows
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px] text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/50 text-muted-foreground bg-muted/20">
+                      <th className="py-2 px-3 font-semibold w-8">#</th>
+                      <th className="py-2 px-3 font-semibold">First Name</th>
+                      <th className="py-2 px-3 font-semibold">Last Name</th>
+                      <th className="py-2 px-3 font-semibold">Company</th>
+                      <th className="py-2 px-3 font-semibold">LinkedIn URL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sampleRows.slice(0, 3).map((row, idx) => {
+                      const fname = mappings.first_name ? row[mappings.first_name] : null
+                      const lname = mappings.last_name ? row[mappings.last_name] : null
+                      const company = mappings.company_name ? row[mappings.company_name] : null
+                      const url = mappings.linkedin_url ? row[mappings.linkedin_url] : null
+
+                      return (
+                        <tr key={idx} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
+                          <td className="py-2 px-3 text-muted-foreground font-mono">{idx + 1}</td>
+                          <td className="py-2 px-3 font-medium text-foreground">
+                            {fname || <span className="text-muted-foreground italic">None (uses fallback)</span>}
+                          </td>
+                          <td className="py-2 px-3 text-foreground">{lname || "—"}</td>
+                          <td className="py-2 px-3 text-foreground">{company || "—"}</td>
+                          <td className="py-2 px-3 font-mono text-[10px] max-w-[200px] truncate text-primary">
+                            {url || <span className="text-rose-500 font-sans italic">Unmapped</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>

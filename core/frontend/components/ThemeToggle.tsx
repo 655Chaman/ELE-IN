@@ -2,19 +2,21 @@ import { Moon, Sun } from "lucide-react"
 import { useTheme } from "./ThemeProvider"
 
 export function ThemeToggle({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
 
   const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark")
+    const nextTheme = resolvedTheme === "dark" ? "light" : "dark"
+    setTheme(nextTheme)
   }
 
   return (
     <button
+      type="button"
       onClick={toggleTheme}
-      className={`p-2 rounded-full border border-border shadow-sm bg-background/50  text-foreground hover:bg-muted/50 transition-colors ${className}`}
-      title="Toggle Theme"
+      className={`p-1.5 rounded-lg border border-border shadow-xs bg-card text-foreground hover:bg-muted transition-colors cursor-pointer flex items-center justify-center ${className || ''}`}
+      title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
     >
-      {theme === "dark" ? <Sun size={14} strokeWidth={1.5} /> : <Moon size={14} strokeWidth={1.5} />}
+      {resolvedTheme === "dark" ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-slate-600" />}
     </button>
   )
 }

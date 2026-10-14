@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { 
   ChevronRight, ChevronLeft, Target, 
   Settings, User, Mail, Users, LayoutDashboard,
   BrainCircuit, Copy, Link as LinkIcon, Plug, CreditCard,
-  CheckCircle, Globe, AlertTriangle, Shield
+  CheckCircle, Globe, AlertTriangle, Shield, Share2, Sparkles
 } from 'lucide-react';
 
 import { ApiKeyModal } from './ApiKeyModal';
@@ -15,21 +15,29 @@ import { useTheme } from './ThemeProvider';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
 
-import { GlowingEffect } from './ui/glowing-effect';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { PauseOctagon, Building2, ChevronDown } from 'lucide-react';
+import { CreditBadge } from './billing/CreditBadge';
+import { OnboardingChecklistWidget } from './onboarding/OnboardingChecklistWidget';
+import { ElesiumLogo } from './ElesiumLogo';
+
 export function AppLayout() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [showPanicConfirm, setShowPanicConfirm] = useState(false);
   const [activeMarket, setActiveMarket] = useState("biotech");
   const [isModalOpen, setModalOpen] = useState(false);
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
 
-  const { signOut } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const navigate = useNavigate();
+  const { signOut, user } = useAuth();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const { keys, saveKeys } = useKeys();
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, isPendingDeletion, myAgencies } = useWorkspace();
   const location = useLocation();
+
+  const userRole = (user?.app_metadata?.role || user?.user_metadata?.role || '').toLowerCase();
+  const isUserAdmin = userRole === 'admin' || userRole === 'superadmin' || user?.user_metadata?.is_admin === true;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -50,14 +58,16 @@ export function AppLayout() {
         { label: 'Inbox', icon: <Mail size={14} strokeWidth={1.5} />, href: '/elein/inbox' },
         { label: 'Campaigns', icon: <Target size={14} strokeWidth={1.5} />, href: '/elein/campaigns' },
         { label: 'Leads', icon: <Users size={14} strokeWidth={1.5} />, href: '/elein/leads' },
-        { label: 'Curation Review', icon: <CheckCircle size={14} strokeWidth={1.5} />, href: '/elein/admin' },
+        ...(isUserAdmin ? [{ label: 'Admin', icon: <Shield size={14} strokeWidth={1.5} />, href: '/elein/admin' }] : []),
       ]
     },
     {
       title: "ASSETS",
       items: [
-        { label: 'AI Knowledge', icon: <BrainCircuit size={14} strokeWidth={1.5} />, href: '/elein/knowledge' },
+        { label: 'Elesium Knowledge', icon: <ElesiumLogo size={14} />, href: '/elein/knowledge' },
         { label: 'Templates', icon: <Copy size={14} strokeWidth={1.5} />, href: '/elein/templates' },
+        { label: 'Engagement & Content', icon: <Share2 size={14} strokeWidth={1.5} />, href: '/elein/engagement' },
+        { label: 'Elesium Growth Tools', icon: <ElesiumLogo size={14} />, href: '/elein/campaigns?tools=true' },
       ]
     },
     {
@@ -127,7 +137,7 @@ export function AppLayout() {
                   <button 
                     onClick={(e) => {
                       e.preventDefault();
-                      window.location.href = '/elein/agency';
+                      navigate('/elein/agency');
                     }}
                     className="text-sidebar-foreground/60 hover:text-primary transition-colors flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest"
                     title="Agency Management"
@@ -153,7 +163,7 @@ export function AppLayout() {
                       const activeWs = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
                       return (
                         <>
-                          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
+                          <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
                             {activeWs?.name?.substring(0, 2).toUpperCase() || "WS"}
                           </div>
                           <div className="flex flex-col items-start truncate">
@@ -179,12 +189,15 @@ export function AppLayout() {
                         <button
                           key={ws.id}
                           onClick={() => { 
-                            setActiveWorkspaceId(ws.id);
+                            if (ws.id !== activeWorkspaceId) {
+                              toast.loading(`Switching to ${ws.name}...`, { duration: 1500 });
+                              setActiveWorkspaceId(ws.id);
+                            }
                             setIsWorkspaceDropdownOpen(false);
                           }}
-                          className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all ${ws.id === activeWorkspaceId ? 'bg-primary/10' : 'hover:bg-muted'}`}
+                          className={`w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${ws.id === activeWorkspaceId ? 'bg-primary/10' : 'hover:bg-muted'}`}
                         >
-                          <div className={`w-8 h-8 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${ws.id === activeWorkspaceId ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted-foreground/10 text-muted-foreground'}`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 ${ws.id === activeWorkspaceId ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted-foreground/10 text-muted-foreground'}`}>
                             {ws.name.substring(0, 2).toUpperCase()}
                           </div>
                           <div className="flex flex-col truncate">
@@ -222,6 +235,7 @@ export function AppLayout() {
             </div>
           )}
 
+          <CreditBadge workspaceId={activeWorkspaceId || ''} isSidebarOpen={isSidebarOpen} />
           <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-6">
             {navCategories.map((category, idx) => (
               <div key={idx} className="space-y-1">
@@ -232,9 +246,10 @@ export function AppLayout() {
                 )}
                 <div className="space-y-[1px]">
                   {category.items.map(item => {
-                    const isActive = item.href ? ((item.href === '/' || item.href === '/elein') ? location.pathname === item.href : location.pathname.startsWith(item.href)) : false;
+                    const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
+                const isActive = item.href ? ((item.href === '/' || item.href === '/elein') ? normalizedPath === item.href : normalizedPath.startsWith(item.href)) : false;
                     
-                    const className = `w-full flex items-center gap-3 px-3 py-1.5 group relative rounded-lg ${
+                    const className = `w-full flex items-center gap-3 px-3 py-1.5 group relative rounded-xl ${
                       isActive 
                         ? 'text-sidebar-foreground'
                         : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
@@ -243,22 +258,11 @@ export function AppLayout() {
                     const innerContent = (
                       <>
                         {isActive && (
-                          <>
-                            <motion.div
-                              layoutId="sidebar-active-pill"
-                              className="absolute inset-0 rounded-lg bg-sidebar-accent/50"
-                              transition={{ type: "spring", bounce: 0.2, duration: 0.45 }}
-                            />
-                            <GlowingEffect
-                              spread={20}
-                              glow={true}
-                              disabled={false}
-                              proximity={40}
-                              inactiveZone={0.01}
-                              borderWidth={1}
-                              variant="white"
-                            />
-                          </>
+                          <motion.div
+                            layoutId="sidebar-active-pill"
+                            className="absolute inset-0 rounded-xl bg-sidebar-accent border border-sidebar-border/60"
+                            transition={{ type: "spring", bounce: 0.2, duration: 0.45 }}
+                          />
                         )}
                         <div className={`shrink-0 relative z-10 ${isActive ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'} transition-colors`}>
                           {item.icon}
@@ -309,7 +313,7 @@ export function AppLayout() {
                   toast.error("Failed to pause campaigns.");
                 }
               }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-lg transition-colors font-bold shadow-sm"
+              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-xl transition-colors font-bold shadow-sm"
               title={!isSidebarOpen ? "Panic Pause All" : undefined}
             >
               <div className="shrink-0"><PauseOctagon size={14} strokeWidth={2.5} /></div>
@@ -317,12 +321,12 @@ export function AppLayout() {
             </button>
             <div className="w-full flex items-center justify-between px-2">
                {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-sidebar-foreground/60 tracking-widest">Theme</span>}
-               <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
+               <AnimatedThemeToggler variant="circle" theme={resolvedTheme} onThemeChange={setTheme} />
             </div>
             
             <Link 
               to="/mfa-setup"
-              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-colors"
               title={!isSidebarOpen ? "Personal Security (2FA)" : undefined}
             >
               <div className="shrink-0"><Shield size={14} strokeWidth={1.5} /></div>
@@ -331,7 +335,7 @@ export function AppLayout() {
 
             <button 
               onClick={() => signOut()}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
               title={!isSidebarOpen ? "Sign Out" : undefined}
             >
               <div className="shrink-0"><User size={14} strokeWidth={1.5} /></div>
@@ -341,23 +345,12 @@ export function AppLayout() {
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto bg-background relative">
-          <div className="relative h-full">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                className="h-full"
-              >
-                <Outlet context={{ activeMarket, setActiveMarket }} />
-              </motion.div>
-            </AnimatePresence>
-          </div>
+        <main className="flex-1 overflow-y-auto overflow-x-clip bg-background relative">
+          <Outlet context={{ activeMarket, setActiveMarket }} />
         </main>
       </div>
+
+      <OnboardingChecklistWidget />
 
       <ApiKeyModal 
         isOpen={isModalOpen} 

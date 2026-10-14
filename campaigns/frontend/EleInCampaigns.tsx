@@ -2,23 +2,39 @@ import { useHRTreeStore } from "@campaigns/eiTreeStore";
 import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
-import { useState, useEffect, useRef } from "react"
-import { cn } from "@/lib/utils"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { motion, AnimatePresence } from "motion/react"
-import { Link, useNavigate } from "react-router-dom"
-import { Megaphone, Plus, Search, Play, Pause,
+import { useNavigate, useSearchParams } from "react-router-dom"
+import { 
+  Plus, Search, Play, Pause,
   Trash2, ChevronRight, BarChart2, Users,
-  CheckCircle2, Clock, Activity, MoreVertical, Settings
-, Briefcase, Link as LinkIcon, Info, Zap } from "lucide-react"
+  MoreVertical, Settings,
+  Briefcase, Link as LinkIcon, Info, X, Loader2,
+  Copy, CheckSquare, Square,
+  ArrowUpDown, AlertCircle, Award
+} from "lucide-react"
 
-import ShinyText from "@/components/ShinyText"
-import StarBorder from "@/components/StarBorder"
-
+import { NumberTicker } from "@/components/ui/number-ticker"
+import { EleInPaywallModal } from "./EleInPaywallModal"
+import { CampaignPreflightModal } from "./CampaignPreflightModal"
+import { CampaignROICertificateModal } from "@/components/campaigns/CampaignROICertificateModal"
+import { PreWarmStudioModal } from "@/components/campaigns/PreWarmStudioModal"
+import { BanditOptimizerStudioModal } from "@/components/campaigns/BanditOptimizerStudioModal"
+import { EventMultimodalStudioModal } from "@/components/campaigns/EventMultimodalStudioModal"
+import { AbmMultithreadStudioModal } from "@/components/campaigns/AbmMultithreadStudioModal"
+import { OmnichannelRetargetingStudioModal } from "@/components/campaigns/OmnichannelRetargetingStudioModal"
+import { BoomerangRevivalStudioModal } from "@/components/campaigns/BoomerangRevivalStudioModal"
+import { SendTimeOptimizationStudioModal } from "@/components/campaigns/SendTimeOptimizationStudioModal"
+import { DeliverabilityStudioModal } from "@/components/campaigns/DeliverabilityStudioModal"
+import { ReplySentimentStudioModal } from "@/components/campaigns/ReplySentimentStudioModal"
+import { DisplacementStudioModal } from "@/components/campaigns/DisplacementStudioModal"
+import { CalendarConciergeStudioModal } from "@/components/campaigns/CalendarConciergeStudioModal"
+import { usePaywall } from "@/contexts/PaywallContext"
 
 const STATUS_CONFIG: Record<string, any> = {
-  ACTIVE: { label: "Active", dot: "bg-success", text: "text-success" },
-  PAUSED: { label: "Paused", dot: "bg-warning", text: "text-warning" },
-  DRAFT: { label: "Draft", dot: "bg-zinc-500", text: "text-zinc-400" },
+  ACTIVE: { label: "Active", dot: "bg-success", text: "text-success", badgeBg: "bg-success/10 border-success/20" },
+  PAUSED: { label: "Paused", dot: "bg-warning", text: "text-warning", badgeBg: "bg-warning/10 border-warning/20" },
+  DRAFT: { label: "Draft", dot: "bg-muted-foreground", text: "text-muted-foreground", badgeBg: "bg-muted border-border/50" },
 }
 
 export interface Campaign {
@@ -38,70 +54,128 @@ export interface Campaign {
   conversion_rate?: number
 }
 
-
 function EmptyCampaignCard({ id, icon: Icon, title, desc, onSelect }: any) {
-  const [showInfo, setShowInfo] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setShowInfo(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-  
   return (
-    <motion.div 
-      whileHover={{ y: -4 }}
-      className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 hover:bg-card/50 hover:shadow-sm transition-all flex flex-col items-center justify-center text-center group relative h-full" 
+    <div 
+      className="p-7 md:p-8 rounded-2xl border border-border bg-card hover:border-foreground/30 hover:bg-card/90 hover:shadow-lg transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[210px]" 
       onClick={() => onSelect(id)}
     >
-      <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-        <Icon size={24} className="text-primary" />
+      <div>
+        <div className="w-11 h-11 rounded-xl bg-muted/60 border border-border/50 flex items-center justify-center mb-5 group-hover:border-primary/40 group-hover:bg-primary/5 transition-all">
+          {Icon && <Icon size={22} className="text-muted-foreground group-hover:text-primary transition-colors" />}
+        </div>
+        <h3 className="text-base font-semibold text-foreground mb-2 group-hover:text-primary transition-colors">{title}</h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
       </div>
-      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
-      <p className="text-[13px] text-muted-foreground leading-relaxed">{desc}</p>
-      
-      <div 
-        ref={ref}
-        className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors p-1"
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowInfo(!showInfo);
-        }}
-      >
-        <Info size={16} />
-        <AnimatePresence>
-          {showInfo && (
-            <motion.div 
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-2 w-48 p-2 bg-card border border-border rounded-[8px] shadow-xl z-50 text-left pointer-events-auto text-[12px]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {desc}
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="pt-6 flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+        <span>Start</span>
+        <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
       </div>
-    </motion.div>
+    </div>
   );
 }
 
 export function EleInCampaigns() {
+  const navigate = useNavigate()
+  const resetTree = useHRTreeStore(state => state.reset)
+
+  // ─── Filter & Search State ───
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED' | 'DRAFT'>('ALL')
+  const [sortBy, setSortBy] = useState<'created_desc' | 'created_asc' | 'leads_desc' | 'conversion_desc' | 'name_asc'>('created_desc')
+
+  // ─── Draft State ───
   const [draftExists, setDraftExists] = useState(false)
   const [draftTime, setDraftTime] = useState("")
-  const [statusTooltipOpen, setStatusTooltipOpen] = useState(false)
   
-  // Custom Confirmation Modal State
-  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null)
+  // ─── Multi-Select Batch State ───
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isBatchOperating, setIsBatchOperating] = useState(false)
+  const [batchActionType, setBatchActionType] = useState<string | null>(null)
 
+  // ─── Duplication & Toggle State ───
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  // ─── Modals State ───
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [preflightCampaign, setPreflightCampaign] = useState<{ id: string; name: string } | null>(null)
+  const [selectedCertCampaign, setSelectedCertCampaign] = useState<{ id: string; name: string } | null>(null)
+  const [banditCampaign, setBanditCampaign] = useState<{ id: string; name: string } | null>(null)
+  const [showPreWarmModal, setShowPreWarmModal] = useState(false)
+  const [showEventModal, setShowEventModal] = useState(false)
+  const [showAbmModal, setShowAbmModal] = useState(false)
+  const [showOmnichannelModal, setShowOmnichannelModal] = useState(false)
+  const [showBoomerangModal, setShowBoomerangModal] = useState(false)
+  const [showStoModal, setShowStoModal] = useState(false)
+  const [showDeliverabilityModal, setShowDeliverabilityModal] = useState(false)
+  const [showSentimentModal, setShowSentimentModal] = useState(false)
+  const [showDisplacementModal, setShowDisplacementModal] = useState(false)
+  const [showCalendarModal, setShowCalendarModal] = useState(false)
+  const [showGrowthHub, setShowGrowthHub] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null)
+  const rowMenuRef = useRef<HTMLDivElement>(null)
+
+  // Auto-open Growth Tools if navigation linked here with ?tools=true
+  useEffect(() => {
+    if (searchParams.get('tools') === 'true') {
+      setShowGrowthHub(true)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('tools')
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  // Close row actions menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (rowMenuRef.current && !rowMenuRef.current.contains(event.target as Node)) {
+        setOpenRowMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // ─── Billing & SWR Fetches ───
+  const { openPaywall } = usePaywall()
+  const { data: billingData } = useSWR<{ tier?: string }>(
+    '/api/elein/workspaces/billing',
+    fetcher
+  )
+  const tier = billingData?.tier || 'FREE'
+  const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
+  const maxActiveCampaigns = isPro ? (tier === 'ENTERPRISE' ? 100 : 20) : 1
+
+  const { data: dashboardData, mutate } = useSWR("/api/elein/dashboard/stats", fetcher)
+  const campaigns: Campaign[] = dashboardData?.recent_campaigns || dashboardData?.campaigns || []
+
+  const { data: masterViewStats } = useSWR(
+    "/api/master-view/stats",
+    (url: string) => fetchWithAuth(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    }).then(r => r.ok ? r.json() : null),
+    { refreshInterval: 30000, keepPreviousData: true }
+  )
+
+  const scorecardMap = useMemo(() => {
+    const map = new Map<string, any>()
+    const list = masterViewStats?.multi_campaign_data
+    if (Array.isArray(list)) {
+      list.forEach((item: any) => {
+        if (item && item.id) map.set(item.id, item)
+      })
+    }
+    return map
+  }, [masterViewStats])
+  
+  const { data: workerStatus } = useSWR('/api/elein/worker/status', fetcher, { refreshInterval: 30000 })
+
+  // Check unsaved drafts
   useEffect(() => {
     const draftStr = localStorage.getItem("elein_unsaved_draft")
     if (draftStr) {
@@ -111,34 +185,226 @@ export function EleInCampaigns() {
           setDraftExists(true)
           setDraftTime(new Date(draft.timestamp).toLocaleString())
         }
-      } catch(e){
+      } catch(e) {
         console.error('Draft parse error:', e)
-        toast.error('Failed to parse campaign draft from local storage.')
       }
     }
   }, [])
-  
-  const navigate = useNavigate()
-  const resetTree = useHRTreeStore(state => state.reset)
 
-  const { data: dashboardData, mutate } = useSWR("/api/elein/dashboard/stats", fetcher)
-  const campaigns: Campaign[] = dashboardData?.recent_campaigns || dashboardData?.campaigns || []
-  
-  const { data: workerStatus } = useSWR('/api/elein/worker/status', fetcher, { refreshInterval: 30000 })
-  
-  const toggleStatus = async (id: string) => {
-    const campaign = campaigns.find(c => c.id === id);
-    if (!campaign) return;
-    const action = campaign.status === 'ACTIVE' ? 'pause' : 'activate';
+  // ─── Status Counts ───
+  const statusCounts = useMemo(() => {
+    const counts = { ALL: campaigns.length, ACTIVE: 0, PAUSED: 0, DRAFT: 0 };
+    campaigns.forEach(c => {
+      if (c.status === 'ACTIVE') counts.ACTIVE++;
+      else if (c.status === 'PAUSED') counts.PAUSED++;
+      else if (c.status === 'DRAFT') counts.DRAFT++;
+    });
+    return counts;
+  }, [campaigns]);
+
+  // ─── Fleet Statistics Rollup ───
+  const fleetStats = useMemo(() => {
+    let totalLeads = 0;
+    let totalRunning = 0;
+    let totalPending = 0;
+    let totalCompleted = 0;
+    let totalReplies = 0;
+    const uniqueSenders = new Set<string>();
+    let weightedConvSum = 0;
+    let totalWithConv = 0;
+    let activeWithZeroSenders = 0;
+
+    campaigns.forEach(c => {
+      const lTotal = c.leads_total || 0;
+      totalLeads += lTotal;
+      totalRunning += c.leads_running || 0;
+      totalPending += c.leads_pending || 0;
+      totalCompleted += c.leads_completed || 0;
+      totalReplies += c.replies || 0;
+
+      if (c.senders && Array.isArray(c.senders)) {
+        c.senders.forEach((s: any) => {
+          if (s.id || s.name) uniqueSenders.add(s.id || s.name);
+        });
+      }
+
+      if (c.status === 'ACTIVE' && (!c.senders || c.senders.length === 0)) {
+        activeWithZeroSenders++;
+      }
+
+      if (c.conversion_rate && c.conversion_rate > 0) {
+        weightedConvSum += c.conversion_rate;
+        totalWithConv++;
+      }
+    });
+
+    const avgConversion = totalWithConv > 0 ? (weightedConvSum / totalWithConv) * 100 : 0;
+
+    return {
+      totalLeads,
+      totalRunning,
+      totalPending,
+      totalCompleted,
+      totalReplies,
+      uniqueSenderCount: uniqueSenders.size,
+      avgConversion: avgConversion.toFixed(1),
+      activeWithZeroSenders
+    };
+  }, [campaigns]);
+
+  // ─── Filter & Sort ───
+  const filtered = useMemo(() => {
+    const result = campaigns.filter(c => {
+      const matchesSearch = 
+        (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (c.description || "").toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+
+    result.sort((a, b) => {
+      if (sortBy === 'created_desc') {
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+      if (sortBy === 'created_asc') {
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      }
+      if (sortBy === 'leads_desc') {
+        return (b.leads_total || 0) - (a.leads_total || 0);
+      }
+      if (sortBy === 'conversion_desc') {
+        return (b.conversion_rate || 0) - (a.conversion_rate || 0);
+      }
+      if (sortBy === 'name_asc') {
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      return 0;
+    });
+
+    return result;
+  }, [campaigns, search, statusFilter, sortBy]);
+
+  // ─── Single Campaign Toggle ───
+  const executeToggleStatus = async (id: string, action: 'activate' | 'pause') => {
+    setTogglingId(id);
     try {
-      await fetchWithAuth(`/api/elein/campaigns/${id}/${action}`, { method: 'PATCH' });
-      toast.success(action === 'activate' ? `Campaign "${campaign.name}" activated` : `Campaign "${campaign.name}" paused`);
+      const res = await fetchWithAuth(`/api/elein/campaigns/${id}/${action}`, { method: 'PATCH' });
+      if (!res.ok) {
+        let errMsg = `Failed to ${action} campaign`;
+        try {
+          const errJson = await res.json();
+          errMsg = errJson.detail || errMsg;
+        } catch {
+          const text = await res.text();
+          if (text) errMsg = text;
+        }
+        if (res.status === 403 || errMsg.includes("exceeds limit") || errMsg.includes("Free Tier") || errMsg.includes("Campaign limit reached") || errMsg.toLowerCase().includes("forbidden")) {
+          const feature = errMsg.toLowerCase().includes("enrichment") || errMsg.toLowerCase().includes("scraping")
+            ? "Enrichment & Scraping Nodes"
+            : "Active Campaigns Limit";
+          openPaywall({ featureName: feature });
+          setShowUpgradeModal(true);
+          mutate();
+          return;
+        }
+        if (errMsg === "no_active_senders") {
+          toast.error("No active sender accounts found for this campaign. Please connect or activate a LinkedIn account first.");
+          mutate();
+          return;
+        }
+        if (errMsg === "insufficient_credits") {
+          openPaywall({ featureName: "Campaign Activation Credits" });
+          toast.info("Insufficient credits to activate campaign. Please top up your credits.");
+          mutate();
+          return;
+        }
+        throw new Error(errMsg);
+      }
+      toast.success(action === 'activate' ? `Campaign activated` : `Campaign paused`);
       mutate();
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || "Failed to update campaign status");
+      mutate();
+    } finally {
+      setTogglingId(null);
     }
   }
   
+  const toggleStatus = async (id: string) => {
+    if (togglingId || isBatchOperating) return;
+    const campaign = campaigns.find(c => c.id === id);
+    if (!campaign) return;
+    const action = campaign.status === 'ACTIVE' ? 'pause' : 'activate';
+
+    if (action === 'pause') {
+      await executeToggleStatus(id, 'pause');
+      return;
+    }
+
+    if (!isPro && statusCounts.ACTIVE >= maxActiveCampaigns) {
+      openPaywall({ featureName: "Active Campaigns Limit" });
+      setShowUpgradeModal(true);
+      toast.info("Free plan is limited to 1 active campaign. Upgrade to Growth Pro to run up to 20 campaigns simultaneously.");
+      return;
+    }
+
+    setPreflightCampaign({ id: campaign.id, name: campaign.name });
+  }
+
+  // ─── 1-Click Duplicate Campaign (Layer 0 & Layer 1) ───
+  const handleDuplicateCampaign = async (id: string, originalName: string) => {
+    if (duplicatingId || isBatchOperating) return;
+    setDuplicatingId(id);
+    try {
+      const detailRes = await fetchWithAuth(`/api/elein/campaigns/${id}/detail`);
+      if (!detailRes.ok) throw new Error("Failed to fetch campaign architecture");
+      const detail = await detailRes.json();
+
+      const origCamp = detail.campaign || {};
+      const newName = `${originalName} (Copy)`;
+
+      const createRes = await fetchWithAuth('/api/elein/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName,
+          nodes: detail.nodes || [],
+          edges: detail.edges || [],
+          senders: origCamp.senders || [],
+          timezone: origCamp.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          status: "DRAFT",
+          schedule: origCamp.schedule,
+          metadata: origCamp.metadata || { stop_on_reply: true }
+        })
+      });
+
+      if (!createRes.ok) {
+        const text = await createRes.text();
+        throw new Error(text || "Failed to clone campaign");
+      }
+
+      const created = await createRes.json();
+      toast.success(`Cloned "${originalName}" into "${newName}"!`);
+      mutate();
+
+      // Open new campaign option
+      if (created.campaign_id || created.id) {
+        const newId = created.campaign_id || created.id;
+        toast.info("Click to inspect your new cloned campaign", {
+          action: {
+            label: "Open Campaign",
+            onClick: () => navigate(`/elein/campaigns/${newId}`)
+          }
+        });
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to duplicate campaign");
+    } finally {
+      setDuplicatingId(null);
+    }
+  }
+
+  // ─── Single Delete ───
   const remove = async (id: string) => {
     const campaign = campaigns.find(c => c.id === id);
     setConfirmModal({
@@ -147,322 +413,804 @@ export function EleInCampaigns() {
       message: `Are you sure you want to delete the campaign "${campaign?.name || 'Unknown'}"? This cannot be undone.`,
       onConfirm: async () => {
         setConfirmModal(null);
-
         try {
-          await fetchWithAuth(`/api/elein/campaigns/${id}`, { method: 'DELETE' });
+          const res = await fetchWithAuth(`/api/elein/campaigns/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error("Failed to delete campaign");
           toast.success(`Campaign "${campaign?.name || 'Unknown'}" deleted`);
+          setSelectedIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
           mutate();
         } catch (e: any) {
-          toast.error(e.message);
+          toast.error(e.message || "Failed to delete campaign");
+          mutate();
         }
-        
       }
     });
   }
 
-  const filtered = campaigns.filter(c =>
-     (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (c.description || "").toLowerCase().includes(search.toLowerCase())
-  )
+  // ─── Multi-Select Selection Handlers ───
+  const isAllSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filtered.forEach(c => next.delete(c.id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filtered.forEach(c => next.add(c.id));
+        return next;
+      });
+    }
+  };
+
+  const handleToggleSelectOne = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // ─── Batch Operations (Layer 0, 1 & 2) ───
+  const handleBatchPause = async () => {
+    if (selectedIds.size === 0 || isBatchOperating) return;
+    setIsBatchOperating(true);
+    setBatchActionType("pause");
+
+    const targets = Array.from(selectedIds).filter(id => {
+      const camp = campaigns.find(c => c.id === id);
+      return camp && camp.status === 'ACTIVE';
+    });
+
+    const results = await Promise.allSettled(
+      targets.map(async (id) => {
+        const res = await fetchWithAuth(`/api/elein/campaigns/${id}/pause`, { method: 'PATCH' });
+        if (!res.ok) throw new Error("Failed to pause campaign");
+        return id;
+      })
+    );
+    const successCount = results.filter(r => r.status === "fulfilled").length;
+
+    toast.success(`Paused ${successCount} campaign${successCount === 1 ? '' : 's'}`);
+    setIsBatchOperating(false);
+    setBatchActionType(null);
+    mutate();
+  };
+
+  const handleBatchResume = async () => {
+    if (selectedIds.size === 0 || isBatchOperating) return;
+
+    // Quota pre-check (Layer 2 Paranoia)
+    const candidates = Array.from(selectedIds).filter(id => {
+      const c = campaigns.find(camp => camp.id === id);
+      return c && c.status !== 'ACTIVE';
+    });
+
+    if (!isPro && (statusCounts.ACTIVE + candidates.length) > maxActiveCampaigns) {
+      openPaywall({ featureName: "Active Campaigns Limit" });
+      setShowUpgradeModal(true);
+      toast.info(`Free plan limit: You can only have ${maxActiveCampaigns} active campaign. Upgrade to Growth Pro to run up to 20.`);
+      return;
+    }
+
+    setIsBatchOperating(true);
+    setBatchActionType("activate");
+
+    const results = await Promise.allSettled(
+      candidates.map(async (id) => {
+        const res = await fetchWithAuth(`/api/elein/campaigns/${id}/activate`, { method: 'PATCH' });
+        if (!res.ok) throw new Error("Failed to activate campaign");
+        return id;
+      })
+    );
+    const successCount = results.filter(r => r.status === "fulfilled").length;
+    const failedCount = results.filter(r => r.status === "rejected").length;
+
+    if (successCount > 0) {
+      toast.success(`Activated ${successCount} campaign${successCount === 1 ? '' : 's'}`);
+    }
+    if (failedCount > 0) {
+      toast.warning(`${failedCount} campaign${failedCount === 1 ? '' : 's'} could not be activated (check sender assignments or credits).`);
+    }
+
+    setIsBatchOperating(false);
+    setBatchActionType(null);
+    mutate();
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0 || isBatchOperating) return;
+
+    const count = selectedIds.size;
+    const affectedLeads = Array.from(selectedIds).reduce((acc, id) => {
+      const c = campaigns.find(camp => camp.id === id);
+      return acc + (c?.leads_total || 0);
+    }, 0);
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete ${count} Campaign${count > 1 ? 's' : ''}`,
+      message: `Are you sure you want to permanently delete ${count} campaign${count > 1 ? 's' : ''}? This affects ${affectedLeads.toLocaleString()} total enrolled leads and cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setIsBatchOperating(true);
+        setBatchActionType("delete");
+
+        const targets = Array.from(selectedIds);
+        const results = await Promise.allSettled(
+          targets.map(async (id) => {
+            const res = await fetchWithAuth(`/api/elein/campaigns/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error("Failed to delete campaign");
+            return id;
+          })
+        );
+        const deletedCount = results.filter(r => r.status === "fulfilled").length;
+
+        toast.success(`Successfully deleted ${deletedCount} campaign${deletedCount === 1 ? '' : 's'}`);
+        setSelectedIds(new Set());
+        setIsBatchOperating(false);
+        setBatchActionType(null);
+        mutate();
+      }
+    });
+  };
 
   return (
-    <div className="max-w-[1200px] mx-auto p-8">
-      {/* ─── HEADER ────────────────────────────────────────────────────────────── */}
-      <div className="mb-10 flex justify-between items-end">
+    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
+      {/* ─── HEADER COMMAND DECK ────────────────────────────────────────────── */}
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              <ShinyText text="Campaigns" speed={3} className="text-foreground" />
-            </h1>
-            {(() => {
-              if (!workerStatus) return null;
-              
-              if (workerStatus.status === "unknown") {
-                return (
-                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold border border-foreground/10 bg-muted/30">
-                    <span className="text-muted-foreground">
-                      Get Started — connect a LinkedIn account
-                    </span>
-                  </div>
-                );
-              }
-              
-              if (campaigns.length === 0) return null;
-              return (
-<div className="relative group">
-                  <button 
-                    onClick={() => setStatusTooltipOpen(!statusTooltipOpen)}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:bg-muted/30 transition-colors"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${workerStatus.stalled ? 'bg-destructive animate-pulse' : 'bg-success'}`} />
-                    <span className={workerStatus.stalled ? 'text-destructive' : 'text-success'}>
-                      {workerStatus.stalled ? 'Engine Stalled' : 'Engine Live'}
-                    </span>
-                  </button>
-                  <div className={cn(
-                    "absolute left-1/2 -translate-x-1/2 top-full mt-2 w-max max-w-xs p-2 bg-popover border border-border shadow-xl rounded-lg text-xs text-popover-foreground pointer-events-none transition-opacity z-50",
-                    statusTooltipOpen ? "opacity-100 pointer-events-auto" : "opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto"
-                  )}>
-                    {workerStatus.message}
-                    {workerStatus.stalled && <div className="mt-1 font-semibold text-destructive">Please contact support if this persists.</div>}
-                  </div>
-                </div>
-              );
-            })()}
+          <div className="flex items-center gap-2.5 mb-1">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Campaigns</h1>
+            <span className="text-xs text-muted-foreground">
+              {statusCounts.ACTIVE}/{maxActiveCampaigns} active
+            </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Build and run LinkedIn outreach sequences with multi-account sender rotation.
+          <p className="text-xs text-muted-foreground">
+            Create, launch, and monitor your automated LinkedIn and email outreach campaigns.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-            {campaigns.length > 0 && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border border-border/50 rounded-[18px]">
-                <Search size={14} className="text-muted-foreground" />
+
+        {/* Global Action Controls */}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowGrowthHub(true)}
+            className="px-3.5 py-2 bg-background hover:bg-muted text-foreground border border-border rounded-xl font-medium text-xs transition-colors cursor-pointer"
+          >
+            Campaign Automations
+          </button>
+
+          <button
+            onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
+            className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl font-medium text-xs transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <Plus size={14} />
+            <span>New Campaign</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ─── FLEET VITAL STATISTICS RIBBON (Clean 3-Metric Overview) ─────────── */}
+      {campaigns.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border border border-border rounded-2xl bg-card mb-6">
+          {/* Cell 1: Total Leads */}
+          <div className="p-4">
+            <p className="text-xs text-muted-foreground">Total Leads</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-xl font-semibold text-foreground">
+                <NumberTicker value={fleetStats.totalLeads} />
+              </span>
+              <span className="text-xs text-muted-foreground">{fleetStats.totalRunning} in sequence</span>
+            </div>
+          </div>
+
+          {/* Cell 2: Connected Senders */}
+          <div className="p-4">
+            <p className="text-xs text-muted-foreground">Connected Senders</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-xl font-semibold text-foreground">
+                <NumberTicker value={fleetStats.uniqueSenderCount} />
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {fleetStats.uniqueSenderCount === 1 ? '1 profile active' : 'Profiles rotating'}
+              </span>
+            </div>
+          </div>
+
+          {/* Cell 3: Reply Rate */}
+          <div className="p-4">
+            <p className="text-xs text-muted-foreground">Reply Rate</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-xl font-semibold text-foreground">
+                <NumberTicker value={fleetStats.avgConversion} decimalPlaces={1} />%
+              </span>
+              <span className="text-xs text-muted-foreground">{fleetStats.totalReplies} replies</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ENVIRONMENTAL ATTENTION BANNERS (Layer 1) ───────────────────────── */}
+      {fleetStats.activeWithZeroSenders > 0 && (
+        <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-foreground">
+            <span className="font-medium">
+              {fleetStats.activeWithZeroSenders} active campaign{fleetStats.activeWithZeroSenders > 1 ? 's' : ''} with 0 senders assigned.
+            </span>
+            <span className="text-muted-foreground hidden sm:inline">
+              Connect a LinkedIn account to dispatch actions.
+            </span>
+          </div>
+          <button
+            onClick={() => navigate('/elein/accounts')}
+            className="px-3 py-1.5 bg-background hover:bg-muted text-foreground border border-border rounded-xl text-xs font-medium shrink-0 transition-colors cursor-pointer"
+          >
+            Assign Senders
+          </button>
+        </div>
+      )}
+
+      {/* ─── DRAFT RESTORATION BANNER ────────────────────────────────────────── */}
+      {draftExists && (
+        <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">Unsaved campaign draft</span>
+            <span className="text-muted-foreground">Saved locally from {draftTime}.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: "Discard Draft",
+                  message: "Are you sure you want to permanently discard this unsaved draft?",
+                  onConfirm: () => {
+                    localStorage.removeItem("elein_unsaved_draft")
+                    setDraftExists(false)
+                    setConfirmModal(null)
+                  }
+                });
+              }}
+              className="px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+            >
+              Discard
+            </button>
+            <button
+              onClick={() => navigate("/elein/campaigns/new?resume=true")}
+              className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium transition-colors cursor-pointer"
+            >
+              Resume Draft
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ZERO STATE OR CAMPAIGN GRID ─────────────────────────────────────── */}
+      {campaigns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 md:py-24 max-w-4xl mx-auto text-center w-full">
+          <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground mb-2">Start outreach</h2>
+          <p className="text-sm text-muted-foreground mb-8 max-w-md">
+            Choose a campaign objective to generate your sequence, or start from a blank canvas.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full">
+            <EmptyCampaignCard 
+              id="get_customers"
+              icon={Users}
+              title="Get customers"
+              desc="Message people who can buy. Goal: book a meeting."
+              onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
+            />
+            <EmptyCampaignCard 
+              id="hire_people"
+              icon={Briefcase}
+              title="Hire people"
+              desc="Message people you want on the team. Goal: a hire."
+              onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
+            />
+            <EmptyCampaignCard 
+              id="get_intros"
+              icon={LinkIcon}
+              title="Get intros"
+              desc="Message people who can open a door, such as an investor, partner, or their network."
+              onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
+            />
+          </div>
+          
+          <button
+            onClick={() => {
+              useHRTreeStore.getState().reset();
+              try { localStorage.removeItem("elein_unsaved_draft"); } catch (_) {}
+              navigate('/elein/campaigns/new?blank=true');
+            }}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-4 mt-8 transition-colors cursor-pointer"
+          >
+            Or start from a blank canvas
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Multi-Campaign Scaling Pay Ramp Banner */}
+          {!isPro && statusCounts.ACTIVE >= maxActiveCampaigns && (
+            <div className="border border-border bg-card px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-foreground">
+                  Free plan limit reached ({statusCounts.ACTIVE}/{maxActiveCampaigns} active)
+                </span>
+                <span className="text-muted-foreground hidden md:inline">
+                  Upgrade to Growth Pro to run up to 20 campaigns simultaneously across multiple LinkedIn accounts.
+                </span>
+              </div>
+              <button
+                onClick={() => openPaywall({ featureName: "Active Campaigns Limit" })}
+                className="px-3.5 py-1.5 rounded-xl bg-background hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer"
+              >
+                Unlock 20 Campaigns
+              </button>
+            </div>
+          )}
+
+          {/* ─── CONTROLS BAR: SEARCH, FILTERS & SORT ──────────────────────────── */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-card border border-border rounded-2xl">
+            {/* Filter chips */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { key: 'ALL', label: 'All', count: statusCounts.ALL, dot: 'bg-primary' },
+                { key: 'ACTIVE', label: 'Active', count: statusCounts.ACTIVE, dot: 'bg-success' },
+                { key: 'PAUSED', label: 'Paused', count: statusCounts.PAUSED, dot: 'bg-warning' },
+                { key: 'DRAFT', label: 'Drafts', count: statusCounts.DRAFT, dot: 'bg-muted-foreground' },
+              ].map(tab => {
+                const isActive = statusFilter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setStatusFilter(tab.key as any)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors border cursor-pointer ${
+                      isActive
+                        ? 'bg-muted border-border text-foreground'
+                        : 'bg-background hover:bg-muted/50 border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${tab.dot}`} />
+                    <span>{tab.label}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search & Sort Controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Search Box */}
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-background border border-border rounded-xl w-full sm:w-56">
+                <Search size={13} className="text-muted-foreground shrink-0" />
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search campaigns…"
-                  className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground focus:outline-none w-40"
+                  placeholder="Filter campaigns..."
+                  className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground focus:outline-none"
                 />
+                {search && (
+                  <button onClick={() => setSearch("")} className="text-muted-foreground hover:text-foreground">
+                    <X size={12} />
+                  </button>
+                )}
               </div>
-            )}
-            {campaigns.length > 0 && (
-              <button
-                onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
-                className="flex items-center gap-2 bg-success hover:bg-success/90 text-success-foreground px-4 py-2.5 rounded-2xl font-bold transition-all shadow-md active:scale-95"
-              >
-                <Zap size={16} className="fill-current text-success-foreground" /> Start outreach
-              </button>
-            )}
-          </div>
-      </div>
 
-      {/* ─── CAMPAIGNS LIST ─────────────────────────────────────────────────────── */}
-      <>
-        {draftExists && (
-          <div className="mb-6 p-5 rounded-2xl border border-primary/30 bg-primary/5 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Clock size={16} className="text-primary" /> Unsaved Campaign Draft
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                You have an unsaved workflow from {draftTime}.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setConfirmModal({
-                    isOpen: true,
-                    title: "Discard Draft",
-                    message: "Are you sure you want to permanently delete this unsaved draft?",
-                    onConfirm: () => {
-                      localStorage.removeItem("elein_unsaved_draft")
-                      setDraftExists(false)
-                      setConfirmModal(null)
-                    }
-                  });
-                }}
-                className="px-4 py-2 text-xs font-semibold text-destructive hover:text-destructive transition-colors"
-              >
-                Discard
-              </button>
-              {draftExists ? (
-                <button
-                  onClick={() => navigate("/elein/campaigns/new?resume=true")}
-                  className="px-4 py-2 rounded-xl bg-primary hover:hover:bg-primary/90 text-white text-xs font-bold transition-all shadow-md"
+              {/* Sort Dropdown */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-xl text-xs text-muted-foreground">
+                <ArrowUpDown size={13} className="shrink-0 text-muted-foreground" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="bg-transparent text-xs text-foreground font-medium outline-none cursor-pointer"
                 >
-                  Resume Draft
-                </button>
-              ) : (
-                <button
-                  disabled
-                  title="No saved draft"
-                  className="px-4 py-2 rounded-xl bg-gray-400 text-white text-xs font-bold transition-all shadow-md cursor-not-allowed opacity-50"
-                >
-                  Resume Draft
-                </button>
-              )}
+                  <option value="created_desc">Newest First</option>
+                  <option value="created_asc">Oldest First</option>
+                  <option value="leads_desc">Most Prospects</option>
+                  <option value="conversion_desc">Top Conversion</option>
+                  <option value="name_asc">Name (A-Z)</option>
+                </select>
+              </div>
             </div>
           </div>
-        )}
-        
-        {campaigns.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center p-12 rounded-3xl"
-          >
-            <h2 className="text-3xl font-light tracking-tight text-foreground mb-12">Start outreach</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
-              <EmptyCampaignCard 
-                id="get_customers"
-                icon={Users}
-                title="Get customers"
-                desc="Message people who can buy. Goal: book a meeting."
-                onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
-              />
-              <EmptyCampaignCard 
-                id="hire_people"
-                icon={Briefcase}
-                title="Hire people"
-                desc="Message people you want on the team. Goal: a hire."
-                onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
-              />
-              <EmptyCampaignCard 
-                id="get_intros"
-                icon={LinkIcon}
-                title="Get intros"
-                desc="Message people who can open a door — investor, partner, or their network."
-                onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
-              />
-            </div>
-            
-            
-          </motion.div>
-        ) : filtered.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-border/50 bg-muted/30 dark:bg-background/50"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-muted/40 border border-border flex items-center justify-center mb-6">
-                <Search size={24} className="text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">No results found</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mb-6 leading-relaxed">
-                We couldn't find any campaigns matching "{search}".
+
+          {/* ─── STICKY BATCH COMMAND TOOLBAR (Layer 0 & Layer 2) ─────────────── */}
+          <AnimatePresence>
+            {selectedIds.size > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="bg-card text-foreground border border-border rounded-2xl shadow-sm px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="px-2 py-0.5 rounded-lg bg-muted text-foreground font-mono text-xs font-medium">
+                    {selectedIds.size}
+                  </span>
+                  <span className="text-xs font-medium text-foreground">
+                    Campaign{selectedIds.size > 1 ? 's' : ''} Selected
+                  </span>
+                  <button
+                    onClick={() => setSelectedIds(new Set())}
+                    className="text-xs text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={handleBatchResume}
+                    disabled={isBatchOperating}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isBatchOperating && batchActionType === 'resume' ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                    <span>Resume Selected</span>
+                  </button>
+                  <button
+                    onClick={handleBatchPause}
+                    disabled={isBatchOperating}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isBatchOperating && batchActionType === 'pause' ? <Loader2 size={13} className="animate-spin" /> : <Pause size={13} />}
+                    <span>Pause Selected</span>
+                  </button>
+                  <button
+                    onClick={handleBatchDelete}
+                    disabled={isBatchOperating}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-destructive text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isBatchOperating && batchActionType === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    <span>Delete Selected</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ─── CAMPAIGNS DATA TABLE ─────────────────────────────────────────── */}
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-10 text-center rounded-2xl border border-border bg-card">
+              <h3 className="text-sm font-semibold text-foreground mb-1">No matching campaigns found</h3>
+              <p className="text-xs text-muted-foreground max-w-sm mb-4">
+                No campaigns matched your current filter criteria.
               </p>
-            </motion.div>
+              <button
+                onClick={() => { setSearch(""); setStatusFilter("ALL"); }}
+                className="px-3.5 py-1.5 rounded-xl border border-border bg-background text-foreground text-xs font-medium hover:bg-muted cursor-pointer"
+              >
+                Clear Filters
+              </button>
+            </div>
           ) : (
-            <div className="bg-background rounded-xl border border-border/60 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-muted/30 border-b border-border/60 text-muted-foreground text-xs font-semibold">
-                    <tr>
-                      <th className="px-6 py-4 w-32">Status</th>
-                      <th className="px-6 py-4 min-w-[200px]">Campaign</th>
-                      <th className="px-6 py-4 w-64">Performance</th>
-                      <th className="px-6 py-4 w-64">Progress</th>
-                      <th className="px-6 py-4 w-32">Senders</th>
-                      <th className="px-6 py-4 w-12"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    <AnimatePresence>
-                    {filtered.map((c, i) => {
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold tracking-tight text-foreground">Campaign Fleet Performance Scorecard</h2>
+                  <p className="text-xs text-muted-foreground">Cohort conversion velocity and response health across active sequence playbooks</p>
+                </div>
+              </div>
+
+              <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-muted/30 border-b border-border text-muted-foreground text-xs font-medium">
+                      <tr>
+                        <th className="px-4 py-3 w-10 text-center">
+                          <button
+                            type="button"
+                            onClick={handleToggleSelectAll}
+                            className="text-muted-foreground hover:text-foreground cursor-pointer"
+                            title={isAllSelected ? "Deselect All" : "Select All"}
+                          >
+                            {isAllSelected ? (
+                              <CheckSquare size={15} className="text-primary" />
+                            ) : (
+                              <Square size={15} />
+                            )}
+                          </button>
+                        </th>
+                        <th className="px-5 py-3 min-w-[200px]">Campaign Name</th>
+                        <th className="px-4 py-3 w-28">Status</th>
+                        <th className="px-4 py-3 w-24 text-right">Enrolled</th>
+                        <th className="px-4 py-3 w-24 text-right">Connected</th>
+                        <th className="px-4 py-3 w-28 text-right">Acceptance</th>
+                        <th className="px-4 py-3 w-24 text-right">Replied</th>
+                        <th className="px-4 py-3 w-28 text-right">Reply Rate</th>
+                        <th className="px-4 py-3 w-24 text-right">Booked</th>
+                        <th className="px-4 py-3 w-28 text-center">Senders</th>
+                        <th className="px-5 py-3 w-36 text-right">Action</th>
+                      </tr>
+                    </thead>
+                  <tbody className="divide-y divide-border">
+                    {filtered.map((c) => {
                       const statusCfg = STATUS_CONFIG[c.status] || STATUS_CONFIG["DRAFT"]
-                      const leadCount = c.leads_total || 0
-                      const running = c.leads_running || 0
-                      const pending = c.leads_pending || 0
-                      const completed = c.leads_completed || 0
-                      const dateStr = c.created_at ? new Date(c.created_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : "Just now"
+                      const isSelected = selectedIds.has(c.id)
+                      const hasZeroSenders = c.status === 'ACTIVE' && (!c.senders || c.senders.length === 0)
+                      const dateStr = c.created_at 
+                        ? new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+                        : "Recently"
+
+                      const sc = scorecardMap.get(c.id) || {}
+                      const enrolled = Number(sc.enrolled ?? c.leads_total ?? 0)
+                      const connected = Number(sc.connected ?? c.leads_completed ?? 0)
+                      const acceptanceRate = sc.acceptance_rate !== undefined 
+                        ? Number(sc.acceptance_rate) 
+                        : (enrolled > 0 ? Math.round((connected / enrolled) * 100) : 0)
+                      const replied = Number(sc.replied ?? c.replies ?? 0)
+                      const replyRate = sc.reply_rate !== undefined 
+                        ? Number(sc.reply_rate) 
+                        : (connected > 0 ? Math.round((replied / connected) * 100) : 0)
+                      const booked = Number(sc.booked ?? (c.leads_completed && c.conversion_rate ? Math.round(c.leads_completed * c.conversion_rate) : 0))
 
                       return (
-                        <motion.tr
+                        <tr
                           key={c.id}
-                          className="hover:bg-muted/20 transition-colors group"
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, x: -16, transition: { duration: 0.2 } }}
-                          transition={{ duration: 0.22, delay: i * 0.03 }}
+                          className={`transition-colors group cursor-pointer ${
+                            isSelected ? 'bg-muted/40' : 'hover:bg-muted/20'
+                          }`}
+                          onClick={() => navigate(`/elein/campaigns/${c.id}`)}
                         >
-                          {/* Status */}
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot} shadow-sm`} />
-                              <span className={`text-[11px] font-semibold tracking-wide uppercase ${statusCfg.text}`}>
-                                {statusCfg.label}
-                              </span>
-                            </div>
+                          {/* Checkbox */}
+                          <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleSelectOne(c.id, e)}
+                              className="text-muted-foreground hover:text-foreground cursor-pointer"
+                            >
+                              {isSelected ? (
+                                <CheckSquare size={15} className="text-primary" />
+                              ) : (
+                                <Square size={15} />
+                              )}
+                            </button>
                           </td>
 
                           {/* Campaign Name & Date */}
-                          <td className="px-6 py-4">
-                            <Link to={`/elein/campaigns/${c.id}`} className="block">
-                              <p className="font-bold text-foreground text-sm hover:underline underline-offset-4">{c.name}</p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">{dateStr}</p>
-                            </Link>
-                          </td>
-
-                          {/* Performance Badges */}
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/40 border border-border/40 text-[11px] font-medium text-foreground">
-                                <Users size={12} className="text-muted-foreground" /> {leadCount}
-                              </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/40 border border-border/40 text-[11px] font-medium text-foreground">
-                                <Activity size={12} className="text-muted-foreground" /> {((c.conversion_rate ?? 0) * 100).toFixed(1)}%
-                              </div>
+                          <td className="px-5 py-3.5">
+                            <div className="block">
+                              <p className="font-medium text-foreground text-xs group-hover:underline underline-offset-2">
+                                {c.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{dateStr}</p>
                             </div>
                           </td>
 
-                          {/* Progress Badges */}
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/40 border border-border/40 text-[11px] font-medium text-foreground">
-                                <Clock size={12} className="text-muted-foreground" /> {pending}
+                          {/* Status */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`w-2 h-2 rounded-full ${statusCfg.dot}`} />
+                                <span className={`text-xs font-medium ${statusCfg.text}`}>
+                                  {statusCfg.label}
+                                </span>
                               </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
-                                <Activity size={12} /> {running}
-                              </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-success/10 border border-success/20 text-[11px] font-medium text-success">
-                                <CheckCircle2 size={12} /> {completed}
-                              </div>
+                              {hasZeroSenders && (
+                                <span 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/elein/campaigns/new?edit=${c.id}`);
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-foreground underline w-fit"
+                                  title="Campaign active but 0 sender accounts assigned"
+                                >
+                                  0 senders
+                                </span>
+                              )}
                             </div>
+                          </td>
+
+                          {/* Enrolled */}
+                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
+                            <NumberTicker value={enrolled} />
+                          </td>
+
+                          {/* Connected */}
+                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
+                            <NumberTicker value={connected} />
+                          </td>
+
+                          {/* Acceptance Rate */}
+                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
+                            <NumberTicker value={acceptanceRate} />%
+                          </td>
+
+                          {/* Replied */}
+                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
+                            <NumberTicker value={replied} />
+                          </td>
+
+                          {/* Reply Rate */}
+                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
+                            <NumberTicker value={replyRate} />%
+                          </td>
+
+                          {/* Booked */}
+                          <td className="px-4 py-3.5 text-right font-mono text-xs font-semibold text-primary">
+                            <NumberTicker value={booked} />
                           </td>
 
                           {/* Senders */}
-                          <td className="px-6 py-4 text-muted-foreground text-xs">
+                          <td className="px-4 py-3.5 text-center text-muted-foreground text-xs" onClick={(e) => e.stopPropagation()}>
                             {c.senders && c.senders.length > 0 ? (
-                              <div className="flex -space-x-2 overflow-hidden">
-                                {c.senders.map((s: any, idx: number) => (
-                                  <div key={idx} className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-xs font-bold shadow-sm" title={s.name}>
-                                    {s.name.substring(0, 2).toUpperCase()}
+                              <div className="flex justify-center -space-x-1.5 overflow-hidden">
+                                {c.senders.slice(0, 3).map((s: any, idx: number) => (
+                                  <div 
+                                    key={idx} 
+                                    className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-muted border border-border text-foreground flex items-center justify-center text-xs font-mono font-medium" 
+                                    title={s.name}
+                                  >
+                                    {s.name ? s.name.substring(0, 2).toUpperCase() : "IN"}
                                   </div>
                                 ))}
+                                {c.senders.length > 3 && (
+                                  <div className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-muted text-muted-foreground flex items-center justify-center text-xs font-mono">
+                                    +{c.senders.length - 3}
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              "—"
+                              <span className="text-xs text-muted-foreground">None</span>
                             )}
                           </td>
 
-                          {/* Actions */}
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {c.status !== "DRAFT" && (
-                                <button
-                                  onClick={() => toggleStatus(c.id)}
-                                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-                                  title={c.status === "ACTIVE" ? "Pause" : "Resume"}
-                                >
-                                  {c.status === "ACTIVE" ? <Pause size={14} /> : <Play size={14} />}
-                                </button>
-                              )}
+                          {/* Row Action Station */}
+                          <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1.5 relative">
+                              {/* Inspect Button */}
                               <button
+                                type="button"
+                                onClick={() => navigate(`/elein/campaigns/${c.id}`)}
+                                className="px-2.5 py-1 rounded-md border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
+                                title="Inspect campaign analytics & leads"
+                              >
+                                Inspect
+                              </button>
+
+                              {/* Toggle Active/Pause */}
+                              <button
+                                type="button"
+                                onClick={() => toggleStatus(c.id)}
+                                disabled={!!togglingId || isBatchOperating}
+                                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
+                                title={c.status === "ACTIVE" ? "Pause Campaign" : "Resume Campaign"}
+                              >
+                                {togglingId === c.id ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : c.status === "ACTIVE" ? (
+                                  <Pause size={14} />
+                                ) : (
+                                  <Play size={14} />
+                                )}
+                              </button>
+
+                              {/* Edit Sequence */}
+                              <button
+                                type="button"
                                 onClick={() => navigate(`/elein/campaigns/new?edit=${c.id}`)}
-                                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-                                title="Edit Campaign"
+                                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                title="Edit Campaign Sequence"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                <Settings size={14} />
                               </button>
-                              <button
-                                onClick={() => remove(c.id)}
-                                className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+
+                              {/* More Options Dropdown */}
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenRowMenuId(openRowMenuId === c.id ? null : c.id)}
+                                  className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                  title="More Options"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+
+                                {openRowMenuId === c.id && (
+                                  <div
+                                    ref={rowMenuRef}
+                                    className="absolute right-0 top-full mt-1 w-48 p-1.5 bg-popover border border-border rounded-2xl shadow-lg z-50 text-left"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenRowMenuId(null);
+                                        handleDuplicateCampaign(c.id, c.name);
+                                      }}
+                                      disabled={duplicatingId === c.id}
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                                    >
+                                      <Copy size={14} className="text-muted-foreground" />
+                                      <span>Duplicate Campaign</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenRowMenuId(null);
+                                        setSelectedCertCampaign({ id: c.id, name: c.name });
+                                      }}
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                                    >
+                                      <Award size={14} className="text-muted-foreground" />
+                                      <span>Performance Report</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenRowMenuId(null);
+                                        setBanditCampaign({ id: c.id, name: c.name });
+                                      }}
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                                    >
+                                      <BarChart2 size={14} className="text-muted-foreground" />
+                                      <span>Copy Intelligence</span>
+                                    </button>
+
+                                    <div className="my-1 border-t border-border" />
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenRowMenuId(null);
+                                        remove(c.id);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-xl transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 size={14} />
+                                      <span>Delete Campaign</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </td>
-                        </motion.tr>
+                        </tr>
                       )
                     })}
-                    </AnimatePresence>
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
-      </>
+          </div>
+        )}
+        </div>
+      )}
+
+      {/* ─── MODALS ───────────────────────────────────────────────────────────── */}
+      {/* High-Converting In-Situ Paywall Modal */}
+      <EleInPaywallModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        campaignName="Active Campaigns"
+        onSuccess={() => {
+          toast.success("Account upgraded to Growth Tier!");
+          mutate();
+        }}
+      />
+
+      {/* Pre-Flight Launch Cockpit Gate */}
+      {preflightCampaign && (
+        <CampaignPreflightModal
+          isOpen={!!preflightCampaign}
+          onClose={() => setPreflightCampaign(null)}
+          onConfirmLaunch={() => executeToggleStatus(preflightCampaign.id, 'activate')}
+          campaignId={preflightCampaign.id}
+          campaignName={preflightCampaign.name}
+        />
+      )}
 
       {/* Custom Confirmation Modal */}
       <AnimatePresence>
@@ -473,7 +1221,7 @@ export function EleInCampaigns() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -483,27 +1231,353 @@ export function EleInCampaigns() {
               className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-xl overflow-hidden"
             >
               <div className="p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-2">{confirmModal.title}</h3>
-                <p className="text-sm text-muted-foreground">{confirmModal.message}</p>
+                <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
+                  <AlertCircle size={18} className="text-destructive shrink-0" />
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">{confirmModal.message}</p>
               </div>
               <div className="px-6 py-4 bg-muted/30 border-t border-border flex items-center justify-end gap-3">
                 <button 
                   onClick={() => setConfirmModal(null)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium hover:bg-muted text-foreground transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-muted text-foreground transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={confirmModal.onConfirm}
-                  className="px-4 py-2 rounded-xl text-sm font-medium bg-destructive hover:bg-destructive/90 text-white transition-colors shadow-sm active:scale-95"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-destructive hover:bg-destructive/90 text-white transition-colors shadow-xs active:scale-95 cursor-pointer"
                 >
-                  Delete
+                  Confirm Delete
                 </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── GROWTH TOOLS HUB MODAL ────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showGrowthHub && (
+          <motion.div
+            key="growth-hub-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-background/80 backdrop-blur-xs"
+            onClick={() => setShowGrowthHub(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 8 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-3xl max-h-[88vh] bg-card border border-border rounded-2xl shadow-xl overflow-hidden flex flex-col"
+            >
+              {/* Hub Header */}
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">Campaign Automations</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Turn on optional automations to increase your replies, follow up across channels, and protect your accounts.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowGrowthHub(false)}
+                  className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Hub Content Scrollable Grid */}
+              <div className="p-6 overflow-y-auto space-y-5">
+                {/* Section 1: Get More Replies */}
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
+                    1. Increase Replies & Bookings
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setBanditCampaign({ id: "", name: "Global Portfolio" }); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">A/B Test Messages</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Test multiple message variations to see which one books more meetings.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowSentimentModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Auto-Snooze & Intent Filters</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Spot interested replies instantly and snooze leads who are out of the office.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowStoModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Active Hours Scheduling</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Deliver messages during hours when your leads are active on LinkedIn.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowCalendarModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">1-Click Meeting Link</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Add a direct booking link so interested leads can schedule without email back-and-forth.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Multi-Channel Follow-ups */}
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
+                    2. Multi-Channel Follow-ups & Triggers
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowOmnichannelModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Email if No LinkedIn Reply</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Send an automated email follow-up if a lead does not respond on LinkedIn.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowAbmModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Target Multiple People at One Company</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Reach decision-makers and champions at the same target account simultaneously.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowBoomerangModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Job Change Alerts</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Get notified and reach out when previous prospects or champions move to new companies.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowEventModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Message Event Attendees</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Reach leads attending relevant industry webinars and LinkedIn events.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Safety & Deliverability */}
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
+                    3. Account Safety & Domain Health
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowPreWarmModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">LinkedIn Profile Warmup</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Auto-visit profiles and like recent posts before connecting to keep accounts safe.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowDeliverabilityModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Email Spam & Domain Check</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Verify SPF, DKIM, and DMARC settings to keep your emails out of the spam folder.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowDisplacementModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-sm font-medium text-foreground">Competitor Technology Triggers</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Reach target accounts when they install or remove competing sales software.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 4: Email Deliverability */}
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
+                    Deliverability & Sender Reputation
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div
+                      onClick={() => { setShowGrowthHub(false); setShowDeliverabilityModal(true); }}
+                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                    >
+                      <div>
+                        <h4 className="text-xs font-semibold text-foreground">Email Deliverability & Spam Check</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          Verify SPF, DKIM, DMARC records and custom tracking domains to keep emails out of spam.
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Viral ROI Certificate & Wrapped Performance Card Studio */}
+      {selectedCertCampaign && (
+        <CampaignROICertificateModal
+          isOpen={!!selectedCertCampaign}
+          onClose={() => setSelectedCertCampaign(null)}
+          campaignId={selectedCertCampaign.id}
+          campaignName={selectedCertCampaign.name}
+        />
+      )}
+
+      {/* Dynamic Multi-Armed Bandit Copy Optimizer & Trigger Radar Studio */}
+      {banditCampaign && (
+        <BanditOptimizerStudioModal
+          campaignId={banditCampaign.id || undefined}
+          onClose={() => setBanditCampaign(null)}
+        />
+      )}
+
+      {/* Autonomous Social Pre-Warm & Omnichannel Cascade Studio */}
+      {showPreWarmModal && (
+        <PreWarmStudioModal
+          onClose={() => setShowPreWarmModal(false)}
+        />
+      )}
+
+      {/* LinkedIn Event Harvester & Multimodal Voice/Video Studio */}
+      {showEventModal && (
+        <EventMultimodalStudioModal
+          onClose={() => setShowEventModal(false)}
+        />
+      )}
+
+      {/* ABM Buying Committees & Multithreading Studio */}
+      {showAbmModal && (
+        <AbmMultithreadStudioModal
+          onClose={() => setShowAbmModal(false)}
+        />
+      )}
+
+      {/* Omnichannel Retargeting Cascade & 4-Tier Channel Routing Simulator */}
+      {showOmnichannelModal && (
+        <OmnichannelRetargetingStudioModal
+          onClose={() => setShowOmnichannelModal(false)}
+        />
+      )}
+
+      {/* Champion Job-Change Boomerang & Closed-Lost Revival Studio */}
+      {showBoomerangModal && (
+        <BoomerangRevivalStudioModal
+          onClose={() => setShowBoomerangModal(false)}
+        />
+      )}
+
+      {/* AI Send-Time Optimization (Predictive STO) & Prospect Activity Heatmap Studio */}
+      {showStoModal && (
+        <SendTimeOptimizationStudioModal
+          isOpen={showStoModal}
+          onClose={() => setShowStoModal(false)}
+          canAiSto={isPro}
+        />
+      )}
+
+      {/* Cold-Email Deliverability Pool & Custom Tracking Domain Studio */}
+      {showDeliverabilityModal && (
+        <DeliverabilityStudioModal
+          isOpen={showDeliverabilityModal}
+          onClose={() => setShowDeliverabilityModal(false)}
+          canDeliverabilityPool={isPro}
+        />
+      )}
+
+      {/* Inbound AI Reply Sentiment & OOO Auto-Snooze Studio */}
+      {showSentimentModal && (
+        <ReplySentimentStudioModal
+          isOpen={showSentimentModal}
+          onClose={() => setShowSentimentModal(false)}
+        />
+      )}
+
+      {/* Autonomous Competitive Takeover & Tech Displacement Studio */}
+      {showDisplacementModal && (
+        <DisplacementStudioModal
+          onClose={() => setShowDisplacementModal(false)}
+        />
+      )}
+
+      {/* Executive Calendar Concierge & Frictionless Meeting Booking Studio */}
+      {showCalendarModal && (
+        <CalendarConciergeStudioModal
+          onClose={() => setShowCalendarModal(false)}
+        />
+      )}
     </div>
   )
 }

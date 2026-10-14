@@ -17,7 +17,7 @@ def get_next_check_interval(account: dict, recent_checks: list) -> int:
 def check_session_validity(account_id: str, cookies_json: str) -> dict:
     """Returns {check_type: 'session_valid', result: 'pass'|'warn'|'fail', detail: {}}"""
     try:
-        worker = LinkedInWorker(cookies_json=cookies_json)
+        worker = LinkedInWorker(cookies_json=cookies_json, account_id=account_id)
         resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
         if resp.status_code == 200:
             return {'check_type': 'session_valid', 'result': 'pass', 'detail': {'status_code': 200}}
@@ -47,13 +47,13 @@ def check_cookie_freshness(account: dict) -> dict:
     except Exception as e:
         return {'check_type': 'cookie_freshness', 'result': 'warn', 'detail': {'error': str(e)}}
 
-def check_profile_reachable(cookies_json: str, linkedin_profile_url: str) -> dict:
+def check_profile_reachable(cookies_json: str, linkedin_profile_url: str, account_id: str = "health_check") -> dict:
     """Fetches the profile page and checks for restriction interstitials"""
     if not linkedin_profile_url:
         return {'check_type': 'profile_reachable', 'result': 'pass', 'detail': {'message': 'No profile url to check'}}
     
     try:
-        worker = LinkedInWorker(cookies_json=cookies_json)
+        worker = LinkedInWorker(cookies_json=cookies_json, account_id=account_id)
         resp = worker._http_get(linkedin_profile_url)
         if resp.status_code == 200:
             html = resp.text
@@ -65,10 +65,10 @@ def check_profile_reachable(cookies_json: str, linkedin_profile_url: str) -> dic
     except Exception as e:
         return {'check_type': 'profile_reachable', 'result': 'fail', 'detail': {'error': str(e)}}
 
-def check_for_restriction_signals(cookies_json: str) -> dict:
+def check_for_restriction_signals(cookies_json: str, account_id: str = "health_check") -> dict:
     """Checks for LinkedIn checkpoint/restriction page patterns"""
     try:
-        worker = LinkedInWorker(cookies_json=cookies_json)
+        worker = LinkedInWorker(cookies_json=cookies_json, account_id=account_id)
         resp = worker._http_get("https://www.linkedin.com/feed/")
         if resp.status_code == 200:
             html = resp.text
@@ -143,8 +143,8 @@ def run_health_check(supabase: Client, account_id: str, workspace_id: str) -> di
     results = [
         check_session_validity(account_id, cookies_json),
         check_cookie_freshness(account),
-        check_profile_reachable(cookies_json, account.get("linkedin_profile_url", "")),
-        check_for_restriction_signals(cookies_json)
+        check_profile_reachable(cookies_json, account.get("linkedin_profile_url", ""), account_id=account_id),
+        check_for_restriction_signals(cookies_json, account_id=account_id)
     ]
 
     has_fail = any(r["result"] == "fail" for r in results)

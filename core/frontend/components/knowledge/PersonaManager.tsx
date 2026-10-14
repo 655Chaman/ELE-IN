@@ -1,6 +1,10 @@
 import { motion, AnimatePresence } from "motion/react";
-import { Users, Plus, Edit2, Trash2, ShieldAlert, Sparkles, MessageSquare, X } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, ShieldAlert, Sparkles, MessageSquare, X, Lock } from "lucide-react";
 import { usePersonaForm } from "./hooks/usePersonaForm";
+import { usePaywall } from "@/contexts/PaywallContext";
+import useSWR from "swr";
+import { fetcher } from "@/lib/apiClient";
+import { toast } from "sonner";
 
 export function PersonaManager({ personas, mutatePersonas, mutateObjections }: { personas: any[], mutatePersonas: any, mutateObjections: any }) {
   const {
@@ -13,22 +17,53 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
     handleDeletePersona
   } = usePersonaForm(personas, mutatePersonas, mutateObjections);
 
+  const { openPaywall } = usePaywall();
+  const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
+  const tier = billingData?.tier || 'FREE';
+  const isPro = tier === 'PRO' || tier === 'ENTERPRISE';
+  const maxPersonas = isPro ? (tier === 'ENTERPRISE' ? 50 : 10) : 1;
+  const isPersonaCapped = !isPro && (personas || []).length >= maxPersonas;
+
+  const handleAddPersonaClick = () => {
+    if (isPersonaCapped) {
+      openPaywall({ featureName: "Multi-Persona Target Engine" });
+      toast.info(`Free plan is limited to ${maxPersonas} buyer persona. Upgrade to Growth Pro to define up to 10 target personas.`);
+      return;
+    }
+    openPersonaModal();
+  };
+
   return (
     <>
       <div className="bg-white dark:bg-card/40 border border-slate-200 dark:border-border/50 rounded-[40px] p-8 lg:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex justify-between items-center mb-10">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
                 <Users className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h3 className="text-2xl font-semibold tracking-tight text-foreground">Buyer Personas</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-2xl font-semibold tracking-tight text-foreground">Buyer Personas</h3>
+                  {!isPro && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      {(personas || []).length}/{maxPersonas} Persona
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground mt-1">Define who you are targeting to generate hyper-personalized hooks.</p>
               </div>
             </div>
-            <button onClick={() => openPersonaModal()} className="flex items-center gap-2 bg-foreground text-background px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-foreground/90 transition-all hover:scale-105 active:scale-95 shadow-md">
-              <Plus size={16} /> Add Persona
+            <button 
+              onClick={handleAddPersonaClick} 
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95 shadow-md ${
+                isPersonaCapped 
+                  ? "bg-slate-100 dark:bg-muted text-foreground border border-border" 
+                  : "bg-foreground text-background hover:bg-foreground/90"
+              }`}
+            >
+              {isPersonaCapped ? <Lock size={15} className="text-amber-500" /> : <Plus size={16} />}
+              {isPersonaCapped ? "Unlock More Personas" : "Add Persona"}
             </button>
           </div>
           
@@ -39,16 +74,16 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
               </div>
               <h4 className="text-lg font-medium text-foreground mb-2">No Buyer Personas Defined</h4>
               <p className="text-sm text-muted-foreground max-w-sm mb-6">Stop sending generic pitches. Define exact job titles and their specific pain points to drastically increase your reply rates.</p>
-              <button onClick={() => openPersonaModal()} className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors shadow-md">
+              <button onClick={() => openPersonaModal()} className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-md">
                 <Plus size={16} /> Create Your First Persona
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {personas.map((persona: any) => (
-                <div key={persona.id} className="group relative border border-slate-200 dark:border-slate-800/80 rounded-[32px] bg-white/50 dark:bg-[#0f1115]/50 hover:bg-white dark:hover:bg-[#15181e] hover:border-purple-300 dark:hover:border-purple-500/50 transition-all duration-300 overflow-hidden shadow-sm hover:shadow-xl">
+                <div key={persona.id} className="group relative border border-slate-200 dark:border-slate-800/80 rounded-[32px] bg-white/50 dark:bg-[#0f1115]/50 hover:bg-white dark:hover:bg-[#15181e] hover:border-blue-300 dark:hover:border-blue-500/50 transition-all duration-300 overflow-hidden shadow-sm hover:shadow-xl">
                   {/* Card Header Background */}
-                  <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-purple-50/50 dark:from-purple-900/10 to-transparent pointer-events-none" />
+                  <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-blue-50/50 dark:from-blue-900/10 to-transparent pointer-events-none" />
                   
                   <div className="p-8 relative z-10">
                     <div className="flex justify-between items-start mb-6">
@@ -59,7 +94,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                         <div className="flex flex-wrap gap-2">
                           {Array.isArray(persona.target_titles) && persona.target_titles.length > 0 ? (
                             persona.target_titles.map((t: string, i: number) => (
-                              <span key={i} className="px-2.5 py-1 rounded-md bg-purple-100 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 text-xs font-medium border border-purple-200 dark:border-purple-500/20">
+                              <span key={i} className="px-2.5 py-1 rounded-md bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs font-medium border border-blue-200 dark:border-blue-500/20">
                                 {t}
                               </span>
                             ))

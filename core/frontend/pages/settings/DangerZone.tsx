@@ -5,7 +5,6 @@ import { friendlyToast } from "../../components/FriendlyError";
 import { useWorkspaceData } from "./useWorkspaceData";
 import { motion, AnimatePresence } from "motion/react";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
-import SpotlightCard from "@/components/SpotlightCard";
 import { SettingsLoadingSkeleton } from "@/components/SettingsLoadingSkeleton";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -47,7 +46,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
 
 
   const confirmDeletion = async () => {
-    const isConfirmedCheck = (confirmText === activeWsName || confirmText === "DELETE_NOW");
+    const isConfirmedCheck = (confirmText === activeWsName);
     if (!workspaceId || !isConfirmedCheck || requesting) return;
     
     // Extra safety: double check the name matches in backend, but we'll send a confirm flag
@@ -102,7 +101,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
   ];
   
   // Determine input styling based on progress
-  let inputBorderClass = "border-border focus:ring-border";
+  let inputBorderClass = "border-gray-200 focus:ring-border";
   if (confirmText.length > 0 && confirmText !== activeWsName) {
     inputBorderClass = "border-warning/50 focus:ring-warning/30 text-warning";
   } else if (isConfirmed) {
@@ -115,21 +114,21 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
         Psychological Principle: High Friction by Design
         Desaturated background, heavy red borders, warning iconography 
       */}
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
+      <div className="p-6 md:p-8 rounded-[24px] border border-border bg-card relative overflow-hidden shadow-sm">
         
         {isPendingDeletion && (
-          <div className="bg-destructive text-destructive-foreground px-6 py-4 flex items-center justify-between font-bold">
+          <div className="bg-destructive text-destructive-foreground px-6 py-4 flex items-center justify-between font-bold rounded-t-xl mb-4">
             <div className="flex items-center gap-3">
               <AlertTriangle className="animate-pulse" />
               <span>Workspace Pending Permanent Deletion</span>
             </div>
-            <div className="text-sm bg-background/20 px-3 py-1 rounded-md">
-              14 Days Remaining
+            <div className="text-xs bg-background/20 px-3 py-1 rounded-md font-mono">
+              14-Day Grace Window Active
             </div>
           </div>
         )}
 
-        <div className="p-8 md:p-10">
+        <div>
           <div className="flex items-start gap-5 mb-8">
             <div className="p-4 bg-destructive/10 text-destructive rounded-2xl relative">
               <AlertTriangle size={32} className="relative z-10" />
@@ -140,12 +139,12 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                 Danger Zone
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                This is a highly destructive action. The operations on this page will result in permanent data loss.
+                This is a highly destructive action. Operations here will result in permanent workspace and lead loss.
               </p>
             </div>
           </div>
 
-          <div className="max-w-2xl bg-background border border-border/50 rounded-xl p-8 relative shadow-lg">
+          <div className="max-w-2xl bg-background border border-border/60 rounded-xl p-6 md:p-8 relative shadow-lg">
             
             {isPendingDeletion ? (
               <div className="space-y-6">
@@ -154,34 +153,34 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                     Deletion Grace Period Active
                   </h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    A 14-day grace period has started. The following actions have already taken place:
+                    A 14-day grace period is currently running for <strong>{activeWsName}</strong>. The following actions have taken place:
                   </p>
                   <ul className="mt-4 space-y-2">
                     <li className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                      <X size={16} className="text-destructive" /> Campaigns have been paused
+                      <X size={16} className="text-destructive shrink-0" /> Campaigns have been automatically paused
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                      <X size={16} className="text-destructive" /> Integrations have been disconnected
+                      <X size={16} className="text-destructive shrink-0" /> Webhooks and integrations paused
                     </li>
                     <li className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                      <X size={16} className="text-destructive" /> Team members have been locked out
+                      <X size={16} className="text-destructive shrink-0" /> Non-owner access restricted
                     </li>
                   </ul>
                 </div>
                 
-                <div className="p-5 bg-surface/50 border border-border/50 rounded-lg flex flex-col items-center text-center">
+                <div className="p-5 bg-muted/20 border border-border/60 rounded-lg flex flex-col items-center text-center">
                   <p className="text-sm font-bold text-foreground mb-4">
-                    Need to abort?
+                    Changed your mind? Restore this workspace immediately:
                   </p>
                   <button
                     onClick={handleCancelDeletion}
                     disabled={cancelling}
-                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-destructive text-white font-bold rounded-lg hover:bg-destructive/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_10px_rgba(239,68,68,0.2)]"
+                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
                   >
                     {cancelling ? (
                       <>
                         <Loader2 size={18} className="animate-spin" />
-                        <span>Restoring...</span>
+                        <span>Restoring Workspace...</span>
                       </>
                     ) : (
                       <>
@@ -196,11 +195,11 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
               <div className="space-y-8">
                 <div className="space-y-3">
                   <h3 className="text-lg font-bold tracking-tight text-foreground">
-                    What you will lose:
+                    What will be permanently deleted:
                   </h3>
                   <div className="space-y-2.5">
                     {consequences.map((item, i) => (
-                      <div key={i} className="flex items-center gap-3 p-3 bg-surface/50 border border-border/50 rounded-lg">
+                      <div key={i} className="flex items-center gap-3 p-3 bg-muted/20 border border-border/60 rounded-lg">
                         <div className="p-1 bg-destructive/10 rounded-md">
                           <X size={16} className="text-destructive" />
                         </div>
@@ -215,17 +214,17 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                     <AlertTriangle size={20} />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-bold text-destructive">Wait. Are you sure?</p>
+                    <p className="text-sm font-bold text-destructive">Caution: 14-Day Grace Period Protection</p>
                     <p className="text-sm text-muted-foreground font-medium leading-relaxed">
-                      Most users regret this. <span className="text-foreground font-bold">67% of workspace deletions are cancelled within 24 hours.</span> 
-                      <br/>Please consider pausing your campaigns instead of permanent deletion.
+                      Initiating deletion pauses all outreach instantly and starts a 14-day hold before permanent GDPR purge.
+                      <br/>You can cancel anytime during this window from this page.
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <label className="text-sm font-bold block text-foreground">
-                    To commit to this action, type <span className="text-foreground bg-muted px-2 py-0.5 rounded select-none">{activeWsName}</span> below:
+                    To commit to this action, type <span className="text-foreground bg-muted border border-border px-2 py-0.5 rounded select-none font-mono">{activeWsName}</span> below:
                   </label>
                   
                   <div className="relative group">
@@ -239,11 +238,6 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                       placeholder="Type the workspace name manually"
                       className={`w-full bg-background border-2 rounded-xl px-5 py-3 text-sm focus:outline-none transition-all font-bold placeholder:text-muted-foreground ${inputBorderClass}`}
                     />
-                    
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-muted text-xs font-bold text-foreground px-3 py-1.5 rounded-md shadow-lg whitespace-nowrap z-20">
-                      Type manually — paste is disabled for your safety.
-                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-t-muted"></div>
-                    </div>
                   </div>
                 </div>
 
@@ -252,9 +246,9 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                     onClick={confirmDeletion}
                     disabled={!isConfirmed || requesting}
                     className={`
-                      relative flex items-center justify-center gap-2 px-8 py-3 font-bold rounded-xl transition-all duration-300
+                      relative flex items-center justify-center gap-2 px-8 py-3 font-bold rounded-xl transition-all duration-300 cursor-pointer
                       ${!isConfirmed 
-                        ? 'bg-muted text-muted-foreground cursor-not-allowed' 
+                        ? 'bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60' 
                         : countdown !== null 
                           ? 'bg-destructive/80 text-white scale-95 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
                           : 'bg-destructive text-white hover:bg-destructive/90 shadow-[0_0_10px_rgba(239,68,68,0.2)] hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]'
@@ -275,7 +269,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                       ) : (
                         <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
                           <Trash2 size={18} />
-                          <span>Initiate Deletion</span>
+                          <span>Initiate 14-Day Deletion</span>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -285,7 +279,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
             )}
           </div>
         </div>
-      </SpotlightCard>
+      </div>
     </div>
   );
 }

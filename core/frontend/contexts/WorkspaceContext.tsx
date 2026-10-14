@@ -49,6 +49,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           // If the React state is out of sync with valid localStorage state, update it
           setActiveWorkspaceIdState(currentId);
         }
+      } else {
+        // Fallback: Hard clear if the user somehow has 0 workspaces (e.g. network drop during signup)
+        setActiveWorkspaceIdState(null);
+        localStorage.removeItem('elein_active_workspace');
       }
     } catch (error) {
       console.error("Failed to fetch workspaces:", error);

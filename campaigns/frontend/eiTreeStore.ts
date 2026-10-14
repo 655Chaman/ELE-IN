@@ -421,21 +421,21 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
 }
 
 
-// LAYER 0 + LAYER 1: Paranoia - Draft Autosave with Environmental Failure Protection (QuotaExceeded)
-if (typeof window !== "undefined") {
-  useHRTreeStore.subscribe((state) => {
-    try {
-      const { nodes, edges } = treeToDag(state.rootNodes)
-      const draft = {
-        nodes,
-        edges,
-        formState: state.formState,
-        step: state.campaignStep,
-        timestamp: Date.now()
-      }
-      localStorage.setItem("elein_unsaved_draft", JSON.stringify(draft))
-    } catch (e) {
-      console.warn("Failed to autosave campaign draft to localStorage:", e)
+// LAYER 0 + LAYER 1: Paranoia - Draft Autosave Helper with Environmental Failure Protection (QuotaExceeded)
+export function saveDraftToLocalStorage(state: EITreeStore) {
+  if (typeof window === "undefined") return
+  try {
+    const { nodes, edges } = treeToDag(state.rootNodes)
+    const draft = {
+      nodes,
+      edges,
+      formState: state.formState,
+      step: state.campaignStep,
+      timestamp: Date.now()
     }
-  })
+    localStorage.setItem("elein_unsaved_draft", JSON.stringify(draft))
+  } catch (e) {
+    console.warn("Failed to autosave campaign draft to localStorage:", e)
+  }
 }
+

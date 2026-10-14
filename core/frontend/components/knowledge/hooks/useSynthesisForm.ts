@@ -2,6 +2,7 @@
 // Do NOT add persona or asset state here.
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { mutate } from "swr";
 import { fetchWithAuth } from "@/lib/apiClient";
 
 export function useSynthesisForm(synthesis: any, mutateSynthesis: () => void) {
@@ -50,10 +51,36 @@ export function useSynthesisForm(synthesis: any, mutateSynthesis: () => void) {
       toast.success("AI Synthesis & Guidelines successfully updated.");
       setIsEditingSynthesis(false);
       mutateSynthesis();
+      mutate("/api/admin/campaign-context");
+      mutate("/api/assets/knowledge/synthesis");
     } catch (err) {
       toast.error("Failed to save changes.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const [isApproving, setIsApproving] = useState(false);
+
+  const handleApproveSynthesis = async () => {
+    setIsApproving(true);
+    try {
+      const res = await fetchWithAuth("/api/assets/knowledge/synthesis/approve", {
+        method: "POST"
+      });
+      if (!res.ok) {
+        let msg = "Failed to approve synthesis";
+        try { const err = await res.json(); msg = err.detail || msg; } catch(e) {}
+        throw new Error(msg);
+      }
+      toast.success("AI Synthesis approved and locked in!");
+      mutateSynthesis();
+      mutate("/api/admin/campaign-context");
+      mutate("/api/assets/knowledge/synthesis");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to approve synthesis");
+    } finally {
+      setIsApproving(false);
     }
   };
 
@@ -68,6 +95,8 @@ export function useSynthesisForm(synthesis: any, mutateSynthesis: () => void) {
     editedBannedPhrases, setEditedBannedPhrases,
     editedObjectionPlaybook, setEditedObjectionPlaybook,
     handleSaveSynthesis,
-    isSaving
+    isSaving,
+    handleApproveSynthesis,
+    isApproving
   };
 }

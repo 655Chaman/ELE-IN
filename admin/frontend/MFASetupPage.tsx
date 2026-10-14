@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from "@/lib/supabase"
+import { Check } from "lucide-react"
 
 export function MFASetupPage() {
   const navigate = useNavigate()
@@ -121,7 +122,7 @@ export function MFASetupPage() {
         {step === 'done' && (
           <div className="text-center">
             <div className="w-16 h-16 bg-success/10 dark:bg-success/50/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">✓</span>
+              <Check className="w-8 h-8 text-emerald-500" />
             </div>
             <p className="text-sm text-muted-foreground">2FA enabled! Redirecting you back...</p>
           </div>

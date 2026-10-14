@@ -49,7 +49,7 @@ export default function DeleteAccountConfirmationDialog({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[100] bg-black/60"
+                className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm"
               />
             </Dialog.Overlay>
             <Dialog.Content asChild>
@@ -60,18 +60,18 @@ export default function DeleteAccountConfirmationDialog({
                 transition={{ duration: 0.2 }}
                 className="fixed left-[50%] top-[50%] z-[101] w-full max-w-md translate-x-[-50%] translate-y-[-50%] p-4"
               >
-                <div className="rounded-2xl border border-border bg-card p-6 shadow-2xl">
+                <div className="rounded-[20px] bg-white shadow-2xl border border-gray-100 p-6">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
                         <AlertTriangle size={20} />
                       </div>
                       <div>
-                        <Dialog.Title className="text-lg font-bold text-foreground">
+                        <Dialog.Title className="text-[18px] font-bold text-gray-900">
                           Disconnect {accountName}?
                         </Dialog.Title>
-                        <Dialog.Description className="mt-1 text-sm text-muted-foreground leading-relaxed">
-                          This will disconnect <span className="font-semibold text-foreground">{accountName}</span> from Ele-in. Any campaigns using this account will be paused.
+                        <Dialog.Description className="mt-1 text-[14px] text-gray-500 leading-relaxed">
+                          This will disconnect <span className="font-semibold text-gray-900">{accountName}</span> from Ele-in. Any campaigns using this account will be paused.
                         </Dialog.Description>
                         {deleteError && <p className='text-destructive text-xs mt-2'>{deleteError}</p>}
                       </div>

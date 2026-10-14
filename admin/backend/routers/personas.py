@@ -10,33 +10,53 @@ from core.backend.api.auth_dep import get_current_workspace
 router = APIRouter(tags=["personas"])
 
 class PersonaCreate(BaseModel):
-    title: str
-    painPoints: Optional[List[str]] = []
+    title: str = "New Persona"
+    painPoints: Optional[List[str]] = None
+    pain_points: Optional[List[str]] = None
+    valueProp: Optional[str] = None
     value_prop: Optional[str] = ""
+    targetTitles: Optional[List[str]] = None
     target_titles: Optional[List[str]] = []
+    toneTweaks: Optional[str] = None
     tone_tweaks: Optional[str] = ""
+
+    class Config:
+        extra = "allow"
     
 
 class TestDriveRequest(BaseModel):
-    message: str
+    message: Optional[str] = None
+    objection: Optional[str] = None
 
 # --- Docs API ---
 @router.post("/test-drive")
+@router.post("/test-objection")
 async def test_drive_ai(
     payload: TestDriveRequest,
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace)
 ):
     """
-    Simulates how the AI will respond to a specific prospect message 
+    Simulates how the AI will respond to a specific prospect message or objection
     using the current Knowledge Base, Personas, and Objections.
     """
+    input_text = (payload.message or payload.objection or "").strip()
+    if not input_text:
+        return {
+            "response": "Please provide a prospect message or objection to test.",
+            "reply": "Please provide a prospect message or objection to test."
+        }
+
     from knowledge.backend.services.elein_ai_service import generate_test_drive_response
     
     response_text = await generate_test_drive_response(
-        supabase, workspace_id, message=payload.message
+        supabase, workspace_id, message=input_text
     )
-    return {"response": response_text}
+    # Return both keys for full backward and forward compatibility with all UI components
+    return {
+        "response": response_text,
+        "reply": response_text
+    }
 
 @router.get("/campaign-context")
 async def get_campaign_context(
@@ -78,6 +98,20 @@ def create_persona(
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace)
 ):
+    # Paranoia Layer 1: Enforce Tier Buyer Persona Limits
+    ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+    ws_tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+    from core.backend.services.credit_service import TIER_LIMITS
+    limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
+    max_personas = limits.get("max_personas", 1)
+    
+    current_count = supabase.table("personas").select("id", count="exact").eq("workspace_id", workspace_id).execute().count or 0
+    if current_count >= max_personas:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Persona limit reached: {ws_tier.capitalize()} Tier allows up to {max_personas} buyer persona{'s' if max_personas != 1 else ''}. Upgrade to Growth Pro to define up to 10 personas."
+        )
+
     return PersonaService.create_persona(supabase, workspace_id, payload.dict())
 
 @router.put("/personas/{persona_id}", response_model=Dict)

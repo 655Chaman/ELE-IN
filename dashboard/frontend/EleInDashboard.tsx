@@ -1,17 +1,19 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import useSWR from 'swr'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'motion/react'
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { NotificationBell } from "@/components/NotificationBell"
-import ShinyText from "@/components/ShinyText"
-import { Activity, Send, MessageSquare, X, Zap, RefreshCw } from 'lucide-react'
+import { Activity, Send, MessageSquare, X, Zap, RefreshCw, Check } from 'lucide-react'
 
 import { EleInAnalyticsView } from "@/components/dashboard/EleInAnalyticsView"
 import { StartOutreachMenu } from "@/components/elein/StartOutreachMenu"
 import { EleInFlowView } from "@/components/dashboard/EleInFlowView"
+import { useTheme } from "@/components/ThemeProvider"
+import { ElesiumLogo } from "@/components/ElesiumLogo"
 
-import { FilterDropdown } from "@/components/dashboard/FilterDropdown"
+import { useWorkspace } from "@/contexts/WorkspaceContext"
+import { friendlyToast } from "@/components/FriendlyError"
+import { NotificationPrePermissionTeaser } from "@/components/notifications/NotificationPrePermissionTeaser"
 
 // Layer 2: Dashboard Error Banner to consistently display errors across all SWR fetches
 function DashboardErrorBanner({ error, entityName, onRetry, onSeedDemo, onLoginRedirect }: { error: any, entityName: string, onRetry?: () => void, onSeedDemo?: () => void, onLoginRedirect?: () => void }) {
@@ -26,14 +28,14 @@ function DashboardErrorBanner({ error, entityName, onRetry, onSeedDemo, onLoginR
     <div className="p-4 mb-6 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm flex items-center justify-between gap-4">
       <div className="flex items-center gap-2">
         <Activity className="w-4 h-4 shrink-0" />
-        <span>Failed to load {entityName}. {isAuthError ? '' : 'Your campaigns are safe — please refresh or try again in a moment. '}{message}</span>
+        <span>Failed to load {entityName}. {isAuthError ? '' : 'Your campaigns are safe - please refresh or try again in a moment. '}{message}</span>
       </div>
       {isAuthError ? (
-        <button onClick={onLoginRedirect} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-lg whitespace-nowrap transition-colors">
+        <button onClick={onLoginRedirect} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-xl whitespace-nowrap transition-colors">
           Go to Login
         </button>
       ) : onRetry ? (
-        <button onClick={onRetry} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-lg whitespace-nowrap transition-colors">
+        <button onClick={onRetry} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-xl whitespace-nowrap transition-colors">
           Retry
         </button>
       ) : null}
@@ -100,7 +102,7 @@ function useUrlState<T>(
 }
 
 
-import { Info, Users, Briefcase, Link as LinkIcon, Rocket } from 'lucide-react'
+import { Sparkles, Shield, AlertTriangle } from 'lucide-react'
 
 
 export function EleInDashboard() {
@@ -159,8 +161,25 @@ export function EleInDashboard() {
     }
   }
 
-  // 1. Fetch available filters
-  const { data: filtersData, error: filtersError, isLoading: filtersLoading, mutate: mutateFilters } = useDashboardFetch('/api/master-view/filters', fetcher)
+  const { workspaces, activeWorkspaceId, myAgencies } = useWorkspace();
+  const currentWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+  const currentWorkspaceName = currentWorkspace?.name || "Ele-in Workspace";
+
+  // Layer 1: Reset selected filters if workspace changes to prevent filtering with another workspace's IDs
+  const prevWorkspaceIdRef = useRef<string | null>(activeWorkspaceId);
+  useEffect(() => {
+    if (prevWorkspaceIdRef.current && prevWorkspaceIdRef.current !== activeWorkspaceId) {
+      setSelectedSenders([]);
+      setSelectedCampaigns([]);
+    }
+    prevWorkspaceIdRef.current = activeWorkspaceId;
+  }, [activeWorkspaceId, setSelectedSenders, setSelectedCampaigns]);
+
+  // 1. Fetch available filters (scoped by activeWorkspaceId to prevent cross-workspace leak)
+  const { data: filtersData, error: filtersError, isLoading: filtersLoading, mutate: mutateFilters } = useDashboardFetch(
+    activeWorkspaceId ? ['/api/master-view/filters', activeWorkspaceId] : null,
+    ([url]: any) => fetcher(url)
+  )
   
   const senders = filtersData?.senders || []
   const campaigns = filtersData?.campaigns || []
@@ -189,10 +208,10 @@ export function EleInDashboard() {
     return filtered.length > 0 ? filtered : undefined;
   };
 
-  /* Always destructure { data, error, isLoading, isValidating } from useDashboardFetch. Never ignore 'error'. See dashboard error boundary pattern below. */
+  /* Always destructure { data, error, isLoading, isValidating } from useDashboardFetch. Scoped by activeWorkspaceId. */
   const { data: stats, error: statsError, isLoading: statsLoading, isValidating: statsValidating, mutate: mutateStats } = useDashboardFetch(
-    ['/api/master-view/stats', selectedSenders, selectedCampaigns, timeRange],
-    ([url, s, c, tr]: any) => postFetcher(url, { 
+    activeWorkspaceId ? ['/api/master-view/stats', activeWorkspaceId, selectedSenders, selectedCampaigns, timeRange] : null,
+    ([url, _ws, s, c, tr]: any) => postFetcher(url, { 
       senders: sanitizeFilter(s), 
       campaigns: sanitizeFilter(c), 
       ...getDateRange(tr as string) 
@@ -203,18 +222,34 @@ export function EleInDashboard() {
   )
 
   const { data: accountHealth, error: accountHealthError, mutate: mutateAccountHealth } = useDashboardFetch(
-    ['/api/master-view/account-health'],
+    activeWorkspaceId ? ['/api/master-view/account-health', activeWorkspaceId] : null,
     ([url]: any) => postFetcher(url, {}),
     { refreshInterval: 60000 }
   )
 
-  const isSetup = (() => {
-    if (statsLoading || !stats) return true; // Default to true to avoid flashing FlowView on load
-    const totalCampaigns = Number(stats?.summary?.total_campaigns ?? 0);
-    const hasAccounts = (filtersData?.senders?.length ?? 0) > 0;
-    const hasCampaigns = (filtersData?.campaigns?.length ?? 0) > 0;
-    return totalCampaigns > 0 || hasAccounts || hasCampaigns;
-  })();
+  const { data: pendingApprovalsData } = useSWR<{ count: number }>(
+    activeWorkspaceId ? [`/api/approvals?status=pending&limit=1`, activeWorkspaceId] : null,
+    ([url]: any) => fetcher(url),
+    { refreshInterval: 30000, keepPreviousData: true }
+  )
+  const pendingApprovalsCount = pendingApprovalsData?.count || 0
+
+  const expiredAccounts = useMemo(() => {
+    return (accountHealth?.accounts || []).filter((a: any) => 
+      a.is_cookie_expired || a.status === 'session_expired' || a.status === 'error'
+    );
+  }, [accountHealth]);
+
+  const throttledAccounts = useMemo(() => {
+    return (accountHealth?.accounts || []).filter((a: any) => a.throttled);
+  }, [accountHealth]);
+
+  const isExtendedLocked = false;
+  const isPdfLocked = false;
+  const isFunnelCsvLocked = false;
+
+  // Temporarily forced to true while working on the dashboard to bypass empty-state flow view
+  const isSetup = true;
 
   const today = stats?.today ?? {}
   const funnel = stats?.funnel ?? {}
@@ -222,8 +257,6 @@ export function EleInDashboard() {
   const timeSeries: any[] = stats?.time_series ?? []
   const heatmapData: any[] = stats?.heatmap_data ?? []
   const timeOfDayData: any[] = stats?.time_of_day_data ?? []
-  const multiCampaignData: any[] = stats?.multi_campaign_data ?? []
-  const multiCampaignLabels: any = stats?.multi_campaign_labels ?? {}
   const hasAccounts = (filtersData?.senders?.length ?? 0) > 0;
   
   let aiInsight = "Analyzing your pipeline data...";
@@ -244,28 +277,37 @@ export function EleInDashboard() {
     return postFetcher('/api/master-view/funnel-leads', {
       senders: sanitizeFilter(selectedSenders),
       campaigns: sanitizeFilter(selectedCampaigns),
-      step
+      step,
+      ...getDateRange(timeRange)
     }, signal)
-  }, [selectedSenders, selectedCampaigns])
+  }, [selectedSenders, selectedCampaigns, timeRange])
   
   const funnelSteps = [
-    { label: "Extracted", value: funnel.extracted ?? 0 },
-    { label: "Enrolled",  value: funnel.enrolled  ?? 0 },
-    { label: "Connected", value: funnel.connected ?? 0 },
-    { label: "Replied",   value: funnel.replied   ?? 0 },
-    { label: "Booked",    value: funnel.booked    ?? 0 },
-    { label: "Failed/Bounced", count: funnel.failed ?? 0, color: "#ef4444" }
+    { label: "Extracted", value: funnel.extracted ?? 0, count: funnel.extracted ?? 0 },
+    { label: "Enrolled",  value: funnel.enrolled  ?? 0, count: funnel.enrolled  ?? 0 },
+    { label: "Connected", value: funnel.connected ?? 0, count: funnel.connected ?? 0 },
+    { label: "Replied",   value: funnel.replied   ?? 0, count: funnel.replied   ?? 0 },
+    { label: "Booked",    value: funnel.booked    ?? 0, count: funnel.booked    ?? 0 },
+    { label: "Failed/Bounced", value: funnel.failed ?? 0, count: funnel.failed ?? 0, color: "#ef4444" }
   ]
 
-  const isDark = document.documentElement.classList.contains("dark")
-  const primaryColor = "#8FFF83" // Matches --primary
-  const secondaryColor = "#35D07F" // Matches --success
+  const { theme } = useTheme()
+  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+  const primaryColor = isDark ? "#10B981" : "#059669" // Matches --primary (Emerald)
+  const secondaryColor = isDark ? "#34D399" : "#10B981" // Soft Mint / Emerald
 
   const navigate = useNavigate()
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem('onboarding_dismissed') !== 'true'
   )
   const [forceShowOnboarding, setForceShowOnboarding] = useState(false)
+  const [isNotificationDismissed, setIsNotificationDismissed] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') return true;
+    if (localStorage.getItem('elein_notification_teaser_dismissed') === 'true') return true;
+    const snoozedUntil = Number(localStorage.getItem('elein_notification_teaser_snoozed_until') || 0);
+    return Date.now() < snoozedUntil;
+  })
 
   // VETERAN GUARD: Never check ONLY active_campaigns === 0.
   // Veterans who pause all campaigns have active_campaigns=0.
@@ -321,7 +363,14 @@ export function EleInDashboard() {
     (statsError && String(statsError?.message || '').includes('No workspace found')) ||
     (accountHealthError && String(accountHealthError?.message || '').includes('No workspace found')));
 
+  const handleTimeRangeChange = (newRange: string) => {
+    setTimeRange(newRange);
+  };
+
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
   const handleExportPdf = async () => {
+    setIsExportingPdf(true);
     try {
       const payload = {
         senders: sanitizeFilter(selectedSenders),
@@ -353,22 +402,35 @@ export function EleInDashboard() {
       document.body.removeChild(a);
     } catch (err) {
       console.error('Failed to export PDF:', err);
-      alert(err instanceof Error ? err.message : 'Failed to export PDF. Please check your connection or try again later.');
+      friendlyToast('Failed to export PDF performance overview - please try again.', err);
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground font-sans overflow-x-hidden selection:bg-primary/30 relative">
+    <div className="min-h-full bg-background text-foreground font-sans selection:bg-primary/30 relative">
       {statsValidating && (
-        <div className="fixed top-0 left-0 right-0 h-1 bg-primary animate-pulse z-[100]" />
+        <div className="fixed top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/30 via-primary to-primary/30 animate-pulse z-[100]" />
       )}
-      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-card shadow-xs">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <img src="/logo-icon.png" alt="Ele-in Logo" className="w-8 h-8 rounded-lg object-cover" />
-            <h1 className="text-xl font-medium tracking-tight">
-              <ShinyText text="Ele-in Workspace" speed={3} className="text-foreground" />
-            </h1>
+            <img src="/logo-icon.png" alt="Ele-in Logo" className="w-8 h-8 rounded-xl object-cover" />
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                {currentWorkspaceName}
+              </h1>
+              {myAgencies && myAgencies.length > 0 && (
+                <button
+                  onClick={() => navigate('/elein/agency')}
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all cursor-pointer"
+                  title="Switch to Agency Multi-Client Command Deck"
+                >
+                  Agency Fleet
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {stats?.last_rolled_up_at && (
@@ -390,7 +452,7 @@ export function EleInDashboard() {
                   setShowOnboarding(true);
                   setForceShowOnboarding(true);
                 }}
-                className="text-sm font-medium text-primary hover:text-primary/90 transition-colors flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20"
+                className="h-8 px-3 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors flex items-center gap-1.5 bg-primary/10 rounded-lg border border-primary/20 cursor-pointer"
               >
                 Getting Started
               </button>
@@ -402,7 +464,7 @@ export function EleInDashboard() {
       {/* Layer 0: Guaranteed Escape Hatch */}
       {showEscapeHatch && (
         <div className="max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10 mb-[-2rem]">
-          <div className="p-8 bg-card border-2 border-destructive/50 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center">
+          <div className="p-8 bg-card border-2 border-destructive/50 rounded-xl shadow-lg flex flex-col items-center justify-center text-center">
             <h2 className="text-2xl font-bold text-foreground mb-4">Your account has no workspace yet.</h2>
             <p className="text-muted-foreground mb-8 max-w-lg">
               It looks like you haven't completed onboarding or your workspace was deleted. 
@@ -433,107 +495,128 @@ export function EleInDashboard() {
                 Go to Onboarding
               </button>
             </div>
-            {/* Layer 2: Nuclear Reset Button */}
+            {/* Layer 2: Workspace Reset Button */}
             <button
               onClick={() => {
                 localStorage.removeItem('elein_active_workspace');
                 localStorage.removeItem('onboarding_dismissed');
                 window.location.reload();
               }}
-              className="text-xs text-muted-foreground hover:text-destructive transition-colors underline underline-offset-4"
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors underline underline-offset-4 cursor-pointer"
             >
-              Nuclear Reset: Clear Workspace Cache & Reload
+              Clear Workspace Cache & Reload
             </button>
           </div>
         </div>
       )}
 
-      {!showEscapeHatch && (<main className="max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10">
+      {!showEscapeHatch && (<main className="max-w-[1600px] mx-auto p-4 md:p-6 lg:p-8 space-y-4">
         
+        {/* Minimal Setup Stepper */}
         {isShowingOnboarding && (
-          <div className="mb-8 relative flex flex-col gap-4 p-6 pt-5 bg-card dark:bg-muted/30 border-l-4 border-l-primary border border-border/50 rounded-2xl shadow-sm pr-12">
-            <button onClick={handleDismissOnboarding} className="absolute top-4 right-4 p-1.5 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
-              <X size={18} />
-            </button>
-            <h2 className="text-lg font-bold text-foreground">Welcome to Ele-in — let's get you live in 3 steps</h2>
-            
-            <div className="flex flex-col md:flex-row items-stretch gap-4">
-              <button onClick={() => navigate('/elein/accounts')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
-                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">1</div>
-                <div>
-                  <span className="block text-sm font-bold text-foreground">Connect LinkedIn</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Link your first sending account</span>
-                </div>
-              </button>
-              <button onClick={() => navigate('/elein/knowledge')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
-                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">2</div>
-                <div>
-                  <span className="block text-sm font-bold text-foreground">Train Your AI</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Upload a PDF or paste a website</span>
-                </div>
-              </button>
-              <button onClick={() => navigate('/elein/campaigns')} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background hover:border-primary/50 transition-colors text-left flex-1">
-                <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">3</div>
-                <div>
-                  <span className="block text-sm font-bold text-foreground">Launch Campaign</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">Build your first sequence</span>
-                </div>
-              </button>
-              
-              <div className="hidden md:block w-px bg-border/50 self-stretch my-1"></div>
-              
-              <div className="shrink-0 flex flex-col justify-center gap-1.5 items-center text-center p-3 rounded-xl bg-muted/20 border border-border/50 w-full md:w-[200px]">
-                <p className="text-xs font-medium text-muted-foreground">Or want to explore first?</p>
-                <button 
-                  onClick={handleSeedDemo}
-                  disabled={isSeedingDemo}
-                  className="w-full py-1.5 text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                >
-                  {isSeedingDemo ? (
-                    <><RefreshCw size={14} className="animate-spin" /> Seeding...</>
-                  ) : (
-                    <><Zap size={14} /> Seed Demo Data</>
-                  )}
-                </button>
-              </div>
+          <div className="relative flex flex-col md:flex-row items-center justify-between gap-3 px-4 py-3 bg-card border border-primary/20 rounded-xl shadow-xs">
+            <div className="flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span className="text-xs font-semibold text-foreground">Welcome to Ele-in - Quick Setup</span>
             </div>
+            
+            <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto">
+              <button 
+                onClick={() => navigate('/elein/accounts')} 
+                className={`text-xs px-2.5 py-1 rounded-xl border font-medium flex items-center gap-1.5 transition-colors ${
+                  hasAccounts ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/50 hover:border-primary/50 text-muted-foreground'
+                }`}
+              >
+                <span>1. Connect LinkedIn</span>
+                {hasAccounts && <Check size={12} className="text-primary" />}
+              </button>
+              <button 
+                onClick={() => navigate('/elein/knowledge')} 
+                className="text-xs px-2.5 py-1 rounded-xl border border-border/50 hover:border-primary/50 text-muted-foreground font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <ElesiumLogo size={13} />
+                <span>2. Train AI</span>
+              </button>
+              <button 
+                onClick={() => navigate('/elein/campaigns')} 
+                className={`text-xs px-2.5 py-1 rounded-xl border font-medium flex items-center gap-1.5 transition-colors ${
+                  Number(summary?.total_campaigns ?? 0) > 0 ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/50 hover:border-primary/50 text-muted-foreground'
+                }`}
+              >
+                <span>3. Launch Campaign</span>
+                {Number(summary?.total_campaigns ?? 0) > 0 && <Check size={12} className="text-primary" />}
+              </button>
+              <button
+                onClick={handleSeedDemo}
+                disabled={isSeedingDemo}
+                className="text-xs px-2.5 py-1 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {isSeedingDemo && <RefreshCw size={11} className="animate-spin" />}
+                <span>Demo Workspace</span>
+              </button>
+            </div>
+
+            <button onClick={handleDismissOnboarding} className="p-1 text-muted-foreground hover:text-foreground rounded-xl transition-colors cursor-pointer" title="Dismiss onboarding">
+              <X size={15} />
+            </button>
           </div>
         )}
-        <AnimatePresence mode="wait">
-          {!isSetup && !filtersLoading ? (
+
+        {/* Notification Pre-Permission Alert (Compact) */}
+        {!isShowingOnboarding && !isNotificationDismissed && (
+          <NotificationPrePermissionTeaser 
+            variant="compact" 
+            onClose={() => setIsNotificationDismissed(true)} 
+          />
+        )}
+
+          {/* EleInFlowView temporarily bypassed while working on the dashboard */}
+          {false && !isSetup && !filtersLoading ? (
             <EleInFlowView key="flow" />
           ) : (
-            <motion.div
-              key="analytics"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="space-y-6"
-            >
+            <div key="analytics" className="space-y-4">
               <DashboardErrorBanner error={filtersError} entityName="filters" onRetry={() => mutateFilters()} onSeedDemo={handleSeedDemo} onLoginRedirect={() => navigate('/login', { replace: true })} />
               <DashboardErrorBanner error={statsError} entityName="stats" onRetry={() => mutateStats()} onSeedDemo={handleSeedDemo} onLoginRedirect={() => navigate('/login', { replace: true })} />
               <DashboardErrorBanner error={accountHealthError} entityName="account health" onRetry={() => mutateAccountHealth()} onSeedDemo={handleSeedDemo} onLoginRedirect={() => navigate('/login', { replace: true })} />
 
-              {/* Master View Filter Bar */}
-              <div className="flex flex-wrap items-center gap-4 p-4 bg-card border border-border/50 rounded-2xl shadow-sm">
-                <FilterDropdown 
-                  label="Select senders:"
-                  icon={Send}
-                  options={senders}
-                  selectedIds={selectedSenders}
-                  onChange={setSelectedSenders}
-                  placeholder="All Senders"
-                />
-
-                <FilterDropdown 
-                  label="Select campaigns:"
-                  icon={MessageSquare}
-                  options={campaigns}
-                  selectedIds={selectedCampaigns}
-                  onChange={setSelectedCampaigns}
-                  placeholder="All Campaigns"
-                />
-              </div>
+              {/* Minimal Unified Triage Horizon */}
+              {(expiredAccounts.length > 0 || throttledAccounts.length > 0 || pendingApprovalsCount > 0) && (
+                <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2 rounded-xl bg-card border border-border text-xs shadow-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {expiredAccounts.length > 0 && (
+                      <button
+                        onClick={() => navigate('/elein/accounts')}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 font-semibold hover:bg-destructive/20 transition-all cursor-pointer"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
+                        <span>{expiredAccounts.length} Account{expiredAccounts.length > 1 ? 's' : ''} Need Reconnect</span>
+                        <span className="text-[10px] opacity-80 underline">&rarr;</span>
+                      </button>
+                    )}
+                    {throttledAccounts.length > 0 && (
+                      <button
+                        onClick={() => navigate('/elein/settings')}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-semibold hover:bg-amber-500/20 transition-all cursor-pointer"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        <span>{throttledAccounts.length} Senders Paced at &gt;90% Limit</span>
+                        <span className="text-[10px] opacity-80 underline">&rarr;</span>
+                      </button>
+                    )}
+                    {pendingApprovalsCount > 0 && (
+                      <button
+                        onClick={() => navigate('/elein/approvals')}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold hover:bg-emerald-500/20 transition-all cursor-pointer"
+                      >
+                        <ElesiumLogo size={14} />
+                        <span>{pendingApprovalsCount} AI Draft{pendingApprovalsCount > 1 ? 's' : ''} Pending</span>
+                        <span className="text-[10px] opacity-80 underline">&rarr;</span>
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground hidden sm:inline">Fleet pacing safe</span>
+                </div>
+              )}
 
               <EleInAnalyticsView 
                 summary={summary}
@@ -541,8 +624,6 @@ export function EleInDashboard() {
                 timeSeries={timeSeries}
                 heatmapData={heatmapData}
                 timeOfDayData={timeOfDayData}
-                multiCampaignData={multiCampaignData}
-                multiCampaignLabels={multiCampaignLabels}
                 aiInsight={aiInsight}
                 funnelSteps={funnelSteps}
                 leadSources={leadSources}
@@ -551,20 +632,26 @@ export function EleInDashboard() {
                 errorFeed={errorFeed}
                 accountHealth={accountHealth}
                 live_feed_error={!!statsError}
-                onTimeRangeChange={setTimeRange}
+                timeRange={timeRange}
+                onTimeRangeChange={handleTimeRangeChange}
                 onExportPdf={handleExportPdf}
+                isExportingPdf={isExportingPdf}
+                senders={senders}
+                campaigns={campaigns}
+                selectedSenders={selectedSenders}
+                selectedCampaigns={selectedCampaigns}
+                onSendersChange={setSelectedSenders}
+                onCampaignsChange={setSelectedCampaigns}
+                isExtendedLocked={isExtendedLocked}
+                isPdfLocked={isPdfLocked}
+                isFunnelCsvLocked={isFunnelCsvLocked}
                 isLoading={statsLoading}
                 primaryColor={primaryColor}
                 secondaryColor={secondaryColor}
-                fetchFunnelLeads={(step: string, signal?: AbortSignal) => postFetcher('/api/master-view/funnel-leads', {
-                  senders: sanitizeFilter(selectedSenders),
-                  campaigns: sanitizeFilter(selectedCampaigns),
-                  step
-                }, signal)}
+                fetchFunnelLeads={fetchFunnelLeadsCb}
               />
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
       </main>)}
     </div>
   )

@@ -1,69 +1,245 @@
-import { LinkIcon } from "lucide-react"
-import { useState } from "react"
+import { LinkIcon, Lock, CheckCircle2, AlertTriangle, ArrowRight, RefreshCw, Globe, Sparkles } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { toast } from "sonner"
 import { friendlyToast } from "../FriendlyError"
-import { fetchWithAuth } from "@/lib/apiClient"
+import { fetchWithAuth, fetcher } from "@/lib/apiClient"
+import { usePaywall } from "@/contexts/PaywallContext"
+import { cn } from "@/lib/utils"
+import useSWR from "swr"
 
-export function AddUrlModal() {
+const SCRAPER_STAGES = [
+  { step: 1, label: "Connecting & checking firewalls", pct: 25 },
+  { step: 2, label: "Extracting DOM & stripping nav boilerplate", pct: 55 },
+  { step: 3, label: "AI synthesizing core value prop & ICP hooks", pct: 80 },
+  { step: 4, label: "Generating embeddings & indexing chunks", pct: 98 },
+]
+
+export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
   const [scrapeUrl, setScrapeUrl] = useState("")
   const [isScraping, setIsScraping] = useState(false)
+  const [currentStage, setCurrentStage] = useState(1)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [scrapeError, setScrapeError] = useState<string | null>(null)
+  const [scrapeSuccess, setScrapeSuccess] = useState(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const { openPaywall } = usePaywall()
+
+  const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher)
+  const tier = billingData?.tier || 'FREE'
+  const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
+  const maxAssets = isPro ? (tier === 'ENTERPRISE' ? 100 : 25) : 3
+
+  const { data: assets } = useSWR<any[]>('/api/assets/knowledge/assets', fetcher)
+  const currentCount = Array.isArray(assets) ? assets.length : 0
+  const isCapped = !isPro && currentCount >= maxAssets
+
+  // Cleanup telemetry timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [])
 
   const handleScrape = async () => {
-    let finalUrl = scrapeUrl.trim();
-    if (!finalUrl) return toast.error("Please enter a URL");
-    if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-        finalUrl = "https://" + finalUrl;
+    if (isCapped) {
+      openPaywall({ featureName: "Knowledge Base Storage" })
+      toast.info(`Free plan limit reached (${currentCount}/${maxAssets} documents). Upgrade to Growth Pro to add up to 25 documents.`)
+      return
     }
+
+    let finalUrl = scrapeUrl.trim()
+    if (!finalUrl) return toast.error("Please enter a website URL")
+    if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+      finalUrl = "https://" + finalUrl
+    }
+
+    // Reset telemetry
+    setIsScraping(true)
+    setCurrentStage(1)
+    setElapsedSeconds(0)
+    setScrapeError(null)
+    setScrapeSuccess(false)
+
+    // Start progress timer
+    const startTime = Date.now()
+    timerRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000
+      setElapsedSeconds(Number(elapsed.toFixed(1)))
+      if (elapsed > 4.5) setCurrentStage(4)
+      else if (elapsed > 3.0) setCurrentStage(3)
+      else if (elapsed > 1.5) setCurrentStage(2)
+      else setCurrentStage(1)
+    }, 100)
+
     try {
-      setIsScraping(true);
       const res = await fetchWithAuth("/api/assets/knowledge/upload/url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: finalUrl })
-      });
+      })
+
+      if (timerRef.current) clearInterval(timerRef.current)
+
       if (!res.ok) {
-         let errText = "Failed to scrape URL";
-         try {
-             const data = await res.json();
-             errText = data.detail || errText;
-         } catch(err) {
-             errText = `Server returned ${res.status}`;
-         }
-         throw new Error(errText);
+        if (res.status === 403) {
+          openPaywall({ featureName: "Knowledge Base Storage" })
+          toast.info("Free plan document limit reached. Upgrade to Growth Pro for up to 25 documents.")
+          return
+        }
+        let errText = "Failed to scrape website"
+        try {
+          const data = await res.json()
+          errText = data.detail || errText
+        } catch {
+          errText = `Server returned ${res.status}`
+        }
+        throw new Error(errText)
       }
-      await res.json();
-      toast.success("URL submitted! Processing in background...");
-      setScrapeUrl("");
+
+      await res.json()
+      setScrapeSuccess(true)
+      setCurrentStage(4)
+      toast.success("Website scraped & queued for background indexing!")
+      setScrapeUrl("")
+      if (mutateAssets) mutateAssets()
+
+      // Reset success state after brief feedback
+      setTimeout(() => {
+        setScrapeSuccess(false)
+        setIsScraping(false)
+      }, 2500)
+
     } catch (e: any) {
-      friendlyToast('Failed to submit URL — please check the link and try again.', e);
-    } finally {
-      setIsScraping(false);
+      if (timerRef.current) clearInterval(timerRef.current)
+      setIsScraping(false)
+      const msg = e.message || "Failed to reach website"
+      setScrapeError(msg)
+      friendlyToast("Scraping encountered an obstacle", e)
     }
-  };
+  }
+
+  const activeStageInfo = SCRAPER_STAGES.find(s => s.step === currentStage) || SCRAPER_STAGES[0]
 
   return (
-    <div className="border border-slate-200 dark:border-border/50 bg-slate-50 dark:bg-muted/10 rounded-3xl p-6 flex flex-col justify-between">
+    <div className="border border-slate-200 dark:border-border/50 bg-slate-50 dark:bg-muted/10 rounded-3xl p-6 flex flex-col justify-between transition-all">
       <div>
-        <LinkIcon size={20} className="text-foreground mb-2" />
-        <h3 className="font-semibold text-sm text-foreground">Add your website</h3>
-        <p className="text-xs text-muted-foreground mt-1 mb-3">We'll read it automatically.</p>
+        <div className="flex items-center justify-between mb-2">
+          <LinkIcon size={20} className="text-foreground" />
+          {isScraping && (
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold flex items-center gap-1">
+              <RefreshCw size={10} className="animate-spin" />
+              {elapsedSeconds}s
+            </span>
+          )}
+        </div>
+        <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
+          <span>Add your website</span>
+          {scrapeSuccess && <CheckCircle2 size={14} className="text-emerald-500" />}
+        </h3>
+        <p className="text-xs text-muted-foreground mt-1 mb-3">
+          {isCapped ? `Limit reached (${currentCount}/${maxAssets} docs)` : "Live extraction & vector indexing."}
+        </p>
       </div>
-      <div>
-        <input
-          type="text"
-          value={scrapeUrl}
-          onChange={(e) => setScrapeUrl(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleScrape(); }}
-          placeholder="domain.com"
-          className="bg-white dark:bg-background border border-slate-200 dark:border-border/50 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-full mb-2 shadow-sm"
-        />
-        <button
-          disabled={isScraping}
-          onClick={handleScrape}
-          className="bg-foreground text-background py-2 rounded-xl text-xs font-semibold hover:bg-foreground/90 transition-colors w-full disabled:opacity-50"
-        >
-          {isScraping ? "Reading..." : "Read Website"}
-        </button>
+
+      <div className="space-y-2">
+        {/* URL Input */}
+        {!isScraping && !scrapeSuccess && (
+          <input
+            type="text"
+            value={scrapeUrl}
+            onChange={(e) => {
+              setScrapeUrl(e.target.value)
+              if (scrapeError) setScrapeError(null)
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleScrape() }}
+            placeholder="domain.com or https://company.io"
+            className="bg-white dark:bg-background border border-slate-200 dark:border-border/50 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary w-full shadow-sm text-foreground placeholder:text-muted-foreground"
+          />
+        )}
+
+        {/* Live Scraper Progress Telemetry (Area 4: Eliminating the Black Box) */}
+        {isScraping && (
+          <div className="p-3 rounded-xl border border-primary/20 bg-background/80 space-y-2 text-left">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <Globe size={12} className="text-primary animate-pulse" />
+                {activeStageInfo.label}
+              </span>
+              <span className="font-mono text-muted-foreground text-[10px]">
+                {activeStageInfo.pct}%
+              </span>
+            </div>
+
+            {/* Smooth Progress Bar */}
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-300 rounded-full"
+                style={{ width: `${scrapeSuccess ? 100 : activeStageInfo.pct}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
+              <span>Stage {currentStage} of 4</span>
+              <span>Vectorizing memory</span>
+            </div>
+          </div>
+        )}
+
+        {/* Success State Confirmation */}
+        {scrapeSuccess && (
+          <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+            <div className="font-semibold text-[11px] flex items-center gap-1.5">
+              <span>Website scraped &amp; added to AI memory!</span>
+              <ElesiumLogo size={13} />
+            </div>
+          </div>
+        )}
+
+        {/* Error / Anti-Bot Fallback Notice (Layer 1 Paranoia) */}
+        {scrapeError && !isScraping && (
+          <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={14} className="shrink-0" />
+              <span>Scraping Notice</span>
+            </div>
+            <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+              Site may be protected by anti-bot verification or requires JavaScript. You can paste your text directly into the Text tab.
+            </p>
+          </div>
+        )}
+
+        {/* Action Button */}
+        {!scrapeSuccess && (
+          <button
+            disabled={isScraping || !scrapeUrl.trim()}
+            onClick={handleScrape}
+            className={cn(
+              "py-2 rounded-xl text-xs font-semibold transition-all w-full disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer",
+              isCapped
+                ? "bg-muted text-foreground border border-border hover:bg-muted/80"
+                : "bg-foreground text-background hover:bg-foreground/90 active:scale-[0.99]"
+            )}
+          >
+            {isScraping ? (
+              <>
+                <RefreshCw size={12} className="animate-spin" />
+                <span>Reading &amp; Indexing...</span>
+              </>
+            ) : isCapped ? (
+              <>
+                <Lock size={12} className="text-amber-500" />
+                <span>Unlock More Docs</span>
+              </>
+            ) : (
+              <>
+                <span>Read Website</span>
+                <ArrowRight size={12} />
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   )

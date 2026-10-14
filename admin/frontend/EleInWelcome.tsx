@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { useHRTreeStore } from "@campaigns/eiTreeStore";
 import { fetcher } from "@/lib/apiClient"
@@ -8,7 +9,9 @@ import { cn } from "@/lib/utils"
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler"
 import { useTheme } from "@/components/ThemeProvider"
 import { Linkedin } from "@/components/icons/Linkedin"
-import { Users, Megaphone, CheckCircle2, ArrowRight, ChevronRight } from "lucide-react"
+import { Users, Megaphone, CheckCircle2, ArrowRight, ChevronRight, Zap, Sparkles, ShieldCheck } from "lucide-react"
+import { EleInPaywallModal } from "@campaigns/EleInPaywallModal"
+import { toast } from "sonner"
 
 
 
@@ -87,6 +90,13 @@ function StepCard({
 
 export function EleInWelcome() {
   const { theme, setTheme } = useTheme();
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const { data: billingData, mutate: mutateBilling } = useSWR<any>(
+    '/api/elein/workspaces/billing',
+    fetcher
+  );
+  const isPro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE';
+
   const { data: status } = useSWR<OnboardingStatus>(
     null,
     fetcher,
@@ -222,6 +232,102 @@ export function EleInWelcome() {
           </motion.div>
         )}
 
+        {/* Post-Onboarding Pay Ramp & Armed Engine Card */}
+        {allDone && !isPro && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
+            className="relative p-8 md:p-10 rounded-3xl border border-primary/30 bg-gradient-to-b from-primary/10 via-card to-card shadow-[0_0_50px_rgba(var(--primary),0.12)] mb-12 overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 relative z-10">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest mb-3 border border-primary/30">
+                  <Sparkles size={12} /> Unlock Full Autopilot
+                </div>
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+                  Scale Beyond Free Tier Limits
+                </h2>
+                <p className="text-sm text-muted-foreground mt-2 max-w-xl leading-relaxed">
+                  Your workspace is currently running on the <strong className="text-foreground">Free Tier</strong> (capped at 1 active campaign & 500 credits). Upgrade to <strong className="text-primary">Growth Tier</strong> to unleash 20 concurrent campaigns, 5,000 credits, and reach up to 5x more prospects automatically.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex flex-col items-start md:items-end gap-1">
+                <div className="text-3xl font-black text-foreground">₹6,499<span className="text-xs text-muted-foreground font-normal">/mo</span></div>
+                <span className="text-[11px] font-bold text-success bg-success/10 border border-success/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Save 2 Months Yearly
+                </span>
+              </div>
+            </div>
+
+            {/* Feature Pillars Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 relative z-10 text-xs">
+              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+                <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Active Campaigns</span>
+                <span className="text-foreground font-bold text-sm mt-1 block">20 Active <span className="text-[10px] text-muted-foreground font-normal">(vs 1)</span></span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+                <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Monthly Credits</span>
+                <span className="text-foreground font-bold text-sm mt-1 block">5,000 Credits <span className="text-[10px] text-muted-foreground font-normal">(vs 500)</span></span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+                <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Sending Accounts</span>
+                <span className="text-foreground font-bold text-sm mt-1 block">Up to 5 Accounts <span className="text-[10px] text-muted-foreground font-normal">(vs 1)</span></span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+                <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Enrichment Tools</span>
+                <span className="text-emerald-400 font-bold text-sm mt-1 block">Apollo & Apify</span>
+              </div>
+            </div>
+
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 relative z-10">
+              <button
+                onClick={() => setShowPaywallModal(true)}
+                className="w-full sm:w-auto px-8 py-4 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-xl flex items-center justify-center gap-2 group text-sm"
+              >
+                <Zap size={16} className="fill-current" />
+                <span>Unlock Growth Tier Now</span>
+                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              </button>
+              <Link
+                to="/elein"
+                className="text-xs text-muted-foreground hover:text-foreground transition underline underline-offset-4 py-2"
+              >
+                Continue with Free Tier to Dashboard →
+              </Link>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Growth Tier Active Celebration Card */}
+        {allDone && isPro && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-6 rounded-3xl border border-primary/20 bg-primary/5 flex items-center justify-between mb-12"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-xl">
+                <ShieldCheck size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Growth Tier Active</h3>
+                <p className="text-xs text-muted-foreground">Full autopilot enabled: 20 active campaigns & 5,000 monthly credits available.</p>
+              </div>
+            </div>
+            <Link
+              to="/elein"
+              className="px-5 py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:opacity-90 transition shrink-0"
+            >
+              Open Dashboard →
+            </Link>
+          </motion.div>
+        )}
+
         {/* Live stats when all done */}
         {allDone && (
           <>
@@ -296,6 +402,17 @@ export function EleInWelcome() {
             </a>
           </p>
         </motion.div>
+
+        {/* High-Converting In-Situ Paywall Modal */}
+        <EleInPaywallModal
+          isOpen={showPaywallModal}
+          onClose={() => setShowPaywallModal(false)}
+          campaignName="Your Outbound Engine"
+          onSuccess={() => {
+            toast.success("Account upgraded to Growth Tier! Welcome to full autopilot.");
+            mutateBilling();
+          }}
+        />
 
       </div>
     </div>

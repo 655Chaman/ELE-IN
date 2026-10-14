@@ -1,6 +1,8 @@
 import { toast } from "sonner"
-import { Check, Database, Sparkles } from "lucide-react"
-import { fetchWithAuth } from "@/lib/apiClient"
+import { Check, Database, Sparkles, Lock, Zap } from "lucide-react"
+import { fetchWithAuth, fetcher } from "@/lib/apiClient"
+import { usePaywall } from "@/contexts/PaywallContext"
+import useSWR from "swr"
 import { useLeadImport } from "../LeadImportContext"
 
 export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => void, mode?: "import" | "connect" }) {
@@ -13,12 +15,24 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
     selectedHubspotList, setSelectedHubspotList
   } = useLeadImport();
 
+  const { openPaywall } = usePaywall();
+  const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
+  const tier = billingData?.tier || 'FREE';
+  const isPro = tier === 'PRO' || tier === 'ENTERPRISE';
+
   return (
     <div className="animate-in fade-in w-full text-center pb-4 pt-2">
       <div className="mx-auto w-16 h-16 bg-[#ff7a59]/10 rounded-full flex items-center justify-center mb-4 shadow-sm">
         <img src="https://cdn.simpleicons.org/hubspot/ff7a59" alt="HubSpot" className="w-8 h-8" />
       </div>
-      <h3 className="text-xl font-bold mb-3 text-foreground">Connect HubSpot CRM</h3>
+      <div className="flex items-center justify-center gap-2 mb-2">
+        <h3 className="text-xl font-bold text-foreground">Connect HubSpot CRM</h3>
+        {!isPro && (
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30 flex items-center gap-1">
+            <Lock size={10} /> Pro
+          </span>
+        )}
+      </div>
       <p className="text-muted-foreground text-sm mb-8 max-w-md mx-auto leading-relaxed">
         Sync your active HubSpot lists directly into Ele-in. We'll automatically enrich your contacts with fresh LinkedIn data and find their direct emails.
       </p>
@@ -56,35 +70,53 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
                 </div>
               </div>
               
-              <button 
-                onClick={async () => {
-                  if (!hubspotToken) return toast.error("Please enter a token");
-                  setHubspotConnecting(true);
-                  try {
-                    const res = await fetchWithAuth("/api/elein/hubspot/auth", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ access_token: hubspotToken })
-                    });
-                    if (!res.ok) throw new Error("Invalid token");
-                    
-                    await mutateHubspotStatus();
-                    toast.success("Successfully authenticated with HubSpot!");
-                    if (mode === "connect") {
-                      onClose();
-                      return;
+              {!isPro ? (
+                <button 
+                  onClick={() => {
+                    openPaywall({ featureName: "HubSpot CRM Integration" });
+                    toast.info("HubSpot CRM integration requires Growth Pro.");
+                  }}
+                  className="w-full h-11 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-medium rounded-lg transition-all shadow-sm active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Lock size={14} />
+                  <span>Unlock with Growth Pro</span>
+                </button>
+              ) : (
+                <button 
+                  onClick={async () => {
+                    if (!hubspotToken) return toast.error("Please enter a token");
+                    setHubspotConnecting(true);
+                    try {
+                      const res = await fetchWithAuth("/api/elein/hubspot/auth", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ access_token: hubspotToken })
+                      });
+                      if (res.status === 403) {
+                        openPaywall({ featureName: "HubSpot CRM Integration" });
+                        toast.info("HubSpot CRM integration requires Growth Pro.");
+                        return;
+                      }
+                      if (!res.ok) throw new Error("Invalid token");
+                      
+                      await mutateHubspotStatus();
+                      toast.success("Successfully authenticated with HubSpot!");
+                      if (mode === "connect") {
+                        onClose();
+                        return;
+                      }
+                    } catch (err: any) {
+                      toast.error("Failed to connect. Is your token valid?");
+                    } finally {
+                      setHubspotConnecting(false);
                     }
-                  } catch (err) {
-                    toast.error("Failed to connect. Is your token valid?");
-                  } finally {
-                    setHubspotConnecting(false);
-                  }
-                }}
-                disabled={hubspotConnecting || !hubspotToken}
-                className="w-full h-11 bg-foreground text-background font-medium rounded-lg hover:bg-foreground/90 transition-all shadow-sm active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {hubspotConnecting ? "Verifying..." : "Connect Workspace"}
-              </button>
+                  }}
+                  disabled={hubspotConnecting || !hubspotToken}
+                  className="w-full h-11 bg-foreground text-background font-medium rounded-lg hover:bg-foreground/90 transition-all shadow-sm active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {hubspotConnecting ? "Verifying..." : "Connect Workspace"}
+                </button>
+              )}
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-4 text-center px-4">

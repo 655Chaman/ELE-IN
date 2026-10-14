@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { 
   Users, UserPlus, Loader2, ChevronDown, Check, X, 
-  Shield, Mail, Crown, User as UserIcon, Trash2, AlertTriangle, Clock
+  Shield, Mail, Crown, User as UserIcon, Trash2, AlertTriangle, Clock,
+  Zap, ArrowRight, Lock, Copy
 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner"
 import { friendlyToast } from "../../components/FriendlyError";
-import SpotlightCard from "@/components/SpotlightCard";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
+import { usePaywall } from "@/contexts/PaywallContext";
 import { motion, AnimatePresence } from "motion/react";
 import { format } from "date-fns";
 import { SettingsLoadingSkeleton } from "@/components/SettingsLoadingSkeleton";
@@ -33,23 +34,38 @@ interface Invite {
 
 export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
   const { user } = useAuth();
+  const { openPaywall } = usePaywall();
   const { data, mutate, isLoading, error } = useSWR(
     workspaceId ? `/api/workspaces/${workspaceId}/members` : null,
     fetcher
   );
+
+  const { data: billingData } = useSWR<{ tier?: string }>(
+    workspaceId ? '/api/elein/workspaces/billing' : null,
+    fetcher
+  );
+  const tier = billingData?.tier || 'FREE';
+  const isPro = tier === 'PRO' || tier === 'ENTERPRISE';
+  const maxSeats = isPro ? (tier === 'ENTERPRISE' ? 25 : 5) : 1;
   
+  const members: Member[] = data?.members || [];
+  const invites: Invite[] = data?.invites || [];
+  const totalPeople = members.length + invites.length;
+  const isSeatCapped = totalPeople >= maxSeats;
+
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("member");
   const [sending, setSending] = useState(false);
+  const [createdInviteLink, setCreatedInviteLink] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   
   // Ref for double-submit prevention
   const isSubmittingRef = useRef(false);
 
   // For inline confirm removal
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-
-  
   const [actingOn, setActingOn] = useState<string | null>(null);
 
   // Dropdown state for roles
@@ -68,11 +84,28 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  const handleInviteToggle = () => {
+    if (!isPro && isSeatCapped) {
+      openPaywall({ featureName: "Team Members & Seats" });
+      toast.info("Free plan is limited to 1 member. Upgrade to Growth Pro to invite team members.");
+      return;
+    }
+    setShowInviteForm(!showInviteForm);
+  };
+
   const handleInvite = async () => {
     if (isSubmittingRef.current || !inviteEmail.trim() || !workspaceId) return;
     
+    // Paranoia Layer 1 & 2: Seat Cap check
+    if (!isPro && isSeatCapped) {
+      openPaywall({ featureName: "Team Members & Seats" });
+      toast.info("Free plan seat limit reached (1/1). Upgrade to Growth Pro to invite team members.");
+      return;
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(inviteEmail.trim())) {
+    const cleanEmail = inviteEmail.trim().toLowerCase();
+    if (!emailRegex.test(cleanEmail)) {
       toast.error("Please enter a valid email address");
       return;
     }
@@ -83,13 +116,18 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
       const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+        body: JSON.stringify({ email: cleanEmail, role: inviteRole }),
       });
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(errText || "Failed to send invite");
       }
-      toast.success(`Invite sent to ${inviteEmail.trim()}`);
+      const resData = await res.json().catch(() => ({}));
+      toast.success(`Invite sent to ${cleanEmail}`);
+      if (resData?.token) {
+        const fullLink = `${window.location.origin}/accept-invite?token=${resData.token}`;
+        setCreatedInviteLink(fullLink);
+      }
       setInviteEmail("");
       setShowInviteForm(false);
       mutate();
@@ -101,7 +139,32 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
     }
   };
 
+  const handleRevokeInvite = async (inviteId: string, email: string) => {
+    if (!workspaceId || revokingId) return;
+    setRevokingId(inviteId);
+    try {
+      const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/invites/${inviteId}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || "Failed to revoke invite");
+      }
+      toast.success(`Invite for ${email} revoked`);
+      mutate();
+    } catch (e: any) {
+      friendlyToast('Failed to revoke invite — please try again.', e);
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
   const handleRoleChange = async (targetUserId: string, newRole: Role) => {
+    if (!isPro) {
+      openPaywall({ featureName: "Role-Based Permissions & Delegation" });
+      return;
+    }
+
     // Guard: prevent last owner from being demoted
     const targetMember = members?.find(m => m.user_id === targetUserId);
     if (targetMember?.role === 'owner' && newRole !== 'owner' && ownerCount <= 1) {
@@ -170,12 +233,12 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
 
   if (error) {
     return (
-      <SpotlightCard className="p-6 rounded-2xl border border-destructive/20 bg-destructive/5">
+      <div className="p-6 rounded-[24px] border border-destructive/20 bg-destructive/5 shadow-sm">
         <div className="flex items-center gap-3 text-destructive">
           <AlertTriangle className="w-5 h-5" />
           <p className="text-sm font-medium">Failed to load team members. Please check your connection.</p>
         </div>
-      </SpotlightCard>
+      </div>
     );
   }
 
@@ -183,9 +246,6 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
     return <SettingsLoadingSkeleton />;
   }
 
-  const members: Member[] = data?.members || [];
-  const invites: Invite[] = data?.invites || [];
-  const totalPeople = members.length + invites.length;
   const ownerCount = members.filter(m => m.role === "owner").length;
 
   const RoleBadge = ({ role }: { role: Role }) => {
@@ -206,7 +266,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-muted/50 text-muted-foreground border border-border">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100/50 text-gray-500 border border-gray-200">
             <UserIcon size={12} />
             Member
           </span>
@@ -216,7 +276,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
 
   return (
     <div className="space-y-6">
-      <SpotlightCard className="p-8 rounded-2xl border border-border/50 bg-surface/50 relative overflow-hidden">
+      <div className="p-6 md:p-8 rounded-[24px] border border-border bg-card relative overflow-hidden shadow-sm">
         <div className="absolute top-0 left-0 w-1 h-full bg-primary/40 rounded-l-2xl"></div>
         
         {/* Header */}
@@ -232,13 +292,81 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
           </div>
           
           <button
-            onClick={() => setShowInviteForm(!showInviteForm)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary/80 text-primary-foreground font-semibold text-sm rounded-lg hover:opacity-90 transition-all shadow-md active:scale-95"
+            onClick={handleInviteToggle}
+            className={`flex items-center gap-2 px-5 py-2.5 font-semibold text-sm rounded-lg transition-all shadow-md active:scale-95 ${
+              !isPro && isSeatCapped
+                ? "bg-muted text-foreground hover:bg-muted/80 border border-border"
+                : "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground hover:opacity-90"
+            }`}
           >
-            {showInviteForm ? <X size={16} /> : <UserPlus size={16} />}
-            {showInviteForm ? "Close" : "Invite Member"}
+            {showInviteForm ? (
+              <X size={16} />
+            ) : !isPro && isSeatCapped ? (
+              <Lock size={15} className="text-amber-500" />
+            ) : (
+              <UserPlus size={16} />
+            )}
+            {showInviteForm ? "Close" : !isPro && isSeatCapped ? "Upgrade to Add Members" : "Invite Member"}
           </button>
         </div>
+
+        {/* Just Created Invite Link Banner */}
+        {createdInviteLink && (
+          <div className="mb-6 p-4 rounded-xl border border-primary/30 bg-primary/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/20 rounded-lg text-primary">
+                <Check size={16} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">Invitation Link Generated</p>
+                <p className="text-xs text-muted-foreground font-mono break-all mt-0.5">{createdInviteLink}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(createdInviteLink);
+                setCopiedLink(true);
+                toast.success("Invite link copied to clipboard!");
+                setTimeout(() => setCopiedLink(false), 2000);
+              }}
+              className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1.5 hover:bg-primary/90 transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+            >
+              {copiedLink ? <Check size={13} /> : <Copy size={13} />}
+              {copiedLink ? "Copied" : "Copy Link"}
+            </button>
+          </div>
+        )}
+
+        {/* Team Seat Limit / Pay Ramp Banner */}
+        {!isPro && (
+          <div className="mb-6 p-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-primary/[0.02] to-transparent flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg text-primary mt-0.5">
+                <Zap size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-foreground">
+                    Team Collaboration & Multi-Seat Access
+                  </h4>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${isSeatCapped ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' : 'bg-primary/10 text-primary'}`}>
+                    {totalPeople}/{maxSeats} Seat Used
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                  Free tier includes 1 solo seat. Upgrade to <strong className="text-foreground">Growth Pro</strong> to invite up to 5 team members, assign custom roles, and share campaigns & unified inboxes.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => openPaywall({ featureName: "Team Members & Seats" })}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shadow-sm shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <span>Unlock 5 Seats</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Invite Form Dropdown Panel */}
         <AnimatePresence>
@@ -249,7 +377,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
               exit={{ height: 0, opacity: 0, y: -10 }}
               className="overflow-hidden"
             >
-              <div className="mb-8 p-6 bg-muted/20 border border-border rounded-xl shadow-inner relative">
+              <div className="mb-8 p-6 bg-gray-100/20 border border-gray-200 rounded-xl shadow-inner relative">
                 {/* Zeigarnik effect progress indicator */}
                 {inviteEmail.length > 0 && (
                   <div className="absolute top-0 left-0 h-1 bg-primary/30 w-full rounded-t-xl overflow-hidden">
@@ -262,33 +390,40 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                 
                 <div className="flex flex-col sm:flex-row gap-5 items-end">
                   <div className="flex-1 w-full space-y-2">
-                    <label className="text-sm font-semibold text-foreground/80">Email Address</label>
+                    <label className="text-sm font-semibold text-gray-900/80">Email Address</label>
                     <div className="relative group">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" size={16} />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-primary transition-colors" size={16} />
                       <input
                         type="email"
                         value={inviteEmail}
                         onChange={(e) => setInviteEmail(e.target.value)}
                         placeholder="colleague@company.com"
-                        className="w-full bg-background border border-border/80 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                        className="w-full bg-background border border-gray-200/80 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-gray-500/50"
                       />
                     </div>
                   </div>
                   
                   <div className="w-full sm:w-48 space-y-2">
-                    <label className="text-sm font-semibold text-foreground/80">Role</label>
+                    <label className="text-sm font-semibold text-gray-900/80">Role</label>
                     <div className="relative">
-                      <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                      <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                       <select
                         value={inviteRole}
-                        onChange={(e) => setInviteRole(e.target.value as Role)}
-                        className="w-full bg-background border border-border/80 rounded-lg pl-10 pr-8 py-2.5 text-sm appearance-none focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
+                        onChange={(e) => {
+                          const val = e.target.value as Role;
+                          if (val !== "member" && !isPro) {
+                            openPaywall({ featureName: "Role-Based Permissions & Delegation" });
+                            return;
+                          }
+                          setInviteRole(val);
+                        }}
+                        className="w-full bg-background border border-gray-200/80 rounded-lg pl-10 pr-8 py-2.5 text-sm appearance-none focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
                       >
                         <option value="member">Member</option>
-                        <option value="admin">Admin</option>
-                        <option value="owner">Owner</option>
+                        <option value="admin">{isPro ? "Admin" : "Admin (Growth Pro)"}</option>
+                        <option value="owner">{isPro ? "Owner" : "Owner (Growth Pro)"}</option>
                       </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={16} />
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
                     </div>
                   </div>
                   
@@ -327,10 +462,10 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
             {/* Active Members Table */}
             {members.length > 0 && (
               <div className="mb-8">
-                <h3 className="text-lg font-bold tracking-tight text-foreground mb-4 pl-1">Active Members</h3>
-                <div className="border border-border/50 bg-background/50 rounded-xl overflow-hidden overflow-x-auto">
+                <h3 className="text-lg font-bold tracking-tight text-gray-900 mb-4 pl-1">Active Members</h3>
+                <div className="border border-gray-200/50 bg-background/50 rounded-xl overflow-hidden overflow-x-auto">
                   <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-100/30 border-b border-gray-200/50">
                       <tr>
                         <th className="px-5 py-4 font-semibold">User</th>
                         <th className="px-5 py-4 font-semibold">Role</th>
@@ -349,7 +484,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                         return (
                           <tr 
                             key={member.user_id} 
-                            className={`group relative transition-colors ${isOwner ? "bg-primary/[0.02]" : "hover:bg-muted/10"}`}
+                            className={`group relative transition-colors ${isOwner ? "bg-primary/[0.02]" : "hover:bg-gray-100/10"}`}
                           >
                             <td className="px-5 py-4 relative">
                               <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -362,11 +497,11 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                   {member.display_name?.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex flex-col">
-                                  <span className="font-medium text-foreground flex items-center gap-2">
+                                  <span className="font-medium text-gray-900 flex items-center gap-2">
                                     {member.display_name}
-                                    {isSelf && <span className="text-[10px] uppercase bg-muted px-1.5 py-0.5 rounded text-muted-foreground">You</span>}
+                                    {isSelf && <span className="text-[10px] uppercase bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">You</span>}
                                   </span>
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <span className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                                     <Clock size={10} /> Joined {member.created_at ? format(new Date(member.created_at), 'MMM d, yyyy') : 'Unknown'}
                                   </span>
                                 </div>
@@ -375,7 +510,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                             
                             <td className="px-5 py-4 relative">
                               {isActing ? (
-                                <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                                <div className="flex items-center gap-2 text-gray-500 text-xs">
                                   <Loader2 size={14} className="animate-spin" /> Updating...
                                 </div>
                               ) : (
@@ -387,7 +522,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                     title={!canChangeRole ? "A workspace must have at least one owner." : "Change role"}
                                   >
                                     <RoleBadge role={member.role} />
-                                    {canChangeRole && <ChevronDown size={14} className="text-muted-foreground" />}
+                                    {canChangeRole && <ChevronDown size={14} className="text-gray-500" />}
                                   </button>
                                   
                                   <AnimatePresence>
@@ -397,7 +532,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: -5, scale: 0.95 }}
                                         transition={{ duration: 0.15 }}
-                                        className="absolute top-full left-0 mt-2 w-64 bg-surface border border-border rounded-lg shadow-xl z-50 overflow-hidden"
+                                        className="absolute top-full left-0 mt-2 w-64 bg-surface border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden"
                                       >
                                         <div className="flex flex-col p-1">
                                           {(["member", "admin", "owner"] as Role[]).map((r) => {
@@ -409,8 +544,14 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                             return (
                                             <button
                                               key={r}
-                                              onClick={() => handleRoleChange(member.user_id, r)}
-                                              className={`flex items-start gap-3 px-3 py-2 text-xs text-left rounded-md hover:bg-muted/50 transition-colors ${member.role === r ? 'bg-muted/30 font-medium' : 'text-muted-foreground'}`}
+                                              onClick={() => {
+                                                if (r !== member.role && !isPro) {
+                                                  openPaywall({ featureName: "Role-Based Permissions & Delegation" });
+                                                  return;
+                                                }
+                                                handleRoleChange(member.user_id, r);
+                                              }}
+                                              className={`flex items-start gap-3 px-3 py-2 text-xs text-left rounded-md hover:bg-gray-100/50 transition-colors ${member.role === r ? 'bg-gray-100/30 font-medium' : 'text-gray-500'}`}
                                             >
                                               <div className="pt-0.5">
                                                 {r === 'owner' && <Crown size={14} className="text-primary" />}
@@ -418,8 +559,11 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                                 {r === 'member' && <UserIcon size={14} />}
                                               </div>
                                               <div className="flex flex-col">
-                                                <span className="capitalize text-foreground">{r}</span>
-                                                <span className="text-[10px] text-muted-foreground">{roleDetails[r].subtitle}</span>
+                                                <span className="capitalize text-gray-900 flex items-center gap-1.5">
+                                                  <span>{r}</span>
+                                                  {!isPro && r !== "member" && <Lock size={10} className="text-amber-500 shrink-0" />}
+                                                </span>
+                                                <span className="text-[10px] text-gray-500">{roleDetails[r].subtitle}</span>
                                               </div>
                                               {member.role === r && <Check size={14} className="ml-auto mt-0.5" />}
                                             </button>
@@ -444,7 +588,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                 <button
                                   onClick={() => initiateRemoval(member.user_id)}
                                   disabled={isActing || isSelf}
-                                  className="text-muted-foreground hover:text-destructive p-2 rounded-md hover:bg-destructive/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed group/btn"
+                                  className="text-gray-500 hover:text-destructive p-2 rounded-md hover:bg-destructive/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed group/btn"
                                   title={isSelf ? "You cannot remove yourself" : "Remove member"}
                                 >
                                   <Trash2 size={16} className="group-hover/btn:scale-110 transition-transform" />
@@ -463,10 +607,10 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
             {/* Pending Invites Table */}
             {invites.length > 0 && (
               <div>
-                <h3 className="text-lg font-bold tracking-tight text-foreground mb-4 pl-1">Pending Invites</h3>
-                <div className="border border-border/50 bg-background/50 rounded-xl overflow-hidden overflow-x-auto">
+                <h3 className="text-lg font-bold tracking-tight text-gray-900 mb-4 pl-1">Pending Invites</h3>
+                <div className="border border-gray-200/50 bg-background/50 rounded-xl overflow-hidden overflow-x-auto">
                   <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/50">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-100/30 border-b border-gray-200/50">
                       <tr>
                         <th className="px-5 py-4 font-semibold">User</th>
                         <th className="px-5 py-4 font-semibold">Role</th>
@@ -476,15 +620,15 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                     </thead>
                     <tbody className="divide-y divide-border/30">
                       {invites.map((invite) => (
-                        <tr key={invite.id} className="group transition-colors hover:bg-muted/30">
+                        <tr key={invite.id} className="group transition-colors hover:bg-gray-100/30">
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full border border-dashed border-muted-foreground/40 bg-muted/10 text-muted-foreground flex items-center justify-center font-bold text-xs">
+                              <div className="w-9 h-9 rounded-full border border-dashed border-muted-foreground/40 bg-gray-100/10 text-gray-500 flex items-center justify-center font-bold text-xs">
                                 {invite.email.charAt(0).toUpperCase()}
                               </div>
                               <div className="flex flex-col">
-                                <span className="font-medium text-foreground">{invite.email}</span>
-                                <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <span className="font-medium text-gray-900">{invite.email}</span>
+                                <span className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                                   <Clock size={10} /> Sent {format(new Date(invite.created_at), 'MMM d, yyyy')}
                                 </span>
                               </div>
@@ -505,14 +649,18 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                           <td className="px-5 py-4 text-right">
                             <div className="flex items-center gap-2 justify-end">
                               <button
-                                disabled
-                                className="text-muted-foreground font-medium text-xs px-3 py-1.5 rounded-md opacity-50 cursor-not-allowed border border-transparent"
+                                onClick={() => handleRevokeInvite(invite.id, invite.email)}
+                                disabled={revokingId === invite.id}
+                                className="text-destructive hover:text-destructive/80 font-medium text-xs px-2.5 py-1.5 rounded-lg border border-destructive/20 hover:bg-destructive/10 transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+                                title="Revoke this pending invitation"
                               >
-                                Revoke
+                                {revokingId === invite.id ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={12} />
+                                )}
+                                <span>Revoke</span>
                               </button>
-                              <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded font-medium tracking-wide">
-                                Coming soon
-                              </span>
                             </div>
                           </td>
                         </tr>
@@ -531,19 +679,19 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full"
+                    className="bg-surface border border-gray-200 rounded-xl shadow-2xl p-6 max-w-sm w-full"
                   >
-                    <h3 className="text-lg font-bold text-foreground mb-2 flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
                       <AlertTriangle className="text-destructive" size={20} />
                       Confirm Removal
                     </h3>
-                    <p className="text-sm text-muted-foreground mb-6">
+                    <p className="text-sm text-gray-500 mb-6">
                       Are you sure you want to remove {members.find(m => m.user_id === confirmRemoveId)?.display_name} from the workspace? They will immediately lose access to all campaigns and data.
                     </p>
                     <div className="flex justify-end gap-3">
                       <button 
                         onClick={cancelRemoval}
-                        className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors"
+                        className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
                       >
                         Cancel
                       </button>
@@ -563,7 +711,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
             </AnimatePresence>
           </div>
         )}
-      </SpotlightCard>
+      </div>
     </div>
   );
 }

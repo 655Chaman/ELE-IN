@@ -40,25 +40,56 @@ def draw_logo(c, x, y, size=30):
     
     c.drawPath(p, stroke=1, fill=0)
 
-def generate_pdf_report(stats_data: dict, date_range: str = "All Time") -> io.BytesIO:
+def sanitize_pdf_text(text: str) -> str:
+    """Safely converts unicode characters to latin-1 equivalents to prevent ReportLab encoding crash."""
+    if not text:
+        return ""
+    replacements = {
+        "\u2014": " - ",
+        "\u2013": " - ",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2022": "*",
+        "\u2026": "...",
+        "\u00a0": " ",
+    }
+    for orig, repl in replacements.items():
+        text = text.replace(orig, repl)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+def generate_pdf_report(
+    stats_data: dict, 
+    date_range: str = "All Time", 
+    workspace_name: str = "Ele-in Workspace", 
+    brand_name: str = "Ele-in"
+) -> io.BytesIO:
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Fonts
-    c.setFont("Helvetica-Bold", 24)
-    c.setFillColorRGB(0.05, 0.05, 0.05)
+    clean_brand = sanitize_pdf_text(brand_name)
+    clean_ws = sanitize_pdf_text(workspace_name)
+    clean_date = sanitize_pdf_text(date_range)
     
-    # Header
+    # Fonts & Branding Header
     draw_logo(c, 40, height - 70, size=35)
     
-    c.drawString(90, height - 60, "Performance Overview")
-    c.setFont("Helvetica", 10)
-    c.setFillColorRGB(0.4, 0.4, 0.4)
-    c.drawString(90, height - 75, f"Date Range: {date_range}")
+    c.setFont("Helvetica-Bold", 20)
+    c.setFillColorRGB(0.05, 0.05, 0.05)
+    c.drawString(90, height - 55, f"{clean_brand} Executive Performance Overview")
+    
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColorRGB(0.2, 0.2, 0.2)
+    c.drawString(90, height - 70, f"Workspace: {clean_ws}")
+    
+    c.setFont("Helvetica", 9)
+    c.setFillColorRGB(0.45, 0.45, 0.45)
+    c.drawString(90, height - 83, f"Cohort Window: {clean_date}")
     
     c.setStrokeColorRGB(0.9, 0.9, 0.9)
-    c.line(40, height - 90, width - 40, height - 90)
+    c.line(40, height - 95, width - 40, height - 95)
     
     # Extract stats
     summary = stats_data.get("summary", {})
@@ -111,6 +142,7 @@ def generate_pdf_report(stats_data: dict, date_range: str = "All Time") -> io.By
         ("Reply Rate", f"{radar.get('Reply Rate', 0):.1f}%"),
         ("Booking Rate", f"{radar.get('Booking Rate', 0):.1f}%"),
         ("Deliverability", f"{radar.get('Deliverability', 100):.1f}%"),
+        ("Bounce Rate", f"{radar.get('Bounces', 0):.1f}%"),
     ]
     
     funnel_steps = [
@@ -119,6 +151,7 @@ def generate_pdf_report(stats_data: dict, date_range: str = "All Time") -> io.By
         ("Connected", funnel.get("connected", 0)),
         ("Replied", funnel.get("replied", 0)),
         ("Booked", funnel.get("booked", 0)),
+        ("Failed/Bounced", funnel.get("failed", 0)),
     ]
     
     # Draw Funnel numbers
@@ -142,7 +175,7 @@ def generate_pdf_report(stats_data: dict, date_range: str = "All Time") -> io.By
         ry -= 20
 
     # AI Insight
-    ai_insight = stats_data.get("ai_insight")
+    ai_insight = sanitize_pdf_text(stats_data.get("ai_insight", ""))
     if ai_insight:
         c.setStrokeColorRGB(0.9, 0.9, 0.9)
         c.line(40, fy - 20, width - 40, fy - 20)

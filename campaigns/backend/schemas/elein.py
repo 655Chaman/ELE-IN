@@ -23,6 +23,10 @@ class CampaignCreate(BaseModel):
     timezone: Optional[str] = None
     schedule: Optional[Dict[str, Any]] = None
     limit: Optional[int] = 50
+    metadata: Optional[Dict[str, Any]] = {}
+    expected_version: Optional[int] = None
+    expected_updated_at: Optional[str] = None
+    allow_active_graph_mutation: Optional[bool] = False
 
 class CampaignResponse(BaseModel):
     id: str

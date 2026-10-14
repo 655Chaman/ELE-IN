@@ -1,14 +1,14 @@
 import { HR_NODE_DEFS } from './eiNodeDefs';
 import type { SeqTreeNode } from "@campaigns/eiTreeStore";
 
-const TERMINAL_NODES = ['sequence_end', 'mark_converted', 'mark_not_interested', 'mark_opted_out'];
+const _TERMINAL_NODES = ['sequence_end', 'mark_converted', 'mark_not_interested', 'mark_opted_out'];
 
 export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string, string[]>, warnings: Record<string, string[]> } {
   const errors: Record<string, string[]> = {};
   const warnings: Record<string, string[]> = {};
 
   interface PathState {
-    connectionStatus: 'unknown' | 'pending' | 'accepted' | 'withdrawn';
+    connectionStatus: 'unknown' | 'pending' | 'accepted' | 'withdrawn' | 'not_connected';
     autoWithdrawEnabled?: boolean;
     lastAction: string | null;
     lastMessageDelayAccumulator: number;
@@ -38,8 +38,12 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       const parsed = parseFloat(String(rawDelay));
       nodeDelay = isNaN(parsed) ? 1 : Math.ceil(parsed);
     }
-    if (nodeDelay < 1) {
+    // Root nodes (entry step directly following Sequence start) can execute immediately (delay 0).
+    // Subsequent nodes in the sequence must have at least 1 day delay to prevent account spam flags.
+    if (prevNode !== null && nodeDelay < 1) {
       nodeErrors.push("Delay must be at least 1 day to protect your account.");
+    } else if (nodeDelay < 0) {
+      nodeErrors.push("Delay cannot be negative.");
     }
     
     if (['send_message', 'send_message_with_doc', 'send_message_with_image', 'send_intro_message', 'send_followup', 'send_breakup_message', 'send_reengage_message'].includes(node.type)) {
@@ -75,8 +79,9 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
          nodeErrors.push("Voice note node has no audio URL configured.");
        } else {
          const url = node.data.audio_url.trim();
-         if (!url.startsWith("https://")) {
-           nodeErrors.push("Audio URL must start with https://. Insecure URLs are not supported.");
+         const isSecureOrLocal = url.startsWith("https://") || url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1") || url.startsWith("/api/") || url.startsWith("blob:");
+         if (!isSecureOrLocal) {
+           nodeErrors.push("Audio URL must start with https:// (or http:// for local instances). Insecure external URLs are not supported.");
          } else {
            const validExts = [".mp3", ".mp4", ".wav", ".ogg", ".m4a", ".webm"];
            const validCDNs = ["drive.google.com", "dropbox.com", "loom.com"];
@@ -84,7 +89,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
            
            let hasValidExt = false;
            try {
-             const parsedUrl = new URL(url);
+             const parsedUrl = new URL(url.startsWith("/") ? `http://localhost${url}` : url);
              const pathname = parsedUrl.pathname.toLowerCase();
              hasValidExt = validExts.some(ext => pathname.endsWith(ext));
            } catch {
@@ -92,7 +97,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
            }
            
            const hasValidCDN = validCDNs.some(cdn => lowerUrl.includes(cdn));
-           if (!hasValidExt && !hasValidCDN) {
+           if (!hasValidExt && !hasValidCDN && !url.startsWith("blob:") && !url.startsWith("/api/")) {
              nodeWarnings.push("Audio URL does not appear to point to an audio file. Verify it is a direct audio link.");
            }
          }
@@ -100,7 +105,11 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     }
 
     if (['remove_connection', 'endorse_skill', 'recommendation'].includes(node.type) || (isMessageNode && !['send_inmail', 'send_paid_inmail'].includes(node.type))) {
-      if (state.connectionStatus === 'unknown') {
+      if (node.data?.fallback_to_connection_request) {
+        if (state.connectionStatus === 'unknown') {
+          nodeWarnings.push(`${node.type.replace(/_/g, ' ')} requires a 1st-degree connection. Auto-fallback to Connection Request is active if lead is not connected.`);
+        }
+      } else if (state.connectionStatus === 'unknown') {
          nodeErrors.push(`This action requires a 1st-degree connection. How to correct: If your campaign audience isn't exclusively 1st-degree connections, you need to add a 'Connection Request' or 'If Connected?' check before this step.`);
       } else if (state.connectionStatus === 'pending') {
          nodeErrors.push(`You cannot use '${node.type.replace(/_/g, ' ')}' here because the connection request is still pending. How to correct: Delete this node here, and add it inside the 'ACCEPTED' branch of the Connection Request.`);
@@ -119,13 +128,13 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       }
     }
 
-    if (node.type === 'if_connected') {
+    if (node.type === 'if_connected' || node.type === 'seamless_identity_matching') {
       if (state.connectionStatus === 'accepted') {
          nodeErrors.push("The lead is already connected in this path, so checking their status again is redundant. How to correct: Delete this node.");
       }
     }
 
-    if (node.type === 'connection_request') {
+    if (node.type === 'connection_request' || node.type === 'connection_no_note') {
       if (state.connectionStatus === 'pending') {
         nodeErrors.push("You already have a pending connection request in this path. Sending another one immediately is invalid. How to correct: Delete this duplicate node, or use 'Withdraw Pending Request' before sending a new one.");
       } else if (state.connectionStatus === 'accepted') {
@@ -170,7 +179,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     // Check pure leaf nodes
     if (branches.length === 0) {
       let isPendingAtEnd = state.connectionStatus === 'pending' && !state.autoWithdrawEnabled;
-      if (node.type === 'connection_request') {
+      if (node.type === 'connection_request' || node.type === 'connection_no_note') {
         isPendingAtEnd = !node.data?.withdraw_enabled;
       } else if (node.type === 'withdraw_request') {
         isPendingAtEnd = false;
@@ -184,7 +193,9 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     const ALLOWED_VARIABLES = [
       'first_name', 'last_name', 'company', 'job_title', 'location', 'industry', 'mutual_connections',
       // AI & Enrichment Variables
-      'ai_icebreaker', 'ai_sentiment', 'ai_brain_reply', 'best_send_time', 'work_email', 'competitor_detected'
+      'ai_icebreaker', 'ai_hook', 'ai_sentiment', 'ai_brain_reply', 'ai_objection_handler', 'ai_translated',
+      'best_send_time', 'work_email', 'email', 'phone', 'competitor_detected', 'buying_signal', 'profile_summary',
+      'icp_score', 'tech_stack', 'funding_round', 'headcount', 'mutual_connections_count'
     ];
     
     function extractAllStringValues(obj: Record<string, unknown>): string[] {
@@ -223,21 +234,36 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     // ISSUE #5: Check unprotected variables in messaging fields
     function findUnprotectedVariables(text: string): string[] {
       if (!text) return [];
-      const matches = [...text.matchAll(/{{\s*([\w.]+)(?:\|.*?)?\s*}}/g)];
+      const matches = [...text.matchAll(/{{\s*([\w.]+)(?:\|(.*?))?\s*}}/g)];
       const unprotected: string[] = [];
       for (const match of matches) {
-        unprotected.push(match[1]);
+        const hasFallback = match[0].includes('|') && match[2] !== undefined && match[2].trim().length > 0;
+        if (!hasFallback) {
+          unprotected.push(match[1]);
+        }
       }
       return unprotected;
+    }
+
+    function findSingleBraceVariables(text: string): string[] {
+      if (!text) return [];
+      const matches = [...text.matchAll(/(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})/g)];
+      return matches.map(m => m[1]);
     }
 
     const messageFields = ['body', 'body_a', 'body_b', 'body_c', 'note', 'subject', 'fallback'];
     for (const field of messageFields) {
       if (typeof node.data[field] === 'string') {
-        const unprotected = findUnprotectedVariables(node.data[field] as string);
+        const textVal = node.data[field] as string;
+        const unprotected = findUnprotectedVariables(textVal);
         for (const varName of unprotected) {
-          // Note: match case-insensitively, wait, findUnprotectedVariables extracted it exactly as typed, trimmed.
-          nodeErrors.push(`Message contains {{${varName}}} with no fallback. If a lead's data is missing this field, broken text will be sent. Add a fallback: {{${varName}|Your fallback}}`);
+          nodeWarnings.push(`Message contains {{${varName}}} without a fallback value. If a lead is missing this field, blank text will be sent. Recommended: {{${varName}|fallback}}`);
+        }
+        const singleBraceVars = findSingleBraceVariables(textVal);
+        for (const singleVar of singleBraceVars) {
+          if (ALLOWED_VARIABLES.includes(singleVar.toLowerCase())) {
+            nodeWarnings.push(`Detected single brace variable '{${singleVar}}'. Outreach variables require double curly braces: '{{${singleVar}}}'.`);
+          }
         }
       }
     }
@@ -272,24 +298,26 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     } else if (node.type === 'remove_connection') {
       nextNodeState.connectionStatus = 'unknown';
       nextNodeState.autoWithdrawEnabled = false;
-    } else if (node.type === 'connection_request') {
+    } else if (node.type === 'connection_request' || node.type === 'connection_no_note') {
       nextNodeState.autoWithdrawEnabled = !!node.data?.withdraw_enabled;
     }
 
     for (const [branchName, childNodes] of branches) {
       let nextState = { ...nextNodeState };
       
-      if (node.type === 'connection_request') {
+      if (node.type === 'connection_request' || node.type === 'connection_no_note') {
         if (branchName.toUpperCase() === 'ACCEPTED') {
           nextState.connectionStatus = 'accepted';
           nextState.autoWithdrawEnabled = false;
         } else if (branchName.toUpperCase() === 'NOT ACCEPTED YET' || branchName.toUpperCase() === 'NOT ACCEPTED') {
           nextState.connectionStatus = 'pending';
         }
-      } else if (node.type === 'if_connected') {
+      } else if (node.type === 'if_connected' || node.type === 'seamless_identity_matching') {
         if (branchName.toUpperCase() === 'YES' || branchName.toUpperCase() === 'CONNECTED') {
            nextState.connectionStatus = 'accepted';
            nextState.autoWithdrawEnabled = false;
+        } else if (branchName.toUpperCase() === 'EMAIL DISCOVERED' || branchName.toUpperCase() === 'NOT CONNECTED') {
+           nextState.connectionStatus = 'not_connected';
         }
       }
 

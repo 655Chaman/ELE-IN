@@ -10,11 +10,13 @@ type ThemeProviderProps = {
 
 type ThemeProviderState = {
   theme: Theme
+  resolvedTheme: "dark" | "light"
   setTheme: (theme: Theme) => void
 }
 
 const initialState: ThemeProviderState = {
   theme: "system",
+  resolvedTheme: "dark",
   setTheme: () => null,
 }
 
@@ -29,28 +31,51 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
   )
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() => {
+    const saved = (typeof window !== "undefined" ? localStorage.getItem(storageKey) as Theme : null) || defaultTheme
+    if (saved === "dark") return "dark"
+    if (saved === "light") return "light"
+    if (typeof window !== "undefined") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+    }
+    return "dark"
+  })
 
   useEffect(() => {
     const root = window.document.documentElement
     root.classList.remove("light", "dark")
 
+    let active: "dark" | "light"
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-      root.classList.add(systemTheme)
-      return
+      active = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+    } else {
+      active = theme
     }
 
-    root.classList.add(theme)
+    root.classList.add(active)
+    setResolvedTheme(active)
   }, [theme])
 
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
-      setTheme(theme)
+    resolvedTheme,
+    setTheme: (newTheme: Theme) => {
+      try {
+        localStorage.setItem(storageKey, newTheme)
+      } catch (e) {
+        // Safe fallback if localStorage is restricted
+      }
+      if (typeof window !== "undefined") {
+        const root = window.document.documentElement
+        root.classList.remove("light", "dark")
+        const active: "dark" | "light" =
+          newTheme === "system"
+            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : newTheme
+        root.classList.add(active)
+        setResolvedTheme(active)
+      }
+      setTheme(newTheme)
     },
   }
 

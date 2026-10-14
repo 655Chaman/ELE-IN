@@ -19,7 +19,7 @@ import random
 import logging
 import re
 import urllib.parse
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import List, Dict, Any, Optional
 
 import httpx
@@ -63,14 +63,17 @@ class VoyagerScraper:
         """
         self.account_id = account_id
         self.supabase = supabase
-        self.cookies_raw: List[Dict] = json.loads(cookies_json)
+        try:
+            self.cookies_raw: List[Dict] = json.loads(cookies_json or "[]") if isinstance(cookies_json, str) else (cookies_json or [])
+        except Exception:
+            self.cookies_raw = []
 
         # Extract the two cookies we need
         self.li_at = next(
-            (c["value"] for c in self.cookies_raw if c.get("name") == "li_at"), None
+            (c["value"] for c in self.cookies_raw if isinstance(c, dict) and c.get("name") == "li_at"), None
         )
         jsessionid_raw = next(
-            (c["value"] for c in self.cookies_raw if c.get("name") == "JSESSIONID"), None
+            (c["value"] for c in self.cookies_raw if isinstance(c, dict) and c.get("name") == "JSESSIONID"), None
         )
         # JSESSIONID is often wrapped in extra quotes from the browser export
         self.jsessionid = jsessionid_raw.strip('"') if jsessionid_raw else None
@@ -95,7 +98,7 @@ class VoyagerScraper:
             .execute()
         )
         row = res.data or {}
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         last_date = row.get("last_scrape_date")
         count = row.get("daily_scrape_count", 0) or 0
 
@@ -231,6 +234,24 @@ class VoyagerScraper:
                     "Backing off..."
                 )
 
+            if resp.status_code == 403:
+                # 403 Forbidden: LinkedIn has revoked API access for this session.
+                # Treat identically to 401 — mark account DISCONNECTED immediately.
+                try:
+                    self.supabase.table("accounts").update({
+                        "status": "DISCONNECTED",
+                    }).eq("id", self.account_id).execute()
+                    logger.warning(
+                        f"[VoyagerScraper] 403 Forbidden on account {self.account_id} — "
+                        "marked DISCONNECTED in Supabase."
+                    )
+                except Exception as mark_err:
+                    logger.error(f"[VoyagerScraper] Failed to mark account as DISCONNECTED on 403: {mark_err}")
+                raise SessionExpired(
+                    "LinkedIn has forbidden access to this session (403). "
+                    "Please reconnect your LinkedIn account."
+                )
+
             if resp.status_code == 401:
                 # Immediately mark the account as DISCONNECTED in Supabase so the
                 # frontend health badge and the session-expired banner fire right away.
@@ -256,9 +277,38 @@ class VoyagerScraper:
                 )
                 return None
 
-            return resp.json()
+            try:
+                parsed = resp.json()
+            except Exception:
+                # Response is not JSON — LinkedIn returned an HTML page (auth-wall / login redirect).
+                content_type = resp.headers.get("content-type", "")
+                body_snippet = resp.text[:200] if resp.text else ""
+                logger.warning(
+                    f"[VoyagerScraper] Non-JSON response on account {self.account_id}. "
+                    f"Content-Type: {content_type}. Body snippet: {body_snippet}"
+                )
+                # Detect authwall fingerprints
+                if any(kw in resp.text for kw in ("authwall", "login", "sign-in", "checkpoint")):
+                    try:
+                        self.supabase.table("accounts").update({
+                            "status": "DISCONNECTED",
+                        }).eq("id", self.account_id).execute()
+                        logger.warning(
+                            f"[VoyagerScraper] Auth-wall redirect detected for account {self.account_id} — "
+                            "marked DISCONNECTED."
+                        )
+                    except Exception as mark_err:
+                        logger.error(f"[VoyagerScraper] Failed to mark account DISCONNECTED on authwall: {mark_err}")
+                    raise SessionExpired(
+                        "LinkedIn redirected to the login page (session silently expired). "
+                        "Please reconnect your LinkedIn account."
+                    )
+                return None  # Unknown non-JSON but no authwall fingerprint — treat as soft failure
+            return parsed
 
         except VoyagerThrottled:
+            raise
+        except SessionExpired:
             raise
         except Exception as e:
             logger.error(f"[VoyagerScraper] HTTP error on page start={start}: {e}")
@@ -371,7 +421,7 @@ class VoyagerScraper:
                     'p_limit': 10000
                 }).execute()
         except Exception as e:
-            if 'UsageLimitExceededError' in str(e):
+            if 'UsageLimitExceededError' in str(e) or ('limit' in str(e).lower() and 'exceeded' in str(e).lower()):
                 import logging
                 logging.getLogger(__name__).error(f"[VoyagerScraper] CRITICAL: Workspace {ws_id} exceeded monthly leads limit.")
                 raise UsageLimitExceededError(f"Workspace {ws_id} exceeded monthly leads limit.")
@@ -392,6 +442,8 @@ class VoyagerScraper:
             # Layer 4: Exponential backoff retry wrapper
             try:
                 data = self._fetch_page(search_params, start)
+            except SessionExpired:
+                raise  # Always propagate session expiry immediately — no retry
             except VoyagerThrottled:
                 retry_count += 1
                 if retry_count > MAX_RETRIES:

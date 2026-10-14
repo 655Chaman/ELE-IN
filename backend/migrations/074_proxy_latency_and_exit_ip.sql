@@ -1,0 +1,10 @@
+BEGIN;
+
+ALTER TABLE public.proxies ADD COLUMN IF NOT EXISTS latency_ms INTEGER;
+ALTER TABLE public.proxies ADD COLUMN IF NOT EXISTS exit_ip TEXT;
+ALTER TABLE public.proxies ADD COLUMN IF NOT EXISTS health_score INTEGER DEFAULT 100;
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS auto_heal_status TEXT;
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS auto_heal_actions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS health_score INTEGER DEFAULT 100;
+
+COMMIT;

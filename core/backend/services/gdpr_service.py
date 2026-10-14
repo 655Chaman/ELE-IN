@@ -22,7 +22,8 @@ async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
         tables_to_purge = [
             'ai_generations', 'processing_jobs', 'webhook_endpoints', 'knowledge_assets',
             'personas', 'objections', 'ai_reply_approvals', 'suppression_list',
-            'enrichment_results', 'voice_notes', 'profile_activity_snapshots', 'audit_log'
+            'enrichment_results', 'voice_notes', 'profile_activity_snapshots', 'audit_log',
+            'notifications', 'outbox_events'
         ]
         for table in tables_to_purge:
             supabase_client.table(table).delete().eq('workspace_id', workspace_id).execute()

@@ -1,83 +1,224 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ele-In Extension</title>
+  <meta charset="utf-8">
+  <title>Ele-In LinkedIn Sync</title>
   <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     body {
-      width: 320px;
+      width: 340px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: #09090b;
       color: #fafafa;
-      margin: 0;
       padding: 16px;
     }
-    h2 {
-      margin-top: 0;
-      font-size: 16px;
-      font-weight: 600;
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       border-bottom: 1px solid #27272a;
-      padding-bottom: 8px;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+    .logo-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-icon {
+      width: 22px;
+      height: 22px;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 11px;
+      color: white;
+    }
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .version {
+      font-size: 10px;
+      color: #71717a;
+      background: #18181b;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #27272a;
+    }
+    .session-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      border: 1px solid transparent;
+    }
+    .session-badge.active {
+      background: rgba(16, 185, 129, 0.1);
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.2);
+    }
+    .session-badge.inactive {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
     }
     .input-group {
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     label {
       display: block;
-      font-size: 12px;
+      font-size: 11px;
+      font-weight: 500;
       color: #a1a1aa;
       margin-bottom: 4px;
     }
     input {
       width: 100%;
-      box-sizing: border-box;
       background: #18181b;
       border: 1px solid #3f3f46;
       color: white;
-      padding: 8px;
-      border-radius: 6px;
-      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.15s;
     }
-    button {
+    input:focus {
+      border-color: #6366f1;
+    }
+    .btn-sync {
       width: 100%;
-      background: #fafafa;
-      color: #09090b;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #ffffff;
       border: none;
-      padding: 8px;
-      border-radius: 6px;
+      padding: 10px;
+      border-radius: 8px;
       font-weight: 600;
+      font-size: 12px;
       cursor: pointer;
-      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 12px;
+      transition: opacity 0.15s, transform 0.05s;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
     }
-    button:hover {
-      background: #f4f4f5;
+    .btn-sync:hover {
+      opacity: 0.95;
+    }
+    .btn-sync:active {
+      transform: scale(0.99);
+    }
+    .btn-sync:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
     }
     .status {
-      margin-top: 16px;
-      font-size: 12px;
-      color: #a1a1aa;
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 11px;
       text-align: center;
+      line-height: 1.4;
+      background: #18181b;
+      color: #a1a1aa;
+      border: 1px solid #27272a;
     }
-    .success {
-      color: #10b981;
+    .status.success {
+      background: rgba(16, 185, 129, 0.1);
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.3);
+      font-weight: 600;
+    }
+    .status.error {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .advanced-toggle {
+      font-size: 10px;
+      color: #71717a;
+      cursor: pointer;
+      text-align: center;
+      margin-top: 10px;
+      text-decoration: underline;
+    }
+    .advanced-section {
+      display: none;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed #27272a;
+    }
+    .advanced-section.open {
+      display: block;
     }
   </style>
 </head>
 <body>
-  <h2>Ele-In Connection</h2>
-  
-  <div id="auth-section">
-    <div class="input-group">
-      <label>Sync Key (API Key)</label>
-      <input type="password" id="sync-key" placeholder="ext_..." />
+  <div class="header">
+    <div class="logo-title">
+      <div class="logo-icon">E</div>
+      <h2>Ele-In LinkedIn Sync</h2>
     </div>
-    <div class="input-group">
-      <label>Sender Account ID</label>
-      <input type="text" id="account-id" placeholder="uuid-of-account..." />
-    </div>
-    <button id="save-btn">Connect Extension</button>
+    <span class="version">v1.2.0</span>
   </div>
-  
-  <div id="status-message" class="status">Waiting for connection...</div>
+
+  <div id="session-badge" class="session-badge inactive">
+    <span class="dot"></span>
+    <span id="session-text">Checking LinkedIn session...</span>
+  </div>
+
+  <div class="input-group">
+    <label>Ele-in Workspace Sync Key</label>
+    <input type="password" id="sync-key" placeholder="Enter your Ele-in API Key" />
+  </div>
+
+  <div class="input-group">
+    <label>Sender Account Name (Optional)</label>
+    <input type="text" id="account-name" placeholder="e.g. Sarah Jenkins (SDR 1)" />
+  </div>
+
+  <button id="sync-btn" class="btn-sync">
+    <span>⚡ 1-Click Sync LinkedIn Session</span>
+  </button>
+
+  <div id="status-message" class="status">
+    Ready to synchronize your active LinkedIn session.
+  </div>
+
+  <div id="advanced-toggle" class="advanced-toggle">Server Settings</div>
+  <div id="advanced-section" class="advanced-section">
+    <div class="input-group">
+      <label>API Base URL</label>
+      <input type="text" id="api-base-url" placeholder="http://127.0.0.1:8000" />
+    </div>
+    <div class="input-group">
+      <label>Account ID (If Reconnecting)</label>
+      <input type="text" id="account-id" placeholder="Optional existing account UUID" />
+    </div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

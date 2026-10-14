@@ -1,12 +1,13 @@
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { useState } from 'react';
 import { BackgroundBeams } from '@/components/ui/background-beams';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { 
   Search, Plus, Paperclip, Mic, ArrowUp, MessageSquare, PanelLeftClose, Home, ChevronRight, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { friendlyToast } from '../../components/FriendlyError';
+import { ElesiumLogo } from '@/components/ElesiumLogo';
 
 const API_BASE = "/api/elein/inbox";
 ;
@@ -103,6 +104,9 @@ export function ChatInterface() {
       
       mutateHistory((prev) => [...(prev || []), newRecord], false);
       setInputText("");
+      mutate('/api/elein/billing/credits/balance');
+      mutate('/api/elein/workspaces/billing');
+      mutate((key: any) => typeof key === 'string' && (key.startsWith('/api/elein/billing/credits/balance') || key.startsWith('/api/elein/billing') || key.startsWith('/api/elein/workspaces/billing')), undefined, { revalidate: true });
       toast.success("AI response drafted!");
     } catch (err: any) {
       friendlyToast('Message send failed — please try again.', err);
@@ -260,7 +264,7 @@ export function ChatInterface() {
                      {/* AI Draft Message */}
                      <div className="flex justify-start items-start gap-4">
                        <div className="w-8 h-8 rounded-lg bg-zinc-500/20 flex items-center justify-center border border-zinc-500/30 shrink-0 mt-1">
-                         <MessageSquare size={14} className="text-zinc-400" />
+                         <ElesiumLogo size={14} />
                        </div>
                        <div className="flex flex-col items-start max-w-[85%] relative group">
                          <div className="bg-white/[0.03] border border-white/[0.05] text-zinc-300 px-5 py-3.5 rounded-2xl rounded-tl-sm whitespace-pre-wrap leading-relaxed">

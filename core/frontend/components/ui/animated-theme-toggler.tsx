@@ -229,17 +229,15 @@ export const AnimatedThemeToggler = ({
 
     const applyTheme = () => {
       const newTheme = !isDark
+      const themeStr = newTheme ? "dark" : "light"
+      const root = document.documentElement
+      root.classList.remove("light", "dark")
+      root.classList.add(themeStr)
+
       if (isControlled) {
-        onThemeChange?.(newTheme ? "dark" : "light")
+        onThemeChange?.(themeStr)
       } else {
         setInternalIsDark(newTheme)
-        if (newTheme) {
-          document.documentElement.classList.add("dark")
-          document.documentElement.classList.remove("light")
-        } else {
-          document.documentElement.classList.remove("dark")
-          document.documentElement.classList.add("light")
-        }
       }
     }
 
@@ -264,7 +262,11 @@ export const AnimatedThemeToggler = ({
       `${duration}ms`
     )
     root.style.setProperty("--magicui-theme-vt-clip-from", clipPath[0])
+
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null
+
     const cleanup = () => {
+      if (safetyTimer) clearTimeout(safetyTimer)
       isTransitioningRef.current = false
       delete root.dataset.magicuiThemeVt
       root.style.removeProperty("--magicui-theme-toggle-vt-duration")
@@ -272,34 +274,40 @@ export const AnimatedThemeToggler = ({
       cancelAnim()
     }
 
-    isTransitioningRef.current = true
-    const transition = (document as any).startViewTransition(() => {
-      flushSync(applyTheme)
-    })
-    if (typeof transition?.finished?.finally === "function") {
-      transition.finished.finally(cleanup).catch(() => {})
-    } else {
-      cleanup()
-    }
+    safetyTimer = setTimeout(cleanup, duration + 200)
 
-    const ready = transition?.ready
-    if (ready && typeof ready.then === "function") {
-      ready
-        .then(() => {
-          const anim = document.documentElement.animate(
-            {
-              clipPath,
-            },
-            {
-              duration,
-              easing: shape === "star" ? "linear" : "ease-in-out",
-              fill: "forwards",
-              pseudoElement: "::view-transition-new(root)",
-            }
-          )
-          activeAnimRef.current = anim
-        })
-        .catch(() => {})
+    isTransitioningRef.current = true
+    try {
+      const transition = (document as any).startViewTransition(() => {
+        flushSync(applyTheme)
+      })
+      if (typeof transition?.finished?.finally === "function") {
+        transition.finished.finally(cleanup).catch(() => cleanup())
+      } else {
+        cleanup()
+      }
+
+      const ready = transition?.ready
+      if (ready && typeof ready.then === "function") {
+        ready
+          .then(() => {
+            const anim = document.documentElement.animate(
+              {
+                clipPath,
+              },
+              {
+                duration,
+                easing: shape === "star" ? "linear" : "ease-in-out",
+                fill: "forwards",
+                pseudoElement: "::view-transition-new(root)",
+              }
+            )
+            activeAnimRef.current = anim
+          })
+          .catch(() => {})
+      }
+    } catch (e) {
+      cleanup()
     }
   }, [
     shape,

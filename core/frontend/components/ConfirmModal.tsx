@@ -39,37 +39,37 @@ export function ConfirmModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/60"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-md bg-[#121214] border border-zinc-500/30 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto flex flex-col relative"
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-[28rem] bg-white dark:bg-[#121316] border border-gray-200 dark:border-white/10 rounded-[24px] shadow-2xl overflow-hidden pointer-events-auto flex flex-col relative text-gray-900 dark:text-white"
             >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500/50 to-primary/50" />
               <button 
                 onClick={onClose}
-                className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors p-1"
+                className="absolute top-6 right-6 w-8 h-8 rounded-full bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
 
-              <div className="p-6">
-                <div className="w-12 h-12 rounded-full bg-zinc-500/10 border border-zinc-500/20 flex items-center justify-center mb-5">
-                  <AlertTriangle className="w-6 h-6 text-zinc-500" />
+              <div className="p-8">
+                <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-rose-500/15 border border-red-100 dark:border-rose-500/30 flex items-center justify-center mb-5">
+                  <AlertTriangle className="w-6 h-6 text-red-500 dark:text-rose-400" />
                 </div>
                 
-                <h2 className="text-xl font-bold text-white mb-2">{title}</h2>
-                <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+                <h2 className="text-[20px] font-bold text-gray-900 dark:text-white mb-2">{title}</h2>
+                <p className="text-[14px] text-gray-500 dark:text-zinc-400 leading-relaxed mb-8">
                   {message}
                 </p>
 
                 <div className="flex items-center gap-3 w-full">
                   <button
                     onClick={onClose}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-border text-white text-sm font-semibold hover:bg-white/5 transition-colors"
+                    className="flex-1 px-4 py-3 rounded-[12px] bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 text-[15px] font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-colors"
                   >
                     {cancelText}
                   </button>
@@ -78,7 +78,7 @@ export function ConfirmModal({
                       onConfirm();
                       onClose();
                     }}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-600 hover:bg-zinc-500 text-white text-sm font-semibold transition-all shadow-lg shadow-zinc-600/20"
+                    className="flex-1 px-4 py-3 rounded-[12px] bg-gray-900 dark:bg-primary hover:bg-gray-800 dark:hover:bg-primary/90 text-white text-[15px] font-semibold transition-all shadow-sm"
                   >
                     {confirmText}
                   </button>

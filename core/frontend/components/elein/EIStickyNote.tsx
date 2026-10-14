@@ -20,7 +20,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
     "blue": "bg-[#BAE6FD] border-[#7DD3FC] text-slate-800 shadow-[0_8px_30px_-4px_rgba(125,211,252,0.3)]",
     "pink": "bg-[#FECDD3] border-[#FDA4AF] text-slate-800 shadow-[0_8px_30px_-4px_rgba(253,164,175,0.3)]",
     "green": "bg-[#A7F3D0] border-[#6EE7B7] text-slate-800 shadow-[0_8px_30px_-4px_rgba(110,231,183,0.3)]",
-    "purple": "bg-[#E9D5FF] border-[#D8B4FE] text-slate-800 shadow-[0_8px_30px_-4px_rgba(216,180,254,0.3)]"
+    "cyan": "bg-[#CFFAFE] border-[#67E8F9] text-slate-800 shadow-[0_8px_30px_-4px_rgba(103,232,249,0.3)]"
   }
   
   // Default to yellow if old color format or undefined
@@ -28,7 +28,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
   if (note.color && note.color.includes("blue")) baseColorKey = "blue"
   if (note.color && note.color.includes("pink")) baseColorKey = "pink"
   if (note.color && note.color.includes("green")) baseColorKey = "green"
-  if (note.color && note.color.includes("purple")) baseColorKey = "purple"
+  if (note.color && (note.color.includes("cyan") || note.color.includes("purple"))) baseColorKey = "cyan"
   
   const activeStyle = colorMap[baseColorKey]
 
@@ -120,7 +120,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
               <button
                 key={c}
                 onClick={(e) => { e.stopPropagation(); changeStickyNoteColor(note.id, c) }}
-                className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${c === 'yellow' ? 'bg-primary/80' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-purple-400'} ${baseColorKey === c ? 'ring-2 ring-white ring-offset-1 ring-offset-background' : ''}`}
+                className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${c === 'yellow' ? 'bg-primary/80' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-cyan-400'} ${baseColorKey === c ? 'ring-2 ring-white ring-offset-1 ring-offset-background' : ''}`}
               />
             ))}
             <div className="w-px h-4 bg-border mx-1" />

@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from "motion/react"
-import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download } from "lucide-react"
+import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download, RotateCw, Sliders } from "lucide-react"
 import { TableSkeleton } from "../EleInSkeleton"
-import SpotlightCard from "../SpotlightCard"
 import type { LeadList } from "./leads.types"
 
 const TYPE_LABEL: Record<string, string> = {
@@ -10,6 +9,7 @@ const TYPE_LABEL: Record<string, string> = {
   search: "Search Builder",
   linkedin_url: "LinkedIn URLs",
   hubspot: "HubSpot",
+  dynamic: "Dynamic Segment",
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string; icon?: boolean; title?: string }> = {
@@ -30,6 +30,8 @@ interface LeadTableProps {
   onAddLeads: () => void
   onSelectList: (list: LeadList) => void
   onDeleteList: (list: LeadList) => void
+  onRetryList?: (list: LeadList) => void
+  onOpenSegmentation?: (list: LeadList) => void
 }
 
 export function LeadTable({
@@ -39,7 +41,9 @@ export function LeadTable({
   mutate,
   onAddLeads,
   onSelectList,
-  onDeleteList
+  onDeleteList,
+  onRetryList,
+  onOpenSegmentation
 }: LeadTableProps) {
     return (
       <AnimatePresence mode="wait">
@@ -57,37 +61,38 @@ export function LeadTable({
           </motion.div>
         ) : lists.length === 0 ? (
           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
-            <SpotlightCard className="flex flex-col items-center justify-center py-24 border border-border/50 bg-background/50 text-center px-8">
-              <div className="w-16 h-16 rounded-2xl border border-border/50 bg-muted/50 flex items-center justify-center mb-6">
-                <Users size={24} className="text-primary" />
+            <div className="flex flex-col items-center justify-center py-20 border border-border/50 bg-card/40 backdrop-blur-sm text-center px-8 rounded-2xl shadow-sm">
+              <div className="w-14 h-14 rounded-2xl border border-border/60 bg-muted/40 flex items-center justify-center mb-5">
+                <Users size={22} className="text-primary" />
               </div>
-              <h2 className="text-xl font-light tracking-tight text-foreground mb-2">
-                Who do you want to reach?
+              <h2 className="text-lg font-semibold tracking-tight text-foreground mb-2">
+                No lead lists found
               </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-md mb-2">
-                Import your targets from a CSV, paste LinkedIn URLs, or sync from Sales Navigator.
-                We validate and prepare them for outreach automatically.
+              <p className="text-xs text-muted-foreground leading-relaxed max-w-sm mb-4">
+                Import contacts from a CSV file, paste LinkedIn URLs, or sync directly from Sales Navigator to begin outreach.
               </p>
               <a
                 href="/template_leads.csv"
-            download
-            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors mb-8"
-          >
-            <Download size={11} /> Download CSV template
-          </a>
-          <button 
-            onClick={onAddLeads}
-            className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-primary-foreground transition-all shadow-sm"
-          >
-            <Plus size={14} /> Import a lead list
-          </button>
-        </SpotlightCard>
+                download
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6"
+              >
+                <Download size={12} /> Download CSV template
+              </a>
+              <button 
+                onClick={onAddLeads}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 rounded-xl text-xs font-bold text-primary-foreground transition-all shadow-sm"
+              >
+                <Plus size={14} /> Import a lead list
+              </button>
+            </div>
           </motion.div>
         ) : (
           <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4 mt-2">
-        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Showing {lists.length} list{lists.length !== 1 ? 's' : ''}</span>
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between mb-3 mt-1">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          {lists.length} {lists.length === 1 ? 'list' : 'lists'}
+        </span>
       </div>
       <AnimatePresence>
       {lists.map((list, i) => (
@@ -96,33 +101,38 @@ export function LeadTable({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, x: -20, transition: { duration: 0.25 } }}
-          transition={{ delay: i * 0.06 }}
+          transition={{ delay: i * 0.05 }}
         >
-          <SpotlightCard className="relative overflow-hidden flex items-center gap-4 px-5 py-4 border border-border/50 bg-background/50 cursor-pointer hover:border-primary/30 transition-transform hover:scale-[1.005] group" onClick={() => onSelectList(list)}>
-            <div className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
+          <div 
+            className="relative overflow-hidden flex items-center gap-4 px-4 sm:px-5 py-3.5 border border-border/50 bg-card/40 backdrop-blur-sm cursor-pointer hover:border-border hover:bg-card/70 transition-all rounded-xl shadow-xs group" 
+            onClick={() => onSelectList(list)}
+          >
+            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
               switch(list.type) {
                 case 'csv': return 'text-success bg-success/10 border-success/20';
                 case 'sales_nav': return 'text-primary bg-primary/10 border-primary/20';
                 case 'search': return 'text-primary bg-primary/10 border-primary/20';
                 case 'linkedin_url': return 'text-primary bg-primary/10 border-primary/20';
                 case 'hubspot': return 'text-primary bg-primary/10 border-primary/20';
+                case 'dynamic': return 'text-primary bg-primary/15 border-primary/30';
                 default: return 'text-primary bg-primary/10 border-primary/20';
               }
             })()}`}>
               {(() => {
-                if ((list as any).status === 'importing' || list.row_count === -1) return <div className="animate-pulse"><Users size={16} /></div>;
+                if ((list as any).status === 'importing' || list.row_count === -1) return <div className="animate-pulse"><Users size={15} /></div>;
                 switch(list.type) {
-                  case 'csv': return <FileSpreadsheet size={16} />;
-                  case 'sales_nav': return <Compass size={16} />;
-                  case 'search': return <Search size={16} />;
-                  case 'linkedin_url': return <Link2 size={16} />;
-                  default: return <Users size={16} />;
+                  case 'csv': return <FileSpreadsheet size={15} />;
+                  case 'sales_nav': return <Compass size={15} />;
+                  case 'search': return <Search size={15} />;
+                  case 'linkedin_url': return <Link2 size={15} />;
+                  case 'dynamic': return <Sliders size={15} />;
+                  default: return <Users size={15} />;
                 }
               })()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-[15px] font-bold text-foreground">{list.name}</p>
+                <p className="text-sm font-semibold text-foreground truncate">{list.name}</p>
                 {(() => {
                   const st = (list as any).status || (list.row_count === -1 ? 'importing' : list.row_count === -2 ? 'error' : 'completed')
                   const badge = STATUS_BADGE[st]
@@ -138,9 +148,9 @@ export function LeadTable({
                   )
                 })()}
               </div>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="flex items-center gap-2.5 mt-0.5">
                 <span className="text-[11px] font-medium text-muted-foreground">{TYPE_LABEL[list.type] || list.type}</span>
-                <span className="text-[11px] text-muted-foreground/30">•</span>
+                <span className="text-[11px] text-border">•</span>
                 <span className="text-[11px] font-medium text-muted-foreground">
                   {(() => {
                     const st = (list as any).status || (list.row_count === -1 ? 'importing' : list.row_count === -2 ? 'error' : 'completed')
@@ -160,22 +170,55 @@ export function LeadTable({
                 </span>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 pr-2 relative z-10">
-              <span className="text-[11px] text-muted-foreground font-medium mr-1">
+            <div className="flex items-center justify-end gap-2 pr-1 relative z-10">
+              {(() => {
+                const st = (list as any).status || (list.row_count === -1 ? 'importing' : list.row_count === -2 ? 'error' : 'completed')
+                if ((st === 'error' || st === 'failed' || st === 'session_expired' || st === 'throttled') && onRetryList) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRetryList(list);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/25 text-[11px] font-bold flex items-center gap-1 transition-all shadow-xs"
+                      title="Retry or fix this import"
+                    >
+                      <RotateCw size={11} />
+                      <span>Retry</span>
+                    </button>
+                  );
+                }
+                return null;
+              })()}
+              {onOpenSegmentation && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenSegmentation(list);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 text-[11px] font-semibold flex items-center gap-1 transition-all shadow-xs"
+                  title="Configure Dynamic Rules & Auto-Enrollment"
+                >
+                  <Sliders size={11} />
+                  <span>Dynamic Rules</span>
+                </button>
+              )}
+              <span className="text-[11px] text-muted-foreground font-medium mr-1 hidden sm:inline">
                 {new Date(list.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
               <button
                 onClick={(e) => { e.stopPropagation(); onDeleteList(list); }}
-                className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                title="Delete list"
               >
-                <Trash2 size={16} />
+                <Trash2 size={15} />
               </button>
-              <div className="w-5 flex items-center justify-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-                <ChevronRight size={18} className="text-muted-foreground" />
+              <div className="w-4 flex items-center justify-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200">
+                <ChevronRight size={16} className="text-muted-foreground" />
               </div>
             </div>
-            
-            
             
             {(list.row_count === -1 || list.row_count < -2) && (
               <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-muted/30 overflow-hidden">
@@ -187,7 +230,7 @@ export function LeadTable({
                 />
               </div>
             )}
-          </SpotlightCard>
+          </div>
         </motion.div>
       ))}
       </AnimatePresence>

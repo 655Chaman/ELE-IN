@@ -6,25 +6,18 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from core.backend.api.auth_dep import get_service_client, get_current_user_id
+from core.backend.api.auth_dep import get_service_client, get_current_user_id, require_superadmin
 
 router = APIRouter(prefix="", tags=["settings"])
 limiter = Limiter(key_func=get_remote_address)
 
-def require_superadmin(current_user_id: str = Depends(get_current_user_id)):
-    supabase = get_service_client()
-    res = supabase.table("admin_grants").select("id").eq("user_id", current_user_id).is_("revoked_at", "null").execute()
-    if not res.data:
-        raise HTTPException(status_code=403, detail="Superadmin access required")
-    return current_user_id
 
 # -------- Admin API Key Pool --------
 
-class NvidiaKeyCreate(BaseModel):
-    api_key: str
+
 
 @router.get("/admin/api-keys", response_model=List[Dict[str, Any]])
-def get_nvidia_keys(_auth=Depends(require_superadmin)):
+def get_ai_keys(_auth=Depends(require_superadmin)):
     supabase = get_service_client()
     try:
         res = supabase.table("system_api_keys").select("*").order("created_at").execute()
@@ -46,22 +39,45 @@ def get_nvidia_keys(_auth=Depends(require_superadmin)):
         })
     return keys
 
+class APIKeyCreate(BaseModel):
+    api_key: str
+    provider: str = "auto" # default auto-detect
+
 @router.post("/admin/api-keys")
-def add_nvidia_key(payload: NvidiaKeyCreate, _auth=Depends(require_superadmin)):
-    if not payload.api_key.startswith("nvapi-"):
-        raise HTTPException(status_code=400, detail="Invalid NVIDIA API key format.")
+def add_ai_key(payload: APIKeyCreate, _auth=Depends(require_superadmin)):
+    # Paranoia Layer 1 & 2: Clean key input (strip quotes, Bearer prefix, whitespace)
+    key = payload.api_key.strip().strip("'\"")
+    if key.lower().startswith("bearer "):
+        key = key[7:].strip().strip("'\"")
         
+    if not key:
+        raise HTTPException(status_code=400, detail="API key cannot be empty.")
+
+    provider = payload.provider
+    
+    if provider == "auto":
+        if key.startswith("nvapi-"):
+            provider = "nvidia"
+        elif key.startswith("sk-ant-"):
+            provider = "anthropic"
+        elif key.startswith("sk-proj-") or key.startswith("sk-"):
+            provider = "openai"
+        elif key.startswith("ollama") or key.startswith("lmstudio"):
+            provider = "local"
+        else:
+            raise HTTPException(status_code=400, detail="Could not auto-detect provider. Must start with nvapi-, sk-, or sk-ant-")
+            
     supabase = get_service_client()
     
     try:
         # Prevent exact duplicates
-        existing = supabase.table("system_api_keys").select("id").eq("api_key", payload.api_key).execute()
+        existing = supabase.table("system_api_keys").select("id").eq("api_key", key).execute()
         if existing.data:
             raise HTTPException(status_code=400, detail="Key already exists in the pool.")
             
         res = supabase.table("system_api_keys").insert({
-            "provider": "nvidia",
-            "api_key": payload.api_key,
+            "provider": provider,
+            "api_key": key,
             "status": "active"
         }).execute()
     except HTTPException:
@@ -69,17 +85,17 @@ def add_nvidia_key(payload: NvidiaKeyCreate, _auth=Depends(require_superadmin)):
     except Exception:
         raise HTTPException(status_code=503, detail="system_api_keys table not found. Run the pending migration before adding keys.")
     
-    # force cache invalidation in ai service
+    # Force module-level cache invalidation in AI service
     try:
-        from knowledge.backend.services.elein_ai_service import _last_fetch_time
-        _last_fetch_time = 0
-    except:
+        import knowledge.backend.services.elein_ai_service as ai_svc
+        ai_svc._last_fetch_time = 0
+    except Exception:
         pass
         
     return res.data[0]
 
 @router.delete("/admin/api-keys/{key_id}")
-def delete_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
+def delete_ai_key(key_id: str, _auth=Depends(require_superadmin)):
     supabase = get_service_client()
     try:
         supabase.table("system_api_keys").delete().eq("id", key_id).execute()
@@ -87,15 +103,15 @@ def delete_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
         raise HTTPException(status_code=503, detail="system_api_keys table not found. Run the pending migration.")
     
     try:
-        from knowledge.backend.services.elein_ai_service import _last_fetch_time
-        _last_fetch_time = 0
-    except:
+        import knowledge.backend.services.elein_ai_service as ai_svc
+        ai_svc._last_fetch_time = 0
+    except Exception:
         pass
         
     return {"status": "success"}
 
 @router.put("/admin/api-keys/{key_id}/reset")
-def reset_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
+def reset_ai_key(key_id: str, _auth=Depends(require_superadmin)):
     supabase = get_service_client()
     try:
         supabase.table("system_api_keys").update({
@@ -106,9 +122,9 @@ def reset_nvidia_key(key_id: str, _auth=Depends(require_superadmin)):
         raise HTTPException(status_code=503, detail="system_api_keys table not found. Run the pending migration.")
     
     try:
-        from knowledge.backend.services.elein_ai_service import _last_fetch_time
-        _last_fetch_time = 0
-    except:
+        import knowledge.backend.services.elein_ai_service as ai_svc
+        ai_svc._last_fetch_time = 0
+    except Exception:
         pass
         
     return {"status": "success"}
@@ -140,7 +156,7 @@ def _save_settings(data: dict):
 
 @router.get("/")
 @limiter.limit("100/minute")
-async def get_settings(request: Request):
+async def get_settings(request: Request, _auth: str = Depends(require_superadmin)):
     settings = _load_settings()
     masked_settings = {}
     for key, value in settings.items():
@@ -152,7 +168,7 @@ async def get_settings(request: Request):
 
 @router.post("/")
 @limiter.limit("100/minute")
-async def save_settings(request: Request, payload: APISettings):
+async def save_settings(request: Request, payload: APISettings, _auth: str = Depends(require_superadmin)):
     settings = _load_settings()
     update_data = payload.dict()
     for key, value in update_data.items():

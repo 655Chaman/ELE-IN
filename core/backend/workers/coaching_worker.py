@@ -209,12 +209,25 @@ def run_funnel_bottleneck_alerts(supabase):
                     node_content = config.get('body') or config.get('message') or json.dumps(config)
                     
                 # Ask LLM for hypothesis
+                import json
+                today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                _deduct_res = supabase.rpc('deduct_credits_safely', {
+                    'p_workspace_id': workspace_id,
+                    'p_amount': 3,
+                    'p_action_type': 'ai_funnel_analysis',
+                    'p_idempotency_key': f"funnel_{workspace_id}_{today_str}",
+                    'p_metadata': json.dumps({"node_id": node_id})
+                }).execute()
+                if _deduct_res.data and not _deduct_res.data.get('success', False):
+                    print(f"Skipping AI funnel analysis for workspace {workspace_id} due to insufficient credits.")
+                    continue
+                    
                 from knowledge.backend.services.elein_ai_service import _get_sync_client, get_active_nvidia_keys
                 
                 keys = get_active_nvidia_keys("summarize")
                 hypothesis = "Failed to generate AI hypothesis."
                 if keys:
-                    client = _get_sync_client(keys[0]["key"])
+                    client = _get_sync_client(keys[0])
                     
                     prompt = f"""You are an expert sales strategist analyzing a sequence drop-off.
 We detected a significant performance drop at a specific step in a cold outreach sequence.

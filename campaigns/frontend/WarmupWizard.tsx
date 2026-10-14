@@ -69,7 +69,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
 
   return (
     <div className="absolute inset-0 bg-background z-50 flex items-center justify-center p-8 overflow-y-auto">
-      <div className="max-w-2xl w-full bg-card border border-border/50 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="max-w-2xl w-full bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-6 border-b border-border/50 bg-muted/10 flex items-center justify-between">
           <div>
@@ -106,7 +106,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
                   {config.viewProfile.enabled && (
                     <div>
                       <label className="block text-sm font-medium mb-2">Delay before step (days)</label>
-                      <input type="number" min="0" value={config.viewProfile.delay} onChange={e => setConfig(c => ({...c, viewProfile: {...c.viewProfile, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm" />
+                      <input type="number" min="0" value={config.viewProfile.delay} onChange={e => setConfig(c => ({...c, viewProfile: {...c.viewProfile, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm" />
                       <p className="text-xs text-muted-foreground mt-2">Default is 0 (immediate execution).</p>
                     </div>
                   )}
@@ -135,7 +135,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
                   {config.followProfile.enabled && (
                     <div>
                       <label className="block text-sm font-medium mb-2">Wait before following (days)</label>
-                      <input type="number" min="0" value={config.followProfile.delay} onChange={e => setConfig(c => ({...c, followProfile: {...c.followProfile, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm" />
+                      <input type="number" min="0" value={config.followProfile.delay} onChange={e => setConfig(c => ({...c, followProfile: {...c.followProfile, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm" />
                       <p className="text-xs text-muted-foreground mt-2">Give it a day after viewing their profile so it looks organic.</p>
                     </div>
                   )}
@@ -165,15 +165,15 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium mb-2">Delay (days)</label>
-                        <input type="number" min="0" value={config.likePost.delay} onChange={e => setConfig(c => ({...c, likePost: {...c.likePost, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm" />
+                        <input type="number" min="0" value={config.likePost.delay} onChange={e => setConfig(c => ({...c, likePost: {...c.likePost, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-2">Number of posts</label>
-                        <input type="number" min="1" max="5" value={config.likePost.quantity} onChange={e => setConfig(c => ({...c, likePost: {...c.likePost, quantity: parseInt(e.target.value)||1}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm" />
+                        <input type="number" min="1" max="5" value={config.likePost.quantity} onChange={e => setConfig(c => ({...c, likePost: {...c.likePost, quantity: parseInt(e.target.value)||1}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm" />
                       </div>
                       <div className="col-span-2">
                         <label className="block text-sm font-medium mb-2">Reaction Type</label>
-                        <select value={config.likePost.reactionType} onChange={e => setConfig(c => ({...c, likePost: {...c.likePost, reactionType: e.target.value}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm">
+                        <select value={config.likePost.reactionType} onChange={e => setConfig(c => ({...c, likePost: {...c.likePost, reactionType: e.target.value}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm">
                           {["Like", "Insightful", "Celebrate", "Support", "Funny"].map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
@@ -205,11 +205,11 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium mb-2">Delay (days)</label>
-                        <input type="number" min="0" value={config.endorseSkill.delay} onChange={e => setConfig(c => ({...c, endorseSkill: {...c.endorseSkill, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm" />
+                        <input type="number" min="0" value={config.endorseSkill.delay} onChange={e => setConfig(c => ({...c, endorseSkill: {...c.endorseSkill, delay: parseInt(e.target.value)||0}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-2">Number of skills</label>
-                        <input type="number" min="1" max="5" value={config.endorseSkill.quantity} onChange={e => setConfig(c => ({...c, endorseSkill: {...c.endorseSkill, quantity: parseInt(e.target.value)||1}}))} className="w-full bg-background border border-border/50 rounded-lg px-3 py-2 text-sm" />
+                        <input type="number" min="1" max="5" value={config.endorseSkill.quantity} onChange={e => setConfig(c => ({...c, endorseSkill: {...c.endorseSkill, quantity: parseInt(e.target.value)||1}}))} className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-sm" />
                       </div>
                     </div>
                   )}
@@ -247,8 +247,8 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
             </div>
             
             <div className="flex gap-3">
-              <button disabled={step === 1} onClick={handlePrev} className="px-5 py-2 text-sm font-medium border border-border/50 rounded-lg bg-background hover:bg-muted/50 disabled:opacity-50">Back</button>
-              <button onClick={handleNext} className="px-5 py-2 text-sm font-medium rounded-lg bg-foreground text-background hover:bg-foreground/90 flex items-center gap-1">
+              <button disabled={step === 1} onClick={handlePrev} className="px-5 py-2 text-sm font-medium border border-border/50 rounded-xl bg-background hover:bg-muted/50 disabled:opacity-50">Back</button>
+              <button onClick={handleNext} className="px-5 py-2 text-sm font-medium rounded-xl bg-foreground text-background hover:bg-foreground/90 flex items-center gap-1">
                 Next <ChevronRight size={16} />
               </button>
             </div>

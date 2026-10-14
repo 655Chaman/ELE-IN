@@ -61,10 +61,24 @@ export function usePersonaForm(personas: any[], mutatePersonas: any, mutateObjec
         setIsPersonaModalOpen(false);
         mutatePersonas();
       } else {
-        toast.error("Failed to save persona");
+        if (res.status === 403) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("elein:paywall-trigger", {
+              detail: { type: "tier", reason: "Buyer persona limit reached" }
+            }));
+          }
+          toast.info("Free plan is limited to 1 buyer persona. Upgrade to Growth Pro to target up to 10 personas.");
+          return;
+        }
+        let errDetail = "Failed to save persona";
+        try {
+          const errData = await res.json();
+          errDetail = errData.detail || errDetail;
+        } catch {}
+        toast.error(errDetail);
       }
-    } catch (e) {
-      toast.error("Error saving persona");
+    } catch (e: any) {
+      toast.error(e.message || "Error saving persona");
     }
   };
 

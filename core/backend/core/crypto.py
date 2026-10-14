@@ -1,5 +1,6 @@
 import os
 import base64
+import threading
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import serialization
@@ -11,19 +12,37 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 # All Playwright tasks MUST be pushed to the processing_jobs queue.
 # Giving the Web API the private key compromises the entire security model.
 
-pub_key_b64 = os.environ.get('COOKIE_PUBLIC_KEY')
-priv_key_b64 = os.environ.get('COOKIE_PRIVATE_KEY')
-
-if not pub_key_b64:
-    raise RuntimeError("COOKIE_PUBLIC_KEY environment variable is missing")
-
-pub_key_bytes = base64.b64decode(pub_key_b64)
-_public_key = serialization.load_pem_public_key(pub_key_bytes)
-
+_public_key = None
 _private_key = None
-if priv_key_b64:
-    priv_key_bytes = base64.b64decode(priv_key_b64)
-    _private_key = serialization.load_pem_private_key(priv_key_bytes, password=None)
+_crypto_lock = threading.Lock()
+
+def _get_public_key():
+    global _public_key
+    if _public_key is not None:
+        return _public_key
+    with _crypto_lock:
+        if _public_key is not None:
+            return _public_key
+        pub_key_b64 = os.environ.get('COOKIE_PUBLIC_KEY')
+        if not pub_key_b64:
+            raise RuntimeError("COOKIE_PUBLIC_KEY environment variable is missing")
+        pub_key_bytes = base64.b64decode(pub_key_b64)
+        _public_key = serialization.load_pem_public_key(pub_key_bytes)
+        return _public_key
+
+def _get_private_key():
+    global _private_key
+    if _private_key is not None:
+        return _private_key
+    with _crypto_lock:
+        if _private_key is not None:
+            return _private_key
+        priv_key_b64 = os.environ.get('COOKIE_PRIVATE_KEY')
+        if not priv_key_b64:
+            raise RuntimeError("Decryption is physically impossible on this node: Private key missing.")
+        priv_key_bytes = base64.b64decode(priv_key_b64)
+        _private_key = serialization.load_pem_private_key(priv_key_bytes, password=None)
+        return _private_key
 
 class SecureMemoryWrapper:
     def __init__(self, value: str):
@@ -51,7 +70,8 @@ def encrypt_bytes(plaintext: bytes, dek: bytes = None) -> bytes:
         enc_key_len = (0).to_bytes(2, 'big')
         return enc_key_len + nonce + ciphertext
     else:
-        enc_key = _public_key.encrypt(
+        public_key = _get_public_key()
+        enc_key = public_key.encrypt(
             aes_key,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -71,14 +91,13 @@ def decrypt_bytes(ciphertext: bytes, dek: bytes = None) -> bytes:
             nonce = ciphertext[2+enc_key_len : 2+enc_key_len+12]
             ct = ciphertext[2+enc_key_len+12:]
         else:
-            if not _private_key:
-                raise RuntimeError("Decryption is physically impossible on this node: Private key missing.")
+            private_key = _get_private_key()
             
             enc_key = ciphertext[2:2+enc_key_len]
             nonce = ciphertext[2+enc_key_len : 2+enc_key_len+12]
             ct = ciphertext[2+enc_key_len+12:]
             
-            aes_key = _private_key.decrypt(
+            aes_key = private_key.decrypt(
                 enc_key,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),

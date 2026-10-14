@@ -18,4 +18,7 @@ export interface KnowledgeAsset {
   name: string;
   type: "pdf" | "text" | "url";
   status: string;
+  error_msg?: string;
+  chunk_count?: number;
+  created_at?: string;
 }

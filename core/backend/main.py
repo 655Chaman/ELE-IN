@@ -1,6 +1,7 @@
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from leads.backend.routers import leads
@@ -37,6 +38,16 @@ app = FastAPI(
     version="3.0.0"
 )
 
+# Mount local media directory for streamable voice notes
+voice_notes_dir = os.path.join(os.getcwd(), "uploads", "voice_notes")
+os.makedirs(voice_notes_dir, exist_ok=True)
+app.mount("/api/elein/media/voice_notes", StaticFiles(directory=voice_notes_dir), name="voice_notes")
+
+# Mount local media directory for message attachments (documents, images)
+attachments_dir = os.path.join(os.getcwd(), "uploads", "attachments")
+os.makedirs(attachments_dir, exist_ok=True)
+app.mount("/api/elein/media/attachments", StaticFiles(directory=attachments_dir), name="attachments")
+
 # 3. Setup middlewares
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(
@@ -58,14 +69,32 @@ from core.backend.api.auth_dep import get_current_user_id, get_current_workspace
 app.include_router(settings.router, prefix="/api/settings", dependencies=[Depends(get_current_user_id)])
 app.include_router(leads.router, prefix="/api/leads", tags=["leads"], dependencies=[Depends(get_current_workspace)])
 
+from campaigns.backend.routers import inbound_webhooks, sender_pods, roi_certificates, social_prewarm, bandit_router, event_multimodal_router, abm_router, boomerang_router, displacement_router, calendar_concierge_router, waterfall_enrichment_router, warmup_router, crm_attribution_router, advocacy_pod_router
+app.include_router(inbound_webhooks.router, prefix="/api")
+app.include_router(sender_pods.router, dependencies=[Depends(get_current_workspace)])
+app.include_router(roi_certificates.router)
+app.include_router(social_prewarm.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(bandit_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(event_multimodal_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(abm_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(boomerang_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(displacement_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(calendar_concierge_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(waterfall_enrichment_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(warmup_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(crm_attribution_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(advocacy_pod_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 app.include_router(elein.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 app.include_router(inbox.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 app.include_router(notifications.router, prefix="/api/elein")
+
+from core.backend.api.routers import billing
+app.include_router(billing.router, prefix="/api/elein/billing")
+
 from core.backend.api.rate_limit import enforce_ai_rate_limit
 app.include_router(ai_routes.router, prefix="/api/elein/inbox", dependencies=[Depends(get_current_workspace), Depends(enforce_ai_rate_limit)])
 
-# TODO: approvals.py contains no routes yet — mount commented out until implemented
-# app.include_router(approvals.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
+app.include_router(approvals.router, prefix="/api")
 
 app.include_router(master_view.router, dependencies=[Depends(get_current_workspace)])
 from core.backend.api.routers import proxies
@@ -78,9 +107,17 @@ from integrations.backend.routers import hubspot
 from integrations.backend.routers import extension
 from admin.backend.routers import workspaces
 app.include_router(personas.router, prefix="/api/knowledge", dependencies=[Depends(get_current_workspace)])
+from knowledge.backend.routers import bayesian_icp
+app.include_router(bayesian_icp.router)
+from knowledge.backend.routers import ai_gateway
+app.include_router(ai_gateway.router, dependencies=[Depends(get_current_workspace)])
+from integrations.backend.routers import api_keys, webhooks
+app.include_router(api_keys.router, prefix="/api/integrations/api-keys", dependencies=[Depends(get_current_workspace)])
+app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"], dependencies=[Depends(get_current_workspace)])
 app.include_router(hubspot.router, prefix="/api/elein/hubspot", dependencies=[Depends(get_current_workspace)])
 app.include_router(extension.router, prefix="/api/extension")
 app.include_router(workspaces.router, dependencies=[Depends(get_current_user_id)])
+
 
 from core.backend.api.routers import agencies
 app.include_router(agencies.router, prefix="/api/agencies", dependencies=[Depends(get_current_user_id)])
@@ -150,3 +187,12 @@ def start_webhook_poller():
         threading.Thread(target=poll_webhooks, daemon=True).start()
     except Exception as e:
         print(f"Warning: Failed to start webhook poller: {e}")
+
+@app.on_event("startup")
+def startup_ensure_storage_bucket():
+    try:
+        from core.backend.services.storage_service import ensure_bucket_exists
+        ensure_bucket_exists()
+    except Exception as e:
+        print(f"Warning: Failed to ensure storage bucket on startup: {e}")
+

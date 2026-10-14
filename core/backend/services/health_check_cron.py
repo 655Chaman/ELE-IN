@@ -9,6 +9,7 @@ from typing import List
 from core.backend.core.config import config
 from core.backend.api.auth_dep import get_service_client
 from integrations.backend.services.linkedin_worker import LinkedInWorker
+from core.backend.services.telemetry import capture_error, emit_heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,14 @@ def _try_proxy_failover(supabase, acc: dict, cookies_json: str, country_code: st
         
         logger.info(f"Trying failover proxy {proxy['host']} for account {acc_id}...")
         try:
-            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=proxy_url)
+            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=proxy_url, account_id=acc_id)
             is_valid = worker.check_session_valid()
         except Exception as e:
             capture_error(e, context={"service": "health_check_cron", "message": f"Proxy {proxy['host']} also failed"})
             # Mark this proxy as unhealthy
             supabase.table("proxies").update({
-                "status": "unhealthy",
+                "status": "degraded",
+                "is_active": False,
                 "last_checked_at": datetime.utcnow().isoformat()
             }).eq("id", proxy["id"]).execute()
             continue
@@ -79,14 +81,16 @@ def _try_proxy_failover(supabase, acc: dict, cookies_json: str, country_code: st
             # Mark the old proxy as unhealthy
             if current_proxy_id:
                 supabase.table("proxies").update({
-                    "status": "unhealthy",
+                    "status": "degraded",
+                    "is_active": False,
                     "last_checked_at": datetime.utcnow().isoformat()
                 }).eq("id", current_proxy_id).execute()
             return True
         else:
             # This proxy is also bad
             supabase.table("proxies").update({
-                "status": "unhealthy",
+                "status": "degraded",
+                "is_active": False,
                 "last_checked_at": datetime.utcnow().isoformat()
             }).eq("id", proxy["id"]).execute()
     
@@ -99,8 +103,18 @@ def run_health_checks():
       1. Marks account as DISCONNECTED.
       2. Pauses any ACTIVE campaigns using that account.
     """
-    logger.info("Starting LinkedIn session health checks...")
+    logger.info("Starting LinkedIn session health checks and auto-cooling...")
     supabase: Client = get_service_client()
+    
+    # Run auto-cooling and proxy recovery first
+    try:
+        from core.backend.services.auto_cooling import resume_cooled_accounts, probe_and_recover_degraded_proxies
+        resumed = resume_cooled_accounts(supabase)
+        recovered = probe_and_recover_degraded_proxies(supabase)
+        if resumed or recovered:
+            logger.info(f"[AutoCooling/ProxyRecovery] Resumed {len(resumed)} accounts and recovered {len(recovered)} proxies.")
+    except Exception as e:
+        logger.error(f"[AutoCooling/ProxyRecovery] Error running auto-cooling or proxy recovery: {e}")
     
     # 1. Fetch all active accounts
     res = supabase.table("accounts").select(
@@ -170,7 +184,7 @@ def run_health_checks():
             
         # 2. Ping LinkedIn
         try:
-            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=proxy_url)
+            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=proxy_url, account_id=acc_id)
             is_valid = worker.check_session_valid()
         except Exception as e:
             capture_error(e, context={"service": "health_check_cron", "account_id": acc_id})
@@ -186,13 +200,43 @@ def run_health_checks():
                 log_res = supabase.table("action_log").select("id", count="exact").eq("account_id", acc_id).ilike("action_type", "%connection%").gte("executed_at", today_str).execute()
                 logged_actions_today = log_res.count if hasattr(log_res, 'count') and log_res.count is not None else len(log_res.data)
                 
-                if logged_actions_today > machine_sent_today * 1.3:
+                if machine_sent_today >= 5 and logged_actions_today > machine_sent_today * 1.3:
                     logger.warning(f"[ANOMALY] Account {acc_id} shows possible manual sending: machine_sent={machine_sent_today}, logged={logged_actions_today}")
                     try:
                         supabase.table("accounts").update({
                             "manual_send_suspected": True,
-                            "manual_send_suspected_at": datetime.utcnow().isoformat()
+                            "manual_send_suspected_at": datetime.utcnow().isoformat(),
+                            "status": "MANUAL_MODE",
+                            "updated_at": datetime.utcnow().isoformat()
                         }).eq("id", acc_id).execute()
+                        
+                        ws_id = acc.get("workspace_id")
+                        # Log to audit trail
+                        supabase.table("action_log").insert({
+                            "workspace_id": ws_id,
+                            "account_id": acc_id,
+                            "action_type": "activity_check",
+                            "result": "warn",
+                            "metadata": {"machine_sent": machine_sent_today, "logged": logged_actions_today},
+                            "error_detail": f"Automated campaigns paused for account: manual LinkedIn activity detected.",
+                            "executed_at": datetime.utcnow().isoformat()
+                        }).execute()
+                        
+                        # PARANOIA LAYER 2: Ensure users are visibly notified via dispatch_notification
+                        from core.backend.services.notification_service import dispatch_notification
+                        today_key = datetime.utcnow().date().isoformat()
+                        dispatch_notification(
+                            svc=supabase,
+                            workspace_id=ws_id,
+                            event_type="account_needs_attention",
+                            payload={
+                                "account_id": acc_id,
+                                "title": "Account Paused: Manual Sending Detected",
+                                "body": f"LinkedIn account {acc_name} was paused because manual messaging was detected outside of the system. This prevents ban risks.",
+                                "link": "/elein/accounts",
+                                "unique_key": f"manual_send:{acc_id}:{today_key}"
+                            }
+                        )
                     except Exception as inner_e:
                         capture_error(inner_e, context={"service": "health_check_cron"})
             except Exception as e:
@@ -240,7 +284,7 @@ def _send_disconnect_email(owner_id: str, account_name: str, supabase):
             json={
                 "from": "Ele-in Alerts <alerts@ele-in.com>",
                 "to": [user_email],
-                "subject": f"⚠️ Action Required: LinkedIn Account Disconnected",
+                "subject": f"Action Required: LinkedIn Account Disconnected",
                 "html": f"""<div style='font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px'>
                     <h2 style='color:#e85d04'>Your LinkedIn account needs attention</h2>
                     <p>Your connected LinkedIn account <strong>'{account_name}'</strong> has been automatically disconnected because its session expired.</p>

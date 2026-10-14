@@ -85,7 +85,7 @@ DROP TYPE IF EXISTS template_status               CASCADE;
 -- 2. Enums
 -- ============================================================
 CREATE TYPE public.subscription_tier     AS ENUM ('FREE', 'PRO', 'ENTERPRISE');
-CREATE TYPE public.account_status        AS ENUM ('ACTIVE', 'DISCONNECTED', 'RATE_LIMITED', 'BANNED');
+CREATE TYPE public.account_status        AS ENUM ('ACTIVE', 'DISCONNECTED', 'RATE_LIMITED', 'BANNED', 'MANUAL_MODE', 'SUSPENDED', 'NEEDS_ATTENTION', 'NEEDS_REVIEW', 'DISABLED');
 CREATE TYPE public.lead_state_status     AS ENUM ('pending', 'running', 'completed', 'exited', 'error');
 CREATE TYPE public.message_direction     AS ENUM ('inbound', 'outbound');
 CREATE TYPE public.approval_status       AS ENUM ('pending', 'approved', 'skipped');
@@ -1276,3 +1276,90 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- ============================================================
+-- 35. campaign_versions
+-- ============================================================
+CREATE TABLE public.campaign_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
+    nodes_json JSONB NOT NULL DEFAULT '[]',
+    edges_json JSONB NOT NULL DEFAULT '[]',
+    metadata JSONB NOT NULL DEFAULT '{}',
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT campaign_versions_id_campaign_id_key UNIQUE (id, campaign_id)
+);
+
+-- ============================================================
+-- 36. campaign_enrollments
+-- ============================================================
+CREATE TABLE public.campaign_enrollments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
+    campaign_version_id UUID NOT NULL,
+    lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_enrollment_version_integrity FOREIGN KEY (campaign_version_id, campaign_id) REFERENCES public.campaign_versions (id, campaign_id)
+);
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_campaign_enrollments_id_ws ON public.campaign_enrollments (id, workspace_id);
+
+-- ============================================================
+-- 37. campaign_execution_states
+-- ============================================================
+CREATE TABLE public.campaign_execution_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    enrollment_id UUID NOT NULL REFERENCES public.campaign_enrollments(id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+    current_node_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    next_run_at TIMESTAMPTZ,
+    variables JSONB NOT NULL DEFAULT '{}',
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_ces_enrollment_ws FOREIGN KEY (enrollment_id, workspace_id) REFERENCES public.campaign_enrollments(id, workspace_id) ON UPDATE RESTRICT ON DELETE CASCADE
+);
+
+-- ============================================================
+-- 38. campaign_node_executions
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.campaign_node_executions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    idempotency_key TEXT UNIQUE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running', 
+    node_id TEXT NOT NULL,
+    workspace_id UUID,
+    enrollment_id UUID,
+    campaign_version_id UUID,
+    node_type TEXT,
+    attempt INT,
+    error_code TEXT,
+    output_payload JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_node_executions_idemp ON public.campaign_node_executions(idempotency_key);
+
+-- ============================================================
+-- 39. advance_reply_waiting_leads RPC
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.advance_reply_waiting_leads(p_lead_id uuid)
+RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE v_count integer;
+BEGIN
+  UPDATE public.campaign_execution_states ces
+  SET status = 'pending', next_run_at = now(),
+      lease_token = NULL, lease_expires_at = NULL, updated_at = now()
+  FROM public.campaign_enrollments ce
+  WHERE ce.id = ces.enrollment_id
+    AND ce.lead_id = p_lead_id
+    AND ces.status = 'waiting_for_reply';
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END; $$;

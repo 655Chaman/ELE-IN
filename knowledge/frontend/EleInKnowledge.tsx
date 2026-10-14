@@ -6,8 +6,11 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   BrainCircuit, Users, ShieldAlert, 
   UploadCloud, Link as LinkIcon, FileText, 
-  Search, Plus, Trash2, Edit2, Play, MessageSquare, Sparkles, X, Database, RefreshCw
+  Search, Plus, Trash2, Edit2, Play, MessageSquare, Sparkles, X, Database, RefreshCw,
+  Lock, Zap, ArrowRight, Cpu
 } from "lucide-react";
+
+import { usePaywall } from "@/contexts/PaywallContext";
 
 
 import { AddUrlModal } from "@/components/knowledge/AddUrlModal";
@@ -16,7 +19,11 @@ import { KnowledgeAssetList } from "@/components/knowledge/KnowledgeAssetList";
 import { TestDriveSimulator } from "@/components/knowledge/TestDriveSimulator";
 import { SynthesisEditor } from "@/components/knowledge/SynthesisEditor";
 import { PersonaManager } from "@/components/knowledge/PersonaManager";
+import { BayesianIcpView } from "@/components/knowledge/BayesianIcpView";
+import { AIGatewayView } from "@/components/knowledge/AIGatewayView";
 import { ReusableConfirmDialog } from "@/components/ReusableConfirmDialog";
+import { ElesiumLogo } from "@/components/ElesiumLogo";
+
 import ShinyText from "@/components/ShinyText";
 import StarBorder from "@/components/StarBorder";
 import { toast } from "sonner";
@@ -57,6 +64,8 @@ export default function EleInKnowledge() {
   const { data: personas, mutate: mutatePersonas, isLoading: isPersonasLoading } = useSWR("/api/knowledge/personas", fetcher);
   const { data: objections, mutate: mutateObjections, isLoading: isObjectionsLoading } = useSWR("/api/assets/knowledge/objections", fetcher);
   const { data: workspace, mutate: mutateWorkspace } = useSWR("/api/elein/workspaces/me", fetcher);
+  const { openPaywall } = usePaywall();
+  const { data: billingData } = useSWR<{ tier?: string }>("/api/elein/workspaces/billing", fetcher);
 
 
 
@@ -68,17 +77,15 @@ export default function EleInKnowledge() {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'knowledge_assets',
           filter: `workspace_id=eq.${workspace.id}`,
         },
-        (payload) => {
-          if (payload.new.status === 'synced' || payload.new.status === 'failed') {
-            mutateAssets();
-            if (payload.new.status === 'synced') {
-              mutateSynthesis();
-            }
+        (payload: any) => {
+          mutateAssets();
+          if (payload?.new?.status === 'synced' || payload?.new?.status === 'completed') {
+            mutateSynthesis();
           }
         }
       )
@@ -307,10 +314,23 @@ export default function EleInKnowledge() {
   };
 
   
+  const assetCount = Array.isArray(assets) ? assets.length : 0;
+  const personaCount = Array.isArray(personas) ? personas.length : 0;
+  const objectionCount = Array.isArray(objections) ? objections.length : 0;
+
+  const tier = billingData?.tier || "FREE";
+  const isPro = tier === "PRO" || tier === "ENTERPRISE";
+  const maxAssets = isPro ? (tier === "ENTERPRISE" ? 100 : 25) : 3;
+  const maxPersonas = isPro ? (tier === "ENTERPRISE" ? 50 : 10) : 1;
+  const isAssetCapped = !isPro && assetCount >= maxAssets;
+  const isPersonaCapped = !isPro && personaCount >= maxPersonas;
+
   const tabs = [
-    { id: 'assets', label: "Company Info", icon: <Database size={14} /> },
-    { id: 'personas', label: "Who You're Selling To", icon: <Users size={14} /> },
-    { id: 'objections', label: "How to Handle Pushback", icon: <ShieldAlert size={14} /> },
+    { id: 'assets', label: "Company Info", icon: <Database size={14} />, count: `${assetCount}${!isPro ? `/${maxAssets}` : ''}` },
+    { id: 'personas', label: "Buyer Personas", icon: <Users size={14} />, count: `${personaCount}${!isPro ? `/${maxPersonas}` : ''}` },
+    { id: 'objections', label: "Objection Playbook", icon: <ShieldAlert size={14} />, count: objectionCount },
+    { id: 'bayesian_icp', label: "Bayesian ICP", icon: <Sparkles size={14} className="text-indigo-400" />, count: isPro ? "Active" : "Pro" },
+    { id: 'ai_gateway', label: "AI Gateway & BYOK", icon: <ElesiumLogo size={14} />, count: isPro ? "Active" : "Pro" },
   ];
 
 
@@ -325,15 +345,28 @@ export default function EleInKnowledge() {
       name: "Buyer Personas",
       icon: <Users className="w-6 h-6" />,
       content: "Detailed profiles of your target audience are critical. A VP of Sales cares about quota attainment, while a Head of RevOps focuses on tool consolidation and data silos. By defining the exact personas you are targeting, you instruct the AI on who it is talking to. It will automatically adjust its tone and map your product's value directly to the unique, daily pain points of the person reading the email.",
-      color: "from-purple-500 to-pink-500"
+      color: "from-blue-600 to-cyan-500"
     },
     objections: {
       name: "Objection Playbook",
       icon: <ShieldAlert className="w-6 h-6" />,
       content: "AI is naturally agreeable and polite. If a prospect replies 'We use a competitor' or 'We don't have budget', a default AI might simply apologize and end the conversation. Your Objection Playbook explicitly trains the AI on your battle-tested counters. It learns to politely challenge the prospect and pivot the conversation—turning hesitant replies into booked meetings by handling friction exactly like your best senior Account Executive would.",
       color: "from-orange-500 to-red-500"
+    },
+    bayesian_icp: {
+      name: "Bayesian ICP Learning",
+      icon: <Sparkles className="w-6 h-6 text-indigo-400" />,
+      content: "Static ICP definitions become obsolete quickly. Ele-in's Bayesian ICP module maintains a live Beta-distribution prior across all firmographic and behavioral signals (headcount, funding, title seniority, and activity). Every positive conversion incrementally increases signal alpha, while lost opportunities increase beta. This produces mathematically grounded qualification scores rather than hallucinated LLM guesses.",
+      color: "from-indigo-500 to-blue-500"
+    },
+    ai_gateway: {
+      name: "AI Gateway & BYOK",
+      icon: <ElesiumLogo size={22} />,
+      content: "High-volume outbound requires reliable, cost-effective reasoning infrastructure. The AI Gateway coordinates model selection across specialized NIM reasoning endpoints (DeepSeek-R1, Nemotron-4 340B, and Llama 3.2), provides granular token consumption auditing, and lets Growth Pro teams connect zero-markup Bring-Your-Own-Key provider vaults.",
+      color: "from-blue-600 to-indigo-500"
     }
   };
+
 
   const activeDocData = docsContext[activeTab];
 
@@ -361,7 +394,7 @@ export default function EleInKnowledge() {
               className="bg-card border border-border/50 shadow-2xl rounded-3xl p-10 flex flex-col items-center text-center max-w-md w-full"
             >
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 mb-6 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/20 to-purple-500/20 animate-spin" style={{ animationDuration: '3s' }} />
+                <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/20 to-cyan-500/20 animate-spin" style={{ animationDuration: '3s' }} />
                 <BrainCircuit className="w-8 h-8 text-primary relative z-10 animate-pulse" />
               </div>
               <h2 className="text-xl font-bold tracking-tight text-foreground mb-3">
@@ -426,10 +459,21 @@ export default function EleInKnowledge() {
               This is where your AI learns about your company. The more you add here, the smarter and more accurate your outreach becomes — no generic emails, ever.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Knowledge Readiness Badge (Transcript 2: Goal Gradient Feedback) */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border/50 bg-background/50 backdrop-blur-md shadow-2xs">
+              <span className={`w-2 h-2 rounded-full ${
+                assetCount > 0 && personaCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`} />
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <ElesiumLogo size={13} />
+                AI Brain: {assetCount > 0 && personaCount > 0 ? 'Grounded & Ready' : `${assetCount > 0 || personaCount > 0 ? 'Partially Grounded' : 'Needs Knowledge'}`}
+              </span>
+            </div>
+
             <button
               onClick={() => setIsDocOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border border-border/50 rounded-[18px] text-sm font-medium hover:bg-muted/50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-muted/30 border border-border/50 rounded-xl text-xs font-semibold hover:bg-muted/50 transition-colors"
             >
               <FileText size={14} /> How it works
             </button>
@@ -437,19 +481,64 @@ export default function EleInKnowledge() {
           </div>
         </div>
 
-        {/* ─── PILL NAVIGATION (Matches Dashboard) ─────────────────────────────────── */}
-        <div className="bg-muted/40 p-1 rounded-xl border border-border/50 w-full grid grid-cols-3 mb-8">
+        {/* ─── IN-SITU PAY RAMP: KNOWLEDGE BASE & AI BRAIN CAPACITY ─── */}
+        {!isPro && (
+          <div className="mb-8 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-blue-950/30 to-background border border-indigo-500/20 shadow-lg relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                <ElesiumLogo size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                    <ElesiumLogo size={14} />
+                    Free AI Knowledge Plan
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                    {assetCount}/{maxAssets} Docs &bull; {personaCount}/{maxPersonas} Personas
+                  </span>
+                  {(isAssetCapped || isPersonaCapped) && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                      <Lock size={10} /> Quota Limit Reached
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                  Growth Pro unlocks <strong>25 Knowledge Assets</strong>, up to <strong>10 Target Buyer Personas</strong>, and the <strong>Continuous Bayesian ICP Machine Learning Engine</strong>.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => openPaywall({ featureName: "Knowledge Base & AI Brain Capacity" })}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-md shadow-indigo-600/20 transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shrink-0"
+            >
+              <ElesiumLogo size={14} />
+              <span>Expand AI Capacity</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* ─── PILL NAVIGATION WITH LIVE COUNTS (Transcript 3: Staff Discovery) ───── */}
+        <div className="bg-muted/40 p-1.5 rounded-xl border border-border/50 w-full grid grid-cols-2 sm:grid-cols-4 mb-8 shadow-2xs gap-1">
+
           {tabs.map((tab) => (
             <button 
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`relative flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
               {activeTab === tab.id && (
-                <motion.div layoutId="kb-active-pill" className="absolute inset-0 bg-background shadow-sm border border-border/50 rounded-lg" transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
+                <motion.div layoutId="kb-active-pill" className="absolute inset-0 bg-background shadow-xs border border-border/50 rounded-lg" transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
               )}
               <span className="relative z-10 flex items-center justify-center gap-2">
-                {tab.icon} {tab.label}
+                {tab.icon} <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold font-mono transition-colors ${
+                  activeTab === tab.id ? 'bg-primary/20 text-primary' : 'bg-muted/70 text-muted-foreground'
+                }`}>
+                  {tab.count}
+                </span>
               </span>
             </button>
           ))}
@@ -479,7 +568,9 @@ export default function EleInKnowledge() {
                           <Database className="w-5 h-5 text-blue-600 dark:text-blue-500" />
                         </div>
                         <div>
-                          <h3 className="text-xl font-semibold tracking-tight text-foreground">Tell the AI about your company</h3>
+                          <h3 className="text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
+                            Tell <ElesiumLogo size={18} /> AI about your company
+                          </h3>
                           <p className="text-xs text-muted-foreground mt-0.5">Add anything — your website, a sales deck, your pitch, notes. The AI reads it all.</p>
                         </div>
                       </div>
@@ -490,7 +581,7 @@ export default function EleInKnowledge() {
                         <UploadPdfModal mutateAssets={mutateAssets} />
 
                         {/* ── 2. Scrape Website ── */}
-                        <AddUrlModal />
+                        <AddUrlModal mutateAssets={mutateAssets} />
 
                         {/* ── 3. Paste Text ── */}
                         <div
@@ -509,22 +600,22 @@ export default function EleInKnowledge() {
                       </div>
 
                       <div className="pt-6 border-t border-slate-100 dark:border-border/50">
-                        <h4 className="text-sm font-semibold mb-1 text-foreground">What the AI has learned so far</h4>
+                        <h4 className="text-sm font-semibold mb-1 text-foreground flex items-center gap-1.5">
+                          What <ElesiumLogo size={14} /> AI has learned so far
+                        </h4>
                         <p className="text-xs text-muted-foreground mb-4">Each item below is part of your AI's memory. Delete any that are outdated.</p>
                         {(!assets && !assetsError) ? (
                           <div className="space-y-3">
                             {[1,2,3].map(i => <div key={i} className="h-16 w-full bg-slate-100 dark:bg-muted/50 rounded-2xl animate-pulse" />)}
                           </div>
-                        ) : (!assets || (Array.isArray(assets) && assets.length === 0)) ? (
-                          <div className="py-12 flex flex-col items-center justify-center text-center border-2 border-dashed border-slate-200 dark:border-border/50 rounded-3xl bg-slate-50/50 dark:bg-muted/5 mt-4">
-                            <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-muted flex items-center justify-center mb-4">
-                              <BrainCircuit className="text-muted-foreground/40 w-6 h-6" />
-                            </div>
-                            <p className="text-sm font-semibold text-foreground">No knowledge items yet</p>
-                            <p className="text-xs text-muted-foreground mt-1 max-w-xs">Add your website, a PDF, or paste some text above — the AI will learn from it instantly.</p>
-                          </div>
                         ) : (
-                          <KnowledgeAssetList assets={Array.isArray(assets) ? assets : []} onDelete={handleDeleteAsset} onRetry={handleRetryAsset} />
+                          <KnowledgeAssetList 
+                            assets={Array.isArray(assets) ? assets : []} 
+                            onDelete={handleDeleteAsset} 
+                            onRetry={handleRetryAsset}
+                            mutateAssets={mutateAssets}
+                            mutateSynthesis={mutateSynthesis}
+                          />
                         )}
                     </div>
                   </div>
@@ -667,7 +758,10 @@ export default function EleInKnowledge() {
                         {/* AI Response Strategy Card */}
                         <div className="flex-1 bg-white dark:bg-background/50 border border-slate-200 dark:border-border/50 rounded-3xl p-6 flex flex-col shadow-sm">
                           <div className="flex justify-between items-center mb-3">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">AI Response Strategy</label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                              <ElesiumLogo size={12} />
+                              AI Response Strategy
+                            </label>
                           </div>
                           <textarea 
                             maxLength={5000}
@@ -683,7 +777,7 @@ export default function EleInKnowledge() {
                           
                           <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100 dark:border-border/50">
                             <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                              💡 Tip: Be specific. Instead of "acknowledge and pivot", write the exact words the AI should use.
+                              Tip: Be specific. Instead of "acknowledge and pivot", write the exact words the AI should use.
                             </p>
                             <div className={`text-xs font-medium ${(selectedObjection.rebuttal?.length || 0) > 4800 ? 'text-red-500' : 'text-muted-foreground'}`}>
                               {selectedObjection.rebuttal?.length || 0}/5000
@@ -787,8 +881,17 @@ export default function EleInKnowledge() {
                 </div>
               </div>
             )}
+
+            {activeTab === 'bayesian_icp' && (
+              <BayesianIcpView />
+            )}
+
+            {activeTab === 'ai_gateway' && (
+              <AIGatewayView isPro={isPro} />
+            )}
           </motion.div>
         </AnimatePresence>
+
       </main>
 
       {/* DYNAMIC DOCUMENTATION MODAL (Prose format) */}

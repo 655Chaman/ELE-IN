@@ -55,3 +55,41 @@ Because the Supabase Python client REST API (PostgREST) does not support executi
 ### Migration 051 (Phase C)
 **Recommended Order:**
 1. `051_calendar_integration.sql` (**pending**) - Adds calendar_provider, calendar_token, and calendar_link to accounts for autonomous meeting booking.
+- `069_bayesian_icp_weights.sql` (Creates icp_signal_weights table and record_bayesian_icp_outcome RPC)
+- `070_personas_columns_and_objections_unification.sql` (**pending**) - Adds value_prop, target_titles, tone_tweaks to personas; adds raw_text to knowledge_assets; unifies knowledge_objections and syncs legacy objections.
+- `071_release_consumed_daily_action.sql` (**pending**) - Adds safe decrement RPC for failed action releases.
+- `072_timezone_aware_daily_action_limits.sql` (**pending**) - Adds timezone-aware daily limit calculations and window functions.
+- `073_agency_whitelabel_and_client_metrics.sql` (**pending**) - Adds white-label columns (brand, domain, color, logo_url, enabled) to public.agencies and creates get_agency_clients_overview RPC for aggregated client portfolio telemetry.
+- `074_proxy_latency_and_exit_ip.sql` (**pending**) - Adds proxy latency and exit IP columns for proxy health telemetry.
+- `075_prospect_social_signal_radar.sql` (**pending**) - Adds prospect social signals and engagement radar tables.
+- `076_workspace_ai_gateway_settings.sql` (**pending**) - Adds workspace-level AI provider routing and BYOK credentials.
+- `077_proxy_quarantine_and_sticky_affinity.sql` (**pending**) - Adds proxy quarantine expiration and sticky geo-affinity.
+- `077_workspace_auto_recharge_settings.sql` (**pending**) - Adds workspace auto-recharge settings, thresholds, and package selection.
+- `078_agency_credit_delegations.sql` (**pending**) - Adds agency credit allocation audit ledger, sub-account quotas, and deadlock-free transfer_agency_credits_safely RPC.
+- `078_sender_pod_load_balancing.sql` (**pending**) - Adds sender pod load balancing, fleet failover, and quarantine auditing.
+- `079_campaign_roi_certificates.sql` (**pending**) - Adds viral shareable ROI performance certificate table and public lookup RLS.
+- `080_agency_billing_statements.sql` (**pending**) - Adds agency multi-client consolidated billing statements, overdraft invoicing, and itemized breakdown tables.
+- `081_bayesian_icp_calibration_studio.sql` (**pending**) - Adds is_frozen, weight_multiplier, category, description to icp_signal_weights, creates icp_feedback_events audit ledger, and enables RLS.
+- `081_ai_inbox_battlecards_and_deal_stages.sql` (**pending**) - Extends leads with deal_stage, deal_stage_updated_at, deal_estimated_value, last_objection_type, and creates lead_objections audit ledger with RLS.
+- `082_social_prewarm_and_omnichannel_cascade.sql` (**pending**) - Adds lead_prewarm_events, omnichannel_fallback_configs, omnichannel_cascade_logs, thought_leadership_posts with RLS.
+- `083_bandit_optimizer_and_trigger_radar.sql` (**pending**) - Adds bandit_experiments, copy_variants (Thompson sampling parameters, mutation tracking), trigger_events, indexes, and RLS.
+- `084_event_harvester_and_multimodal_voice.sql` (**pending**) - Adds harvested_events, event_attendees, multimodal_assets, indexes, and RLS for event harvesting and voice/video prospecting.
+- `085_lead_list_dynamic_segmentation.sql` (**pending**) - Adds JSONB metadata column to lead_lists for dynamic rule AST criteria and auto-enrollment campaign bindings.
+- `086_abm_buying_committees_and_multithreading.sql` (**pending**) - Adds target_accounts, account_committee_members, multithread_campaign_runs tables, indexes, and RLS for ABM multithreading and account heat score rollups.
+- `087_champion_job_changes_and_deal_revival.sql` (**pending**) - Adds champion_job_changes, warm_intro_paths, and closed_lost_revivals tables, indexes, and RLS for Phase 15 Boomerang & Deal Revival Engine.
+- `088_competitive_displacement_and_vendor_takeover.sql` (**pending**) - Adds competitor_displacements, vendor_battlecards tables, indexes, and RLS for Phase 16 Autonomous Competitive Takeover & Tech-Stack Displacement Engine.
+- `089_calendar_concierge_and_meeting_booking.sql` (**pending**) - Adds meeting_bookings, rep_calendar_availability tables, indexes, and RLS for Phase 17 Autonomous Executive Calendar Concierge & Frictionless Meeting Booking Engine.
+- `090_waterfall_enrichment_cascade.sql` (**pending**) - Adds waterfall_enrichment_runs, vendor_enrichment_configs tables, indexes, and RLS for Phase 18 Clay-Style Multi-Vendor Waterfall Enrichment Engine.
+- `091_email_warmup_and_dns_reputation.sql` (**pending**) - Adds warmup_mailboxes, mailbox_dns_audits tables, indexes, and RLS for Phase 19 Peer-to-Peer AI Email Warmup & DNS Reputation Swarm.
+- `092_crm_sync_and_deal_attribution.sql` (**pending**) - Adds crm_account_sync_mappings, deal_attributions, and crm_sync_logs tables, indexes, and RLS for Phase 20 Account-Level CRM Bi-Directional Auto-Sync & Real-Time Deal Attribution Engine.
+- `093_employee_advocacy_and_viral_pods.sql` (**pending**) - Adds advocacy_pods, advocacy_pod_members, advocacy_post_boosts, and advocacy_engagements tables, indexes, and RLS for Phase 21 Employee Advocacy & Viral LinkedIn Post Booster Pod.
+
+## 🚀 One-Click Master Execution
+All pending migrations from 001 through 093, including all foundational infrastructure tables and stages 1 through 41, have been combined into **`999_master_pending_sync.sql`** (2,182 lines, 59 tables, 8 stored procedures, 95 indexes).
+This file is fully idempotent (`IF NOT EXISTS`, transaction blocks, `DO $$` guards, RLS enabled across 100% of tables).
+When you are ready to apply all schema changes to Supabase:
+1. Open your **Supabase Dashboard &rarr; SQL Editor**.
+2. Open `backend/migrations/999_master_pending_sync.sql`.
+3. Copy all contents, paste into the SQL Editor, and click **Run**.
+
+

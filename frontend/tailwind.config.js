@@ -7,6 +7,12 @@ export default {
     "../core/frontend/**/*.{js,ts,jsx,tsx}",
     "../dashboard/frontend/**/*.{js,ts,jsx,tsx}",
     "../campaigns/frontend/**/*.{js,ts,jsx,tsx}",
+    "../inbox/frontend/**/*.{js,ts,jsx,tsx}",
+    "../knowledge/frontend/**/*.{js,ts,jsx,tsx}",
+    "../leads/frontend/**/*.{js,ts,jsx,tsx}",
+    "../accounts/frontend/**/*.{js,ts,jsx,tsx}",
+    "../integrations/frontend/**/*.{js,ts,jsx,tsx}",
+    "../admin/frontend/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {

@@ -34,6 +34,9 @@ export interface LeadImportState {
   salesNavUrl: string;
   setSalesNavUrl: (u: string) => void;
   
+  salesNavMaxResults: number;
+  setSalesNavMaxResults: (n: number) => void;
+  
   file: File | null;
   setFile: (f: File | null) => void;
   
@@ -51,6 +54,12 @@ export interface LeadImportState {
   
   headers: string[];
   setHeaders: (h: string[]) => void;
+  
+  detectedRowCount: number;
+  setDetectedRowCount: (n: number) => void;
+  
+  sampleRows: Record<string, string>[];
+  setSampleRows: (r: Record<string, string>[]) => void;
   
   mappings: {
     first_name: string;
@@ -117,6 +126,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
   const [name, setName] = useState("")
   const [urlList, setUrlList] = useState("")
   const [salesNavUrl, setSalesNavUrl] = useState("")
+  const [salesNavMaxResults, setSalesNavMaxResults] = useState<number>(50)
   const [targetTimezone, setTargetTimezone] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -151,6 +161,8 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
   
   const [step, setStep] = useState<1 | 2>(1)
   const [headers, setHeaders] = useState<string[]>([])
+  const [sampleRows, setSampleRows] = useState<Record<string, string>[]>([])
+  const [detectedRowCount, setDetectedRowCount] = useState<number>(0)
   const [mappings, setMappings] = useState({
     first_name: "",
     last_name: "",
@@ -227,12 +239,15 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     name, setName,
     urlList, setUrlList,
     salesNavUrl, setSalesNavUrl,
+    salesNavMaxResults, setSalesNavMaxResults,
     targetTimezone, setTargetTimezone,
     file, setFile,
     cleanData, setCleanData,
     isSubmitting, setIsSubmitting,
     step, setStep,
     headers, setHeaders,
+    sampleRows, setSampleRows,
+    detectedRowCount, setDetectedRowCount,
     mappings, setMappings,
     searchParams, setSearchParams,
     hubspotToken, setHubspotToken,

@@ -15,10 +15,10 @@ export const HR_NODE_DEFS = {
     label: "View Profile",
     description: "Visit the lead's profile to create a 'viewed your profile' notification. Warmed leads have a 40-50% higher connection acceptance rate. Best followed by a 1-2 day delay before sending a Connection Request.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
-    delayDefault: 0,
+    delayDefault: 1,
     fields: [],
   },
 
@@ -26,7 +26,7 @@ export const HR_NODE_DEFS = {
     label: "Follow Profile",
     description: "Follow their public profile to trigger a notification and make your posts visible to them. A great soft-touch entry point for enterprise targets before committing to a Connection Request.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
     delayDefault: 1,
@@ -37,10 +37,10 @@ export const HR_NODE_DEFS = {
     label: "React to Post",
     description: "Like their most recent post to establish immediate relevance. Highly effective when run 2-3 days before connecting. Ensure you follow up with a 'View Profile' or a Connection Request.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
-    delayDefault: 0,
+    delayDefault: 1,
     fields: [
       { key: "quantity", label: "Number of posts to react to", type: "number", default: 1, min: 1, max: 5 },
       { key: "reaction_type", label: "Reaction type", type: "select", options: ["Like", "Insightful", "Celebrate", "Support", "Funny"] },
@@ -52,7 +52,7 @@ export const HR_NODE_DEFS = {
     label: "Comment on Post",
     description: "Leave a custom or AI-generated comment on their post. Comments are 5x more visible than likes. This is a high-intent warm-up action—follow with a Connection Request referencing the post.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
     delayDefault: 1,
@@ -62,11 +62,26 @@ export const HR_NODE_DEFS = {
     ],
   },
 
+  inbound_ghostwriting: {
+    label: "AI Inbound Ghostwriter",
+    description: "Autonomously scrapes the lead's latest post, uses your Knowledge Base to generate an insightful comment, posts it, and likes the post. High-impact warm-up action before sending a connection request.",
+    category: "warmup",
+    color: "#06b6d4",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 1,
+    fields: [
+      { key: "comment_mode", label: "Comment mode", type: "select", options: ["AI-generated (from post content)", "Fixed comment"] },
+      { key: "comment", label: "Fixed comment (if not AI)", type: "textarea", maxChars: 1250, placeholder: "Really insightful perspective on {{topic}}...", hideIf: "comment_mode==AI-generated (from post content)" },
+      { key: "like_post", label: "Also like their post", type: "toggle", default: true },
+    ],
+  },
+
   endorse_skill: {
     label: "Endorse a Skill",
     description: "Endorse one of their top skills. A highly visible, rarely automated action that instantly puts your face in their notifications. Wait 1 day, then connect.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
     delayDefault: 0,
@@ -80,7 +95,7 @@ export const HR_NODE_DEFS = {
     label: "Follow Company Page",
     description: "Follow the lead's company page to signal deep research. This builds trust by showing you care about their organization, not just a quick sale. Follow up by engaging with their content.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
     delayDefault: 0,
@@ -91,7 +106,7 @@ export const HR_NODE_DEFS = {
     label: "Share Their Post",
     description: "Share their post to your network. The ultimate form of engagement that guarantees a notification. They will remember your name. Follow up 2 days later with a Connection Request.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
     delayDefault: 1,
@@ -104,13 +119,63 @@ export const HR_NODE_DEFS = {
     label: "LinkedIn Event Invite",
     description: "Invite the lead to a LinkedIn Event you are hosting. Delivers massive upfront value and builds authority before you even pitch. Follow up by messaging attendees.",
     category: "warmup",
-    color: "#8b5cf6",
+    color: "#06b6d4",
     outputs: ["then"],
     hasDelay: true,
     delayDefault: 0,
     fields: [
       { key: "event_url", label: "LinkedIn Event URL", type: "input", placeholder: "https://www.linkedin.com/events/..." },
       { key: "invite_note", label: "Invite note (optional)", type: "textarea", maxChars: 300, placeholder: "Hey {{first_name}}, hosting a quick session on X — think you'd find it valuable." },
+    ],
+  },
+
+  like_top_3_posts: {
+    label: "React to Top 3 Posts",
+    description: "Like the lead's top 3 posts in one sweep. Creates a sustained presence in their notifications over 3 days — far more effective than a single like. Follow with a Connection Request.",
+    category: "warmup",
+    color: "#06b6d4",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 1,
+    fields: [
+      { key: "reaction_type", label: "Reaction type", type: "select", options: ["Like", "Insightful", "Celebrate"] },
+    ],
+  },
+
+  view_profile_repeat: {
+    label: "Re-visit Profile",
+    description: "View the lead's profile again to send a second 'viewed your profile' ping. Triggers a second notification days after the first. Ideal before a follow-up message to cold leads.",
+    category: "warmup",
+    color: "#06b6d4",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 3,
+    fields: [],
+  },
+
+  congratulate_new_job: {
+    label: "Congratulate New Job",
+    description: "Auto-detect and congratulate the lead on a new position. The highest-response warm-up action. People always reply to genuine congratulations — use it as your conversation opener.",
+    category: "warmup",
+    color: "#06b6d4",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "message", label: "Congratulations message", type: "textarea", maxChars: 300, placeholder: "Congrats on the new role at {{company}}, {{first_name}}!" },
+    ],
+  },
+
+  congratulate_anniversary: {
+    label: "Congratulate Work Anniversary",
+    description: "Send a message on their LinkedIn work anniversary. A natural, non-salesy conversation starter. Highly visible and rarely automated.",
+    category: "warmup",
+    color: "#06b6d4",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "message", label: "Anniversary message", type: "textarea", maxChars: 300, placeholder: "Happy work anniversary, {{first_name}}! A real milestone." },
     ],
   },
 
@@ -134,6 +199,21 @@ export const HR_NODE_DEFS = {
       { key: "withdraw_enabled", label: "Auto-withdraw if not accepted", type: "toggle" },
       { key: "withdraw_days", label: "Withdraw after (days)", type: "number", default: 21, min: 1, max: 90, showIf: "withdraw_enabled==true" },
       { key: "fallback_info", label: "No-note Fallback", type: "info", content: "LinkedIn limits personalized connection invites on non-premium accounts. When an account reaches its limit, we'll still send the invite - just without the note." },
+    ],
+    versioned: true,
+  },
+
+  connection_no_note: {
+    label: "Blank Connection Request",
+    description: "Sends a connection request without any note. Industry benchmarks reveal blank invites often achieve 15-20% higher acceptance rates than generic cold pitches because they appear completely organic.",
+    category: "connect",
+    color: "#6366f1",
+    outputs: ["Accepted", "Not Accepted Yet"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "withdraw_enabled", label: "Auto-withdraw if not accepted", type: "toggle" },
+      { key: "withdraw_days", label: "Withdraw after (days)", type: "number", default: 21, min: 1, max: 90, showIf: "withdraw_enabled==true" },
     ],
     versioned: true,
   },
@@ -162,10 +242,24 @@ export const HR_NODE_DEFS = {
     fields: [],
   },
 
+  endorse_3_skills: {
+    label: "Endorse Top 3 Skills",
+    description: "Endorse their top 3 skills in a single action. Creates 3 separate notifications — a sustained 3-day presence with zero extra effort. Best used before your Connection Request.",
+    category: "connect",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "fallback", label: "If fewer than 3 skills found", type: "select", options: ["Endorse however many exist", "Skip this step"] },
+    ],
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // CATEGORY: CONDITIONS (20 nodes)
   // Every unguarded path wastes your daily LinkedIn limit.
   // ══════════════════════════════════════════════════════════════════════════
+
 
   if_connected: {
     label: "If Connected?",
@@ -178,9 +272,24 @@ export const HR_NODE_DEFS = {
     fields: [],
   },
 
-
+  seamless_identity_matching: {
+    label: "Seamless Identity Match",
+    description: "Blue Ocean fallback: Checks if the LinkedIn connection is accepted. If still pending after timeout, automatically discovers their verified corporate email and routes directly to a warm email touchpoint referencing the pending LinkedIn request.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Connected", "Email Discovered", "Not connected"],
+    hasDelay: true,
+    delayDefault: 7,
+    fields: [
+      { key: "timeout_days", label: "Days to wait before email discovery", type: "number", default: 7, min: 1, max: 30 },
+      { key: "auto_discover_email", label: "Auto-discover corporate email via Zero-Cost Engine", type: "toggle", default: true },
+      { key: "auto_withdraw_invite", label: "Auto-withdraw pending LinkedIn invite on email discovery", type: "toggle", default: false },
+      { key: "apollo_fallback", label: "Enable Apollo.io People Match fallback", type: "toggle", default: true },
+    ],
+  },
 
   if_phone_found: {
+
     label: "If Phone Found?",
     description: "Checks if a direct dial was found. Route to a 'Slack Alert' to notify an SDR to call them immediately while they are engaged.",
     category: "conditions",
@@ -295,7 +404,8 @@ export const HR_NODE_DEFS = {
     ],
   },
 
-/*
+
+
   if_meeting_booked: {
     label: "If Meeting Booked?",
     description: "Checks if they booked via your Calendly link. This is a critical safety net. If YES, route to 'Mark Converted' and stop all further automated follow-ups.",
@@ -306,13 +416,97 @@ export const HR_NODE_DEFS = {
     delayDefault: 2,
     fields: [],
   },
-*/
 
+  if_company_size: {
+    label: "If Company Size?",
+    description: "Branches based on headcount. Route enterprise (200+) leads to a longer multi-touch sequence and SMBs to a faster, more direct pitch.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["In range", "Out of range"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "min_size", label: "Min headcount", type: "number", default: 10, min: 1 },
+      { key: "max_size", label: "Max headcount (0 = no limit)", type: "number", default: 500 },
+    ],
+  },
 
+  if_replied_positive: {
+    label: "If Replied Positively?",
+    description: "True if the lead's last reply was classified as 'positive' sentiment. Route these leads directly to your meeting booking flow.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Positive", "Other"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  if_replied_negative: {
+    label: "If Replied Negatively?",
+    description: "True if the lead's last reply was classified as 'negative' sentiment. Route to an objection-handling message or graceful exit.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Negative", "Other"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  if_replied_neutral: {
+    label: "If Replied Neutrally?",
+    description: "True if the lead's last reply was classified as 'neutral' sentiment. Route to a soft re-engage or value-add message.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Neutral", "Other"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  if_title_matches: {
+    label: "If Title Matches?",
+    description: "Branches on whether the lead's current job title contains a keyword. Narrow your sequence to only the right personas.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Matches", "Does not match"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "keyword", label: "Title keyword (case-insensitive)", type: "input", placeholder: "e.g. VP, Head of, Director" },
+    ],
+  },
+
+  if_location_matches: {
+    label: "If Location Matches?",
+    description: "Branches on whether the lead is in a target geography. Essential for event-based or region-specific campaigns.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Matches", "Does not match"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "keyword", label: "Location keyword (case-insensitive)", type: "input", placeholder: "e.g. London, United States, APAC" },
+    ],
+  },
+
+  if_industry_matches: {
+    label: "If Industry Matches?",
+    description: "Branches on whether the lead's LinkedIn industry contains a keyword. Route fintech leads to one track, SaaS leads to another.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Matches", "Does not match"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "keyword", label: "Industry keyword (case-insensitive)", type: "input", placeholder: "e.g. Financial Services, Software" },
+    ],
+  },
 
   // ══════════════════════════════════════════════════════════════════════════
   // CATEGORY: DIRECT MESSAGES (12 nodes)
   // ══════════════════════════════════════════════════════════════════════════
+
 
   send_message: {
     label: "Send Message",
@@ -329,6 +523,21 @@ export const HR_NODE_DEFS = {
       { key: "variant_c", label: "Variant C (optional)", type: "textarea", maxChars: 8000, placeholder: "Third variant...", advanced: true },
       { key: "attachment_type", label: "Attachment", type: "select", options: ["None", "Document", "Image"], advanced: true },
       { key: "attachment_url", label: "Attachment URL", type: "input", placeholder: "https://...", showIf: "attachment_type!=None", advanced: true },
+    ],
+    versioned: true,
+  },
+
+  send_message_with_doc: {
+    label: "Send Message with Document",
+    description: "Sends a direct message with an attached lead magnet, case study, or whitepaper. Highly effective for sharing relevant proof points and value upfront.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 1,
+    fields: [
+      { key: "body", label: "Message body", type: "textarea", maxChars: 8000, placeholder: "Hey {{first_name}}, put together this case study for {{company}}..." },
+      { key: "doc_url", label: "Document URL (PDF / Lead Magnet)", type: "input", placeholder: "https://your-domain.com/case-study.pdf" },
     ],
     versioned: true,
   },
@@ -393,6 +602,100 @@ export const HR_NODE_DEFS = {
     ],
   },
 
+  send_message_ab: {
+    label: "A/B Message Test",
+    description: "Sends variant A or B to split traffic 50/50 and identify the better-performing message. Deterministically assigns the same lead to the same variant on retry.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "body_a", label: "Variant A message", type: "textarea", maxChars: 3000, placeholder: "Hi {{first_name}}, Variant A..." },
+      { key: "body_b", label: "Variant B message", type: "textarea", maxChars: 3000, placeholder: "Hi {{first_name}}, Variant B..." },
+    ],
+  },
+
+  send_intro_message: {
+    label: "Send Intro Message",
+    description: "Send the opening message in a sequence after connection is accepted. Set a friendly, value-first tone — no pitch in the first message.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 1,
+    fields: [
+      { key: "body", label: "Message body", type: "textarea", maxChars: 3000, placeholder: "Hey {{first_name}}, thanks for connecting! I noticed..." },
+    ],
+  },
+
+  send_followup: {
+    label: "Send Follow-up",
+    description: "Send a follow-up message when the lead hasn't replied. 80% of sales require 5+ touches. Keep it short, add new value, and reference the previous message.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 3,
+    fields: [
+      { key: "body", label: "Follow-up message", type: "textarea", maxChars: 3000, placeholder: "Following up on my last message, {{first_name}}..." },
+    ],
+  },
+
+  send_breakup_message: {
+    label: "Send Break-up Message",
+    description: "The final message in a sequence. A polite break-up triggers curiosity and often gets replies from people who ignored everything else. Use sparingly.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 5,
+    fields: [
+      { key: "body", label: "Break-up message", type: "textarea", maxChars: 3000, placeholder: "I'll stop reaching out now, {{first_name}}. If things change, my door is open." },
+    ],
+  },
+
+  send_reengage_message: {
+    label: "Send Re-engage Message",
+    description: "Re-contact a cold lead months later with fresh context (new feature, case study, event). Works best as the first message in a recycled campaign.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "body", label: "Re-engage message", type: "textarea", maxChars: 3000, placeholder: "Hi {{first_name}}, circling back — we just released something that made me think of your team..." },
+    ],
+  },
+
+  send_message_with_image: {
+    label: "Send Message + Image",
+    description: "Send a DM with an attached image (meme, screenshot, infographic). Visual messages get 5x more engagement. Great for social proof or product demos.",
+    category: "messages",
+    color: "#6366f1",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "body", label: "Message body", type: "textarea", maxChars: 3000, placeholder: "Check this out, {{first_name}}..." },
+      { key: "image_url", label: "Image URL", type: "input", placeholder: "https://..." },
+    ],
+  },
+
+  connection_ai_note: {
+    label: "AI Connection Note",
+    description: "Generates a fully personalized connection request note using the lead's profile, recent posts, and your persona. Much higher acceptance than templated notes.",
+    category: "ai",
+    color: "#f97316",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "style", label: "Note tone", type: "select", options: ["Professional", "Casual", "Direct", "Curiosity-based"] },
+      { key: "hook", label: "Personalization hook", type: "select", options: ["Their recent post", "Their job title + company", "Shared interest", "Company news"] },
+    ],
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // CATEGORY: AI-POWERED (10 nodes)
   // These are the actual moat. Nobody has these natively.
@@ -416,19 +719,24 @@ export const HR_NODE_DEFS = {
   },
 
   ai_detect_sentiment: {
-    label: "AI Detect Reply Sentiment",
-    description: "AI categorizes their reply as Positive, Negative, or Neutral. Automates triage so your team only handles warm leads. Route each sentiment to a specific CRM action.",
+    label: "Elesium: Reply Sentiment & OOO",
+    description: "Zero-shot Elesium AI categorizes inbound replies into Meeting Requested, Positive, OOO, Objection, or Opt-Out (elesium.online). Auto-snoozes active sequence when return dates are found.",
     category: "ai",
     color: "#f97316",
-    outputs: ["Positive", "Neutral", "Negative"],
+    outputs: ["Positive / Meeting", "Neutral / OOO", "Negative / Opt-Out"],
     hasDelay: true,
     delayDefault: 0,
-    fields: [],
+    fields: [
+      { key: "auto_snooze_ooo", label: "Auto-Snooze On Out-of-Office Autoreply", type: "boolean", default: true },
+      { key: "fallback_snooze_days", label: "Fallback Snooze Duration (Days)", type: "number", default: 7 },
+      { key: "auto_suppress_negative", label: "Auto-Suppress on Negative Opt-Out", type: "boolean", default: true },
+      { key: "confidence_threshold", label: "Min Intent Confidence Threshold (%)", type: "number", default: 75 },
+    ],
   },
 
   ai_generate_icebreaker: {
-    label: "AI Generate Icebreaker",
-    description: "AI writes a custom comment or opening line referencing their latest post. Incredibly effective for starting organic conversations.",
+    label: "Elesium: Dynamic Icebreaker",
+    description: "Elesium AI writes a custom comment or opening line referencing their latest post (elesium.online). Incredibly effective for starting organic conversations.",
     category: "ai",
     color: "#f97316",
     outputs: ["then"],
@@ -460,8 +768,8 @@ export const HR_NODE_DEFS = {
   },
 
   ai_score_icp: {
-    label: "AI Score ICP Fit",
-    description: "AI grades the lead against your ideal customer profile. Use this to filter out bad fits dynamically before sending them any messages.",
+    label: "Elesium: Score ICP Fit",
+    description: "Elesium AI grades the lead against your ideal customer profile (elesium.online). Use this to filter out bad fits dynamically before sending them any messages.",
     category: "ai",
     color: "#f97316",
     outputs: ["High fit (>75)", "Medium fit (50-75)", "Low fit (<50)"],
@@ -475,11 +783,10 @@ export const HR_NODE_DEFS = {
       { key: "fallback_message", label: "Fallback Message (If AI Fails)", type: "input", default: "" }],
   },
 
-/*
   ai_buying_signal: {
-    comingSoon: true,
-    label: "AI Detect Buying Signal",
-    description: "AI scans their recent posts for specific buying signals or pain points. Route high-signal leads directly to an SDR via a Slack Alert.",
+    comingSoon: false,
+    label: "Elesium: Buying Signal Detector",
+    description: "Elesium scans their recent posts for specific buying signals or pain points (elesium.online). Route high-signal leads directly to an SDR via a Slack Alert.",
     category: "ai",
     color: "#f97316",
     outputs: ["Signal detected", "No signal"],
@@ -489,13 +796,11 @@ export const HR_NODE_DEFS = {
       { key: "signal_keywords", label: "Signal topics (what pain do you solve?)", type: "textarea", maxChars: 300, placeholder: "outbound, pipeline, lead gen, sales team, hiring SDRs, scaling revenue..." },
     ],
   },
-*/
 
-/*
   ai_write_connection_note: {
-    comingSoon: true,
-    label: "AI Write Connection Note",
-    description: "AI drafts a personalized connection note based on shared interests or career history. Avoids generic templates and spikes acceptance rates.",
+    comingSoon: false,
+    label: "Elesium: Connection Note Personalizer",
+    description: "Elesium drafts a personalized connection note based on shared interests or career history (elesium.online). Avoids generic templates and spikes acceptance rates.",
     category: "ai",
     color: "#f97316",
     outputs: ["then"],
@@ -505,11 +810,10 @@ export const HR_NODE_DEFS = {
       { key: "angle", label: "Connection angle", type: "select", options: ["Relevant experience", "Shared interest in their post", "Company context", "Direct value offer"] },
     ],
   },
-*/
 
   ai_summarize_profile: {
-    label: "AI Summarize Profile",
-    description: "Creates a concise 'intel card' about the lead. Automatically pushes to your CRM so your sales team has full context before the demo call.",
+    label: "Elesium: Profile Intelligence Summary",
+    description: "Elesium creates a concise 'intel card' about the lead (elesium.online). Automatically pushes to your CRM so your sales team has full context before the demo call.",
     category: "ai",
     color: "#f97316",
     outputs: ["then"],
@@ -524,8 +828,8 @@ export const HR_NODE_DEFS = {
   },
 
   ai_detect_competitor: {
-    label: "AI Detect Competitor User",
-    description: "AI checks if the lead is currently using a competitor. If YES, route them to a specialized 'switch campaign' highlighting your unique advantages.",
+    label: "Elesium: Competitor User Detection",
+    description: "Elesium checks if the lead is currently using a competitor (elesium.online). If YES, route them to a specialized 'switch campaign' highlighting your unique advantages.",
     category: "ai",
     color: "#f97316",
     outputs: ["Using competitor", "Not detected"],
@@ -540,8 +844,8 @@ export const HR_NODE_DEFS = {
   },
 
   ai_best_send_time: {
-    label: "AI Suggest Best Send Time",
-    description: "Analyzes their activity patterns and delays your message until they are actually online. Can increase open rates by up to 30%.",
+    label: "Elesium: Best Send Time Optimizer",
+    description: "Elesium analyzes their activity patterns and delays your message until they are actually online (elesium.online). Can increase open rates by up to 30%.",
     category: "ai",
     color: "#f97316",
     outputs: ["then"],
@@ -555,8 +859,8 @@ export const HR_NODE_DEFS = {
   // ══════════════════════════════════════════════════════════════════════════
   
   ai_generate_reply: {
-    label: "AI: Reply to Lead",
-    description: "Autonomously generate and send a context-aware reply to the lead's latest message based on your Workspace Knowledge Base (RAG). Highly effective after an 'If Replied' split.",
+    label: "Elesium: Autonomous Reply",
+    description: "Autonomously generate and send a context-aware reply to the lead's latest message based on your Workspace Knowledge Base (RAG) powered by Elesium (elesium.online).",
     category: "ai",
     color: "#f97316",
     outputs: ["then"],
@@ -566,8 +870,8 @@ export const HR_NODE_DEFS = {
   },
 
   ai_query_knowledge_base: {
-    label: "AI Query Brain",
-    description: "Queries the Workspace Knowledge Base about your business to generate a targeted objection-handling response based on a negative or questioning reply.",
+    label: "Elesium: Query Brain (RAG)",
+    description: "Queries the Workspace Knowledge Base via Elesium AI (elesium.online) about your business to generate a targeted objection-handling response based on a negative or questioning reply.",
     category: "ai",
     color: "#f97316",
     outputs: ["Response Generated", "Failed"],
@@ -577,11 +881,23 @@ export const HR_NODE_DEFS = {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CATEGORY: DATA ENRICHMENT (12 nodes)
+  // CATEGORY: DATA ENRICHMENT (13 nodes)
   // ══════════════════════════════════════════════════════════════════════════
 
+  zero_cost_discovery: {
+    label: "Zero-Cost Email Discovery",
+    description: "Resolves verified corporate email addresses using proprietary MX record lookup and SMTP handshakes without burning paid credits on Apollo or Hunter.",
+    category: "enrichment",
+    color: "#f59e0b",
+    outputs: ["Found", "Not found"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "verify_mx", label: "Verify MX host deliverability", type: "toggle", default: true },
+    ],
+  },
+
   find_email: {
-    comingSoon: true,
     label: "Find Work Email",
     description: "Runs a waterfall enrichment (Apollo -> Hunter -> Clearbit) to find a verified work email. Always follow this with an 'If Email Found?' condition.",
     category: "enrichment",
@@ -593,7 +909,6 @@ export const HR_NODE_DEFS = {
   },
 
   find_personal_email: {
-    comingSoon: true,
     label: "Find Personal Email",
     description: "Enriches their private email. Great for founder-to-founder outreach or when work emails bounce. Follow with an email campaign handoff.",
     category: "enrichment",
@@ -605,7 +920,6 @@ export const HR_NODE_DEFS = {
   },
 
   find_phone: {
-    comingSoon: true,
     label: "Find Phone Number",
     description: "Finds a direct dial or mobile number. If successful, route to a Slack Alert so your SDR team can execute a warm cold-call immediately.",
     category: "enrichment",
@@ -617,7 +931,6 @@ export const HR_NODE_DEFS = {
   },
 
   find_tech_stack: {
-    comingSoon: true,
     label: "Find Company Tech Stack",
     description: "Detects the software tools their company uses. Use this to dynamically branch your messaging (e.g., 'Saw you use Salesforce...').",
     category: "enrichment",
@@ -631,7 +944,6 @@ export const HR_NODE_DEFS = {
   },
 
   find_funding_round: {
-    comingSoon: true,
     label: "Find Funding Round",
     description: "Checks if they recently raised capital. Fresh funding means active budgets. Route funded companies to a high-priority outreach track.",
     category: "enrichment",
@@ -645,7 +957,6 @@ export const HR_NODE_DEFS = {
   },
 
   find_headcount: {
-    comingSoon: true,
     label: "Find Company Headcount",
     description: "Scrapes their exact employee count. Use this alongside an 'If Company Size' condition to ensure you aren't pitching to companies that are too small.",
     category: "enrichment",
@@ -657,7 +968,6 @@ export const HR_NODE_DEFS = {
   },
 
   find_job_postings: {
-    comingSoon: true,
     label: "Find Open Job Postings",
     description: "Detects open roles at their company. A strong indicator of growth and specific pain points. Route to a tailored pitch addressing their hiring needs.",
     category: "enrichment",
@@ -671,7 +981,6 @@ export const HR_NODE_DEFS = {
   },
 
   get_linkedin_activity: {
-    comingSoon: true,
     label: "Get LinkedIn Activity Score",
     description: "Scores how active they are on LinkedIn. Highly active leads should be engaged via comments and DMs; inactive leads should be routed to cold email.",
     category: "enrichment",
@@ -683,7 +992,6 @@ export const HR_NODE_DEFS = {
   },
 
   get_mutual_connections: {
-    comingSoon: true,
     label: "Get Mutual Connections",
     description: "Fetches shared connections. If found, route to an 'AI Personalize' node to dynamically drop a mutual connection's name in your opener.",
     category: "enrichment",
@@ -695,7 +1003,6 @@ export const HR_NODE_DEFS = {
   },
 
   verify_email: {
-    comingSoon: true,
     label: "Verify Email Deliverability",
     description: "Pings the enriched email to ensure it won't bounce. Always run this before handing the lead off to an email sequencer to protect your domain reputation.",
     category: "enrichment",
@@ -711,7 +1018,6 @@ export const HR_NODE_DEFS = {
   // ══════════════════════════════════════════════════════════════════════════
 
   send_slack_alert: {
-    comingSoon: true,
     label: "Send Slack Alert",
     description: "Fires a real-time Slack notification to your team. Use this immediately when a lead replies positively, books a meeting, or is marked SQL.",
     category: "multichannel",
@@ -721,12 +1027,11 @@ export const HR_NODE_DEFS = {
     delayDefault: 0,
     fields: [
       { key: "channel", label: "Slack channel", type: "input", placeholder: "#sales-signals" },
-      { key: "message", label: "Alert message", type: "textarea", maxChars: 500, placeholder: "🔥 {{first_name}} from {{company}} replied to your LinkedIn sequence!" },
+      { key: "message", label: "Alert message", type: "textarea", maxChars: 500, placeholder: "{{first_name}} from {{company}} replied to your LinkedIn sequence." },
     ],
   },
 
   send_webhook: {
-    comingSoon: true,
     label: "Send Webhook",
     description: "Sends lead data via POST request to Zapier, Make, or a custom backend. The ultimate escape hatch for custom integrations.",
     category: "multichannel",
@@ -736,6 +1041,7 @@ export const HR_NODE_DEFS = {
     delayDefault: 0,
     fields: [
       { key: "url", label: "Webhook URL", type: "input", placeholder: "https://hooks.zapier.com/..." },
+
       { key: "payload_template", label: "Payload (JSON template)", type: "textarea", maxChars: 2000, placeholder: '{"name": "{{first_name}}", "company": "{{company}}"}' },
     ],
   },
@@ -866,6 +1172,19 @@ export const HR_NODE_DEFS = {
     ],
   },
 
+  wait_for_reply: {
+    label: "Wait for Reply",
+    description: "Waits up to N days for an inbound reply. If the lead replies, branches to 'Replied' immediately. If N days elapse with no reply, branches to 'Timeout' to trigger follow-up sequences or multichannel fallback.",
+    category: "control",
+    color: "#52525b",
+    outputs: ["Replied", "Timeout"],
+    hasDelay: true,
+    delayDefault: 3,
+    fields: [
+      { key: "wait_days", label: "Wait duration (days)", type: "number", default: 3, min: 1, max: 30 },
+    ],
+  },
+
 
   if_replied: {
     label: "If Replied?",
@@ -919,6 +1238,72 @@ export const HR_NODE_DEFS = {
     ],
   },
 
+  mark_interested: {
+    label: "Mark as Interested",
+    description: "Updates the lead lifecycle status to 'Interested' in pipeline and CRM.",
+    category: "convert",
+    color: "#f59e0b",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  mark_mql: {
+    label: "Mark as MQL",
+    description: "Marks the prospect as a Marketing Qualified Lead (MQL).",
+    category: "convert",
+    color: "#f59e0b",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  mark_sql: {
+    label: "Mark as SQL",
+    description: "Marks the prospect as a Sales Qualified Lead (SQL) for direct SDR/Account Executive handoff.",
+    category: "convert",
+    color: "#f59e0b",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  mark_converted: {
+    label: "Mark as Converted",
+    description: "Terminal conversion node: marks lead as won / converted customer.",
+    category: "convert",
+    color: "#10b981",
+    outputs: [],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  mark_not_interested: {
+    label: "Mark as Not Interested",
+    description: "Terminal exit node: marks lead as not interested to cease outreach.",
+    category: "convert",
+    color: "#6b7280",
+    outputs: [],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  mark_opted_out: {
+    label: "Opt Out (GDPR Suppression)",
+    description: "Terminal compliance node: adds lead to global workspace suppression list and ceases all outreach.",
+    category: "convert",
+    color: "#ef4444",
+    outputs: [],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [],
+  },
+
   if_lead_matches: {
     label: "If Lead Matches Criteria?",
     description: "Filters leads by firmographic attributes. All enabled criteria must match (AND logic).",
@@ -939,7 +1324,7 @@ export const HR_NODE_DEFS = {
 
   send_email: {
     label: "Send Email",
-    description: "Sends an email to the lead using SendGrid.",
+    description: "Sends an email to the lead using SendGrid or Rotating Deliverability Pool with custom tracking.",
     category: "messages",
     color: "#ec4899",
     outputs: ["then"],
@@ -949,6 +1334,13 @@ export const HR_NODE_DEFS = {
       { key: "to", label: "To (optional, defaults to lead's email)", type: "input", placeholder: "{{lead.email}}" },
       { key: "subject_template", label: "Subject", type: "input", placeholder: "e.g. Quick question..." },
       { key: "body_template", label: "Body", type: "textarea", placeholder: "e.g. Hi {{lead.first_name}}..." },
+      { key: "use_sender_pool", label: "Rotate Across Multi-Inbox Deliverability Pool", type: "toggle", default: true },
+      { key: "rotation_strategy", label: "Rotation Strategy", type: "select", options: [
+        { label: "Health Weighted (Optimal Deliverability)", value: "HEALTH_WEIGHTED" },
+        { label: "Round Robin (Balanced Spread)", value: "ROUND_ROBIN" },
+        { label: "Capacity First (Fill Headroom)", value: "CAPACITY_FIRST" }
+      ], default: "HEALTH_WEIGHTED" },
+      { key: "tracking_domain", label: "Custom SSL Tracking Domain (e.g. track.yourdomain.com)", type: "input", placeholder: "track.yourdomain.com" },
     ],
   },
 
@@ -962,6 +1354,137 @@ export const HR_NODE_DEFS = {
     delayDefault: 0,
     fields: [],
   },
+
+  retarget_omnichannel: {
+    label: "Omnichannel Retargeting Cascade",
+    description: "Evaluates 4-tier channel cascade (1st-degree LinkedIn → Deliverable Email → InMail → Fallback) with suppression protection.",
+    category: "multichannel",
+    color: "#6366f1",
+    outputs: ["LinkedIn", "Email", "InMail"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [
+      { key: "cascade_priority", label: "Cascade Priority (e.g. linkedin,email,inmail)", type: "input", placeholder: "linkedin,email,inmail" },
+    ],
+  },
+
+  abm_committee_touch: {
+    label: "ABM Committee Multithread Touch",
+    description: "Orchestrates role-differentiated touches across economic buyer, champion, and evaluator stakeholders at a target account with staggered delivery.",
+    category: "multichannel",
+    color: "#0284c7",
+    outputs: ["Economic Buyer", "Champion", "Technical Evaluator", "End User"],
+    hasDelay: true,
+    delayDefault: 4,
+    fields: [
+      { key: "target_archetype", label: "Target Role Archetype", type: "select", options: ["All Committee Roles", "Economic Buyer", "Champion", "Technical Evaluator", "End User"], default: "All Committee Roles" },
+      { key: "stagger_hours", label: "Stagger Interval (Hours Between Touches)", type: "number", default: 4 },
+      { key: "cross_thread_referencing", label: "Enable Cross-Stakeholder Peer Referencing", type: "boolean", default: true },
+    ],
+  },
+
+  champion_job_change: {
+    label: "Champion Job Change / Boomerang",
+    description: "Detects champion or past-customer company transitions, evaluates the First-90-Day buying window score, and triggers tailored boomerang revival copy.",
+    category: "multichannel",
+    color: "#f59e0b",
+    outputs: ["Peak 90-Day Window", "Established Role", "Internal Promotion", "Unqualified"],
+    hasDelay: true,
+    delayDefault: 1,
+    fields: [
+      { key: "min_buying_window_score", label: "Minimum Buying Window Score (0-100)", type: "number", default: 75 },
+      { key: "relationship_filter", label: "Relationship Type", type: "select", options: ["All Relationships", "Past Customer", "Former Champion", "Closed Lost Contact"], default: "All Relationships" },
+      { key: "anti_pestering_guard", label: "Enforce 14-day Anti-Pestering Cooldown", type: "boolean", default: true },
+    ],
+  },
+
+  competitive_displacement: {
+    label: "Competitor Displacement Pitch",
+    description: "Detects incumbent vendor (Apollo, Outreach, Salesloft, Lemlist) installation and renewal windows, automatically calculating tooling migration ROI and generating contract buyout credit angles.",
+    category: "multichannel",
+    color: "#ec4899",
+    outputs: ["Peak Evaluation Window", "Early Contract", "Standard Outreach", "Renewal Imminent"],
+    hasDelay: true,
+    delayDefault: 2,
+    fields: [
+      { key: "target_vendor", label: "Target Incumbent Vendor", type: "select", options: ["All Incumbents", "Apollo.io", "Outreach", "Salesloft", "Lemlist", "Expandi", "HeyReach"], default: "All Incumbents" },
+      { key: "min_vulnerability_score", label: "Minimum Vulnerability Score (0-100)", type: "number", default: 80 },
+      { key: "include_buyout_credit", label: "Include Contract Buyout Credit Clause", type: "boolean", default: true },
+    ],
+  },
+
+  calendar_concierge: {
+    label: "Executive Calendar Concierge",
+    description: "Proposes conflict-free rep booking slots directly in thread upon meeting intent detection, issues 1-click booking confirmation tokens, and automatically halts outbound cadences on booking.",
+    category: "multichannel",
+    color: "#10b981",
+    outputs: ["Meeting Booked", "Slots Proposed", "Declined / No Slot", "Halt Cadence"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [
+      { key: "meeting_duration_minutes", label: "Meeting Duration (Minutes)", type: "number", default: 30 },
+      { key: "assigned_rep_email", label: "Assigned Rep Email", type: "input", placeholder: "rep@company.com" },
+      { key: "auto_halt_outbound", label: "Auto-Halt Sequences on Confirmation", type: "boolean", default: true },
+    ],
+  },
+
+  if_email_opened: {
+    label: "If Email Opened?",
+    description: "Checks if the prospect opened an outreach email. Routes to fast-followup on Opened or alternative subject line on Not opened.",
+    category: "conditions",
+    color: "#3b82f6",
+    outputs: ["Opened", "Not opened"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  if_email_clicked: {
+    label: "If Email Clicked?",
+    description: "Checks if the prospect clicked a link in the email. High buying-intent signal — route to meeting booking on Clicked.",
+    category: "conditions",
+    color: "#0ea5e9",
+    outputs: ["Clicked", "Not clicked"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  if_email_bounced: {
+    label: "If Email Bounced?",
+    description: "Detects delivery failure or hard bounces. Routes to InMail/LinkedIn fallback on Bounced to protect email domain reputation.",
+    category: "conditions",
+    color: "#f43f5e",
+    outputs: ["Bounced", "Delivered"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  if_connection_accepted: {
+    label: "If Connection Accepted?",
+    description: "Checks if the prospect accepted your LinkedIn connection request. Routes to 1st-degree DM on Accepted or email fallback on Pending.",
+    category: "conditions",
+    color: "#10b981",
+    outputs: ["Accepted", "Pending"],
+    hasDelay: false,
+    delayDefault: 0,
+    fields: [],
+  },
+
+  fallback_to_inmail: {
+    label: "Fallback to InMail",
+    description: "Sends a direct InMail to open profiles or Sales Navigator leads when connection or email attempts are exhausted.",
+    category: "messages",
+    color: "#2563eb",
+    outputs: ["then"],
+    hasDelay: true,
+    delayDefault: 0,
+    fields: [
+      { key: "subject", label: "InMail Subject", type: "input", placeholder: "Quick question regarding {{company}}..." },
+      { key: "message", label: "InMail Message", type: "textarea", placeholder: "Hi {{firstName}}, checking in..." },
+    ],
+  },
 } as const
 
 export type EINodeType = keyof typeof HR_NODE_DEFS
@@ -972,7 +1495,7 @@ export const HR_CATEGORY_LABELS: Record<string, string> = {
   connect:      "Connection",
   conditions:   "Conditions & branching",
   messages:     "Direct messages",
-  ai:           "AI-powered",
+  ai:           "Elesium AI Intelligence",
   enrichment:   "Data enrichment",
   convert:      "Meeting & conversion",
   multichannel: "Multichannel handoff",
@@ -993,7 +1516,7 @@ export const HR_CATEGORY_ORDER = [
 
 // ─── Color by category ─────────────────────────────────────────────────────────
 export const HR_CATEGORY_COLORS: Record<string, string> = {
-  warmup:       "#8b5cf6",
+  warmup:       "#06b6d4",
   connect:      "#6366f1",
   conditions:   "#10b981",
   messages:     "#6366f1",

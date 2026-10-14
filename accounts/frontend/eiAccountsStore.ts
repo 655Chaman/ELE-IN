@@ -20,6 +20,9 @@ export interface LinkedInAccount {
   lastHealthCheckAt?: string
   updatedAt?: string
   manualSendSuspected?: boolean
+  cookieExpiresAt?: string
+  healthScore?: number
+  autoHealStatus?: string
 }
 
 interface EIAccountsState {
@@ -32,6 +35,9 @@ interface EIAccountsState {
   updateAccount: (id: string, updates: Partial<LinkedInAccount>) => void
   toggleManualMode: (id: string, currentStatus: string) => Promise<void>
   clearManualSendWarning: (id: string) => Promise<void>
+  autoHealAccount: (id: string) => Promise<any>
+  fleetHeal: () => Promise<any>
+  renewSession: (id: string, cookieJson: string) => Promise<any>
 }
 
 let fetchController: AbortController | null = null;
@@ -73,6 +79,9 @@ export const useHRAccountsStore = create<EIAccountsState>()(
               lastHealthCheckAt: acc.last_health_check_at,
               updatedAt: acc.updated_at,
               manualSendSuspected: acc.manual_send_suspected,
+              cookieExpiresAt: acc.cookie_expires_at,
+              healthScore: acc.health_score,
+              autoHealStatus: acc.auto_heal_status,
             }))
             set({ accounts: mapped, error: null })
           } else {
@@ -176,6 +185,62 @@ export const useHRAccountsStore = create<EIAccountsState>()(
         } catch (e: any) {
           console.error("Failed to clear manual send warning", e);
           set({ error: e.message || 'Failed to clear manual send warning' })
+        }
+      },
+      autoHealAccount: async (id: string) => {
+        try {
+          const res = await fetchWithAuth(`/api/elein/accounts/${id}/auto-heal`, {
+            method: "POST"
+          })
+          if (res.ok) {
+            const data = await res.json()
+            get().fetchAccounts()
+            return data
+          } else {
+            const err = await res.json().catch(() => null)
+            throw new Error(err?.detail || "Auto-heal failed")
+          }
+        } catch (e: any) {
+          console.error("Auto-heal error:", e)
+          throw e
+        }
+      },
+      fleetHeal: async () => {
+        try {
+          const res = await fetchWithAuth(`/api/elein/accounts/fleet-heal`, {
+            method: "POST"
+          })
+          if (res.ok) {
+            const data = await res.json()
+            get().fetchAccounts()
+            return data
+          } else {
+            const err = await res.json().catch(() => null)
+            throw new Error(err?.detail || "Fleet heal failed")
+          }
+        } catch (e: any) {
+          console.error("Fleet heal error:", e)
+          throw e
+        }
+      },
+      renewSession: async (id: string, cookieJson: string) => {
+        try {
+          const res = await fetchWithAuth(`/api/elein/accounts/${id}/renew-session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_cookies_json: cookieJson })
+          })
+          if (res.ok) {
+            const data = await res.json()
+            get().fetchAccounts()
+            return data
+          } else {
+            const err = await res.json().catch(() => null)
+            throw new Error(err?.detail || "Failed to renew session")
+          }
+        } catch (e: any) {
+          console.error("Renew session error:", e)
+          throw e
         }
       }
     }),

@@ -12,7 +12,7 @@ export const MARKET_CONFIG: Record<string, any> = {
     title: "DeFi Security",
     demandTarget: "Web3 Protocols",
     supplyTarget: "Smart Contract Auditors",
-    accent: "from-purple-500/20 to-pink-500/10"
+    accent: "from-blue-600/20 to-indigo-500/10"
   },
   ai: {
     title: "AI Infrastructure",

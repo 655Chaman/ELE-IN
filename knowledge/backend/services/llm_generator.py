@@ -1,3 +1,4 @@
+from knowledge.backend.services.prompt_safety import sanitize_for_prompt, truncate_to_context_limit, truncate_to_tokens
 import logging
 import os
 from pathlib import Path
@@ -84,36 +85,115 @@ CRITICAL INSTRUCTIONS:
         Generates a streaming teleprompter response based on the conversation memory.
         Yields text chunks as they arrive.
         """
+        from core.backend.api.auth_dep import get_service_client
+        import time
+        import json
+        
         if not recent_transcript or len(recent_transcript.strip()) < 5:
             yield ""
+            return
+
+        import hashlib
+        digest = hashlib.sha256(recent_transcript.encode("utf-8")).hexdigest()[:16]
+        p_idempotency_key = f"coach_{workspace_id}_{digest}"
+
+        try:
+            _svc = get_service_client()
+            _deduct_res = _svc.rpc('deduct_credits_safely', {
+                'p_workspace_id': workspace_id,
+                'p_amount': 1,
+                'p_action_type': 'ai_coaching',
+                'p_idempotency_key': p_idempotency_key,
+                'p_metadata': json.dumps({"model": self.model_name})
+            }).execute()
+            if _deduct_res.data and not _deduct_res.data.get('success', False):
+                yield "[System Error: Insufficient credits for AI coaching]"
+                return
+        except Exception as e:
+            logger.error(f"Credit deduction failed: {e}")
+            yield f"[System Error: Credit check failed - {e!s}]"
             return
 
         if self.client:
             try:
                 # 1. Retrieve specific protocols via Vector Semantic RAG using the latest phrase
-                rag_context = vector_store.retrieve(recent_transcript, workspace_id)
-                if rag_context:
-                    logger.info(f"RAG triggered! Injected {len(rag_context)} chars of context.")
+                rag_text = ""
+                if vector_store is not None:
+                    try:
+                        rag_context = vector_store.retrieve(recent_transcript, workspace_id)
+                        if isinstance(rag_context, list):
+                            rag_text = "\n\n".join([c.get("content", "") for c in rag_context if isinstance(c, dict) and c.get("content")])
+                        elif isinstance(rag_context, str):
+                            rag_text = rag_context
+                    except Exception as rag_err:
+                        logger.warning(f"Vector store retrieval failed: {rag_err}")
+
+                if rag_text:
+                    logger.info(f"RAG triggered! Injected {len(rag_text)} chars of context.")
+
+                bounded_session = truncate_to_tokens(session_memory, 1500)
+                bounded_recent = truncate_to_tokens(recent_transcript, 500)
 
                 # Using selected model
+                msgs = [
+                        {"role": "system", "content": self._get_system_prompt(sanitize_for_prompt(rag_text, "rag_context"))},
+                        {"role": "user", "content": f"Rolling Conversation Memory:\n{sanitize_for_prompt(bounded_session, 'session_memory')}\n\nLatest Prospect Input: {sanitize_for_prompt(bounded_recent, 'recent_transcript')}"}
+                    ]
                 response = await self.client.chat.completions.create(
                     model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": self._get_system_prompt(rag_context)},
-                        {"role": "user", "content": f"Rolling Conversation Memory:\n{session_memory}\n\nLatest Prospect Input: '{recent_transcript}'"}
-                    ],
+                    messages=truncate_to_context_limit(msgs, max_tokens=2000),
                     temperature=0.3,
                     max_tokens=200,
-                    stream=True
+                    stream=True,
+                    stream_options={"include_usage": True}
                 )
                 
+                final_usage = None
+                full_output = []
                 async for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        final_usage = chunk.usage
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full_output.append(token)
+                        yield token
+                        
+                if final_usage:
+                    p_toks = getattr(final_usage, 'prompt_tokens', 0)
+                    c_toks = getattr(final_usage, 'completion_tokens', 0)
+                    t_toks = getattr(final_usage, 'total_tokens', p_toks + c_toks)
+                    logger.info(f"Stream completed. prompt_tokens={p_toks} completion_tokens={c_toks}")
+                    try:
+                        from knowledge.backend.services.elein_ai_service import _log_ai_generation
+                        from core.backend.api.auth_dep import get_service_client
+                        _log_ai_generation(
+                            supabase=get_service_client(),
+                            workspace_id=workspace_id,
+                            lead_id="00000000-0000-0000-0000-000000000000",
+                            node_id="teleprompter",
+                            prompt="[System Prompt Hidden for Teleprompter]",
+                            output="".join(full_output),
+                            model=self.model_name,
+                            tokens_used=t_toks,
+                            prompt_tokens=p_toks,
+                            completion_tokens=c_toks
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to log LLM generation usage: {e}")
                 return
             except Exception as e:
-                logger.error(f"LLM Generation Error: {e}")
-                yield f"[System Error: LLM Generation failed - {e!s}]"
+                logger.error(f"Coaching generation failed: {e}")
+                try:
+                    # Paranoia Layer 0 & 1: Prevent multi-tenant refund collision by explicitly embedding workspace_id
+                    _svc.rpc('add_credits_safely', {
+                        'p_workspace_id': workspace_id,
+                        'p_credits': 1,
+                        'p_event_id': f"refund_coach_{workspace_id}_{digest}",
+                        'p_provider': 'system_refund'
+                    }).execute()
+                except Exception:
+                    pass
+                yield f"[System Error: {e!s}]"
                 return
                 
         else:

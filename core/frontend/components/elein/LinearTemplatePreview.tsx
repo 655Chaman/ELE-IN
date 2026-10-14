@@ -4,20 +4,27 @@ import { type EITemplate } from "@/lib/eiTemplates"
 import {
   Eye, UserPlus, MessageSquare, CheckCircle2, XCircle,
   Mail, ThumbsUp, UserCheck, Flag, Clock, StickyNote,
-  ArrowDown
+  ArrowDown, AtSign, Zap, ShieldCheck
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ElesiumLogo } from "@/components/ElesiumLogo"
 
 const NODE_TYPE_CONFIG: Record<string, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string; bg: string }> = {
-  start:              { label: "Sequence Start",       icon: Flag,           color: "text-indigo-400",  bg: "bg-indigo-500/10 border-indigo-500/30" },
-  view_profile:       { label: "View Profile",         icon: Eye,            color: "text-violet-400",  bg: "bg-violet-500/10 border-violet-500/30" },
-  follow_profile:     { label: "Follow Profile",       icon: UserCheck,      color: "text-purple-400",  bg: "bg-purple-500/10 border-purple-500/30" },
-  connection_request: { label: "Connection Request",   icon: UserPlus,       color: "text-indigo-400",  bg: "bg-indigo-500/10 border-indigo-500/30" },
-  if_connected:       { label: "If Connected",         icon: CheckCircle2,   color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" },
-  send_message:       { label: "Send Message",         icon: MessageSquare,  color: "text-blue-400",    bg: "bg-blue-500/10 border-blue-500/30" },
-  send_inmail:        { label: "Send InMail",          icon: Mail,           color: "text-sky-400",     bg: "bg-sky-500/10 border-sky-500/30" },
-  like_post:          { label: "Like Post",            icon: ThumbsUp,       color: "text-pink-400",    bg: "bg-pink-500/10 border-pink-500/30" },
-  end:                { label: "Sequence End",         icon: XCircle,        color: "text-zinc-500",    bg: "bg-zinc-800/60 border-zinc-700/40" },
+  start:                      { label: "Sequence Start",             icon: Flag,          color: "text-indigo-400",  bg: "bg-indigo-500/10 border-indigo-500/30" },
+  view_profile:               { label: "View Profile",               icon: Eye,           color: "text-blue-400",    bg: "bg-blue-500/10 border-blue-500/30" },
+  follow_profile:             { label: "Follow Profile",             icon: UserCheck,     color: "text-cyan-400",    bg: "bg-cyan-500/10 border-cyan-500/30" },
+  like_post:                  { label: "Like Post",                  icon: ThumbsUp,      color: "text-pink-400",    bg: "bg-pink-500/10 border-pink-500/30" },
+  comment_on_post:            { label: "Comment on Post",            icon: MessageSquare, color: "text-pink-400",    bg: "bg-pink-500/10 border-pink-500/30" },
+  connection_request:         { label: "Connection Request",         icon: UserPlus,      color: "text-indigo-400",  bg: "bg-indigo-500/10 border-indigo-500/30" },
+  if_connected:               { label: "If Connected",               icon: CheckCircle2,  color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" },
+  seamless_identity_matching: { label: "Seamless Identity Match",     icon: ShieldCheck,   color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" },
+  send_message:               { label: "Send Message",               icon: MessageSquare, color: "text-blue-400",    bg: "bg-blue-500/10 border-blue-500/30" },
+  send_inmail:                { label: "Send InMail",                icon: Mail,          color: "text-sky-400",     bg: "bg-sky-500/10 border-sky-500/30" },
+  send_email:                 { label: "Send Work Email",            icon: AtSign,        color: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/30" },
+  zero_cost_discovery:        { label: "Zero-Cost Email Discovery",  icon: Zap,           color: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/30" },
+  icp_score_gate:             { label: "ICP Score Gate",             icon: CheckCircle2,  color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" },
+  ai_personalize:             { label: "AI Personalize",             icon: ElesiumLogo as any, color: "text-orange-400",  bg: "bg-orange-500/10 border-orange-500/30" },
+  end:                        { label: "Sequence End",               icon: XCircle,       color: "text-zinc-500",    bg: "bg-zinc-800/60 border-zinc-700/40" },
 }
 
 interface Props {
