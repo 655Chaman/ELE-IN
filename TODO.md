@@ -100,5 +100,20 @@
     - Automatically infers and stores validated IANA timezone on all imported leads across CSV, API, and webhook routes.
   - **Verification**: 151/151 automated tests passing across test suites; 62/62 dedicated timezone paranoia test cases passing in 0.50s.
 
+- [x] **Phase 30: Open Profile InMail Arbitrage & Free Credit Discovery (100% Operational):**
+  - **Open Profile Probing & Worker Arbitrage (`integrations/backend/services/linkedin_worker.py`)**:
+    - `check_open_profile`: Multi-probe DOM inspection (`.open-profile-badge`, `svg[data-test-icon='gold-badge']`, `span:has-text('Open')`, text regex `/(Open Profile|Free message)/i`) returning structured detection `{open: True/False, branch: "Open"/"Not open", inmail_type: "free"/"paid"}` wrapped in `@linkedin_action_safe` with graceful timeout fallback.
+    - `send_inmail`: Detects Free InMail composer indicators. When `only_free=True`, identifies paid credit requirement banners and cleanly aborts before credit debit with `requires_paid_credit=True`.
+  - **Campaign Executor & Limit Bypass (`campaigns/backend/services/elein_executor.py`)**:
+    - `handle_send_inmail`: Pre-flight arbitrage gate querying `is_open_profile` from lead payload or Supabase cache.
+    - Bypasses daily paid InMail rate limits (`_check_limit("inmail")`) when sending to Open Profiles because Free InMails consume zero paid credits ($0 debit).
+    - Arbitrage diversion: Automatically diverts closed profiles to free connection requests (with note clamped to 300 chars) or verified email fallback when `only_send_free_inmails=True`.
+    - Value telemetry: Surfaces `is_free_inmail=True`, `inmail_tier="free"`, and `credits_saved=1` in execution results.
+    - Auto-persists confirmed Open Profile status back to `leads` table in Supabase for permanent zero-cost reuse across campaigns.
+    - Standardized `handle_send_paid_inmail` and `handle_open_profile_check` to share this robust 3-layer architecture.
+  - **Lead Ingestion Service (`leads/backend/services/lead_ingestion_service.py`)**:
+    - Standardized and normalized `is_open_profile` across all truthy (`True`, `"true"`, `"1"`, `1`, `"yes"`, `"open"`) and falsy variations during bulk imports and updates.
+  - **Verification**: 41/41 automated tests passing across `test_inmail_open_profile_arbitrage.py` (31/31) and `test_inmail_arbitrage.py` (10/10) with 0 regressions and sub-second Vite production build.
+
 
 
