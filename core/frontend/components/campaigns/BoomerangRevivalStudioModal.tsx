@@ -32,6 +32,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   const [jcNewTitle, setJcNewTitle] = useState('');
   const [jcRelType, setJcRelType] = useState('past_customer');
   const [jcDays, setJcDays] = useState(21);
+  const [jcDaysStr, setJcDaysStr] = useState('21');
   const [isSavingJc, setIsSavingJc] = useState(false);
 
   // ── Tab 2: Warm Intro Graph State ──
@@ -45,7 +46,9 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   const [revTitle, setRevTitle] = useState('');
   const [revReason, setRevReason] = useState('missing_feature');
   const [revDays, setRevDays] = useState(120);
+  const [revDaysStr, setRevDaysStr] = useState('120');
   const [revValue, setRevValue] = useState(35000);
+  const [revValueStr, setRevValueStr] = useState('35000');
   const [revTrigger, setRevTrigger] = useState('Shipped Autonomous ABM Multithreading & Buying Committee Studio');
   const [isSavingRev, setIsSavingRev] = useState(false);
 
@@ -160,6 +163,8 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
         setJcName('');
         setJcPrevCompany('');
         setJcNewCompany('');
+        setJcDays(21);
+        setJcDaysStr('21');
         mutateJc();
       } else {
         toast.error(data.detail || 'Failed to track job change.');
@@ -201,6 +206,10 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
         setAddRevivalOpen(false);
         setRevName('');
         setRevCompany('');
+        setRevDays(120);
+        setRevDaysStr('120');
+        setRevValue(35000);
+        setRevValueStr('35000');
         mutateRev();
       } else {
         toast.error(data.detail || 'Blocked by Anti-Pestering Guard.');
@@ -227,7 +236,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden"
       onClick={onClose}
     >
       <div
@@ -407,7 +416,14 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                   <div key={jc.id} className="p-5 rounded-lg bg-card border border-border space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="font-semibold text-foreground text-sm">{jc.prospect_name}</div>
+                        <div className="font-semibold text-foreground text-sm flex items-center gap-2">
+                          <span>{jc.prospect_name}</span>
+                          {Boolean(jc.simulated || jc.is_simulated || jc.id?.startsWith('mock-') || ['Elena Rostova', 'Marcus Chen', 'David Sterling'].includes(jc.prospect_name)) && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                              Simulated Demo
+                            </span>
+                          )}
+                        </div>
                         {getRelBadge(jc.relationship_type)}
                         {jc.is_internal_promotion && (
                           <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted/60 text-muted-foreground border border-border">
@@ -611,6 +627,11 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                         <div className="flex items-center gap-2.5">
                           <span className="font-semibold text-foreground text-sm">{rev.company_name}</span>
                           <span className="text-xs text-muted-foreground">- {rev.prospect_name} ({rev.title})</span>
+                          {Boolean(rev.simulated || rev.is_simulated || rev.id?.startsWith('mock-') || ['Apex Financial', 'Quantico Systems', 'Veritas Health'].includes(rev.company_name)) && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                              Simulated Demo
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted/60 text-foreground border border-border">
                             ${Number(rev.original_deal_value).toLocaleString()} ACV
                           </span>
@@ -774,8 +795,14 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     <input
                       type="number"
                       min={0}
-                      value={jcDays}
-                      onChange={(e) => setJcDays(Number(e.target.value) || 0)}
+                      max={365}
+                      value={jcDaysStr}
+                      onChange={(e) => setJcDaysStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(0, Math.min(365, parseInt(jcDaysStr, 10) || 0));
+                        setJcDays(val);
+                        setJcDaysStr(String(val));
+                      }}
                       className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
@@ -873,8 +900,14 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     <input
                       type="number"
                       min={0}
-                      value={revDays}
-                      onChange={(e) => setRevDays(Number(e.target.value) || 0)}
+                      max={1825}
+                      value={revDaysStr}
+                      onChange={(e) => setRevDaysStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(0, Math.min(1825, parseInt(revDaysStr, 10) || 0));
+                        setRevDays(val);
+                        setRevDaysStr(String(val));
+                      }}
                       className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
@@ -883,8 +916,14 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     <input
                       type="number"
                       min={0}
-                      value={revValue}
-                      onChange={(e) => setRevValue(Number(e.target.value) || 0)}
+                      max={10000000}
+                      value={revValueStr}
+                      onChange={(e) => setRevValueStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(0, Math.min(10000000, parseInt(revValueStr, 10) || 0));
+                        setRevValue(val);
+                        setRevValueStr(String(val));
+                      }}
                       className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>

@@ -1251,9 +1251,22 @@ class EleInOrchestrator:
         if max_workers == 0:
             return []
 
+        # Paranoia Layer 1 (AUDIT-05): Interleave leads across account buckets to eliminate concurrent lock collisions
+        account_buckets = defaultdict(list)
+        for r in leads_to_process:
+            acc_key = str(r.get("account_id") or "unallocated")
+            account_buckets[acc_key].append(r)
+
+        interleaved_leads = []
+        max_bucket_len = max((len(b) for b in account_buckets.values()), default=0)
+        for idx in range(max_bucket_len):
+            for acc_key, bucket in account_buckets.items():
+                if idx < len(bucket):
+                    interleaved_leads.append(bucket[idx])
+
         with cf.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="exec") as executor:
             futures = {}
-            for row in leads_to_process:
+            for row in interleaved_leads:
                 if stop_checker and stop_checker():
                     logger.info("[Orchestrator] Stop requested; halting submission of remaining leads in current tick.")
                     break
@@ -1876,8 +1889,10 @@ class EleInOrchestrator:
             return
 
         if action_result.get("status") == "skipped":
-            # Used when account is locked. Reschedule quickly.
-            self.update_state(state["id"], current_node["id"], "pending", datetime.utcnow() + timedelta(seconds=45), lease_token=lease_token)
+            # Paranoia Layer 1 (AUDIT-05): Desynchronize thundering herd with randomized backoff jitter (30s - 90s)
+            import random
+            jitter_seconds = random.randint(30, 90)
+            self.update_state(state["id"], current_node["id"], "pending", datetime.utcnow() + timedelta(seconds=jitter_seconds), lease_token=lease_token)
             return
 
         if action == "mark_converted":
@@ -2009,11 +2024,34 @@ class EleInOrchestrator:
         requires_idempotency = requires_linkedin or action == "push_to_crm"
         idemp_key = None
         
-        if requires_linkedin and not account_id:
+        # Paranoia Layer 0 & 1 (AUDIT-02): Dynamic Multi-Sender Pod Load Balancer Integration
+        chosen_sender_id = account_id
+        if requires_linkedin:
+            try:
+                from campaigns.backend.services.sender_pod_service import select_pod_sender
+                pod_decision = select_pod_sender(
+                    campaign_id=state.get("campaign_id", ""),
+                    workspace_id=state.get("workspace_id", ""),
+                    action_type=action,
+                    supabase=self.supabase,
+                    lead_id=opportunity_id
+                )
+                pod_status = pod_decision.get("status") if isinstance(pod_decision, dict) else None
+                if pod_status == "EMERGENCY_PAUSED":
+                    logger.warning(f"[Orchestrator] Sender pod emergency paused for campaign {state.get('campaign_id')}")
+                    return {"status": "skipped"}
+                elif pod_status in ("EXHAUSTED", "QUARANTINED", "NO_ACTIVE_SENDERS") and not account_id:
+                    logger.warning(f"[Orchestrator] Sender pod capacity unavailable: {pod_decision.get('message')}")
+                    return {"status": "skipped"}
+                elif isinstance(pod_decision, dict) and pod_decision.get("account_id"):
+                    chosen_sender_id = pod_decision["account_id"]
+            except Exception as pod_err:
+                logger.debug(f"[Orchestrator] Pod sender selection fallback: {pod_err}")
+                chosen_sender_id = account_id
+
+        if requires_linkedin and not chosen_sender_id:
             logger.warning("No sender account allocated — cannot execute LinkedIn nodes")
             return {"status": "error", "error": "No sender account allocated to this lead's enrollment"}
-            
-        chosen_sender_id = account_id
                 
         worker = None
         worker_id = str(uuid.uuid4())
