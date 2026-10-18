@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 import asyncio
 import time
 import re
@@ -25,13 +25,63 @@ import threading
 
 _master_view_stats_cache: dict = {}
 _master_view_stats_lock = threading.Lock()
-_MASTER_VIEW_CACHE_TTL_SECONDS = 15
+_MASTER_VIEW_CACHE_TTL_SECONDS = 60  # Paranoia Layer 1 (API-22): 60s TTL prevents unindexed action_log aggregation spikes
 _MAX_MASTER_VIEW_CACHE_SIZE = 200
 
 def clear_master_view_cache():
     """Paranoia Layer 1: Clears in-memory master view stats cache (useful for testing or forced invalidation)."""
     with _master_view_stats_lock:
         _master_view_stats_cache.clear()
+
+def invalidate_master_view_cache(workspace_id: Optional[str] = None):
+    """
+    Paranoia Layer 1 (API-25): Invalidate cached master view statistics on campaign/settings mutations.
+    If workspace_id is provided, purges entries strictly for that workspace.
+    """
+    with _master_view_stats_lock:
+        if workspace_id:
+            stale_keys = [k for k in list(_master_view_stats_cache.keys()) if isinstance(k, tuple) and len(k) > 0 and k[0] == workspace_id]
+            for sk in stale_keys:
+                _master_view_stats_cache.pop(sk, None)
+        else:
+            _master_view_stats_cache.clear()
+
+def _format_iso_utc(val: Any) -> Optional[str]:
+    """
+    Paranoia Layer 0 (API-10): Standardize all analytics dates and timestamps to ISO 8601 UTC ('YYYY-MM-DDTHH:MM:SSZ').
+    Handles datetime objects, epoch integers/floats, and RFC/ISO timestamp strings.
+    """
+    if not val:
+        return None
+    if isinstance(val, (int, float)):
+        try:
+            return datetime.fromtimestamp(val, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            return str(val)
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            val = val.replace(tzinfo=timezone.utc)
+        else:
+            val = val.astimezone(timezone.utc)
+        return val.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if isinstance(val, str):
+        val_str = val.strip()
+        if not val_str:
+            return None
+        # If it's a date only 'YYYY-MM-DD', preserve it
+        if len(val_str) == 10 and val_str.count("-") == 2 and val_str.replace("-", "").isdigit():
+            return val_str
+        try:
+            clean_str = val_str.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(clean_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            return val_str
+    return str(val)
 
 def sanitize_filter_list(lst: Optional[List[str]], max_items: int = 100) -> Optional[List[str]]:
     if not lst or not isinstance(lst, list):
@@ -733,7 +783,7 @@ def get_master_view_stats(
                 company = ld.get('company_name')
                 company_str = f" at {company}" if company else ""
                 
-                dt = act.get("executed_at")
+                dt = _format_iso_utc(act.get("executed_at"))
                 
                 if act.get("result") != "success" or act.get("error_detail"):
                     error_feed.append({
@@ -784,7 +834,7 @@ def get_master_view_stats(
                 .order('completed_at', desc=True) \
                 .limit(1) \
                 .execute()
-            last_rolled_up_at = last_rollup_res.data[0]['completed_at'] if last_rollup_res.data else None
+            last_rolled_up_at = _format_iso_utc(last_rollup_res.data[0]['completed_at']) if last_rollup_res.data else None
         except Exception as e:
             print(f"Failed to fetch staleness indicator: {e}")
             last_rolled_up_at = None
@@ -1264,9 +1314,12 @@ def get_account_health(
                     .select("id, name, status, is_warmup, created_at") \
                     .eq("workspace_id", workspace_id) \
                     .execute()
-            except Exception:
-                class MockRes: data = []
-                accounts_res = MockRes()
+            except Exception as e:
+                logger.error(f"[MasterView] Failed to query accounts from database: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Database error retrieving accounts for health check. Please try again."
+                )
         
         if not accounts_res.data:
             return {"accounts": [], "total_throttled": 0, "total_accounts": 0}
@@ -1347,10 +1400,10 @@ def get_account_health(
                 "name": acc["name"],
                 "status": acc["status"],
                 "is_warmup": acc.get("is_warmup", False),
-                "warmup_start_date": acc.get("warmup_start_date"),
+                "warmup_start_date": _format_iso_utc(acc.get("warmup_start_date")),
                 "warmup_target_days": acc.get("warmup_target_days"),
-                "last_health_check_at": acc.get("last_health_check_at"),
-                "cookie_expires_at": cookie_expires_at,
+                "last_health_check_at": _format_iso_utc(acc.get("last_health_check_at")),
+                "cookie_expires_at": _format_iso_utc(cookie_expires_at),
                 "is_cookie_expired": is_cookie_expired,
                 "connections_used": today_connection_count,
                 "connections_limit": conn_limit,

@@ -324,7 +324,45 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
 
 
 
-export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
+export interface DagToTreeOptions {
+  onCycleDetected?: (cycleNodes: string[]) => void
+}
+
+export function hasDagCycles(nodes: any[], edges: any[]): boolean {
+  if (!nodes || nodes.length === 0) return false
+  const inDegree = new Map<string, number>()
+  nodes.forEach(n => inDegree.set(n.id, 0))
+  edges.forEach(e => {
+    inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
+  })
+
+  const queue: string[] = []
+  nodes.forEach(n => {
+    if ((inDegree.get(n.id) || 0) === 0) queue.push(n.id)
+  })
+
+  let count = 0
+  const adj = new Map<string, string[]>()
+  edges.forEach(e => {
+    const list = adj.get(e.source) || []
+    list.push(e.target)
+    adj.set(e.source, list)
+  })
+
+  while (queue.length > 0) {
+    const u = queue.shift()!
+    count++
+    for (const v of adj.get(u) || []) {
+      const newDeg = (inDegree.get(v) || 0) - 1
+      inDegree.set(v, newDeg)
+      if (newDeg === 0) queue.push(v)
+    }
+  }
+
+  return count !== nodes.length
+}
+
+export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions): SeqTreeNode[] {
   const nodeMap = new Map<string, any>()
   nodes.forEach(n => nodeMap.set(n.id, n))
 
@@ -341,8 +379,15 @@ export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
     inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
   })
 
+  let detectedCycles = false
+  const cycleNodes = new Set<string>()
+
   function buildTree(nodeId: string, visited: Set<string>): SeqTreeNode | null {
-    if (visited.has(nodeId)) return null; // cycle guard
+    if (visited.has(nodeId)) {
+      detectedCycles = true
+      cycleNodes.add(nodeId)
+      return null; // cycle guard
+    }
     visited.add(nodeId);
 
     const n = nodeMap.get(nodeId);
@@ -392,10 +437,11 @@ export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
   // Find nodes with inDegree 0
   let rootIds = nodes.filter(n => (inDegree.get(n.id) || 0) === 0).map(n => n.id);
 
-  // Paranoia Layer 1: If graph has a cycle such that every node has inDegree > 0,
+  // Paranoia Layer 1 & 2 (UI-04): If graph has a cycle such that every node has inDegree > 0,
   // do NOT wipe out the entire sequence! Pick the most likely entry node (e.g. trigger node,
   // or node with lowest inDegree, or nodes[0]).
   if (rootIds.length === 0 && nodes.length > 0) {
+    detectedCycles = true
     const triggerNode = nodes.find(n => n.type === "trigger" || n.type === "sequence_start");
     if (triggerNode) {
       rootIds = [triggerNode.id];
@@ -444,6 +490,10 @@ export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
     }
   });
 
+  if (detectedCycles && options?.onCycleDetected) {
+    options.onCycleDetected(Array.from(cycleNodes));
+  }
+
   return roots;
 }
 
@@ -457,9 +507,22 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
     visited.add(node.id)
 
     const cleanData = { ...(node.data || {}) }
+    // Paranoia Layer 0 & 2 (UI-17): Guard against empty, null, or NaN delay values
+    if ("delay_hours" in cleanData || (node.type as string) === "delay" || String(node.type).includes("delay")) {
+      const num = Number(cleanData.delay_hours)
+      cleanData.delay_hours = (!isNaN(num) && num > 0) ? Math.ceil(num) : 24
+    }
+    if ("delay_days" in cleanData) {
+      const num = Number(cleanData.delay_days)
+      cleanData.delay_days = (!isNaN(num) && num > 0) ? Math.ceil(num) : 1
+    }
+    if ("delay_minutes" in cleanData) {
+      const num = Number(cleanData.delay_minutes)
+      cleanData.delay_minutes = (!isNaN(num) && num > 0) ? Math.ceil(num) : 15
+    }
     if ("delay" in cleanData) {
       const num = Number(cleanData.delay)
-      cleanData.delay = (!isNaN(num) && num > 0) ? Math.ceil(num) : 1
+      cleanData.delay = (!isNaN(num) && num > 0) ? Math.ceil(num) : (cleanData.delay_hours || 24)
     }
 
     nodes.push({

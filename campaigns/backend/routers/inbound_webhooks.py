@@ -57,6 +57,35 @@ def _is_valid_email(email_str: Any) -> bool:
     return bool(EMAIL_REGEX.match(email_str))
 
 
+def _validate_json_content_type(request: Optional[Request]):
+    """Paranoia Layer 2 (API-16): Validate Content-Type is JSON when specified."""
+    if not request or not hasattr(request, "headers"):
+        return
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type:
+        base_ct = content_type.split(";")[0].strip()
+        if base_ct and base_ct not in ("application/json", "application/problem+json", "text/json", "*/*"):
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported Media Type: Expected 'application/json', got '{base_ct}'."
+            )
+
+
+MAX_WEBHOOK_PAYLOAD_BYTES = 10 * 1024 * 1024  # 10 MB maximum payload cap
+
+def _validate_payload_size(request: Optional[Request], max_bytes: int = MAX_WEBHOOK_PAYLOAD_BYTES):
+    """Paranoia Layer 1 & 2 (API-26): Reject oversized payloads to prevent memory exhaustion / OOM bloat."""
+    if not request or not hasattr(request, "headers"):
+        return
+    content_length = request.headers.get("content-length")
+    if content_length and str(content_length).isdigit():
+        if int(content_length) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Payload Too Large: Webhook body exceeds {max_bytes // (1024 * 1024)}MB maximum limit."
+            )
+
+
 @router.post("/hooks/intent/{campaign_id}")
 def intent_webhook(
     campaign_id: str, 
@@ -72,6 +101,12 @@ def intent_webhook(
     dynamically maps fields, populates intent variables, creates the Lead,
     and instantly triggers campaign execution.
     """
+    # ── Paranoia Layer 2 (API-16): Content-Type Validation ──
+    _validate_json_content_type(request)
+
+    # ── Paranoia Layer 1 & 2 (API-26): Payload Size Validation ──
+    _validate_payload_size(request)
+
     # ── Paranoia Layer 1 & 2: Batch Flooding Ceiling & Replay Defense ──
     MAX_INTENT_BATCH_SIZE = 500
     if isinstance(body, list) and len(body) > MAX_INTENT_BATCH_SIZE:
@@ -409,6 +444,12 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
     Layer 1: Verify valid active workspace & optional shared secret constant-time authentication.
     Layer 2: Replay idempotency defense & graceful malformed JSON/email handling without 500 errors.
     """
+    # ── Paranoia Layer 2 (API-16): Content-Type Validation ──
+    _validate_json_content_type(request)
+
+    # ── Paranoia Layer 1 & 2 (API-26): Payload Size Validation ──
+    _validate_payload_size(request)
+
     supabase = get_service_client()
 
     # ── Layer 1: Environmental Failures & Tenant Spoofing ──
@@ -685,8 +726,13 @@ async def stripe_inbound_webhook(request: Request):
     Paranoia Layer 0, 1 & 2: Inbound Webhook Listener for Stripe.
     Handles checkout.session.completed, customer.subscription.updated/deleted, and invoice.payment_succeeded.
     """
+    # ── Paranoia Layer 1 & 2 (API-26): Payload Size Validation ──
+    _validate_payload_size(request)
+
     supabase = get_service_client()
     raw_body = await request.body()
+    if len(raw_body) > MAX_WEBHOOK_PAYLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Payload Too Large")
     try:
         body_str = raw_body.decode("utf-8")
         event = json.loads(body_str) if body_str else {}
@@ -828,6 +874,12 @@ async def hubspot_inbound_webhook(
     - Layer 1: Clock-drift window enforcement and anti-replay idempotency ledger.
     - Layer 2: Null-byte stripping, input length clamping, and tenant workspace isolation.
     """
+    # ── Paranoia Layer 2 (API-16): Content-Type Validation ──
+    _validate_json_content_type(request)
+
+    # ── Paranoia Layer 1 & 2 (API-26): Payload Size Validation ──
+    _validate_payload_size(request)
+
     supabase = get_service_client()
 
     # 1. Verify workspace is active
@@ -945,6 +997,12 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
     Processes EMAIL_REPLY, LEAD_UNSUBSCRIBED, EMAIL_BOUNCE, and halts in-flight
     LinkedIn campaigns across the workspace to prevent cross-channel collisions.
     """
+    # ── Paranoia Layer 2 (API-16): Content-Type Validation ──
+    _validate_json_content_type(request)
+
+    # ── Paranoia Layer 1 & 2 (API-26): Payload Size Validation ──
+    _validate_payload_size(request)
+
     supabase = get_service_client()
 
     # 1. Layer 1: Verify workspace exists and is active (Tenant Isolation)
@@ -1276,6 +1334,12 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
     Processes reply_received, lead_unsubscribed, lead_bounced, and halts in-flight
     LinkedIn campaigns across the workspace to prevent cross-channel collisions.
     """
+    # ── Paranoia Layer 2 (API-16): Content-Type Validation ──
+    _validate_json_content_type(request)
+
+    # ── Paranoia Layer 1 & 2 (API-26): Payload Size Validation ──
+    _validate_payload_size(request)
+
     supabase = get_service_client()
 
     # 1. Layer 1: Verify workspace exists and is active (Tenant Isolation)

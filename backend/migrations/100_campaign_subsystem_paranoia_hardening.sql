@@ -56,6 +56,19 @@ DO $$ BEGIN
               AND c.workspace_id IN (SELECT public.my_workspace_ids())
         )
     );
+
+    -- processing_jobs: Multi-workspace support (VULN-20)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'processing_jobs') THEN
+        ALTER TABLE public.processing_jobs ENABLE ROW LEVEL SECURITY;
+        DROP POLICY IF EXISTS processing_jobs_tenant_isolation ON public.processing_jobs;
+        CREATE POLICY processing_jobs_tenant_isolation ON public.processing_jobs
+        FOR ALL USING (
+            workspace_id IN (SELECT public.my_workspace_ids())
+        )
+        WITH CHECK (
+            workspace_id IN (SELECT public.my_workspace_ids())
+        );
+    END IF;
 END $$;
 
 
@@ -373,3 +386,117 @@ DO $$ BEGIN
         workspace_id IN (SELECT public.my_workspace_ids())
     );
 END $$;
+
+
+-- ------------------------------------------------------------------------------
+-- 10. Atomic Campaign Creation & Bulk Enrollment RPCs (API-01, API-02)
+-- Wraps multi-table campaign creation & enrollment in ACID PostgreSQL transactions
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.create_campaign_atomic(
+    p_campaign_id UUID,
+    p_workspace_id UUID,
+    p_name TEXT,
+    p_status TEXT,
+    p_nodes_json JSONB,
+    p_edges_json JSONB,
+    p_sender_account_ids_json JSONB,
+    p_metadata JSONB,
+    p_senders UUID[] DEFAULT '{}'::UUID[]
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_version_id UUID;
+    v_sender_id UUID;
+BEGIN
+    -- Verify caller workspace membership
+    IF NOT EXISTS (
+        SELECT 1 FROM public.workspace_members
+        WHERE workspace_id = p_workspace_id AND user_id = auth.uid()
+    ) AND auth.role() <> 'service_role' THEN
+        RAISE EXCEPTION 'Unauthorized: User is not a member of workspace %', p_workspace_id;
+    END IF;
+
+    -- 1. Insert Campaign
+    INSERT INTO public.campaigns (
+        id, workspace_id, name, status, nodes_json, edges_json, sender_account_ids_json, metadata
+    ) VALUES (
+        p_campaign_id, p_workspace_id, p_name, p_status, p_nodes_json, p_edges_json, p_sender_account_ids_json, p_metadata
+    );
+
+    -- 2. Insert Version 1
+    v_version_id := gen_random_uuid();
+    INSERT INTO public.campaign_versions (id, campaign_id, version)
+    VALUES (v_version_id, p_campaign_id, 1);
+
+    -- 3. Insert Accounts
+    IF p_senders IS NOT NULL AND array_length(p_senders, 1) > 0 THEN
+        FOREACH v_sender_id IN ARRAY p_senders LOOP
+            IF EXISTS (SELECT 1 FROM public.accounts WHERE id = v_sender_id AND workspace_id = p_workspace_id) THEN
+                INSERT INTO public.campaign_accounts (campaign_id, account_id, weight)
+                VALUES (p_campaign_id, v_sender_id, 100)
+                ON CONFLICT DO NOTHING;
+            END IF;
+        END LOOP;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'campaign_id', p_campaign_id,
+        'version_id', v_version_id,
+        'status', 'success'
+    );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.enroll_leads_chunk_atomic(
+    p_workspace_id UUID,
+    p_campaign_id UUID,
+    p_enrollments JSONB,
+    p_execution_states JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_count INT := 0;
+BEGIN
+    -- Verify caller workspace membership
+    IF NOT EXISTS (
+        SELECT 1 FROM public.workspace_members
+        WHERE workspace_id = p_workspace_id AND user_id = auth.uid()
+    ) AND auth.role() <> 'service_role' THEN
+        RAISE EXCEPTION 'Unauthorized: User is not a member of workspace %', p_workspace_id;
+    END IF;
+
+    -- Upsert enrollments and execution states atomically
+    INSERT INTO public.campaign_enrollments (id, workspace_id, campaign_id, campaign_version_id, lead_id, account_id)
+    SELECT
+        (e->>'id')::UUID,
+        p_workspace_id,
+        p_campaign_id,
+        (e->>'campaign_version_id')::UUID,
+        (e->>'lead_id')::UUID,
+        (e->>'account_id')::UUID
+    FROM jsonb_array_elements(p_enrollments) AS e
+    ON CONFLICT (campaign_id, lead_id) DO NOTHING;
+
+    INSERT INTO public.campaign_execution_states (id, workspace_id, campaign_id, enrollment_id, status, variables)
+    SELECT
+        (x->>'id')::UUID,
+        p_workspace_id,
+        p_campaign_id,
+        (x->>'enrollment_id')::UUID,
+        COALESCE(x->>'status', 'pending'),
+        COALESCE(x->'variables', '{}'::JSONB)
+    FROM jsonb_array_elements(p_execution_states) AS x
+    ON CONFLICT (enrollment_id) DO NOTHING;
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN jsonb_build_object('status', 'success', 'inserted_count', v_count);
+END;
+$$;

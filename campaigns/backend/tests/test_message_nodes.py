@@ -35,7 +35,7 @@ class TestMessageNodesExecutor(unittest.TestCase):
         self.assertEqual(res.get("branch"), Branch.SENT.value)
         self.worker.send_message.assert_called_once_with(
             self.test_lead_url,
-            "Hi Sarah, big fan of your team at Acme Corp!"
+            "Hi Sarah, big fan of your team at Acme!"
         )
 
     def test_empty_body_fallback_resolution(self):

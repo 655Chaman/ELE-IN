@@ -101,9 +101,9 @@ def execute_bulk_import_leads(
         seen_identifiers.add(identifier)
 
         # Clean fields: sanitize text against NUL bytes, surrogates & formula injection
-        fname = DataHygieneService.sanitize_text(lead.get("first_name", ""))
-        lname = DataHygieneService.sanitize_text(lead.get("last_name", ""))
-        company = DataHygieneService.sanitize_text(lead.get("company_name", ""))
+        fname = DataHygieneService.sanitize_text(lead.get("first_name") or lead.get("firstName") or "")
+        lname = DataHygieneService.sanitize_text(lead.get("last_name") or lead.get("lastName") or "")
+        company = DataHygieneService.sanitize_text(lead.get("company_name") or lead.get("company") or "")
         job_title = DataHygieneService.sanitize_text(lead.get("job_title", ""))
         p_loc = DataHygieneService.sanitize_text(lead.get("p_location") or lead.get("location") or location or "")
         lead_domain = DataHygieneService.sanitize_text(lead.get("domain", ""))
@@ -112,12 +112,29 @@ def execute_bulk_import_leads(
         if not lname and fname and " " in fname:
             fname, lname = split_full_name(fname)
 
+        # Apply clean_first_name and clean_company to sanitize honorifics, hiring tags, slogans
+        clean_fname = ""
+        if fname:
+            try:
+                clean_fname = DataHygieneService.clean_first_name(fname) if hasattr(DataHygieneService, "clean_first_name") else DataHygieneService.clean_name(fname)
+            except Exception as e:
+                logger.debug(f"DataHygiene clean_first_name error on '{fname}': {e}")
+                clean_fname = fname
+
+        clean_comp = ""
+        if company:
+            try:
+                clean_comp = DataHygieneService.clean_company(company)
+            except Exception as e:
+                logger.debug(f"DataHygiene clean_company error on '{company}': {e}")
+                clean_comp = company
+
         processed_lead = dict(lead)
         processed_lead["norm_url"] = norm_url
         processed_lead["email"] = email
-        processed_lead["first_name"] = fname
+        processed_lead["first_name"] = clean_fname if clean_fname else fname
         processed_lead["last_name"] = lname
-        processed_lead["company_name"] = company
+        processed_lead["company_name"] = clean_comp if clean_comp else company
         processed_lead["job_title"] = job_title
         processed_lead["location"] = p_loc
         processed_lead["domain"] = lead_domain

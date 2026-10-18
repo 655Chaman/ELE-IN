@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { 
   Building2, Users, RefreshCw, CheckCircle2, Copy, Check, 
@@ -39,7 +39,7 @@ interface CommitteeMember {
   title: string;
   email?: string;
   linkedin_url?: string;
-  role_archetype: 'economic_buyer' | 'champion' | 'technical_evaluator' | 'end_user';
+  role_archetype: 'economic_buyer' | 'champion' | 'technical_evaluator' | 'end_user' | 'blocker' | 'influencer';
   status: 'uncontacted' | 'engaged' | 'replied' | 'meeting_booked';
 }
 
@@ -63,7 +63,23 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
   const isPro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE';
 
+  const triggerPaywall = (feature: string = 'ABM Multithreading Orchestrator', description?: string) => {
+    openPaywall({
+      featureName: feature,
+      minTier: 'PRO',
+      description: description || 'Synchronize role-differentiated touches and buying committee orchestration across target accounts.'
+    });
+  };
+
   const [activeTab, setActiveTab] = useState<'accounts' | 'committee' | 'copy_studio'>('accounts');
+
+  // Query campaigns if campaignId was not provided, allowing user to select a target sequence
+  const { data: dashboardData } = useSWR<{ campaigns?: any[]; recent_campaigns?: any[] }>(
+    !campaignId ? '/api/elein/dashboard/stats' : null,
+    fetcher
+  );
+  const availableCampaigns = dashboardData?.campaigns || dashboardData?.recent_campaigns || [];
+  const [selectedLaunchCampaignId, setSelectedLaunchCampaignId] = useState<string>(campaignId || '');
 
   // ── Tab 1: Target Accounts State ──
   const [tierFilter, setTierFilter] = useState<string>('all');
@@ -180,7 +196,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
   // ── Tab 3: Copy Matrix State ──
   const [copyCompany, setCopyCompany] = useState("Stripe");
-  const [selectedRoleTab, setSelectedRoleTab] = useState<'economic_buyer' | 'champion' | 'technical_evaluator' | 'end_user'>('champion');
+  const [selectedRoleTab, setSelectedRoleTab] = useState<'economic_buyer' | 'champion' | 'technical_evaluator' | 'end_user' | 'blocker' | 'influencer'>('champion');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const { data: matrixData } = useSWR<{ success: boolean; matrix: CopyMatrixItem[] }>(
@@ -213,7 +229,30 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   const [isSubmittingMember, setIsSubmittingMember] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
 
+  // Keyboard navigation & Escape dismiss for sub-modals or parent
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (launchModalOpen) {
+          setLaunchModalOpen(false);
+        } else if (addAccountOpen) {
+          setAddAccountOpen(false);
+        } else if (addMemberOpen) {
+          setAddMemberOpen(false);
+        } else if (onClose) {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [launchModalOpen, addAccountOpen, addMemberOpen, onClose]);
+
   const handleExportAccountsCsv = async () => {
+    if (!isPro) {
+      triggerPaywall('Export ABM Accounts CSV', 'Export targeted enterprise account lists and penetration analytics.');
+      return;
+    }
     if (isExportingAccounts) return;
     setIsExportingAccounts(true);
     try {
@@ -221,7 +260,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         `/api/elein/abm/accounts/export-csv${tierFilter !== 'all' ? `?tier=${encodeURIComponent(tierFilter)}` : ''}`
       );
       if (res.status === 402) {
-        openPaywall('ABM Multithreading Orchestrator');
+        triggerPaywall('Export ABM Accounts CSV');
         return;
       }
       if (!res.ok) throw new Error('Failed to export target accounts CSV');
@@ -243,12 +282,16 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   };
 
   const handleExportCommitteeCsv = async () => {
+    if (!isPro) {
+      triggerPaywall('Export Buying Committee CSV', 'Export multi-stakeholder committee maps and contact records.');
+      return;
+    }
     if (!selectedAccountId || isExportingCommittee) return;
     setIsExportingCommittee(true);
     try {
       const res = await fetchWithAuth(`/api/elein/abm/accounts/${encodeURIComponent(selectedAccountId)}/committee/export-csv`);
       if (res.status === 402) {
-        openPaywall('ABM Multithreading Orchestrator');
+        triggerPaywall('Export Buying Committee CSV');
         return;
       }
       if (!res.ok) throw new Error('Failed to export buying committee CSV');
@@ -270,6 +313,10 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   };
 
   const handleAddMember = async () => {
+    if (!isPro) {
+      triggerPaywall('Add Buying Committee Stakeholder', 'Map key economic buyers, champions, and technical evaluators.');
+      return;
+    }
     if (!newMemberName.trim() || !newMemberTitle.trim()) {
       toast.error('Please enter both stakeholder name and job title.');
       return;
@@ -288,7 +335,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         })
       });
       if (res.status === 402) {
-        openPaywall('ABM Multithreading Orchestrator');
+        triggerPaywall('Add Buying Committee Stakeholder');
         return;
       }
       const data = await res.json();
@@ -296,7 +343,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         toast.success(
           data.data?.deduplicated
             ? 'Stakeholder already in committee (deduplicated).'
-            : `Added ${data.data?.member?.prospect_name} as ${data.data?.member?.role_archetype?.replace('_', ' ')}!`
+            : `Added ${data.data?.member?.prospect_name} as ${(data.data?.member?.role_archetype || 'member').replace('_', ' ')}!`
         );
         setAddMemberOpen(false);
         setNewMemberName('');
@@ -326,7 +373,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         body: JSON.stringify({ status: newStatus })
       });
       if (res.status === 402) {
-        openPaywall('ABM Multithreading Orchestrator');
+        triggerPaywall('Live Heat Sync Status Tracking');
         return;
       }
       const data = await res.json();
@@ -347,6 +394,10 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   };
 
   const handleLaunchMultithread = async () => {
+    if (!isPro) {
+      triggerPaywall('Launch Multithreaded Cascade', 'Coordinate staggered multi-touch sequences across the buying committee.');
+      return;
+    }
     if (!targetLaunchAccount || isLaunching) return;
     setIsLaunching(true);
     try {
@@ -355,12 +406,12 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           account_id: targetLaunchAccount.id,
-          campaign_id: campaignId || null,
+          campaign_id: campaignId || selectedLaunchCampaignId || null,
           staggered_interval_hours: staggerInterval
         })
       });
       if (res.status === 402) {
-        openPaywall('ABM Multithreading Orchestrator');
+        triggerPaywall('Launch Multithreaded Cascade');
         return;
       }
       const data = await res.json();
@@ -380,6 +431,10 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   };
 
   const handleCreateAccount = async () => {
+    if (!isPro) {
+      triggerPaywall('Add Enterprise Target Account', 'Map enterprise accounts and automatically synthesize buying committees.');
+      return;
+    }
     if (!newCompanyName.trim()) {
       toast.error('Please specify a company name.');
       return;
@@ -399,7 +454,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         })
       });
       if (res.status === 402) {
-        openPaywall('ABM Multithreading Orchestrator');
+        triggerPaywall('Add Enterprise Target Account');
         return;
       }
       const data = await res.json();
@@ -427,10 +482,9 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
   };
 
   const getHeatColor = (score: number) => {
-    if (score >= 75) return 'bg-foreground';
-    if (score >= 50) return 'bg-foreground/80';
-    if (score >= 25) return 'bg-foreground/60';
-    return 'bg-muted-foreground/50';
+    if (score >= 70) return 'bg-emerald-500 dark:bg-emerald-400';
+    if (score >= 40) return 'bg-amber-500 dark:bg-amber-400';
+    return 'bg-primary/50 dark:bg-primary/40';
   };
 
   const getStageBadge = (stage: string) => {
@@ -454,26 +508,48 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         return <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted/40 text-foreground border border-border">Champion (Pain Owner)</span>;
       case 'technical_evaluator':
         return <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted/40 text-foreground border border-border">Technical Evaluator (Infra)</span>;
+      case 'blocker':
+        return <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Blocker (Risk / Defense)</span>;
+      case 'influencer':
+        return <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary/10 text-primary border border-primary/20">Influencer (Internal Ally)</span>;
       default:
         return <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted/40 text-foreground border border-border">End User (Operator)</span>;
     }
   };
 
   const filteredAccounts = displayAccounts.filter(acc => {
-    const matchesSearch = acc.company_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          acc.domain.toLowerCase().includes(searchQuery.toLowerCase());
+    const name = (acc.company_name || '').toLowerCase();
+    const dom = (acc.domain || '').toLowerCase();
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = name.includes(q) || dom.includes(q);
     const matchesTier = tierFilter === 'all' || acc.tier === tierFilter;
     return matchesSearch && matchesTier;
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl h-[90vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-hidden animate-in fade-in duration-200"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="abm-orchestrator-title"
+    >
+      <div className="relative w-full max-w-6xl h-[90dvh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
         
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-base font-semibold text-foreground">ABM Buying Committee & Multithreading Orchestrator</h2>
+            <div className="flex items-center gap-2">
+              <h2 id="abm-orchestrator-title" className="text-base font-semibold text-foreground">ABM Buying Committee & Multithreading Orchestrator</h2>
+              {!isPro && (
+                <button
+                  type="button"
+                  onClick={() => triggerPaywall('ABM Buying Committee & Multithreading Orchestrator')}
+                  className="px-2 py-0.5 rounded-md bg-muted/40 text-[10px] font-medium text-foreground border border-border hover:bg-muted transition-all cursor-pointer"
+                >
+                  PRO
+                </button>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Synchronize role-differentiated touches across economic buyers, champions, and technical evaluators.
             </p>
@@ -487,7 +563,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                 mutateCommittee();
                 toast.success('Telemetry refreshed!');
               }}
-              className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors"
+              className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors cursor-pointer"
               title="Refresh Account Data"
               aria-label="Refresh Account Data"
             >
@@ -497,7 +573,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors"
+                className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors cursor-pointer"
                 aria-label="Close dialog"
               >
                 <X className="w-4 h-4" />
@@ -507,7 +583,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         </div>
 
         {/* Key Performance Metric Ribbon */}
-        <div className="grid grid-cols-4 gap-4 px-6 py-3 border-b border-border bg-muted/40">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 py-3 border-b border-border bg-muted/40 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-background border border-border text-muted-foreground">
               <Building2 className="w-4 h-4" />
@@ -547,17 +623,22 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
               <TrendingUp className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">Consensus Velocity</div>
+              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <span>Consensus Velocity</span>
+                <span className="text-[10px] rounded bg-background px-1.5 py-0.2 text-muted-foreground border border-border">Benchmark</span>
+              </div>
               <div className="text-sm font-semibold text-foreground">3.4x Pipeline Conversion</div>
             </div>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-border bg-background px-6">
+        <div role="tablist" aria-label="ABM modes navigation" className="flex border-b border-border bg-background px-6 shrink-0">
           <button
+            role="tab"
+            aria-selected={activeTab === 'accounts'}
             onClick={() => setActiveTab('accounts')}
-            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all ${
+            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'accounts'
                 ? 'border-foreground text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -568,8 +649,10 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeTab === 'committee'}
             onClick={() => setActiveTab('committee')}
-            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all ${
+            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'committee'
                 ? 'border-foreground text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -580,8 +663,10 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeTab === 'copy_studio'}
             onClick={() => setActiveTab('copy_studio')}
-            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all ${
+            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'copy_studio'
                 ? 'border-foreground text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -606,7 +691,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                       placeholder="Filter accounts by name or domain..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-foreground"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-foreground"
                     />
                   </div>
 
@@ -630,24 +715,30 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                   <button
                     onClick={handleExportAccountsCsv}
                     disabled={isExportingAccounts}
-                    className="px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground font-medium text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground font-medium text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     {isExportingAccounts ? 'Exporting...' : 'Export Accounts CSV'}
                   </button>
                   <button
-                    onClick={() => setAddAccountOpen(true)}
-                    className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center justify-center gap-2 transition-colors"
+                    onClick={() => {
+                      if (!isPro) {
+                        triggerPaywall('Add Enterprise Target Account');
+                        return;
+                      }
+                      setAddAccountOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" />
+                    {!isPro ? <Lock className="w-3.5 h-3.5" /> : <Plus className="w-4 h-4" />}
                     Add Enterprise Account
                   </button>
                 </div>
               </div>
 
-              {/* Accounts Table */}
-              <div className="border border-border rounded-lg overflow-hidden bg-card">
-                <table className="w-full text-left text-xs">
+              {/* Accounts Table with Horizontal Scroll wrapper */}
+              <div className="w-full overflow-x-auto border border-border rounded-lg bg-card">
+                <table className="w-full min-w-[700px] text-left text-xs">
                   <thead className="bg-muted/40 border-b border-border text-muted-foreground font-medium">
                     <tr>
                       <th className="py-3 px-4">Company & Domain</th>
@@ -676,12 +767,12 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
                         <td className="py-3 px-3">
                           <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-muted/40 text-foreground border border-border">
-                            {acc.tier.replace('_', ' ')}
+                            {(acc.tier || 'tier_1').replace('_', ' ')}
                           </span>
                         </td>
 
                         <td className="py-3 px-3 text-muted-foreground">
-                          {acc.employee_count.toLocaleString()} reps
+                          {(acc.employee_count ?? 0).toLocaleString()} reps
                         </td>
 
                         <td className="py-3 px-4">
@@ -843,9 +934,9 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                 </div>
               </div>
 
-              {/* Committee Members Table */}
-              <div className="border border-border rounded-lg overflow-hidden bg-card">
-                <table className="w-full text-left text-xs">
+              {/* Committee Members Table with Horizontal Scroll wrapper */}
+              <div className="w-full overflow-x-auto border border-border rounded-lg bg-card">
+                <table className="w-full min-w-[700px] text-left text-xs">
                   <thead className="bg-muted/40 border-b border-border text-muted-foreground font-medium">
                     <tr>
                       <th className="py-3 px-4">Executive Name & Title</th>
@@ -905,7 +996,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                               setSelectedRoleTab(m.role_archetype);
                               setActiveTab('copy_studio');
                             }}
-                            className="px-3 py-1 rounded-lg bg-muted/40 hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors"
+                            className="px-3 py-1 rounded-lg bg-muted/40 hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors cursor-pointer"
                           >
                             Preview Angle
                           </button>
@@ -933,10 +1024,10 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                 </div>
 
                 {/* Archetype Selector Tabs */}
-                <div className="flex bg-background p-1 rounded-lg border border-border">
+                <div className="flex flex-wrap bg-background p-1 rounded-lg border border-border gap-1">
                   <button
                     onClick={() => setSelectedRoleTab('economic_buyer')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
                       selectedRoleTab === 'economic_buyer'
                         ? 'bg-muted text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
@@ -947,7 +1038,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
                   <button
                     onClick={() => setSelectedRoleTab('champion')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
                       selectedRoleTab === 'champion'
                         ? 'bg-muted text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
@@ -958,7 +1049,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
                   <button
                     onClick={() => setSelectedRoleTab('technical_evaluator')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
                       selectedRoleTab === 'technical_evaluator'
                         ? 'bg-muted text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
@@ -969,13 +1060,35 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
                   <button
                     onClick={() => setSelectedRoleTab('end_user')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
                       selectedRoleTab === 'end_user'
                         ? 'bg-muted text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     End User
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedRoleTab('blocker')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                      selectedRoleTab === 'blocker'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Blocker
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedRoleTab('influencer')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                      selectedRoleTab === 'influencer'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Influencer
                   </button>
                 </div>
               </div>
@@ -984,20 +1097,26 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
               {(() => {
                 const matrixItem = matrixData?.matrix?.find(m => m.archetype === selectedRoleTab) || {
                   archetype: selectedRoleTab,
-                  sample_title: selectedRoleTab === 'economic_buyer' ? 'CFO' : selectedRoleTab === 'champion' ? 'VP Sales' : selectedRoleTab === 'technical_evaluator' ? 'CISO' : 'Account Executive',
-                  sample_name: selectedRoleTab === 'economic_buyer' ? 'Marcus Vance' : selectedRoleTab === 'champion' ? 'Elena Rostova' : selectedRoleTab === 'technical_evaluator' ? 'Devon Miller' : 'Jordan Lee',
+                  sample_title: selectedRoleTab === 'economic_buyer' ? 'CFO' : selectedRoleTab === 'champion' ? 'VP Sales' : selectedRoleTab === 'technical_evaluator' ? 'CISO' : selectedRoleTab === 'blocker' ? 'VP Procurement / Risk' : selectedRoleTab === 'influencer' ? 'Lead Enterprise Architect' : 'Account Executive',
+                  sample_name: selectedRoleTab === 'economic_buyer' ? 'Marcus Vance' : selectedRoleTab === 'champion' ? 'Elena Rostova' : selectedRoleTab === 'technical_evaluator' ? 'Devon Miller' : selectedRoleTab === 'blocker' ? 'Arthur Pendelton' : selectedRoleTab === 'influencer' ? 'Sophia Lin' : 'Jordan Lee',
                   copy: {
                     role_archetype: selectedRoleTab,
-                    angle: selectedRoleTab === 'economic_buyer' ? 'Financial ROI & CAC Efficiency' : selectedRoleTab === 'champion' ? 'Pipeline Velocity & Multithreaded Consensus' : selectedRoleTab === 'technical_evaluator' ? 'Enterprise Security & Infrastructure Isolation' : 'Daily Workflow Automation & Rep Bandwidth',
-                    hook: selectedRoleTab === 'economic_buyer' ? '42% reduction in Cost-Per-Opportunity with verifiable pipeline attribution.' : 'Eliminates single-threaded deal stalls by orchestrating synchronized committee touchpoints.',
-                    subject: `ROI & Outbound CAC Efficiency at ${copyCompany}`,
-                    body: `Hi Marcus,\n\nWhen evaluating enterprise GTM efficiency at ${copyCompany}, pipeline acquisition cost and ramp predictability are paramount.\n\nEle-in replaces fragmented SDR tooling with an autonomous multithreading outreach engine - delivering 3.4x higher meeting conversion rates while reducing overall cost-per-qualified-opportunity by 42%.\n\nWould you be open to a 10-minute briefing on the financial modeling and payback framework we see across Tier-1 teams?`,
+                    angle: selectedRoleTab === 'economic_buyer' ? 'Financial ROI & CAC Efficiency' : selectedRoleTab === 'champion' ? 'Pipeline Velocity & Multithreaded Consensus' : selectedRoleTab === 'technical_evaluator' ? 'Enterprise Security & Infrastructure Isolation' : selectedRoleTab === 'blocker' ? 'Vendor Consolidation & Compliance Assurance' : selectedRoleTab === 'influencer' ? 'Stack Compatibility & Operational Leverage' : 'Daily Workflow Automation & Rep Bandwidth',
+                    hook: selectedRoleTab === 'economic_buyer' ? '42% reduction in Cost-Per-Opportunity with verifiable pipeline attribution.' : selectedRoleTab === 'blocker' ? 'Zero disruption to existing tech stack with SOC2-compliant proxy rotation.' : 'Eliminates single-threaded deal stalls by orchestrating synchronized committee touchpoints.',
+                    subject: `${selectedRoleTab === 'blocker' ? 'Compliance & Infrastructure Assurance' : selectedRoleTab === 'influencer' ? 'Workflow Leverage' : 'ROI & Outbound CAC Efficiency'} at ${copyCompany}`,
+                    body: `Hi,\n\nWhen evaluating enterprise GTM efficiency at ${copyCompany}, coordinating consensus across stakeholders prevents single-threaded stalls.\n\nEle-in replaces fragmented SDR tooling with an autonomous multithreading outreach engine - delivering 3.4x higher meeting conversion rates while ensuring compliance and domain security.\n\nWould you be open to a 10-minute briefing on the technical and financial framework we see across Tier-1 teams?`,
                     character_count: 420,
                     cross_thread_aware: true
                   }
                 };
 
-                const copy = matrixItem.copy;
+                const copy = matrixItem?.copy || {
+                  angle: 'Targeted Outreach',
+                  hook: 'Relevant and timely outreach',
+                  subject: `Connecting regarding ${copyCompany}`,
+                  body: '',
+                  character_count: 0
+                };
 
                 return (
                   <div className="bg-card border border-border rounded-lg p-6 space-y-6">
@@ -1014,7 +1133,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
                       <div className="flex items-center gap-2">
                         <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-muted/40 text-muted-foreground border border-border">
-                          {copy.character_count} characters (~45s read)
+                          {copy.character_count || copy.body?.length || 0} characters (~45s read)
                         </span>
                         <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-muted/40 text-foreground border border-border">
                           Cross-Thread Aware
@@ -1033,8 +1152,9 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                           className="flex-1 bg-background border border-border rounded-lg px-3.5 py-2 text-xs text-foreground font-medium select-all"
                         />
                         <button
+                          type="button"
                           onClick={() => copyToClipboard(copy.subject, 'subj')}
-                          className="px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors"
+                          className="px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           {copiedKey === 'subj' ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
                           Copy
@@ -1042,24 +1162,25 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                       </div>
                     </div>
 
-                    {/* Message Body */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Message Body (Personalized & Role-Tailored)</label>
-                      <div className="relative">
-                        <textarea
-                          readOnly
-                          rows={8}
-                          value={copy.body}
-                          className="w-full bg-background border border-border rounded-lg p-4 text-xs text-foreground leading-relaxed font-mono select-all focus:outline-none"
-                        />
+                    {/* Message Body with unblocked header toolbar */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-muted-foreground">Message Body (Personalized & Role-Tailored)</label>
                         <button
+                          type="button"
                           onClick={() => copyToClipboard(copy.body, 'body')}
-                          className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-muted/90 hover:bg-muted text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors border border-border"
+                          className="px-3 py-1 rounded-lg bg-background hover:bg-muted text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors border border-border cursor-pointer shadow-xs"
                         >
                           {copiedKey === 'body' ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
-                          Copy Message
+                          <span>{copiedKey === 'body' ? 'Copied Message!' : 'Copy Message'}</span>
                         </button>
                       </div>
+                      <textarea
+                        readOnly
+                        rows={8}
+                        value={copy.body}
+                        className="w-full bg-background border border-border rounded-lg p-4 text-xs text-foreground leading-relaxed font-mono select-all focus:outline-none"
+                      />
                     </div>
                   </div>
                 );
@@ -1070,14 +1191,19 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
         {/* Launch Staggered Sequence Modal */}
         {launchModalOpen && targetLaunchAccount && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="launch-cascade-title"
+          >
             <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-5 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Rocket className="w-4 h-4 text-muted-foreground" />
-                  <h3 className="font-semibold text-foreground text-base">Launch Multithreaded Cascade</h3>
+                  <h3 id="launch-cascade-title" className="font-semibold text-foreground text-base">Launch Multithreaded Cascade</h3>
                 </div>
-                <button type="button" onClick={() => setLaunchModalOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setLaunchModalOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -1087,6 +1213,31 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                   <div className="text-muted-foreground">Target Account:</div>
                   <div className="text-sm font-semibold text-foreground">{targetLaunchAccount.company_name} ({targetLaunchAccount.domain})</div>
                 </div>
+
+                {!campaignId && (
+                  <div className="space-y-1.5">
+                    <label className="font-medium text-muted-foreground">Target Outreach Campaign Sequence:</label>
+                    {availableCampaigns.length > 0 ? (
+                      <Select
+                        value={selectedLaunchCampaignId}
+                        onValueChange={(val) => setSelectedLaunchCampaignId(val)}
+                      >
+                        <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                          <SelectValue placeholder="Select target campaign sequence..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableCampaigns.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="text-[11px] text-muted-foreground italic bg-muted/40 p-2.5 rounded-lg border border-border">
+                        Dedicated ABM multithread campaign sequence will be auto-generated.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="font-medium text-muted-foreground">Staggered Delay Interval (Hours):</label>
@@ -1120,15 +1271,17 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setLaunchModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium"
+                  className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleLaunchMultithread}
                   disabled={isLaunching}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2 cursor-pointer"
                 >
                   {isLaunching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
                   Confirm & Launch Cascade
@@ -1140,14 +1293,19 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
         {/* Add Enterprise Account Modal */}
         {addAccountOpen && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-account-modal-title"
+          >
             <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-muted-foreground" />
-                  <h3 className="font-semibold text-foreground text-base">Add Enterprise Target Account</h3>
+                  <h3 id="add-account-modal-title" className="font-semibold text-foreground text-base">Add Enterprise Target Account</h3>
                 </div>
-                <button type="button" onClick={() => setAddAccountOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setAddAccountOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -1213,7 +1371,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                 <button
                   type="button"
                   onClick={() => setAddAccountOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium"
+                  className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1221,7 +1379,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                   type="button"
                   onClick={handleCreateAccount}
                   disabled={isSubmittingAccount}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2 cursor-pointer"
                 >
                   {isSubmittingAccount ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   Create & Map Committee
@@ -1233,14 +1391,19 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
         {/* Add Buying Committee Stakeholder Modal */}
         {addMemberOpen && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-stakeholder-modal-title"
+          >
             <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <UserPlus className="w-4 h-4 text-muted-foreground" />
-                  <h3 className="font-semibold text-foreground text-base">Add Buying Committee Stakeholder</h3>
+                  <h3 id="add-stakeholder-modal-title" className="font-semibold text-foreground text-base">Add Buying Committee Stakeholder</h3>
                 </div>
-                <button type="button" onClick={() => setAddMemberOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setAddMemberOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -1295,6 +1458,8 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                         <SelectItem value="champion">Champion</SelectItem>
                         <SelectItem value="technical_evaluator">Technical Evaluator</SelectItem>
                         <SelectItem value="end_user">End User Operator</SelectItem>
+                        <SelectItem value="blocker">Blocker (Risk / Defense)</SelectItem>
+                        <SelectItem value="influencer">Influencer (Internal Ally)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1316,7 +1481,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                 <button
                   type="button"
                   onClick={() => setAddMemberOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium"
+                  className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1324,7 +1489,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                   type="button"
                   onClick={handleAddMember}
                   disabled={isSubmittingMember}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2 cursor-pointer"
                 >
                   {isSubmittingMember ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                   Add to Committee

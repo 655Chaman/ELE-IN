@@ -7,7 +7,7 @@ CREATE POLICY campaign_accounts_tenant_isolation ON public.campaign_accounts
     FOR ALL
     USING (
         campaign_id IN (
-            SELECT id FROM public.campaigns WHERE workspace_id = public.get_my_workspace_id()
+            SELECT id FROM public.campaigns WHERE workspace_id IN (SELECT public.my_workspace_ids())
         )
     );
 
@@ -16,7 +16,8 @@ ALTER TABLE public.processing_jobs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS processing_jobs_tenant_isolation ON public.processing_jobs;
 CREATE POLICY processing_jobs_tenant_isolation ON public.processing_jobs
     FOR ALL
-    USING (workspace_id = public.get_my_workspace_id());
+    USING (workspace_id IN (SELECT public.my_workspace_ids()))
+    WITH CHECK (workspace_id IN (SELECT public.my_workspace_ids()));
 
 -- 3. worker_heartbeat: Read-only for any authenticated user
 ALTER TABLE public.worker_heartbeat ENABLE ROW LEVEL SECURITY;

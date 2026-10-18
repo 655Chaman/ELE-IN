@@ -34,7 +34,7 @@ class TestMultichannelNodes(unittest.TestCase):
         args = self.worker.send_inmail.call_args[0]
         self.assertEqual(args[0], "https://linkedin.com/in/sarah")
         self.assertIn("Sarah", args[1])
-        self.assertIn("Acme Corp", args[2])
+        self.assertIn("Acme", args[2])
 
     def test_send_inmail_clamps_long_subject_and_body(self):
         self.worker.send_inmail.return_value = {"status": "success"}

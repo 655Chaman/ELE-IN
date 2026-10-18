@@ -2382,12 +2382,31 @@ class EleInOrchestrator:
                     elif err_msg.startswith("DEFINITIVE_EXTERNAL_FAILURE:"):
                         err_code = "DEFINITIVE_EXTERNAL_FAILURE"
                         
+                # Paranoia Layer 1 (API-23): Truncate log payloads and AI reasoning to 10KB cap to prevent DB bloat
+                err_val = res.get("error")
+                if isinstance(err_val, str) and len(err_val) > 10000:
+                    err_val = err_val[:10000] + "... [truncated at 10000 chars]"
+
+                reasoning_val = res.get("ai_reasoning")
+                if isinstance(reasoning_val, str) and len(reasoning_val) > 10000:
+                    reasoning_val = reasoning_val[:10000] + "... [truncated at 10000 chars]"
+
+                vars_val = res.get("variables") or {}
+                if isinstance(vars_val, dict):
+                    truncated_vars = {}
+                    for vk, vv in vars_val.items():
+                        if isinstance(vv, str) and len(vv) > 10000:
+                            truncated_vars[vk] = vv[:10000] + "... [truncated at 10000 chars]"
+                        else:
+                            truncated_vars[vk] = vv
+                    vars_val = truncated_vars
+
                 payload = {
                     "status": res.get("status"),
                     "branch": res.get("branch"),
-                    "variables": res.get("variables") or {},
-                    "error": res.get("error"),  # included for failure diagnostics
-                    "ai_reasoning": res.get("ai_reasoning")
+                    "variables": vars_val,
+                    "error": err_val,  # included for failure diagnostics
+                    "ai_reasoning": reasoning_val
                 }
                     
                 upd = {

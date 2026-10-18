@@ -49,13 +49,33 @@ class DataHygieneService:
         return DataHygieneService.sanitize_text(cell)
 
     @staticmethod
+    def _format_name_casing(s: str) -> str:
+        """
+        Converts ALL-CAPS ('SARAH') or all-lowercase ('sarah') to title case ('Sarah'),
+        while preserving mixed-case or capitalized particles ('McCall', 'O'Connor', 'van der Merwe', 'de Silva').
+        """
+        if s.isupper() or s.islower():
+            words = s.split()
+            particles = {"van", "der", "de", "del", "da", "di", "von", "la", "le", "du"}
+            new_words = []
+            for i, w in enumerate(words):
+                if i > 0 and w.lower() in particles:
+                    new_words.append(w.lower())
+                else:
+                    w_title = w.title()
+                    w_title = re.sub(r"\bMc([a-z])", lambda m: f"Mc{m.group(1).upper()}", w_title)
+                    new_words.append(w_title)
+            return " ".join(new_words)
+        return s
+
+    @staticmethod
     def clean_name(name: Any) -> str:
         """
         Cleans personal names across Three Paranoia Layers:
-        - Layer 0: Strips titles, emojis, fixes casing.
-        - Layer 1: Type safety for non-string inputs; preserves apostrophes (O'Connor, D'Angelo) 
-                   and accents (René, Müller); handles Unicode normalization.
-        - Layer 2: If sanitization strips all characters (e.g. name was literally a title like 'Dr.'), 
+        - Layer 0: Strips titles, emojis, bracketed status tags, attached job titles after separators, fixes casing.
+        - Layer 1: Type safety for non-string inputs; preserves apostrophes (O'Connor, D'Angelo),
+                   hyphens (Mary-Jane), and accents (René, Müller); handles Unicode normalization.
+        - Layer 2: If sanitization strips all characters (e.g. name was literally a title like 'Dr.'),
                    gracefully falls back to the original trimmed text.
         """
         if name is None:
@@ -67,39 +87,84 @@ class DataHygieneService:
         # Normalize unicode (e.g. composed vs decomposed accents)
         norm = unicodedata.normalize("NFKC", raw_str)
 
+        # Strip parenthetical, bracketed, or curly-brace tags: (We're hiring), (she/her), [Hiring AEs], {Open to work}
+        norm = re.sub(r"\s*[\(\[\{].*?[\)\]\}]", "", norm)
+        norm = re.sub(r"\s*[\(\[\{][^\)\]\}]*$", "", norm)
+
+        # Strip attached job titles and status announcements after separators ( - , | , • , / , – , — )
+        norm = re.split(r"\s+[-–—•/]\s*|\s*[-–—•/]\s+|\s*\|\s*", norm)[0].strip()
+
         # Replace underscores with spaces (common in filenames/exports)
         norm = norm.replace("_", " ")
 
-        # Keep letters (including accented), spaces, hyphens, and apostrophes
+        # Keep letters (including accented), spaces, hyphens, and apostrophes (strips emojis and decorative symbols)
         cleaned = re.sub(r"[^\w\s\-\']", "", norm, flags=re.UNICODE)
 
-        # Remove common formal titles/prefixes and suffixes
-        titles = r"\b(mr|mrs|ms|miss|dr|prof|phd|md|mba|cpa|jr|sr|ii|iii|iv)\b\.?"
+        # Remove common formal titles/prefixes and suffixes: \b(mr|mrs|ms|miss|dr|prof|phd|md|mba|cpa|pmp|esq|jr|sr|ii|iii|iv)\b\.?
+        titles = r"\b(mr|mrs|ms|miss|dr|prof|phd|md|mba|cpa|pmp|esq|jr|sr|ii|iii|iv)\b\.?"
         without_titles = re.sub(titles, "", cleaned, flags=re.IGNORECASE)
 
         # Collapse whitespace
         without_titles = re.sub(r"\s+", " ", without_titles).strip()
 
-        # If title removal emptied the name, fallback to cleaned
-        final_candidate = without_titles if without_titles else cleaned.strip()
+        # If title removal emptied the name, fallback to raw_str
+        final_candidate = without_titles if without_titles else raw_str
         if not final_candidate:
             return raw_str
 
-        # Fix capitalization if ALL CAPS or all lower
-        if final_candidate.isupper() or final_candidate.islower():
-            final_candidate = final_candidate.title()
+        # Format casing
+        final_candidate = DataHygieneService._format_name_casing(final_candidate)
 
         return final_candidate.strip()
+
+    @staticmethod
+    def clean_first_name(name: Any) -> str:
+        """
+        Extracts a clean, single first-name token across Three Paranoia Layers:
+        - Layer 0: Takes raw full name or first name, applies clean_name, extracts single first name token.
+        - Layer 1: Handles initials: if first token is a single letter or initial like 'J.'
+                   in 'J. Robert Oppenheimer', picks 'Robert'.
+                   Strips any trailing punctuation.
+        - Layer 2: Gracefully falls back if all tokens are single letters or string cannot be parsed.
+        """
+        if name is None:
+            return ""
+        raw_str = str(name).strip()
+        cleaned = DataHygieneService.clean_name(name)
+        if not cleaned:
+            return ""
+        if cleaned == raw_str and len(cleaned.split()) <= 1:
+            return cleaned
+
+        tokens = cleaned.split()
+        if not tokens:
+            return ""
+
+        first_token = ""
+        for idx, t in enumerate(tokens):
+            t_clean = re.sub(r"^[\W_]+|[\W_]+$", "", t)
+            # If t_clean is single letter (initial) and there are subsequent tokens, advance
+            if len(t_clean) <= 1 and (idx + 1) < len(tokens):
+                continue
+            first_token = t_clean
+            break
+
+        if not first_token and tokens:
+            first_token = re.sub(r"^[\W_]+|[\W_]+$", "", tokens[0])
+
+        return first_token.rstrip(".,;:-_/'\"").strip()
 
     @staticmethod
     def clean_company(company: Any) -> str:
         """
         Cleans company names across Three Paranoia Layers:
-        - Layer 0: Strips legal entity suffixes (LLC, Inc, Corp, etc.), fixes casing.
-        - Layer 1: Type safety; preserves ampersands (&) and hyphens (-); protects standalone 
-                   brand names from being completely wiped.
-        - Layer 2: If stripping legal entities leaves the string empty (e.g. company was 'LLC' or 'The Co'), 
-                   falls back to the original trimmed company name.
+        - Layer 0: Strips parenthetical tags, marketing taglines/slogans after delimiters,
+                   legal entity suffixes, fixes casing.
+        - Layer 1: Detects and strips domain imports ('tryacme.io' -> 'Acme', 'getscale.ai' -> 'Scale'),
+                   stripping leading 'try', 'get', 'use' if followed by word.
+                   Preserves short legitimate acronyms ('IBM', 'AWS', 'SAP', 'BMW', 'HP', 'GMC').
+                   Fixes ALL CAPS for names > 4 letters ('APPLE, INC.' -> 'Apple').
+        - Layer 2: If stripping leaves empty string or single letter, falls back to original trimmed company string.
         """
         if company is None:
             return ""
@@ -108,10 +173,30 @@ class DataHygieneService:
             return ""
 
         norm = unicodedata.normalize("NFKC", raw_str)
+
+        # Strip parenthetical, bracketed, or curly-brace tags: (YC W19), (formerly Twitter), (acquired by Google)
+        norm = re.sub(r"\s*[\(\[\{].*?[\)\]\}]", "", norm)
+        norm = re.sub(r"\s*[\(\[\{][^\)\]\}]*$", "", norm)
+
+        # Strip marketing taglines, slogans, and value propositions after delimiters ( - , | , : , • , – , — )
+        norm = re.split(r"\s+[-–—•:]\s*|\s*[-–—•:]\s+|\s*\|\s*", norm)[0].strip()
+
+        # Check if company was imported as a domain/URL (e.g. tryacme.io, getscale.ai, www.acme.co)
+        dom_match = re.match(
+            r"^(?:https?://)?(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9-_]*)\.(?:[a-zA-Z]{2,10}(?:\.[a-zA-Z]{2,4})?)(?:/.*)?$",
+            norm.strip(),
+            flags=re.IGNORECASE
+        )
+        if dom_match:
+            base_name = dom_match.group(1)
+            # Strip leading "try", "get", "use" if followed by a word (>= 2 letters)
+            base_name = re.sub(r"^(?:try|get|use)[-_]?(?=[a-zA-Z]{2,})", "", base_name, flags=re.IGNORECASE)
+            norm = base_name
+
         norm = norm.replace("_", " ")
 
-        # Remove legal entities at word boundaries (case-insensitive)
-        entities = r"\b(llc|inc|corp|corporation|gmbh|ltd|limited|pvt|pty|sa|sarl|bv|plc|ag|co)\b\.?"
+        # Remove legal entity suffixes: LLC, Inc, Corp, GmbH, Ltd, Pty Ltd, Pvt Ltd, SA, BV, PLC, Co, Company
+        entities = r"(?:\b(l\.l\.c\.|llc|incorporated|inc|corporation|corp|gmbh|limited|ltd|pvt|pty|s\.a\.|sa|sarl|b\.v\.|bv|plc|ag|company|co)\b\.?|\bl\.l\.c\.?|\bb\.v\.?|\bs\.a\.?)"
         without_entities = re.sub(entities, "", norm, flags=re.IGNORECASE)
 
         # Remove emojis and unexpected punctuation (keep alphanumeric, space, hyphens, &, apostrophes)
@@ -123,14 +208,25 @@ class DataHygieneService:
         # Clean trailing hyphens, commas, ampersands
         cleaned = re.sub(r"[\-\,\&]+$", "", cleaned).strip()
 
-        # Fallback if stripping stripped everything or left only standalone articles ('The', 'A')
-        if not cleaned or cleaned.lower() in ["the", "a", "an"] or len(cleaned) < 2:
+        # Strip leading "The " if followed by brand name (e.g. "The Coca-Cola Company" -> "Coca-Cola")
+        if re.match(r"^the\s+\S+", cleaned, flags=re.IGNORECASE) and cleaned.lower() not in ["the co", "the company", "the inc", "the llc"]:
+            cleaned = re.sub(r"^the\s+", "", cleaned, flags=re.IGNORECASE).strip()
+
+        # Fallback: If stripping leaves empty string or single letter (except 'X'), fallback to original trimmed company string
+        if not cleaned or (len(cleaned) <= 1 and cleaned.upper() != "X") or cleaned.lower() in ["the", "a", "an"]:
             return re.sub(r"\s+", " ", raw_str).strip()
 
-        # Fix ALL CAPS for non-acronyms (preserve short acronyms like AT&T, IBM, SAP <= 4 letters)
+        # Fix ALL CAPS for names > 4 letters (e.g. "APPLE, INC." -> "Apple"), while preserving short legitimate acronyms ("IBM", "AWS", "SAP", "BMW", "HP", "GMC")
         if cleaned.isupper():
             letters_only = re.findall(r"[A-Za-z]", cleaned)
             if len(letters_only) > 4:
+                cleaned = cleaned.title()
+
+        # Fix all-lowercase
+        elif cleaned.islower():
+            if cleaned.lower() in {"ibm", "aws", "sap", "bmw", "hp", "gmc", "att", "gmac"}:
+                cleaned = cleaned.upper()
+            else:
                 cleaned = cleaned.title()
 
         return cleaned.strip()

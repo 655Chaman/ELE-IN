@@ -372,13 +372,13 @@ export function EleInLeads() {
       </div>
 
       {activeTab === "advocacy" ? (
-        <AdvocacyPodStudioModal onClose={() => setActiveTab("lists")} />
+        <AdvocacyPodStudioModal onClose={() => setActiveTab("lists")} canAdvocacyPod={isPro} />
       ) : activeTab === "crm" ? (
-        <CrmAttributionStudioModal onClose={() => setActiveTab("lists")} />
+        <CrmAttributionStudioModal onClose={() => setActiveTab("lists")} canCrmSync={isPro} />
       ) : activeTab === "warmup" ? (
-        <WarmupStudioModal onClose={() => setActiveTab("lists")} />
+        <WarmupStudioModal onClose={() => setActiveTab("lists")} canWarmup={isPro} />
       ) : activeTab === "waterfall" ? (
-        <WaterfallEnrichmentStudioModal onClose={() => setActiveTab("lists")} />
+        <WaterfallEnrichmentStudioModal onClose={() => setActiveTab("lists")} canWaterfallEnrichment={isPro} />
       ) : activeTab === "calendar" ? (
         <CalendarConciergeStudioModal onClose={() => setActiveTab("lists")} />
       ) : activeTab === "displacement" ? (
@@ -394,6 +394,7 @@ export function EleInLeads() {
           initialListId={segmentationListId}
           onClose={() => setActiveTab("lists")} 
           onRulesSaved={() => mutate()}
+          canDynamicSegmentation={isPro}
         />
       ) : activeTab === "events" ? (
         <EventMultimodalStudioModal onClose={() => setActiveTab("lists")} />

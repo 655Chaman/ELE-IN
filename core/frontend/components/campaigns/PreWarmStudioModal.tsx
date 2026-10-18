@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  MessageSquare, ShieldCheck, Send, Copy, Check, 
-  Clock, ArrowRight, RefreshCw, AlertTriangle, Zap, CheckCircle2, 
-  ExternalLink, Calendar, Layers, Radio, Compass, Swords, FileText, ChevronRight, Download, X
+  MessageSquare, Send, Copy, Check, 
+  ArrowRight, RefreshCw, CheckCircle2, 
+  Calendar, Layers, Compass, FileText, Download, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -43,6 +43,21 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
   const [isSchedulingPrewarm, setIsSchedulingPrewarm] = useState(false);
   const [isExportingPrewarm, setIsExportingPrewarm] = useState(false);
   const [showOmnichannelModal, setShowOmnichannelModal] = useState(false);
+
+  // Keyboard accessibility: Escape dismisses child modal or main modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showOmnichannelModal) {
+          setShowOmnichannelModal(false);
+        } else if (onClose) {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showOmnichannelModal, onClose]);
 
   // Tab 2: Omnichannel Fallback State
   const [daysThreshold, setDaysThreshold] = useState(7);
@@ -184,9 +199,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
         throw new Error(err?.detail?.message || err?.detail || "Failed to scan stuck invitations");
       }
       const data = await res.json();
-      if (data.stuck_leads && data.stuck_leads.length > 0) {
-        setStuckLeads(data.stuck_leads);
-      }
+      setStuckLeads(Array.isArray(data.stuck_leads) ? data.stuck_leads : []);
       toast.success(`Scanned invitations pending > ${daysThreshold} days.`);
     } catch (e: any) {
       toast.error(e?.message || "Failed to scan stuck invitations.");
@@ -277,113 +290,158 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
   };
 
   return (
-    <div className="bg-card border border-border rounded-xl text-foreground shadow-lg max-w-4xl w-full mx-auto overflow-hidden animate-in fade-in duration-200">
-      {/* Studio Header */}
-      <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Autonomous Pre-Warmer & Omnichannel Studio
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Lift connection acceptance by algorithmically pre-warming prospects before outreach.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportPrewarmCSV}
-            disabled={isExportingPrewarm}
-            className="px-3 py-1.5 rounded-lg bg-card hover:bg-muted border border-border text-xs font-medium text-foreground flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <Download size={13} className="text-muted-foreground" />
-            <span>Export Queue CSV</span>
-          </button>
-          {onClose && (
-            <button 
-              type="button" 
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="prewarm-studio-title"
+        className="bg-card border border-border rounded-xl text-foreground shadow-2xl max-w-4xl w-full mx-auto max-h-[90vh] max-h-[90dvh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Studio Header */}
+        <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 id="prewarm-studio-title" className="text-base font-semibold tracking-tight text-foreground">
+                Autonomous Pre-Warmer & Omnichannel Studio
+              </h2>
+              {initialLeadName && (
+                <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                  Target: {initialLeadName}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Lift connection acceptance by algorithmically pre-warming prospects before outreach.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportPrewarmCSV}
+              disabled={isExportingPrewarm}
+              className="px-3 py-1.5 rounded-lg bg-card hover:bg-muted border border-border text-xs font-medium text-foreground flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             >
-              <X className="w-4 h-4" />
+              <Download size={13} className="text-muted-foreground" />
+              <span>Export Queue CSV</span>
             </button>
-          )}
-        </div>
-      </div>
-
-      <div className="p-6 space-y-6">
-        {/* Navigation Sub-Tabs */}
-        <div className="flex items-center gap-1 p-1 bg-muted/30 border border-border rounded-lg w-fit">
-          <button
-            type="button"
-            onClick={() => setActiveTab('prewarm')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'prewarm'
-                ? 'bg-primary/10 text-primary font-semibold'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <MessageSquare size={13} />
-            <span>3-Touch Pre-Warmer & Comments</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('omnichannel')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'omnichannel'
-                ? 'bg-primary/10 text-primary font-semibold'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Layers size={13} />
-            <span>Omnichannel Fallback Matrix</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('content')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'content'
-                ? 'bg-primary/10 text-primary font-semibold'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <FileText size={13} />
-            <span>Thought Leadership Studio</span>
-          </button>
+            {onClose && (
+              <button 
+                type="button" 
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                aria-label="Close Pre-Warm Studio"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Tab 1: Pre-Warm & Comment Engine */}
-        {activeTab === 'prewarm' && (
-          <div className="space-y-5">
-            {/* Visual 3-Touch Pre-Warm Cadence Banner */}
-            <div className="p-4 bg-muted/30 border border-border rounded-lg">
-              <span className="text-xs font-semibold text-foreground block mb-2.5">
-                3-Touch Algorithmic Pre-Warm Cadence
-              </span>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-                <div className="p-2.5 rounded-lg bg-card border border-border">
-                  <span className="text-muted-foreground font-mono text-xs">Day 1 (Instant)</span>
-                  <p className="font-semibold text-foreground mt-0.5">Profile View</p>
-                  <p className="text-xs text-muted-foreground">Triggers prospect profile view notification.</p>
+        <div className="p-6 space-y-6 overflow-y-auto flex-1">
+          {/* Navigation Sub-Tabs */}
+          <div
+            role="tablist"
+            aria-label="Pre-Warm Studio Navigation"
+            className="flex items-center gap-1 p-1 bg-muted/30 border border-border rounded-lg overflow-x-auto scrollbar-none whitespace-nowrap shrink-0 max-w-full"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'prewarm'}
+              onClick={() => setActiveTab('prewarm')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                activeTab === 'prewarm'
+                  ? 'bg-background text-primary font-semibold shadow-xs border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <MessageSquare size={13} />
+              <span>3-Touch Pre-Warmer & Comments</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'omnichannel'}
+              onClick={() => setActiveTab('omnichannel')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                activeTab === 'omnichannel'
+                  ? 'bg-background text-primary font-semibold shadow-xs border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Layers size={13} />
+              <span>Omnichannel Fallback Matrix</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'content'}
+              onClick={() => setActiveTab('content')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                activeTab === 'content'
+                  ? 'bg-background text-primary font-semibold shadow-xs border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <FileText size={13} />
+              <span>Thought Leadership Studio</span>
+            </button>
+          </div>
+
+          {/* Tab 1: Pre-Warm & Comment Engine */}
+          {activeTab === 'prewarm' && (
+            <div className="space-y-5">
+              {/* Visual 3-Touch Pre-Warm Cadence Banner */}
+              <div className="p-4 bg-muted/30 border border-border rounded-lg">
+                <div className="flex items-center justify-between mb-2.5 flex-wrap gap-1">
+                  <span className="text-xs font-semibold text-foreground">
+                    3-Touch Algorithmic Pre-Warm Cadence
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    3 warm engagement touches preceding connection request
+                  </span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-card border border-border">
-                  <span className="text-muted-foreground font-mono text-xs">Day 2 (+24h)</span>
-                  <p className="font-semibold text-foreground mt-0.5">Post Reaction</p>
-                  <p className="text-xs text-muted-foreground">Likes recent post after passing sentiment check.</p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-card border border-border">
-                  <span className="text-muted-foreground font-mono text-xs">Day 3 (+48h)</span>
-                  <p className="font-semibold text-foreground mt-0.5">Contextual Comment</p>
-                  <p className="text-xs text-muted-foreground">Leaves value-add comment on author premise.</p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-foreground">
-                  <span className="font-mono text-xs text-primary">Day 4 (+72h)</span>
-                  <p className="font-semibold text-foreground mt-0.5">Connection Request</p>
-                  <p className="text-xs text-muted-foreground">Warm familiarity drives higher acceptance rate.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="p-2.5 rounded-lg bg-card border border-border">
+                    <div className="flex items-center justify-between text-muted-foreground font-mono text-[11px]">
+                      <span>Touch 1</span>
+                      <span>Day 1 (Instant)</span>
+                    </div>
+                    <p className="font-semibold text-foreground mt-1">Profile View</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Triggers prospect profile view notification.</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-card border border-border">
+                    <div className="flex items-center justify-between text-muted-foreground font-mono text-[11px]">
+                      <span>Touch 2</span>
+                      <span>Day 2 (+24h)</span>
+                    </div>
+                    <p className="font-semibold text-foreground mt-1">Post Reaction</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Likes recent post after passing sentiment check.</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-card border border-border">
+                    <div className="flex items-center justify-between text-muted-foreground font-mono text-[11px]">
+                      <span>Touch 3</span>
+                      <span>Day 3 (+48h)</span>
+                    </div>
+                    <p className="font-semibold text-foreground mt-1">Contextual Comment</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Leaves value-add comment on author premise.</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20 text-foreground">
+                    <div className="flex items-center justify-between text-primary font-mono text-[11px]">
+                      <span className="font-semibold">Outreach</span>
+                      <span>Day 4 (+72h)</span>
+                    </div>
+                    <p className="font-semibold text-foreground mt-1">Connection Request</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Warm familiarity drives higher acceptance rate.</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
             {/* Interactive Comment Generator Testing Deck */}
             <div className="space-y-3">
@@ -410,9 +468,35 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                 value={postText}
                 onChange={(e) => setPostText(e.target.value)}
                 rows={3}
-                className="w-full bg-background border border-border rounded-lg p-3 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary resize-none leading-relaxed"
+                className="w-full bg-background border border-border rounded-lg p-3 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring resize-none leading-relaxed"
                 placeholder="Paste prospect's recent LinkedIn post..."
               />
+
+              {/* Sentiment & Safety Analysis Badge Strip */}
+              {sentimentAnalysis && (
+                <div className="p-3 bg-muted/40 border border-border rounded-lg flex items-center justify-between text-xs flex-wrap gap-2 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">Post Safety &amp; Tone:</span>
+                    <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] border ${
+                      sentimentAnalysis.is_safe_to_engage
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                        : 'bg-destructive/10 text-destructive border-destructive/20'
+                    }`}>
+                      {sentimentAnalysis.is_safe_to_engage ? 'Safe to Engage' : 'High Engagement Risk'}
+                    </span>
+                    {sentimentAnalysis.tone && (
+                      <span className="px-2 py-0.5 rounded-md text-[11px] bg-muted text-muted-foreground border border-border font-mono">
+                        {sentimentAnalysis.tone}
+                      </span>
+                    )}
+                  </div>
+                  {sentimentAnalysis.safety_reason && (
+                    <span className="text-xs text-muted-foreground">
+                      {sentimentAnalysis.safety_reason}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Tone Selector & Action Bar */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -421,9 +505,9 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                   <button
                     type="button"
                     onClick={() => setCommentTone('insightful_query')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer transition-colors ${
                       commentTone === 'insightful_query'
-                        ? 'bg-primary/10 text-primary border-primary'
+                        ? 'bg-primary/10 text-primary border-primary font-semibold'
                         : 'bg-muted text-muted-foreground border-border hover:text-foreground'
                     }`}
                   >
@@ -432,9 +516,9 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                   <button
                     type="button"
                     onClick={() => setCommentTone('benchmark_data')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer transition-colors ${
                       commentTone === 'benchmark_data'
-                        ? 'bg-primary/10 text-primary border-primary'
+                        ? 'bg-primary/10 text-primary border-primary font-semibold'
                         : 'bg-muted text-muted-foreground border-border hover:text-foreground'
                     }`}
                   >
@@ -443,9 +527,9 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                   <button
                     type="button"
                     onClick={() => setCommentTone('contrarian_value_add')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border cursor-pointer transition-colors ${
                       commentTone === 'contrarian_value_add'
-                        ? 'bg-primary/10 text-primary border-primary'
+                        ? 'bg-primary/10 text-primary border-primary font-semibold'
                         : 'bg-muted text-muted-foreground border-border hover:text-foreground'
                     }`}
                   >
@@ -457,7 +541,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                   type="button"
                   onClick={handleGenerateComment}
                   disabled={isGeneratingComment}
-                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
                   {isGeneratingComment && <RefreshCw size={13} className="animate-spin" />}
                   <span>Generate Comment</span>
@@ -581,33 +665,45 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
               <span className="text-xs font-semibold text-foreground">
                 Stuck Prospects Ready for Automated Channel Transition:
               </span>
-              {stuckLeads.map((lead) => (
-                <div key={lead.lead_id} className="p-3 bg-card border border-border rounded-lg flex items-center justify-between gap-3 text-xs">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground">{lead.first_name} {lead.last_name}</span>
-                      <span className="text-muted-foreground">@ {lead.company}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border font-mono">
-                        {lead.days_pending}d pending
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      Recommended: <strong className="text-primary uppercase">{lead.recommended_channel}</strong>
-                      {lead.email ? ` - Verified: ${lead.email}` : ' - InMail Credits available'}
-                    </div>
+              {stuckLeads.length === 0 ? (
+                <div className="p-8 rounded-lg border border-border bg-card text-center space-y-2">
+                  <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary">
+                    <CheckCircle2 size={16} />
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleExecuteCascade(lead)}
-                    disabled={executingLeadId === lead.lead_id}
-                    className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    {executingLeadId === lead.lead_id ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />}
-                    <span>Cascade to {lead.recommended_channel.toUpperCase()}</span>
-                  </button>
+                  <div className="text-xs font-semibold text-foreground">Zero Stuck Invitations</div>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    All outbound invitations are either accepted or currently within the active {daysThreshold}-day connection threshold.
+                  </p>
                 </div>
-              ))}
+              ) : (
+                stuckLeads.map((lead) => (
+                  <div key={lead.lead_id} className="p-3 bg-card border border-border rounded-lg flex items-center justify-between gap-3 text-xs flex-wrap sm:flex-nowrap">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">{lead.first_name} {lead.last_name}</span>
+                        <span className="text-muted-foreground">@ {lead.company}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border font-mono">
+                          {lead.days_pending}d pending
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Recommended: <strong className="text-primary uppercase">{lead.recommended_channel}</strong>
+                        {lead.email ? ` - Verified: ${lead.email}` : ' - InMail Credits available'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExecuteCascade(lead)}
+                      disabled={executingLeadId === lead.lead_id}
+                      className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                    >
+                      {executingLeadId === lead.lead_id ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />}
+                      <span>Cascade to {lead.recommended_channel.toUpperCase()}</span>
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -646,25 +742,35 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
             </div>
 
             {/* Configuration Inputs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div>
                 <label className="text-muted-foreground font-medium block mb-1">Topic:</label>
                 <input
                   type="text"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring"
                   placeholder="e.g. SDR Deliverability"
                 />
               </div>
               <div>
-                <label className="text-muted-foreground font-medium block mb-1">Audience:</label>
+                <label className="text-muted-foreground font-medium block mb-1">Target Audience:</label>
                 <input
                   type="text"
                   value={audience}
                   onChange={(e) => setAudience(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring"
                   placeholder="e.g. Sales Ops Leaders"
+                />
+              </div>
+              <div>
+                <label className="text-muted-foreground font-medium block mb-1">Core Takeaway:</label>
+                <input
+                  type="text"
+                  value={takeaway}
+                  onChange={(e) => setTakeaway(e.target.value)}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary focus-visible:ring-1 focus-visible:ring-ring"
+                  placeholder="e.g. Jitter beats spam volume"
                 />
               </div>
             </div>
@@ -674,7 +780,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                 type="button"
                 onClick={handleGeneratePost}
                 disabled={isGeneratingPost}
-                className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
               >
                 {isGeneratingPost && <RefreshCw size={13} className="animate-spin" />}
                 <span>Generate LinkedIn Thought Leadership Post</span>
@@ -698,8 +804,9 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                         toast.success("Post copied to clipboard!");
                         setTimeout(() => setCopiedPost(false), 2000);
                       }}
-                      className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded cursor-pointer"
+                      className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded cursor-pointer transition-colors"
                       title="Copy post"
+                      aria-label="Copy post to clipboard"
                     >
                       {copiedPost ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
                     </button>
@@ -715,7 +822,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                     type="button"
                     onClick={handleSchedulePost}
                     disabled={isSchedulingPost}
-                    className="px-4 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                   >
                     <Calendar size={13} />
                     <span>Schedule For Auto-Publish</span>
@@ -725,14 +832,15 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
             )}
           </div>
         )}
-      </div>
+        </div>
 
-      {showOmnichannelModal && (
-        <OmnichannelRetargetingStudioModal
-          initialLeadId={initialLeadId}
-          onClose={() => setShowOmnichannelModal(false)}
-        />
-      )}
+        {showOmnichannelModal && (
+          <OmnichannelRetargetingStudioModal
+            initialLeadId={initialLeadId}
+            onClose={() => setShowOmnichannelModal(false)}
+          />
+        )}
+      </div>
     </div>
   );
 }

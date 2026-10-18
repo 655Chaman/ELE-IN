@@ -112,6 +112,17 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
     }
   }, [certData?.mask_pii])
 
+  // Escape key dismiss listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   // Refresh or regenerate certificate with custom deal size
   const handleRegenerate = async () => {
     if (isRefreshing) return
@@ -376,22 +387,29 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-background/80 backdrop-blur-xs overflow-y-auto">
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-background/80 backdrop-blur-sm overflow-hidden animate-in fade-in duration-200"
+        onClick={onClose}
+      >
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="roi-certificate-title"
+          onClick={(e) => e.stopPropagation()}
           initial={{ opacity: 0, scale: 0.98, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.98, y: 8 }}
-          className="relative w-full max-w-4xl bg-card text-foreground border border-border rounded-xl shadow-xl overflow-hidden my-8"
+          className="relative w-full max-w-4xl h-[90dvh] max-h-[90dvh] bg-card text-foreground border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col"
         >
           {/* Top Bar */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/60 shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-background text-foreground flex items-center justify-center border border-border">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
                 <Award size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-foreground">
-                  Campaign Performance & ROI Certificate
+                <h2 id="roi-certificate-title" className="text-sm font-semibold text-foreground">
+                  Campaign Performance &amp; ROI Certificate
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   Cryptographically signed performance summary for LinkedIn, X, and Slack sharing.
@@ -409,7 +427,7 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
             </button>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
             {/* ─── CONTROLS TOOLBAR (Layer 2 & ACV Estimator) ───────────────── */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-background border border-border text-xs">
               <div className="flex items-center gap-2.5 flex-wrap">

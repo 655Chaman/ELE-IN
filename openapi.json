@@ -6805,8 +6805,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateWorkspaceProfileRequest"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                ],
                 "title": "Payload"
               }
             }
@@ -7515,8 +7522,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BulkApplyDefaultsRequest"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                ],
                 "title": "Payload"
               }
             }
@@ -7556,8 +7570,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BulkTagRequest"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                ],
                 "title": "Payload"
               }
             }
@@ -7597,8 +7618,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BulkTagRequest"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                ],
                 "title": "Payload"
               }
             }
@@ -9112,6 +9140,22 @@
               "type": "string",
               "title": "Campaign Id"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
@@ -9269,6 +9313,51 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Get Campaign Detail Api Elein Campaigns  Campaign Id  Detail Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/campaigns/{campaign_id}/nodes": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Get Campaign Nodes",
+        "description": "Paranoia Layer 0 & 1 (API-11): Consolidated endpoint returning nodes and edges \nstrictly scoped by campaign_id and workspace_id to prevent route ambiguity.",
+        "operationId": "get_campaign_nodes_api_elein_campaigns__campaign_id__nodes_get",
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Campaign Nodes Api Elein Campaigns  Campaign Id  Nodes Get"
                 }
               }
             }
@@ -18230,6 +18319,24 @@
         "type": "object",
         "title": "BrandingUpdate"
       },
+      "BulkApplyDefaultsRequest": {
+        "properties": {
+          "account_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Account Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_ids"
+        ],
+        "title": "BulkApplyDefaultsRequest"
+      },
       "BulkStatusRequest": {
         "properties": {
           "opportunity_ids": {
@@ -18250,6 +18357,31 @@
           "status"
         ],
         "title": "BulkStatusRequest"
+      },
+      "BulkTagRequest": {
+        "properties": {
+          "account_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Account Ids"
+          },
+          "tag": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Tag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_ids",
+          "tag"
+        ],
+        "title": "BulkTagRequest"
       },
       "CalculateAttributionPayload": {
         "properties": {
@@ -24153,6 +24285,24 @@
         },
         "type": "object",
         "title": "UpdateWebhookRequest"
+      },
+      "UpdateWorkspaceProfileRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "title": "UpdateWorkspaceProfileRequest"
       },
       "UploadSalesNavRequest": {
         "properties": {

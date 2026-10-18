@@ -313,7 +313,8 @@ class EleInNodeExecutor:
         """
         if not action_type or not self.worker or not getattr(self.worker, "account_id", None) or not self.supabase:
             return
-        target_date = usage_date or get_effective_usage_date()
+        acc_tz = getattr(self.worker, "timezone", None) or getattr(self.worker, "tz_str", None)
+        target_date = usage_date or get_effective_usage_date(acc_tz)
         try:
             self.supabase.rpc("release_consumed_daily_action", {
                 "p_account_id": self.worker.account_id,
@@ -405,6 +406,7 @@ class EleInNodeExecutor:
             return ""
 
         from campaigns.backend.services.template_spintax_guard import clean_enrichment_value, resolve_spintax
+        from leads.backend.services.data_hygiene import DataHygieneService
 
         lead = data.get("lead") or data.get("lead_profile") or {}
         variables = data.get("variables") or {}
@@ -429,8 +431,21 @@ class EleInNodeExecutor:
                 logger.debug(f"_interpolate_template DB lookup fallback ignored: {e}")
 
         raw_first = clean_enrichment_value(lead.get("first_name") or lead.get("firstName") or variables.get("first_name") or variables.get("firstName") or data.get("first_name") or data.get("firstName"))
+        if raw_first:
+            try:
+                raw_first = DataHygieneService.clean_first_name(raw_first) if hasattr(DataHygieneService, "clean_first_name") else DataHygieneService.clean_name(raw_first)
+            except Exception as e:
+                logger.debug(f"_interpolate_template clean_first_name error on '{raw_first}': {e}")
+
         raw_last = clean_enrichment_value(lead.get("last_name") or lead.get("lastName") or variables.get("last_name") or variables.get("lastName") or data.get("last_name") or data.get("lastName"))
+
         raw_comp = clean_enrichment_value(lead.get("company") or lead.get("company_name") or variables.get("company") or data.get("company"))
+        if raw_comp:
+            try:
+                raw_comp = DataHygieneService.clean_company(raw_comp)
+            except Exception as e:
+                logger.debug(f"_interpolate_template clean_company error on '{raw_comp}': {e}")
+
         raw_title = clean_enrichment_value(lead.get("title") or lead.get("job_title") or variables.get("title") or data.get("title"))
         raw_ind = clean_enrichment_value(lead.get("industry") or variables.get("industry") or data.get("industry"))
         raw_loc = clean_enrichment_value(lead.get("location") or lead.get("city") or variables.get("location") or data.get("location"))
@@ -440,11 +455,13 @@ class EleInNodeExecutor:
         raw_lookup = {
             "first_name": raw_first,
             "firstname": raw_first,
+            "first_name_clean": raw_first,
             "last_name": raw_last,
             "lastname": raw_last,
             "name": f"{raw_first} {raw_last}".strip(),
             "company": raw_comp,
             "company_name": raw_comp,
+            "company_clean": raw_comp,
             "title": raw_title,
             "job_title": raw_title,
             "industry": raw_ind,
@@ -458,20 +475,49 @@ class EleInNodeExecutor:
 
         for k, v in variables.items():
             if isinstance(k, str) and isinstance(v, (str, int, float)):
-                raw_lookup[k.lower()] = clean_enrichment_value(v)
+                kl = k.lower()
+                val = clean_enrichment_value(v)
+                if kl in ("first_name", "firstname", "first_name_clean"):
+                    try:
+                        val = DataHygieneService.clean_first_name(val) if hasattr(DataHygieneService, "clean_first_name") else DataHygieneService.clean_name(val)
+                    except Exception:
+                        pass
+                elif kl in ("company", "company_name", "company_clean"):
+                    try:
+                        val = DataHygieneService.clean_company(val)
+                    except Exception:
+                        pass
+                raw_lookup[kl] = val
 
         for k, v in data.items():
             if not k.startswith("_") and isinstance(k, str) and isinstance(v, (str, int, float)) and k.lower() not in raw_lookup:
-                raw_lookup[k.lower()] = clean_enrichment_value(v)
+                kl = k.lower()
+                val = clean_enrichment_value(v)
+                if kl in ("first_name", "firstname", "first_name_clean"):
+                    try:
+                        val = DataHygieneService.clean_first_name(val) if hasattr(DataHygieneService, "clean_first_name") else DataHygieneService.clean_name(val)
+                    except Exception:
+                        pass
+                elif kl in ("company", "company_name", "company_clean"):
+                    try:
+                        val = DataHygieneService.clean_company(val)
+                    except Exception:
+                        pass
+                raw_lookup[kl] = val
+
+        clean_first_val = raw_lookup.get("first_name") or raw_first
+        clean_comp_val = raw_lookup.get("company") or raw_comp
 
         lookup = {
-            "first_name": raw_first or "there",
-            "firstname": raw_first or "there",
+            "first_name": clean_first_val or "there",
+            "firstname": clean_first_val or "there",
+            "first_name_clean": clean_first_val or "there",
             "last_name": raw_last,
             "lastname": raw_last,
-            "name": f"{raw_first} {raw_last}".strip() or "there",
-            "company": raw_comp or "your company",
-            "company_name": raw_comp or "your company",
+            "name": f"{clean_first_val} {raw_last}".strip() or "there",
+            "company": clean_comp_val or "your company",
+            "company_name": clean_comp_val or "your company",
+            "company_clean": clean_comp_val or "your company",
             "title": raw_title or "your role",
             "job_title": raw_title or "your role",
             "industry": raw_ind or "your industry",
@@ -2223,8 +2269,8 @@ class EleInNodeExecutor:
                                If worker is missing or fails, gracefully returns 'Not connected' rather than crashing.
         Layer 2 (Paranoia): Explicitly standardizes branch to Branch.CONNECTED.value or Branch.NOT_CONNECTED.value.
         """
-        # Fast path: check payload data
-        if data.get("is_connected") is True or data.get("connected") is True:
+        # Fast path: check payload data (ENG-12: Strict boolean coercion)
+        if self._to_bool(data.get("is_connected")) or self._to_bool(data.get("connected")):
             return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True}
         
         lead_id = data.get("_lead_id") or data.get("lead_id")
@@ -2233,7 +2279,7 @@ class EleInNodeExecutor:
                 res = self.supabase.table("leads").select("status, is_connected").eq("id", lead_id).execute()
                 if res.data:
                     row = res.data[0]
-                    if row.get("is_connected") is True or str(row.get("status", "")).lower() in ("connected", "1st"):
+                    if self._to_bool(row.get("is_connected")) or str(row.get("status", "")).lower() in ("connected", "1st"):
                         return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True}
             except Exception as e:
                 logger.warning(f"if_connected db query error: {e}")
@@ -2686,7 +2732,7 @@ class EleInNodeExecutor:
                 or data.get("variables", {}).get("is_premium")
             )
             if cached_prem is not None:
-                is_premium = bool(cached_prem)
+                is_premium = self._to_bool(cached_prem)
                 branch = Branch.PREMIUM.value if is_premium else Branch.FREE.value
                 return {"status": "success", "branch": branch, "is_premium": is_premium, "source": "cache"}
 
@@ -2761,7 +2807,7 @@ class EleInNodeExecutor:
                 or data.get("variables", {}).get("is_recently_active")
             )
             if cached is not None:
-                is_active = bool(cached)
+                is_active = self._to_bool(cached)
                 branch = Branch.ACTIVE.value if is_active else Branch.INACTIVE.value
                 return {"status": "success", "branch": branch, "active": is_active, "source": "cache"}
 
@@ -2790,7 +2836,7 @@ class EleInNodeExecutor:
                 or data.get("variables", {}).get("has_recent_posts")
             )
             if cached is not None:
-                has_posts = bool(cached)
+                has_posts = self._to_bool(cached)
                 branch = Branch.HAS_POSTS.value if has_posts else Branch.NO_POSTS.value
                 return {"status": "success", "branch": branch, "has_posts": has_posts, "source": "cache"}
 
@@ -2887,7 +2933,7 @@ class EleInNodeExecutor:
                 or data.get("variables", {}).get("is_hiring")
             )
             if cached_hiring is not None:
-                is_hiring = bool(cached_hiring)
+                is_hiring = self._to_bool(cached_hiring)
                 branch = Branch.HIRING.value if is_hiring else Branch.NOT_HIRING.value
                 return {"status": "success", "branch": branch, "hiring": is_hiring, "source": "cache"}
 
@@ -3974,7 +4020,7 @@ Respond ONLY with valid JSON."""
                         res = self.supabase.table("leads").select("has_replied, last_message_received, reply_sentiment").eq("id", lead_id).execute()
                         if res.data:
                             row = res.data[0]
-                            has_replied_db = bool(row.get("has_replied"))
+                            has_replied_db = self._to_bool(row.get("has_replied"))
                             sentiment = row.get("reply_sentiment")
                             reply_text = row.get("last_message_received") or ""
                     except Exception as e:

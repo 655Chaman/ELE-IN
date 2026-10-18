@@ -68,31 +68,38 @@ def distributed_workspace_lock(
     
     mem_acquired = in_memory_lock.acquire(blocking=blocking, timeout=5.0 if blocking else -1)
     if not mem_acquired:
-        yield False
+        try:
+            yield False
+        finally:
+            pass
         return
 
     client = supabase if supabase is not None else get_lock_client()
 
-    if client is not None:
-        try:
-            rpc_res = client.rpc('try_acquire_distributed_lock', {
-                'p_lock_name': lock_name,
-                'p_ttl_seconds': ttl_seconds
-            }).execute()
-            if rpc_res and hasattr(rpc_res, 'data') and isinstance(rpc_res.data, bool):
-                acquired_db = rpc_res.data
-                if not acquired_db:
-                    # Database lock held by another worker / pod
-                    in_memory_lock.release()
-                    yield False
-                    return
-            else:
-                acquired_db = False
-        except Exception as rpc_err:
-            logger.debug(f"[DistributedLock] DB lock RPC fallback for {lock_name}: {rpc_err}")
-            acquired_db = False
-
     try:
+        if client is not None:
+            try:
+                rpc_res = client.rpc('try_acquire_distributed_lock', {
+                    'p_lock_name': lock_name,
+                    'p_ttl_seconds': ttl_seconds
+                }).execute()
+                if rpc_res and hasattr(rpc_res, 'data') and isinstance(rpc_res.data, bool):
+                    acquired_db = rpc_res.data
+                    if not acquired_db:
+                        # Database lock held by another worker / pod
+                        try:
+                            in_memory_lock.release()
+                        except RuntimeError:
+                            pass
+                        mem_acquired = False
+                        yield False
+                        return
+                else:
+                    acquired_db = False
+            except Exception as rpc_err:
+                logger.debug(f"[DistributedLock] DB lock RPC fallback for {lock_name}: {rpc_err}")
+                acquired_db = False
+
         yield True
     finally:
         if acquired_db and client is not None:
@@ -102,10 +109,11 @@ def distributed_workspace_lock(
                 }).execute()
             except Exception as rel_err:
                 logger.warning(f"[DistributedLock] Failed to release DB lock {lock_name}: {rel_err}")
-        try:
-            in_memory_lock.release()
-        except RuntimeError:
-            pass
+        if mem_acquired:
+            try:
+                in_memory_lock.release()
+            except RuntimeError:
+                pass
 
 # Retain backward-compatible references for test suites
 _auto_recharge_mutex = _get_in_memory_lock("global_auto_recharge")

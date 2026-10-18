@@ -3,7 +3,8 @@ import useSWR from 'swr';
 import { 
   Filter, Layers, Sparkles, Plus, Trash2, Play, CheckCircle2, RefreshCw, 
   Sliders, X, ShieldCheck, AlertCircle, ArrowRight, Zap, Users, Target, 
-  Compass, Lock, Building, UserCheck, Flame, Radio, Award, Check, ExternalLink, Download
+  Compass, Lock, Building, UserCheck, Flame, Radio, Award, Check, ExternalLink, Download,
+  RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -18,6 +19,7 @@ interface DynamicSegmentationStudioProps {
   initialListId?: string;
   onClose?: () => void;
   onRulesSaved?: () => void;
+  canDynamicSegmentation?: boolean;
 }
 
 interface RuleCondition {
@@ -64,10 +66,15 @@ const EMAIL_VERIFICATION_OPTIONS = [
   { value: 'unverified', label: 'Unverified / Raw' }
 ];
 
-export function DynamicSegmentationStudioModal({ initialListId, onClose, onRulesSaved }: DynamicSegmentationStudioProps) {
+export function DynamicSegmentationStudioModal({ 
+  initialListId, 
+  onClose, 
+  onRulesSaved,
+  canDynamicSegmentation
+}: DynamicSegmentationStudioProps) {
   const { openPaywall } = usePaywall();
   const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
-  const isPro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE';
+  const isPro = canDynamicSegmentation ?? (billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE');
 
   // Data fetching for lists and campaigns
   const { data: listsData, mutate: mutateLists } = useSWR<LeadList[]>('/api/elein/leads/lists', fetcher);
@@ -96,8 +103,31 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [previewData, setPreviewData] = useState<any>(null);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const handleResetDefaults = () => {
+    setMatchType('ALL');
+    setConditions([
+      { id: `cond-${Date.now()}-1`, field: 'seniority', operator: 'in', value: ['c_suite', 'founder', 'vp'] },
+      { id: `cond-${Date.now()}-2`, field: 'company_size', operator: 'in', value: ['11-50', '51-200', '201-500'] },
+      { id: `cond-${Date.now()}-3`, field: 'intent_tier', operator: 'equals', value: 'HOT' }
+    ]);
+    toast.success('Rules reset to default ICP configuration.');
+  };
 
   // Keep selected list in sync if initialListId changes
   useEffect(() => {
@@ -352,12 +382,23 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
   const selectedList = lists.find(l => l.id === selectedListId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-background/80 backdrop-blur-md overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-background/80 backdrop-blur-md overflow-hidden"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && onClose) {
+          onClose();
+        }
+      }}
+    >
       <motion.div 
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dynamic-segmentation-title"
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
-        className="w-full max-w-5xl bg-card border border-border/80 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-5xl bg-card border border-border/80 rounded-xl shadow-2xl overflow-hidden flex flex-col h-[90dvh] max-h-[90dvh]"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
         <div className="px-6 py-5 border-b border-border/60 flex items-center justify-between bg-muted/20 shrink-0">
@@ -367,19 +408,21 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-foreground">Dynamic Lead Segmentation Studio</h2>
+                <h2 id="dynamic-segmentation-title" className="text-lg font-bold text-foreground">
+                  Dynamic Lead Segmentation Studio
+                </h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-primary/15 text-primary border border-primary/25">
-                  Phase 14 · Horizon 26
+                  Real-Time Rule Engine
                 </span>
                 {isPro ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                     <Sparkles size={10} /> Pro Enabled
                   </span>
                 ) : (
                   <button 
                     type="button"
                     onClick={() => openPaywall({ featureName: "Dynamic Segmentation Studio", minTier: "PRO" })}
-                    className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 hover:bg-amber-500/25 transition-all cursor-pointer"
+                    className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1 hover:bg-amber-500/25 transition-all cursor-pointer"
                   >
                     <Lock size={10} /> PRO Required
                   </button>
@@ -454,7 +497,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
             {selectedList && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                 selectedList.type === 'dynamic' 
-                  ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' 
+                  ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30' 
                   : 'bg-muted text-muted-foreground'
               }`}>
                 {selectedList.type === 'dynamic' ? 'Active Dynamic Segment' : 'Static List'}
@@ -463,9 +506,15 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-1.5 bg-muted/40 p-1 rounded-lg border border-border/50 self-start md:self-auto">
+          <div 
+            role="tablist"
+            aria-label="Dynamic Segmentation Tabs"
+            className="flex items-center gap-1.5 bg-muted/40 p-1 rounded-lg border border-border/50 self-start md:self-auto"
+          >
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'rules'}
               onClick={() => setActiveTab('rules')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'rules'
@@ -479,6 +528,8 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
 
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'auto_enroll'}
               onClick={() => setActiveTab('auto_enroll')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'auto_enroll'
@@ -486,7 +537,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Target size={13} className={activeTab === 'auto_enroll' ? 'text-emerald-400' : ''} />
+              <Target size={13} className={activeTab === 'auto_enroll' ? 'text-emerald-600 dark:text-emerald-400' : ''} />
               <span>Auto-Enrollment & Safety</span>
               {autoEnrollEnabled && targetCampaignId && (
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -495,6 +546,8 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
 
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'preview'}
               onClick={() => setActiveTab('preview')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'preview'
@@ -502,14 +555,14 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Users size={13} className={activeTab === 'preview' ? 'text-blue-400' : ''} />
+              <Users size={13} className={activeTab === 'preview' ? 'text-blue-600 dark:text-blue-400' : ''} />
               <span>Audience Radar ({previewData?.matching_count || 0})</span>
             </button>
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
           {activeTab === 'rules' && (
             <div className="space-y-6">
               {/* Match Mode Selector */}
@@ -556,14 +609,25 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                     <Filter size={14} className="text-primary" />
                     <span>Active Segmentation Conditions ({conditions.length})</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleAddCondition}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all cursor-pointer"
-                  >
-                    <Plus size={13} />
-                    <span>Add Filter Condition</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResetDefaults}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/70 hover:bg-muted/50 text-muted-foreground hover:text-foreground text-xs font-medium transition-all cursor-pointer"
+                      title="Reset conditions to default ICP configuration"
+                    >
+                      <RotateCcw size={12} />
+                      <span className="hidden sm:inline">Reset Defaults</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddCondition}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      <Plus size={13} />
+                      <span>Add Filter Condition</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2.5">
@@ -675,7 +739,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                                   }}
                                   className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all cursor-pointer ${
                                     isChecked
-                                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-bold'
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold'
                                       : 'bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60'
                                   }`}
                                 >
@@ -694,10 +758,10 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                                 className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all cursor-pointer ${
                                   cond.value === opt.value
                                     ? opt.value === 'HOT' 
-                                      ? 'bg-red-500/20 text-red-400 border-red-500/40 font-bold'
+                                      ? 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 font-bold'
                                       : opt.value === 'WARM'
-                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
-                                      : 'bg-blue-500/20 text-blue-300 border-blue-500/40 font-bold'
+                                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold'
+                                      : 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 font-bold'
                                     : 'bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60'
                                 }`}
                               >
@@ -714,7 +778,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                                 onClick={() => handleUpdateCondition(cond.id, { value: opt.value })}
                                 className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all cursor-pointer ${
                                   cond.value === opt.value
-                                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-bold'
+                                    ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border-indigo-500/30 font-bold'
                                     : 'bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60'
                                 }`}
                               >
@@ -731,7 +795,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                                 onClick={() => handleUpdateCondition(cond.id, { value: opt.value })}
                                 className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all cursor-pointer ${
                                   cond.value === opt.value
-                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 font-bold'
+                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold'
                                     : 'bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60'
                                 }`}
                               >
@@ -744,21 +808,56 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                             type="text"
                             value={cond.value || ''}
                             onChange={(e) => handleUpdateCondition(cond.id, { value: e.target.value })}
-                            placeholder={cond.field === 'job_title' ? 'e.g., VP Sales, Founder, Head of Growth' : 'e.g., Google, Stripe, Datadog'}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleRunEvaluation();
+                              }
+                            }}
+                            placeholder={cond.field === 'job_title' ? 'e.g., VP Sales, Founder, Head of Growth (Press Enter to dry-run)' : 'e.g., Google, Stripe, Datadog (Press Enter to dry-run)'}
                             className="w-full text-xs bg-background border border-border/80 rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           />
                         )}
                       </div>
 
-                      {/* Remove Button */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCondition(cond.id)}
-                        className="p-2 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
-                        title="Remove condition"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {/* Remove Button with Inline Confirmation */}
+                      {deleteConfirmId === cond.id ? (
+                        <div className="flex items-center gap-1 shrink-0 bg-destructive/10 border border-destructive/20 p-1 rounded-lg">
+                          <span className="text-[10px] font-semibold text-destructive px-1">Delete?</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleRemoveCondition(cond.id);
+                              setDeleteConfirmId(null);
+                            }}
+                            className="px-2 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-bold hover:bg-destructive/90 transition-colors cursor-pointer"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="px-2 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors cursor-pointer"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (conditions.length <= 1) {
+                              toast.error('You must maintain at least one condition in the segment.');
+                              return;
+                            }
+                            setDeleteConfirmId(cond.id);
+                          }}
+                          className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                          title="Remove condition"
+                          aria-label={`Remove condition ${index + 1}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </motion.div>
                   ))}
                 </div>
@@ -767,7 +866,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               {/* Evaluation Quick Radar Widget */}
               <div className="p-4 rounded-lg bg-card border border-border/70 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
                     <Radio size={18} className={isEvaluating ? 'animate-pulse' : ''} />
                   </div>
                   <div>
@@ -806,7 +905,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   type="button"
                   onClick={handleRunEvaluation}
                   disabled={isEvaluating}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shadow-xs"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shadow-xs disabled:opacity-50"
                 >
                   <RefreshCw size={13} className={isEvaluating ? 'animate-spin' : ''} />
                   <span>{isEvaluating ? 'Simulating Radar...' : 'Run Live Dry-Run Preview'}</span>
@@ -822,11 +921,11 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <Target size={18} className="text-emerald-400" />
+                      <Target size={18} className="text-emerald-600 dark:text-emerald-400" />
                       <span className="text-sm font-bold text-foreground">
                         Continuous Campaign Auto-Enrollment
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                         Zero Manual Work
                       </span>
                     </div>
@@ -841,8 +940,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                       checked={autoEnrollEnabled}
                       onChange={(e) => setAutoEnrollEnabled(e.target.checked)}
                       className="sr-only peer"
+                      aria-label="Toggle continuous campaign auto-enrollment"
                     />
-                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    <div className="w-11 h-6 bg-muted peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                   </label>
                 </div>
 
@@ -875,7 +975,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                 {/* CollisionGuard Card */}
                 <div className="p-4 rounded-lg bg-card border border-emerald-500/25 space-y-2.5 shadow-xs">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck size={16} className="text-emerald-400" />
+                    <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
                     <span className="text-xs font-bold text-foreground">
                       CollisionGuard™ Protection Active
                     </span>
@@ -888,13 +988,13 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                 {/* Disqualification Pause Guard Card */}
                 <div className="p-4 rounded-lg bg-card border border-amber-500/25 space-y-2.5 shadow-xs">
                   <div className="flex items-center gap-2">
-                    <AlertCircle size={16} className="text-amber-400" />
+                    <AlertCircle size={16} className="text-amber-600 dark:text-amber-400" />
                     <span className="text-xs font-bold text-foreground">
                       Disqualification Pause Guard
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    If an enrolled prospect changes job titles or switches companies such that they no longer meet these rules, outreach steps are automatically frozen with status <code className="text-[10px] text-amber-300">paused_disqualified</code>.
+                    If an enrolled prospect changes job titles or switches companies such that they no longer meet these rules, outreach steps are automatically frozen with status <code className="text-[10px] text-amber-700 dark:text-amber-300 font-mono font-semibold">paused_disqualified</code>.
                   </p>
                 </div>
               </div>
@@ -915,8 +1015,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                     checked={allowReEnrollment}
                     onChange={(e) => setAllowReEnrollment(e.target.checked)}
                     className="sr-only peer"
+                    aria-label="Allow re-enrollment for completed prospects"
                   />
-                  <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  <div className="w-11 h-6 bg-muted peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
             </div>
@@ -965,13 +1066,13 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   </div>
                   <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
                     <span className="text-[11px] text-muted-foreground block font-medium">Workspace ICP Match</span>
-                    <span className="text-xl font-black text-emerald-400 mt-0.5 block">
+                    <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">
                       {previewData?.match_percentage || 0}%
                     </span>
                   </div>
                   <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
                     <span className="text-[11px] text-muted-foreground block font-medium">HOT Intent Leads</span>
-                    <span className="text-xl font-black text-red-400 mt-0.5 block">
+                    <span className="text-xl font-black text-red-600 dark:text-red-400 mt-0.5 block">
                       {previewData?.intent_distribution?.HOT || 0}
                     </span>
                   </div>
@@ -996,11 +1097,13 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                       </span>
                       <button
                         type="button"
+                        disabled={isExporting}
                         onClick={async () => {
                           if (!selectedListId) {
                             toast.error('Please select a lead list first.');
                             return;
                           }
+                          setIsExporting(true);
                           try {
                             const res = await fetchWithAuth(`/api/leads/lists/${encodeURIComponent(selectedListId)}/dynamic-segment/export-csv`);
                             if (res.status === 402) {
@@ -1020,12 +1123,14 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                             toast.success('Qualifying segment prospects exported to CSV!');
                           } catch (e: any) {
                             toast.error(e.message || 'Failed to export CSV');
+                          } finally {
+                            setIsExporting(false);
                           }
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/80 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/80 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                       >
-                        <Download size={12} />
-                        <span>Export Qualifying CSV</span>
+                        <Download size={12} className={isExporting ? 'animate-bounce' : ''} />
+                        <span>{isExporting ? 'Exporting...' : 'Export Qualifying CSV'}</span>
                       </button>
                     </div>
                   </div>
@@ -1073,10 +1178,10 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                               <td className="py-3 px-4">
                                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
                                   lead.intent_tier === 'HOT'
-                                    ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                    ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'
                                     : lead.intent_tier === 'WARM'
-                                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                                    : 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                                    : 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
                                 }`}>
                                   {lead.intent_tier || 'HOT'}
                                 </span>
@@ -1096,7 +1201,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
         {/* Modal Footer Controls */}
         <div className="px-6 py-4 border-t border-border/60 bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-muted-foreground flex items-center gap-2">
-            <CheckCircle2 size={14} className="text-emerald-400" />
+            <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
             <span>
               {conditions.length} rule conditions active · {matchType === 'ALL' ? 'Strict AND matching' : 'Permissive OR matching'}
             </span>

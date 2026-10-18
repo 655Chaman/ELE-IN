@@ -1788,8 +1788,15 @@ function EleInCreateCampaignInner() {
       return { allowed: false, maxAllowedStep: 0, reason: "Please configure at least one outreach node in your sequence canvas." }
     }
     const { errors } = validateTree(currentRootNodes)
-    if (Object.values(errors).some(e => e.length > 0)) {
-      return { allowed: false, maxAllowedStep: 0, reason: "Please fix sequence node errors before continuing." }
+    const errEntries = Object.entries(errors).filter(([_, errList]) => errList.length > 0)
+    if (errEntries.length > 0) {
+      const [firstErrNodeId, firstErrMsgs] = errEntries[0]
+      useHRTreeStore.getState().selectNode(firstErrNodeId)
+      return {
+        allowed: false,
+        maxAllowedStep: 0,
+        reason: `Node ${firstErrNodeId}: ${firstErrMsgs[0] || "Incomplete node configuration."}`
+      }
     }
 
     if (targetStep === 1) return { allowed: true, maxAllowedStep: 1 }
@@ -1832,27 +1839,50 @@ function EleInCreateCampaignInner() {
   const isLoadingCampaignRef = React.useRef<boolean>(Boolean(initialEditId))
   const isSavingRef = React.useRef<boolean>(false)
   const isRestoringRef = React.useRef<boolean>(true)
+  const isHydratedRef = React.useRef<boolean>(false)
   const idempotencyKeyRef = React.useRef<string>(
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `idemp_${Date.now()}_${Math.random().toString(36).slice(2)}`
   )
 
+  const markHydrationComplete = () => {
+    setTimeout(() => {
+      isRestoringRef.current = false
+      isHydratedRef.current = true
+    }, 100)
+  }
+
   useEffect(() => {
     isLoadingCampaignRef.current = isLoadingCampaign
   }, [isLoadingCampaign])
 
-  // R5: Scoped autosave subscription  -  active ONLY while EleInCreateCampaign is mounted
+  // R5 (UI-02): Scoped autosave subscription - active ONLY while EleInCreateCampaign is mounted and hydrated
   useEffect(() => {
     const unsubscribe = useHRTreeStore.subscribe((storeState) => {
-      // Paranoia Layer 1: Do not overwrite draft if restoring, saving/launching, or campaign is loading
-      if (isRestoringRef.current || isSavingRef.current || isLoadingCampaignRef.current) return
+      // Paranoia Layer 1 & 2: Do not overwrite draft if unhydrated, restoring, saving/launching, or campaign is loading
+      if (!isHydratedRef.current || isRestoringRef.current || isSavingRef.current || isLoadingCampaignRef.current) return
       saveDraftToLocalStorage(storeState)
     })
 
     return () => {
       unsubscribe()
     }
+  }, [])
+
+  // Paranoia Layer 2 (UI-12): Prevent accidental loss of unsaved canvas edits on browser close / reload / tab switch
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const state = useHRTreeStore.getState()
+      const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || Boolean(state.formState.campaignName)
+      if (hasUnsavedWork && !isSavingRef.current) {
+        e.preventDefault()
+        e.returnValue = "You have unsaved campaign changes. Are you sure you want to exit?"
+        return e.returnValue
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [])
 
   // On mount or route change: if ?resume=true, restore from localStorage. If edit mode, load from API
@@ -1881,7 +1911,7 @@ function EleInCreateCampaignInner() {
       try {
         localStorage.removeItem("elein_unsaved_draft")
       } catch (_) {}
-      isRestoringRef.current = false
+      markHydrationComplete()
       window.history.replaceState({}, '', '/elein/campaigns/new')
       return
     }
@@ -1892,10 +1922,14 @@ function EleInCreateCampaignInner() {
       const allTemplates = [...HR_TEMPLATES, ...useTemplatesStore.getState().customTemplates]
       const template = allTemplates.find(t => t.id === startId)
       if (template) {
-        useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges), [])
+        useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges, {
+          onCycleDetected: () => {
+            toast.warning("Sequence Loop Resolved", { description: "A loop in the template was automatically resolved to prevent canvas corruption." })
+          }
+        }), [])
         setState((prev: any) => ({ ...prev, campaignName: template.name }))
       }
-      isRestoringRef.current = false
+      markHydrationComplete()
       // clear url without reload
       window.history.replaceState({}, '', '/elein/campaigns/new')
       return
@@ -1918,7 +1952,7 @@ function EleInCreateCampaignInner() {
             toast.error("Campaign not found. It may have been deleted.")
             setIsLoadingCampaign(false)
             isLoadingCampaignRef.current = false
-            isRestoringRef.current = false
+            markHydrationComplete()
             navigate("/elein/campaigns")
             return
           }
@@ -1931,7 +1965,11 @@ function EleInCreateCampaignInner() {
           const senderIds = typeof rawSenders === "string" ? JSON.parse(rawSenders) : rawSenders
 
           if (Array.isArray(nodes) && nodes.length > 0) {
-            useHRTreeStore.getState().loadTree(dagToTree(nodes, Array.isArray(edges) ? edges : []), [])
+            useHRTreeStore.getState().loadTree(dagToTree(nodes, Array.isArray(edges) ? edges : [], {
+              onCycleDetected: () => {
+                toast.warning("Sequence Loop Resolved", { description: "A loop in the campaign sequence was automatically resolved." })
+              }
+            }), [])
           }
           setState((prev: any) => ({
             ...prev,
@@ -1950,14 +1988,14 @@ function EleInCreateCampaignInner() {
           setStep(0)
           setIsLoadingCampaign(false)
           isLoadingCampaignRef.current = false
-          isRestoringRef.current = false
+          markHydrationComplete()
         })
         .catch(err => {
           console.error("Failed to load campaign:", err)
           toast.error("Campaign not found. It may have been deleted.")
           setIsLoadingCampaign(false)
           isLoadingCampaignRef.current = false
-          isRestoringRef.current = false
+          markHydrationComplete()
           navigate("/elein/campaigns")
         })
       return
@@ -1974,7 +2012,7 @@ function EleInCreateCampaignInner() {
           navigateToStep(parsedStep)
         }
       }
-      isRestoringRef.current = false
+      markHydrationComplete()
       return
     }
     
@@ -1984,7 +2022,11 @@ function EleInCreateCampaignInner() {
       try {
         const draft = JSON.parse(draftStr)
         if (draft.nodes && draft.nodes.length > 0) {
-          useHRTreeStore.getState().loadTree(dagToTree(draft.nodes, draft.edges || []), [])
+          useHRTreeStore.getState().loadTree(dagToTree(draft.nodes, draft.edges || [], {
+            onCycleDetected: () => {
+              toast.warning("Sequence Loop Resolved", { description: "A loop in the draft sequence was automatically resolved." })
+            }
+          }), [])
         }
         if (draft.formState) {
           useHRTreeStore.getState().setFormState(draft.formState)
@@ -1998,26 +2040,14 @@ function EleInCreateCampaignInner() {
         console.error("Failed to parse or restore draft:", e)
         setStep(0)
       } finally {
-        isRestoringRef.current = false
+        markHydrationComplete()
       }
     } else {
       setStep(0)
-      isRestoringRef.current = false
+      markHydrationComplete()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, routeId])
-
-
-
-  // Warn user before close/reload
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
   
   const handleSaveDraft = async (status = "DRAFT") => {
     if (isSavingRef.current) return;
@@ -2251,8 +2281,16 @@ function EleInCreateCampaignInner() {
       }
 
       if (hasErrors) {
-        // DO NOT show generic error. Focus on the canvas.
-        toast.error("There are unmet prerequisites in your sequence.", { description: "Please fix the red errors on the nodes before continuing." })
+        const errEntries = Object.entries(errors).filter(([_, errList]) => errList.length > 0)
+        if (errEntries.length > 0) {
+          const [firstErrNodeId, firstErrMsgs] = errEntries[0]
+          useHRTreeStore.getState().selectNode(firstErrNodeId)
+          toast.error("Sequence Validation Incomplete", {
+            description: `Node ${firstErrNodeId}: ${firstErrMsgs[0] || "Incomplete node configuration."}`
+          })
+        } else {
+          toast.error("There are unmet prerequisites in your sequence.", { description: "Please fix the red errors on the nodes before continuing." })
+        }
         return
       }
     }
@@ -2371,7 +2409,11 @@ function EleInCreateCampaignInner() {
       {/* High-Converting In-Situ Paywall Modal */}
       <EleInPaywallModal
         isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
+        onClose={() => {
+          // Paranoia Layer 2 (UI-21): Save draft state before dismissing modal
+          saveDraftToLocalStorage(useHRTreeStore.getState());
+          setShowUpgradeModal(false);
+        }}
         campaignName={state.campaignName || "Untitled Campaign"}
         onSuccess={() => {
           toast.success("Account upgraded to Growth Tier! Activating your campaign...");
@@ -2412,6 +2454,11 @@ function EleInCreateCampaignInner() {
           if (step > 0) {
             setStep(step - 1)
           } else {
+            const currentStoreState = useHRTreeStore.getState()
+            const hasUnsaved = (currentStoreState.rootNodes && currentStoreState.rootNodes.length > 0) || Boolean(currentStoreState.formState.campaignName)
+            if (hasUnsaved && !window.confirm("You have unsaved campaign changes. Are you sure you want to exit?")) {
+              return
+            }
             navigate("/elein/campaigns")
           }
         }} 

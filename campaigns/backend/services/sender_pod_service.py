@@ -52,11 +52,13 @@ def _calculate_account_action_capacity(
     account: Dict[str, Any],
     action_type: str,
     supabase: Client,
-    effective_date: str
+    effective_date: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Layer 0 & Layer 1: Computes the account's physical daily capacity limit,
     consumed actions today, and remaining headroom for a specific action type.
+    Paranoia Layer 1 (ENG-10): Resolves target usage date using account timezone
+    to prevent midnight rollover quota resets in mid-business afternoon.
     """
     account_id = account.get("id")
     is_warmup = bool(account.get("is_warmup", False))
@@ -78,6 +80,10 @@ def _calculate_account_action_capacity(
         else:
             max_limit = limits_spec["mature"]
 
+    # Layer 1 Paranoia (ENG-10): Determine usage date by account's local timezone
+    acc_tz = account.get("timezone")
+    target_usage_date = get_effective_usage_date(acc_tz) if acc_tz else (effective_date or get_effective_usage_date())
+
     # Query consumed actions today across all campaigns for this account
     consumed = 0
     try:
@@ -85,7 +91,7 @@ def _calculate_account_action_capacity(
             .select("count") \
             .eq("account_id", account_id) \
             .eq("action_type", action_type) \
-            .eq("usage_date", effective_date) \
+            .eq("usage_date", target_usage_date) \
             .execute()
         if usage_res.data and len(usage_res.data) > 0:
             consumed = int(usage_res.data[0].get("count", 0))
@@ -146,7 +152,7 @@ def get_workspace_sender_pods(
     all_accounts = {}
     try:
         acc_res = supabase.table("accounts") \
-            .select("id, name, first_name, last_name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, linkedin_profile_url") \
+            .select("id, name, first_name, last_name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, linkedin_profile_url, timezone") \
             .eq("workspace_id", workspace_id) \
             .execute()
         all_accounts = {acc["id"]: acc for acc in (acc_res.data or [])}
@@ -154,7 +160,7 @@ def get_workspace_sender_pods(
         logger.warning(f"Failed to query accounts with pod columns, trying fallback: {a_err}")
         try:
             acc_res = supabase.table("accounts") \
-                .select("id, name, first_name, last_name, status, is_warmup, daily_connection_limit, daily_message_limit, linkedin_profile_url") \
+                .select("id, name, first_name, last_name, status, is_warmup, daily_connection_limit, daily_message_limit, linkedin_profile_url, timezone") \
                 .eq("workspace_id", workspace_id) \
                 .execute()
             all_accounts = {acc["id"]: acc for acc in (acc_res.data or [])}
@@ -426,7 +432,7 @@ def select_pod_sender(
 
     # Fetch candidate accounts
     candidates_res = supabase.table("accounts") \
-        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible") \
+        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, timezone") \
         .in_("id", account_ids) \
         .execute()
     candidate_accounts = candidates_res.data or []

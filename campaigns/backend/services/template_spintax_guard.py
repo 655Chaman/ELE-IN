@@ -38,10 +38,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def clean_enrichment_value(val: Any) -> str:
+def clean_enrichment_value(val: Any, field_type: Optional[str] = None) -> str:
     """
     Paranoia Layer 1: Scrubs poison strings ('None', 'null', 'undefined', 'N/A', 'nan')
     and control characters from scraped/imported lead fields.
+    If field_type is specified ('first_name' or 'company'), passes value through specialized
+    DataHygieneService sanitization routines.
     Returns empty string '' if value is nullish or a poison literal.
     """
     if val is None or isinstance(val, bool):
@@ -53,6 +55,18 @@ def clean_enrichment_value(val: Any) -> str:
         return ""
     if s.lower() in POISON_ENRICHMENT_VALUES:
         return ""
+
+    if field_type:
+        from leads.backend.services.data_hygiene import DataHygieneService
+        ft = str(field_type).lower().strip()
+        if ft in ("first_name", "firstname", "first"):
+            s = DataHygieneService.clean_first_name(s)
+        elif ft in ("company", "company_name", "account"):
+            s = DataHygieneService.clean_company(s)
+
+        if not s or s.lower() in POISON_ENRICHMENT_VALUES:
+            return ""
+
     return s
 
 
@@ -162,12 +176,13 @@ def validate_template_and_spintax_syntax(text: str, allowed_vars: Optional[Set[s
     }
 
 
-def resolve_spintax(text: str, seed: Optional[str] = None) -> str:
+def resolve_spintax(text: str, seed: Optional[str] = None, timeout_ms: int = 100) -> str:
     """
-    Paranoia Layer 0 & 1: Evaluates single-brace spintax '{Hi|Hello|Hey}' (including nested spintax)
+    Paranoia Layer 0 & 1 (ENG-11): Evaluates single-brace spintax '{Hi|Hello|Hey}' (including nested spintax)
     while leaving double-brace '{{variable}}' placeholders completely untouched.
     Uses a deterministic RNG when `seed` is provided so retries produce consistent phrasing.
-    Bounded to MAX_SPINTAX_DEPTH and MAX_TEMPLATE_CHARS to prevent ReDoS / event loop hangs.
+    Bounded to MAX_SPINTAX_DEPTH (5) and a hard execution timeout (100ms) to prevent
+    ReDoS and worker event loop hangs.
     """
     if not text or not isinstance(text, str) or "{" not in text:
         return text or ""
@@ -177,6 +192,9 @@ def resolve_spintax(text: str, seed: Optional[str] = None) -> str:
         text = text[:MAX_TEMPLATE_CHARS]
 
     rng = random.Random(seed) if seed is not None else random
+
+    import time
+    start_time = time.monotonic()
 
     # Temporarily protect '{{...}}' blocks
     protected_tokens: List[str] = []
@@ -190,7 +208,11 @@ def resolve_spintax(text: str, seed: Optional[str] = None) -> str:
 
     # Resolve innermost '{opt1|opt2}' blocks that contain at least one '|'
     pattern = re.compile(r"\{([^{}|]+\|[^{}]*)\}")
-    for _ in range(MAX_SPINTAX_DEPTH + 2):
+    for _ in range(MAX_SPINTAX_DEPTH):
+        if (time.monotonic() - start_time) * 1000.0 > timeout_ms:
+            logger.warning("Spintax resolution exceeded safety timeout threshold (%d ms). Halting resolution.", timeout_ms)
+            break
+
         if not pattern.search(working):
             break
 
