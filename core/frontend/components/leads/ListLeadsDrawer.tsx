@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import useSWR from "swr"
 import { Users, X, Trash2, Search, Download, CheckSquare, Square, Check, AlertTriangle, Loader2, Lock, ArrowRight, Zap } from "lucide-react"
@@ -21,6 +21,21 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
   const { data: billingData } = useSWR<{ tier?: string; tier_limits?: any }>('/api/elein/workspaces/billing', fetcher)
   const tier = billingData?.tier || 'FREE'
   const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
+
+  // Hierarchical Escape key dismiss
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showConfirmDelete) {
+          if (!isBatchRemoving) setShowConfirmDelete(false)
+        } else {
+          onClose()
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [showConfirmDelete, isBatchRemoving, onClose])
 
   const leadList = leads?.data || []
 
@@ -188,10 +203,15 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex justify-end">
+    <div 
+      className="fixed inset-0 z-[60] flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="list-leads-drawer-title"
+    >
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
         onClick={onClose}
       />
       <motion.div 
@@ -202,7 +222,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/10">
           <div>
-            <h2 className="text-xl font-bold text-card-foreground flex items-center gap-2">
+            <h2 id="list-leads-drawer-title" className="text-xl font-bold text-card-foreground flex items-center gap-2">
               <Users size={20} className="text-primary" />
               {list.name}
             </h2>
@@ -218,10 +238,15 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
               title={!isPro ? "Free Plan: 25 Leads Sample. Upgrade for Unlimited & Unmasked." : "Export to CSV"}
             >
-              {!isPro ? <Lock size={12} className="text-amber-500" /> : <Download size={13} />}
+              {!isPro ? <Lock size={12} className="text-amber-600 dark:text-amber-400" /> : <Download size={13} />}
               <span>{!isPro ? "Export CSV (25 Free)" : "Export CSV"}</span>
             </button>
-            <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer">
+            <button 
+              type="button" 
+              onClick={onClose} 
+              aria-label="Close leads drawer"
+              className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
               <X size={18} />
             </button>
           </div>
@@ -231,7 +256,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         {!isPro && (
           <div className="px-6 py-2.5 bg-gradient-to-r from-amber-500/10 via-sky-500/5 to-transparent border-b border-border/50 flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Lock size={12} className="text-amber-500 shrink-0" />
+              <Lock size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />
               <span>Free tier limits CSV exports to <strong>25 sample leads</strong> with masked emails.</span>
             </div>
             <button
@@ -255,10 +280,15 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search by name, company, or job title…"
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-border/80 bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-border/80 bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               {search && (
-                <button type="button" onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button 
+                  type="button" 
+                  onClick={() => setSearch("")} 
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full hover:bg-muted"
+                >
                   <X size={12} />
                 </button>
               )}
@@ -354,10 +384,10 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                             {lead.social_intent_score > 0 && (
                               <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${
                                 lead.social_intent_tier === 'HOT'
-                                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                  ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25'
                                   : lead.social_intent_tier === 'WARM'
-                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                  : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25'
+                                  : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25'
                               }`}>
                                 {lead.social_intent_score} Intent
                               </span>
@@ -446,16 +476,23 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         {/* Batch Delete Confirmation Modal (Paranoia Framework Layer 1 & 2) */}
         <AnimatePresence>
           {showConfirmDelete && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div 
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="confirm-batch-delete-title"
+              onClick={() => !isBatchRemoving && setShowConfirmDelete(false)}
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
                 className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full mx-4"
               >
                 <div className="flex items-center gap-3 text-destructive mb-3">
                   <AlertTriangle size={24} />
-                  <h3 className="text-lg font-bold text-foreground">Remove {selectedIds.size} Leads?</h3>
+                  <h3 id="confirm-batch-delete-title" className="text-lg font-bold text-foreground">Remove {selectedIds.size} Leads?</h3>
                 </div>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-6">
                   Are you sure you want to remove <span className="font-semibold text-foreground">{selectedIds.size} leads</span> from <span className="font-semibold text-foreground">"{list.name}"</span>? This will not delete them from active campaigns.
@@ -465,7 +502,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                     type="button"
                     onClick={() => setShowConfirmDelete(false)}
                     disabled={isBatchRemoving}
-                    className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     Cancel
                   </button>
@@ -473,7 +510,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                     type="button"
                     onClick={handleBatchRemove}
                     disabled={isBatchRemoving}
-                    className="px-4 py-2 rounded-lg bg-destructive hover:bg-destructive/90 text-sm font-bold text-white transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg bg-destructive hover:bg-destructive/90 text-sm font-bold text-white transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
                   >
                     {isBatchRemoving ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                     <span>{isBatchRemoving ? "Removing..." : "Remove Leads"}</span>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import useSWR from "swr"
 import {
@@ -70,33 +70,33 @@ interface FeedItem {
 const SIGNAL_LABELS: Record<string, { label: string; color: string; dotColor: string }> = {
   HIRING_EXPANSION: {
     label: "Hiring & Expansion",
-    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-    dotColor: "bg-emerald-400"
+    color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+    dotColor: "bg-emerald-500"
   },
   TECH_STACK_PAIN: {
     label: "Tech Stack Friction",
-    color: "bg-rose-500/10 text-rose-400 border-rose-500/30",
-    dotColor: "bg-rose-400"
+    color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
+    dotColor: "bg-rose-500"
   },
   TOOL_EVALUATION: {
     label: "Tool Evaluation",
-    color: "bg-amber-500/10 text-amber-400 border-amber-500/30",
-    dotColor: "bg-amber-400"
+    color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30",
+    dotColor: "bg-amber-500"
   },
   EXECUTIVE_PROMOTION: {
     label: "Executive Promotion",
-    color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
-    dotColor: "bg-indigo-400"
+    color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
+    dotColor: "bg-indigo-500"
   },
   FUNDING_ANNOUNCEMENT: {
     label: "Funding Round",
-    color: "bg-sky-500/10 text-sky-400 border-sky-500/30",
-    dotColor: "bg-sky-400"
+    color: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
+    dotColor: "bg-sky-500"
   },
   GENERAL_THOUGHT_LEADERSHIP: {
     label: "Thought Leadership",
-    color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
-    dotColor: "bg-indigo-400"
+    color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
+    dotColor: "bg-indigo-500"
   },
 }
 
@@ -155,6 +155,27 @@ export function SocialSignalRadarView({
     senderAccountId?: string
     icebreaker: string
   } | null>(null)
+
+  // Close any active modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (cooldownWarning) {
+          setCooldownWarning(null)
+        } else if (collisionWarning) {
+          setCollisionWarning(null)
+        } else if (enrollingLead) {
+          setEnrollingLead(null)
+        } else if (showBatchModal) {
+          setShowBatchModal(false)
+        } else if (draftLead) {
+          setDraftLead(null)
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [cooldownWarning, collisionWarning, enrollingLead, showBatchModal, draftLead])
 
   // API Queries
   const feedEndpoint = tierFilter !== "ALL"
@@ -685,10 +706,10 @@ export function SocialSignalRadarView({
             const isHot = lead.social_intent_tier === "HOT"
             const isWarm = lead.social_intent_tier === "WARM"
             const badgeBg = isHot
-              ? "bg-red-500/15 text-red-300 border-red-500/30"
+              ? "bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30"
               : isWarm
-              ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-              : "bg-blue-500/15 text-blue-300 border-blue-500/30"
+              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+              : "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30"
 
             return (
               <motion.div
@@ -827,7 +848,7 @@ export function SocialSignalRadarView({
                         onClick={() => handleCopyText(lead.id, lead.social_icebreaker, "Icebreaker")}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-background border border-border/60 hover:border-primary/40 text-foreground transition-all cursor-pointer"
                       >
-                        {isCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        {isCopied ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
                         <span>{isCopied ? "Copied" : "Copy"}</span>
                       </button>
                       <button
@@ -856,21 +877,30 @@ export function SocialSignalRadarView({
       {/* AI Draft Studio Modal */}
       <AnimatePresence>
         {draftLead && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-background/80 backdrop-blur-sm overflow-hidden"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setDraftLead(null)
+            }}
+          >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="draft-studio-title"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.15 }}
-              className="w-full max-w-2xl p-6 rounded-xl bg-card border border-border shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+              className="w-full max-w-2xl rounded-xl bg-card border border-border shadow-2xl flex flex-col h-[90dvh] max-h-[90dvh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+              <div className="flex items-center justify-between border-b border-border/60 p-5 pb-4 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                     <Wand2 size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-foreground">
+                    <h3 id="draft-studio-title" className="text-sm font-bold text-foreground">
                       Intent Retargeting Draft Studio — {draftLead.first_name} {draftLead.last_name}
                     </h3>
                     <p className="text-[11px] text-muted-foreground">
@@ -882,14 +912,14 @@ export function SocialSignalRadarView({
                   type="button"
                   onClick={() => setDraftLead(null)}
                   aria-label="Close draft studio"
-                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
                 >
                   <X size={16} />
                 </button>
               </div>
 
               {/* Tone Selector */}
-              <div className="flex items-center justify-between gap-2 bg-muted/30 p-2 rounded-md border border-border/50">
+              <div className="mx-5 my-3 flex items-center justify-between gap-2 bg-muted/30 p-2 rounded-md border border-border/50 shrink-0">
                 <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 pl-1">
                   <SlidersHorizontal size={13} />
                   <span>Outreach Tone:</span>
@@ -918,94 +948,97 @@ export function SocialSignalRadarView({
                 </div>
               </div>
 
-              {isGeneratingDraft ? (
-                <div className="p-10 text-center space-y-3">
-                  <RotateCw size={24} className="animate-spin text-primary mx-auto" />
-                  <p className="text-xs text-muted-foreground">
-                    Crafting personalized connection note and follow-up message...
-                  </p>
-                </div>
-              ) : generatedDraft ? (
-                <div className="space-y-4">
-                  {/* Connection Note Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                        <Send size={13} className="text-primary" />
-                        <span>LinkedIn Connection Note (≤ 280 Chars)</span>
+              {/* Scrollable Body */}
+              <div className="px-5 pb-5 overflow-y-auto flex-1 space-y-4">
+                {isGeneratingDraft ? (
+                  <div className="p-10 text-center space-y-3">
+                    <RotateCw size={24} className="animate-spin text-primary mx-auto" />
+                    <p className="text-xs text-muted-foreground">
+                      Crafting personalized connection note and follow-up message...
+                    </p>
+                  </div>
+                ) : generatedDraft ? (
+                  <div className="space-y-4">
+                    {/* Connection Note Section */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                          <Send size={13} className="text-primary" />
+                          <span>LinkedIn Connection Note (≤ 280 Chars)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] font-mono font-semibold ${
+                            generatedDraft.connection_note.length > 280
+                              ? "text-rose-600 dark:text-rose-400 font-bold"
+                              : generatedDraft.connection_note.length > 260
+                              ? "text-amber-700 dark:text-amber-400"
+                              : "text-muted-foreground"
+                          }`}>
+                            {generatedDraft.connection_note.length}/280 chars
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText("cn-note", generatedDraft.connection_note, "Connection note")}
+                            className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                          >
+                            Copy Note
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[11px] font-mono font-semibold ${
-                          generatedDraft.connection_note.length > 280
-                            ? "text-rose-400 font-bold"
-                            : generatedDraft.connection_note.length > 260
-                            ? "text-amber-400"
-                            : "text-muted-foreground"
-                        }`}>
-                          {generatedDraft.connection_note.length}/280 chars
-                        </span>
+                      <textarea
+                        rows={3}
+                        value={generatedDraft.connection_note}
+                        onChange={(e) => setGeneratedDraft({ ...generatedDraft, connection_note: e.target.value })}
+                        className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
+                      />
+                      {generatedDraft.connection_note.length > 280 && (
+                        <p className="text-[10px] text-rose-600 dark:text-rose-400 flex items-center gap-1 font-medium">
+                          <AlertTriangle size={11} />
+                          <span>LinkedIn limits connection requests to 280-300 characters. Trim slightly before sending.</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Follow-up Message Section */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                          <MessageCircle size={13} className="text-primary" />
+                          <span>Conversational Follow-Up Message (3-Paragraph Sequence)</span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => handleCopyText("cn-note", generatedDraft.connection_note, "Connection note")}
+                          onClick={() => handleCopyText("fu-msg", generatedDraft.follow_up_message, "Follow-up message")}
                           className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                         >
-                          Copy Note
+                          Copy Follow-up
                         </button>
                       </div>
+                      <textarea
+                        rows={6}
+                        value={generatedDraft.follow_up_message}
+                        onChange={(e) => setGeneratedDraft({ ...generatedDraft, follow_up_message: e.target.value })}
+                        className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
+                      />
                     </div>
-                    <textarea
-                      rows={3}
-                      value={generatedDraft.connection_note}
-                      onChange={(e) => setGeneratedDraft({ ...generatedDraft, connection_note: e.target.value })}
-                      className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
-                    />
-                    {generatedDraft.connection_note.length > 280 && (
-                      <p className="text-[10px] text-rose-400 flex items-center gap-1 font-medium">
-                        <AlertTriangle size={11} />
-                        <span>LinkedIn limits connection requests to 280-300 characters. Trim slightly before sending.</span>
-                      </p>
-                    )}
-                  </div>
 
-                  {/* Follow-up Message Section */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                        <MessageCircle size={13} className="text-primary" />
-                        <span>Conversational Follow-Up Message (3-Paragraph Sequence)</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyText("fu-msg", generatedDraft.follow_up_message, "Follow-up message")}
-                        className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
-                      >
-                        Copy Follow-up
-                      </button>
+                    {/* Metadata Pill */}
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/20 p-2.5 rounded-md border border-border/40">
+                      <span className="flex items-center gap-1">
+                        <Info size={12} className="text-primary" />
+                        <span>Angle: <strong>{generatedDraft.angle}</strong></span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} />
+                        <span>{generatedDraft.estimated_read_time}</span>
+                      </span>
                     </div>
-                    <textarea
-                      rows={6}
-                      value={generatedDraft.follow_up_message}
-                      onChange={(e) => setGeneratedDraft({ ...generatedDraft, follow_up_message: e.target.value })}
-                      className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
-                    />
                   </div>
-
-                  {/* Metadata Pill */}
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/20 p-2.5 rounded-md border border-border/40">
-                    <span className="flex items-center gap-1">
-                      <Info size={12} className="text-primary" />
-                      <span>Angle: <strong>{generatedDraft.angle}</strong></span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock size={12} />
-                      <span>{generatedDraft.estimated_read_time}</span>
-                    </span>
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
 
               {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
+              <div className="flex items-center justify-end gap-2 p-4 border-t border-border/60 bg-muted/10 shrink-0">
                 <button
                   type="button"
                   onClick={() => setDraftLead(null)}
@@ -1037,26 +1070,35 @@ export function SocialSignalRadarView({
       {/* Batch Scan Modal */}
       <AnimatePresence>
         {showBatchModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-hidden"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowBatchModal(false)
+            }}
+          >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="batch-scan-title"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.15 }}
               className="w-full max-w-md p-6 rounded-xl bg-card border border-border shadow-xl space-y-4"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                     <Radio size={16} />
                   </div>
-                  <h3 className="text-sm font-bold text-foreground">Launch Radar Scan on List</h3>
+                  <h3 id="batch-scan-title" className="text-sm font-bold text-foreground">Launch Radar Scan on List</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowBatchModal(false)}
                   aria-label="Close batch scan modal"
-                  className="text-muted-foreground hover:text-foreground text-xs p-1 rounded-md"
+                  className="text-muted-foreground hover:text-foreground text-xs p-1 rounded-md cursor-pointer"
                 >
                   <X size={14} />
                 </button>
@@ -1142,13 +1184,22 @@ export function SocialSignalRadarView({
       {/* Enroll Lead Modal with Sender Pod Selection */}
       <AnimatePresence>
         {enrollingLead && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-hidden"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEnrollingLead(null)
+            }}
+          >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="enroll-modal-title"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.15 }}
               className="w-full max-w-lg p-6 rounded-xl bg-card border border-border shadow-xl space-y-4"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1156,7 +1207,7 @@ export function SocialSignalRadarView({
                     <Send size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-foreground">
+                    <h3 id="enroll-modal-title" className="text-sm font-bold text-foreground">
                       Enroll {enrollingLead.first_name} {enrollingLead.last_name}
                     </h3>
                     <span className="text-[11px] text-muted-foreground">
@@ -1267,23 +1318,32 @@ export function SocialSignalRadarView({
       {/* Layer 2 Paranoia: CollisionGuard Conflict Dialog (409) */}
       <AnimatePresence>
         {collisionWarning && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-hidden"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setCollisionWarning(null)
+            }}
+          >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="collision-dialog-title"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.15 }}
               className="w-full max-w-md p-6 rounded-xl bg-card border border-rose-500/40 shadow-2xl space-y-4"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-md bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <div className="w-10 h-10 rounded-md bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
                   <ShieldAlert size={20} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">
+                  <h3 id="collision-dialog-title" className="text-sm font-bold text-foreground">
                     CollisionGuard Interlock Triggered
                   </h3>
-                  <p className="text-xs text-rose-300 font-medium mt-1 leading-relaxed">
+                  <p className="text-xs text-rose-600 dark:text-rose-300 font-medium mt-1 leading-relaxed">
                     {collisionWarning.detail}
                   </p>
                 </div>
@@ -1321,23 +1381,32 @@ export function SocialSignalRadarView({
       {/* Layer 2 Paranoia: Anti-Spam Cooldown Dialog (429) */}
       <AnimatePresence>
         {cooldownWarning && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-hidden"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setCooldownWarning(null)
+            }}
+          >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cooldown-dialog-title"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.15 }}
               className="w-full max-w-md p-6 rounded-xl bg-card border border-amber-500/40 shadow-2xl space-y-4"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <div className="w-10 h-10 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
                   <Clock size={20} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">
+                  <h3 id="cooldown-dialog-title" className="text-sm font-bold text-foreground">
                     14-Day Anti-Spam Cooldown Active
                   </h3>
-                  <p className="text-xs text-amber-300 font-medium mt-1 leading-relaxed">
+                  <p className="text-xs text-amber-700 dark:text-amber-300 font-medium mt-1 leading-relaxed">
                     {cooldownWarning.detail}
                   </p>
                 </div>

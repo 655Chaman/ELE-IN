@@ -29,7 +29,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
       <div className="flex items-center justify-center gap-2 mb-2">
         <h3 className="text-xl font-bold text-foreground">Connect HubSpot CRM</h3>
         {!isPro && (
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30 flex items-center gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
             <Lock size={10} /> Pro
           </span>
         )}

@@ -50,17 +50,17 @@ export function SalesNavImport() {
             Sales Navigator or Search URL
           </label>
           {validation.status === "valid_sales_nav" && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
               <CheckCircle2 size={13} /> Sales Nav Query
             </span>
           )}
           {validation.status === "valid_standard" && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
               <CheckCircle2 size={13} /> LinkedIn Search Query
             </span>
           )}
           {validation.status === "profile_warning" && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
               <AlertTriangle size={13} /> Single Profile
             </span>
           )}
@@ -142,7 +142,7 @@ export function SalesNavImport() {
         </div>
 
         <div className="text-right">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
             <ShieldCheck size={11} /> Stealth Safe
           </span>
         </div>

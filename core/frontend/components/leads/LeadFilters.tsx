@@ -169,7 +169,7 @@ export function LeadFilters({
           </span>
         </div>
         {campaignFilter === "unassigned" && totalFilteredLeads > 0 && (
-          <span className="text-xs font-medium text-emerald-500 flex items-center gap-1">
+          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
             Ready to enroll into a campaign
           </span>
         )}

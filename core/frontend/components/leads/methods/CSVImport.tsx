@@ -184,8 +184,14 @@ export function CSVImport() {
                 <a href="https://elesium.online" target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline font-semibold">(elesium.online)</a>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" checked={cleanData} onChange={(e) => setCleanData(e.target.checked)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                <input 
+                  type="checkbox" 
+                  checked={cleanData} 
+                  onChange={(e) => setCleanData(e.target.checked)} 
+                  aria-label="Toggle Elesium Data Hygiene"
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">Clean messy data before it hits the database. Automatically removes emojis, fixes ALL CAPS formatting, and drops corporate suffixes like "LLC/Inc.".</p>

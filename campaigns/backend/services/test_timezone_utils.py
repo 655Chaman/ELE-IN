@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 from campaigns.backend.services.timezone_utils import (
     is_valid_iana_timezone,
     resolve_target_timezone,
-    calculate_next_run_at
+    calculate_next_run_at,
+    calculate_next_run_with_jitter,
+    is_within_recipient_window,
 )
 
 def test_resolve_campaign_timezone_ignores_lead():
@@ -103,3 +105,96 @@ def test_dst_fall_back():
     # 09:00 AEST -> 23:00 UTC on the previous day (Apr 2, 23:00 UTC)
     expected = datetime(2023, 4, 2, 23, 0, 0, tzinfo=pytz.UTC)
     assert result == expected
+
+def test_resolve_lead_local_inferred_timezone(monkeypatch):
+    import sys
+    import types
+    # Mock LocationTimezoneService in sys.modules
+    mock_module = types.ModuleType("leads.backend.services.location_timezone_service")
+    class MockService:
+        @staticmethod
+        def infer_timezone(location=None, country=None, phone=None):
+            if country == "FR" or "Paris" in (location or ""):
+                return "Europe/Paris"
+            return None
+    mock_module.LocationTimezoneService = MockService
+    monkeypatch.setitem(sys.modules, "leads.backend.services.location_timezone_service", mock_module)
+
+    campaign = {"metadata": {"scheduling_mode": "lead_local_time", "timezone": "America/New_York"}}
+    lead = {"timezone": None, "location": "Paris, France", "country": "FR"}
+    assert resolve_target_timezone(campaign, lead) == "Europe/Paris"
+
+    # When inference returns None, falls back to campaign timezone
+    lead_unknown = {"timezone": "", "location": "Unknown", "country": "XX"}
+    assert resolve_target_timezone(campaign, lead_unknown) == "America/New_York"
+
+def test_jitter_inside_working_hours():
+    # If base_time is inside working window, calculate_next_run_with_jitter returns base_time without jitter
+    # Wed, 2023-10-18 12:00:00 UTC
+    base_time = datetime(2023, 10, 18, 12, 0, 0, tzinfo=pytz.UTC)
+    result = calculate_next_run_with_jitter(base_time, "UTC")
+    assert result == base_time
+
+def test_jitter_outside_working_hours():
+    # Wed, 2023-10-18 07:00:00 UTC (before 09:00)
+    base_time = datetime(2023, 10, 18, 7, 0, 0, tzinfo=pytz.UTC)
+    result = calculate_next_run_with_jitter(base_time, "UTC", jitter_range=(5, 25), seed_key="lead-1")
+    # Must be Wed 2023-10-18 between 09:05:00 and 09:25:00
+    earliest = datetime(2023, 10, 18, 9, 5, 0, tzinfo=pytz.UTC)
+    latest = datetime(2023, 10, 18, 9, 25, 0, tzinfo=pytz.UTC)
+    assert earliest <= result <= latest
+
+def test_jitter_deterministic_seed():
+    base_time = datetime(2023, 10, 18, 7, 0, 0, tzinfo=pytz.UTC)
+    r1 = calculate_next_run_with_jitter(base_time, "UTC", jitter_range=(5, 25), seed_key="lead-abc")
+    r2 = calculate_next_run_with_jitter(base_time, "UTC", jitter_range=(5, 25), seed_key="lead-abc")
+    assert r1 == r2
+
+def test_jitter_paranoia_layer_1_clamp():
+    # Paranoia Layer 1: Clamps jitter so it NEVER pushes past end_hour - 1 hour
+    # Default end_hour is 17, so end_hour - 1 is 16:00:00
+    base_time = datetime(2023, 10, 18, 7, 0, 0, tzinfo=pytz.UTC)
+    # Pass an absurd jitter range (500 to 600 minutes = 8+ hours)
+    result = calculate_next_run_with_jitter(base_time, "UTC", jitter_range=(500, 600), seed_key="extreme-lead")
+    max_allowed = datetime(2023, 10, 18, 16, 0, 0, tzinfo=pytz.UTC)
+    assert result <= max_allowed
+
+def test_jitter_paranoia_layer_2_friday_weekend_rollover():
+    # Friday, 2023-10-20 18:00:00 UTC (after 17:00)
+    base_time = datetime(2023, 10, 20, 18, 0, 0, tzinfo=pytz.UTC)
+    result = calculate_next_run_with_jitter(base_time, "UTC", jitter_range=(5, 25), seed_key="lead-fri")
+    # Must roll to Monday 2023-10-23 between 09:05 and 09:25
+    assert result.weekday() == 0  # Monday, NEVER Saturday (5) or Sunday (6)
+    earliest = datetime(2023, 10, 23, 9, 5, 0, tzinfo=pytz.UTC)
+    latest = datetime(2023, 10, 23, 9, 25, 0, tzinfo=pytz.UTC)
+    assert earliest <= result <= latest
+
+def test_jitter_paranoia_layer_2_weekend_rollover():
+    # Saturday, 2023-10-21 14:00:00 UTC
+    base_time = datetime(2023, 10, 21, 14, 0, 0, tzinfo=pytz.UTC)
+    result = calculate_next_run_with_jitter(base_time, "UTC", jitter_range=(5, 25), seed_key="lead-sat")
+    # Must roll to Monday 2023-10-23
+    assert result.weekday() == 0  # Monday
+    assert result.date() == datetime(2023, 10, 23).date()
+
+def test_is_within_recipient_window():
+    campaign = {"metadata": {"scheduling_mode": "campaign_timezone", "timezone": "UTC"}}
+    lead = {"id": "lead-42"}
+    
+    # 1. Inside window (Wed 12:00 UTC)
+    inside_dt = datetime(2023, 10, 18, 12, 0, 0, tzinfo=pytz.UTC)
+    is_open, tz_str, next_slot = is_within_recipient_window(lead, campaign, now_dt=inside_dt)
+    assert is_open is True
+    assert tz_str == "UTC"
+    assert next_slot == inside_dt
+
+    # 2. Outside window (Wed 20:00 UTC)
+    outside_dt = datetime(2023, 10, 18, 20, 0, 0, tzinfo=pytz.UTC)
+    is_open, tz_str, next_slot = is_within_recipient_window(lead, campaign, now_dt=outside_dt)
+    assert is_open is False
+    assert tz_str == "UTC"
+    # Rolls to Thursday 09:00 with jitter
+    assert next_slot.weekday() == 3  # Thursday
+    assert next_slot.hour == 9
+    assert 5 <= next_slot.minute <= 25
+

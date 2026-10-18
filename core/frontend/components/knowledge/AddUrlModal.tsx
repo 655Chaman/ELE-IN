@@ -137,7 +137,7 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
         </div>
         <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
           <span>Add your website</span>
-          {scrapeSuccess && <CheckCircle2 size={14} className="text-emerald-500" />}
+          {scrapeSuccess && <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />}
         </h3>
         <p className="text-xs text-muted-foreground mt-1 mb-3">
           {isCapped ? `Limit reached (${currentCount}/${maxAssets} docs)` : "Live extraction & vector indexing."}
@@ -191,7 +191,7 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
         {/* Success State Confirmation */}
         {scrapeSuccess && (
           <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+            <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div className="font-semibold text-[11px] flex items-center gap-1.5">
               <span>Website scraped &amp; added to AI memory!</span>
               <ElesiumLogo size={13} />

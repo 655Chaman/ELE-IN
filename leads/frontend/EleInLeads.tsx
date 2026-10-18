@@ -292,7 +292,7 @@ export function EleInLeads() {
             <Radio size={13} className={activeTab === "radar" ? "text-primary animate-pulse" : ""} />
             <span>Social Signal Radar</span>
             {hotCount > 0 ? (
-              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-md bg-red-500/15 text-red-400 border border-red-500/30 font-bold">
+              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 font-bold">
                 <Flame size={10} />
                 <span>{hotCount} Hot</span>
               </span>
@@ -415,12 +415,12 @@ export function EleInLeads() {
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                  <Database className="w-4 h-4 text-emerald-400" />
+                  <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-foreground">Free Lead Intelligence</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                       25 Sample Exports
                     </span>
                   </div>

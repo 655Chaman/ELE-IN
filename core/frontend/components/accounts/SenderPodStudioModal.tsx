@@ -272,7 +272,7 @@ export function SenderPodStudioModal({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-5xl bg-card border border-border shadow-2xl rounded-xl flex flex-col max-h-[90vh] overflow-hidden text-foreground"
+        className="w-full max-w-5xl bg-card border border-border shadow-2xl rounded-xl flex flex-col h-[90dvh] max-h-[90dvh] overflow-hidden text-foreground"
       >
         {/* Header */}
         <div className="p-5 border-b border-border flex items-center justify-between bg-muted/20 shrink-0">

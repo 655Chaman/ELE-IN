@@ -515,6 +515,7 @@ from campaigns.backend.services.timezone_utils import (
     is_working_hours,
     next_working_day_9am,
     calculate_next_run_at,
+    calculate_next_run_with_jitter,
     resolve_target_timezone,
     parse_schedule_config,
     safe_localize,
@@ -1005,7 +1006,7 @@ class EleInOrchestrator:
             if mode == "lead_local_time":
                 active_campaign_ids.append(c["id"])
             else:
-                tz_str = meta.get("timezone", "UTC")
+                tz_str = resolve_target_timezone(c, {})
                 if is_working_hours(tz_str, schedule=schedule):
                     active_campaign_ids.append(c["id"])
 
@@ -1165,7 +1166,11 @@ class EleInOrchestrator:
                     continue
                 
                 lead = leads_map.get(enrollment["lead_id"], {})
-                from campaigns.backend.services.timezone_utils import resolve_target_timezone, calculate_next_run_at
+                from campaigns.backend.services.timezone_utils import (
+                    resolve_target_timezone,
+                    calculate_next_run_at,
+                    calculate_next_run_with_jitter,
+                )
                 import pytz
                 
                 tz_str = resolve_target_timezone(campaign, lead)
@@ -1183,7 +1188,18 @@ class EleInOrchestrator:
                             supabase=self.supabase
                         )
                     else:
-                        next_run = calculate_next_run_at(datetime.utcnow().replace(tzinfo=pytz.UTC), tz_str, schedule=schedule)
+                        base_now = datetime.utcnow().replace(tzinfo=pytz.UTC)
+                        lead_seed = str(enrollment.get("lead_id") or state.get("id") or "")
+                        try:
+                            next_run = calculate_next_run_with_jitter(
+                                base_now,
+                                tz_str,
+                                schedule=schedule,
+                                seed_key=lead_seed,
+                            )
+                        except Exception as _je:
+                            logger.warning(f"[Orchestrator] calculate_next_run_with_jitter failed, falling back to calculate_next_run_at: {_je}")
+                            next_run = calculate_next_run_at(base_now, tz_str, schedule=schedule)
                     self.supabase.table("campaign_execution_states").update({
                         "status": "pending",
                         "next_run_at": next_run.isoformat(),

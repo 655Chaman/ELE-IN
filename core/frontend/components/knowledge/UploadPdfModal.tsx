@@ -118,7 +118,7 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
 
       <div>
         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-2">
-          {isCapped ? <Lock size={18} className="text-amber-500" /> : <UploadCloud size={18} className={isUploading ? 'animate-pulse' : ''} />}
+          {isCapped ? <Lock size={18} className="text-amber-600 dark:text-amber-400" /> : <UploadCloud size={18} className={isUploading ? 'animate-pulse' : ''} />}
         </div>
         <h3 className="font-semibold text-sm text-foreground">
           {isUploading ? "Uploading..." : isCapped ? "Upgrade to Upload Docs" : "Upload a Document"}
@@ -145,7 +145,7 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
           <span>Uploading...</span>
         ) : isCapped ? (
           <>
-            <Lock size={12} className="text-amber-500" />
+            <Lock size={12} className="text-amber-600 dark:text-amber-400" />
             <span>Unlock More Docs</span>
           </>
         ) : (

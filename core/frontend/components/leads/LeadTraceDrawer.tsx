@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { motion } from "motion/react"
 import useSWR from "swr"
 import { 
@@ -29,6 +29,17 @@ export function LeadTraceDrawer({
   const [filterStatus, setFilterStatus] = useState<"ALL" | "SUCCESS" | "FAILED" | "PENDING">("ALL")
   const [copiedTrace, setCopiedTrace] = useState(false)
   const [isRetrying, setIsRetrying] = useState(false)
+
+  // Escape key dismiss
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [onClose])
 
   const rawTraces: any[] = Array.isArray(traces) ? traces : []
 
@@ -84,7 +95,12 @@ export function LeadTraceDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex justify-end">
+    <div 
+      className="fixed inset-0 z-[70] flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="lead-trace-title"
+    >
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -106,7 +122,7 @@ export function LeadTraceDrawer({
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Network size={16} />
               </div>
-              <h2 className="text-base font-bold text-foreground">
+              <h2 id="lead-trace-title" className="text-base font-bold text-foreground">
                 Autonomous Execution Trace
               </h2>
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary border border-primary/20">
@@ -121,20 +137,23 @@ export function LeadTraceDrawer({
             <button
               onClick={handleCopyJson}
               title="Copy Trace JSON"
-              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+              aria-label="Copy trace JSON"
+              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-              {copiedTrace ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+              {copiedTrace ? <Check size={16} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={16} />}
             </button>
             <button
               onClick={handleExportJson}
               title="Download Trace JSON"
-              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+              aria-label="Download trace JSON"
+              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Download size={16} />
             </button>
             <button 
               onClick={onClose} 
-              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer ml-1"
+              aria-label="Close execution trace drawer"
+              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer ml-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <X size={18} />
             </button>
@@ -149,7 +168,7 @@ export function LeadTraceDrawer({
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   filterStatus === status 
                     ? "bg-primary text-primary-foreground font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
@@ -212,11 +231,11 @@ export function LeadTraceDrawer({
                     {/* Status Node Icon */}
                     <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-background bg-card shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 shadow-sm">
                       {isSuccess ? (
-                        <CheckCircle2 size={16} className="text-emerald-500" />
+                        <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
                       ) : isError ? (
                         <AlertCircle size={16} className="text-destructive" />
                       ) : (
-                        <Clock size={16} className="text-amber-500 animate-pulse" />
+                        <Clock size={16} className="text-amber-600 dark:text-amber-400 animate-pulse" />
                       )}
                     </div>
                     
@@ -289,7 +308,7 @@ export function LeadTraceDrawer({
         {/* Drawer Footer */}
         <div className="px-6 py-3 border-t border-border bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
-            <ShieldCheck size={14} className="text-emerald-500" />
+            <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
             <span>Cryptographically sealed execution log</span>
           </div>
           <span className="font-mono text-[11px]">Nodes: {rawTraces.length}</span>

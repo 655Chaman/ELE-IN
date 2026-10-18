@@ -1,5 +1,5 @@
 import { toast } from "sonner"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, ExternalLink } from "lucide-react"
 import { useLeadImport } from "../LeadImportContext"
 import { CompanyAutocomplete } from "../../CompanyAutocomplete"
 import { LocationAutocomplete } from "../../LocationAutocomplete"
@@ -111,8 +111,11 @@ export function SearchImport() {
           {liveUrl || "Select filters above to instantly generate your URL..."}
         </code>
         <div className="flex gap-3 mt-4">
-          <button onClick={() => { navigator.clipboard.writeText(liveUrl); toast.success("URL Copied to clipboard"); }} disabled={!liveUrl} className="px-5 py-2 rounded-md border border-input bg-background hover:bg-muted text-xs font-bold transition-colors disabled:opacity-50">Copy URL</button>
-          <a href={liveUrl || "#"} target="_blank" rel="noreferrer" className={`px-5 py-2 rounded-md border border-input bg-background hover:bg-muted text-xs font-bold transition-colors flex items-center gap-2 ${!liveUrl ? 'opacity-50 pointer-events-none' : ''}`}>Open in LinkedIn ↗</a>
+          <button onClick={() => { navigator.clipboard.writeText(liveUrl); toast.success("URL Copied to clipboard"); }} disabled={!liveUrl} className="px-5 py-2 rounded-md border border-input bg-background hover:bg-muted text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer">Copy URL</button>
+          <a href={liveUrl || "#"} target="_blank" rel="noreferrer" className={`px-5 py-2 rounded-md border border-input bg-background hover:bg-muted text-xs font-bold transition-colors flex items-center gap-1.5 ${!liveUrl ? 'opacity-50 pointer-events-none' : ''}`}>
+            <span>Open in LinkedIn</span>
+            <ExternalLink size={13} />
+          </a>
         </div>
       </div>
 

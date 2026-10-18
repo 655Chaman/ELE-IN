@@ -1,6 +1,7 @@
+import { useEffect } from "react"
 import { motion } from "motion/react"
 import { toast } from "sonner"
-import { X, ChevronRight, ArrowLeft, FileSpreadsheet, Compass, Link2, Search, Lock } from "lucide-react"
+import { X, ChevronRight, ArrowLeft, FileSpreadsheet, Compass, Link2, Search, Lock, Loader2, Sparkles } from "lucide-react"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { LeadImportProvider, useLeadImport } from "./LeadImportContext"
@@ -36,6 +37,26 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
   const isPro = billing?.tier === 'PRO' || billing?.tier === 'ENTERPRISE';
 
   const isUploading = isSubmitting;
+
+  // Escape key dismiss handler with nested step unwinding
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (!isUploading) {
+          if (method === "csv" && step === 2) {
+            setStep(1);
+          } else if (method) {
+            setMethod(null);
+            setStep(1);
+          } else {
+            onClose();
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isUploading, method, step, onClose, setStep, setMethod]);
 
   const handleSubmit = async () => {
     if (!name.trim()) { toast.error("Please enter a list name"); return; }
@@ -175,18 +196,25 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
   const currentMethod = METHODS.find(m => m.id === method);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="import-leads-title"
+      onClick={() => !isUploading && onClose()}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0, transition: { type: "spring", damping: 25, stiffness: 300 } }}
         exit={{ opacity: 0, scale: 0.97, y: 10, transition: { duration: 0.15, ease: "easeIn" } }}
-        className={`w-full ${method ? 'max-w-[1100px]' : 'max-w-[550px]'} bg-card rounded-xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.4)] border border-border/60 flex flex-col relative my-8`}
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full ${method ? 'max-w-[1100px]' : 'max-w-[550px]'} max-h-[90dvh] bg-card rounded-xl shadow-2xl border border-border/80 flex flex-col relative overflow-hidden`}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close modal"
-          className="absolute right-5 top-5 text-muted-foreground hover:text-foreground transition-all duration-100 z-50 p-2 rounded-full hover:bg-muted active:bg-muted/80"
+          className="absolute right-5 top-5 text-muted-foreground hover:text-foreground transition-all duration-100 z-50 p-2 rounded-full hover:bg-muted active:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <X size={18} />
         </button>
@@ -195,7 +223,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
           // Step 1: Premium List View
           <div className="p-8">
             <div className="mb-8">
-              <h1 className="text-xl font-bold tracking-tight mb-1">Import Leads</h1>
+              <h1 id="import-leads-title" className="text-xl font-bold tracking-tight mb-1 text-foreground">Import Leads</h1>
               <p className="text-sm text-muted-foreground">Select a data source to begin building your audience.</p>
             </div>
             
@@ -253,13 +281,13 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
           </div>
         ) : (
           // Step 2: Configure Selected Method
-          <div className="flex flex-col h-full max-h-[85vh]">
+          <div className="flex flex-col h-full max-h-[90dvh] overflow-hidden">
             <div className="p-6 border-b flex items-center gap-4 bg-muted/5 sticky top-0 z-10">
               <button 
                 type="button"
                 onClick={() => { setMethod(null); setStep(1); }}
                 aria-label="Back to methods list"
-                className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <ArrowLeft size={18} />
               </button>
@@ -268,7 +296,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
               </div>
               <div className="flex-1 pr-8">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-semibold">{currentMethod?.label}</h2>
+                  <h2 id="import-leads-title" className="font-semibold text-foreground">{currentMethod?.label}</h2>
                   <span className="text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground px-2.5 py-1 rounded-full">
                     {method === "csv" ? `Step ${step} of 2` : "Step 1 of 1"}
                   </span>
@@ -314,7 +342,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-4 py-2 flex items-center gap-2"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-4 py-2 flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <ArrowLeft size={16} /> Back
                   </button>
@@ -325,16 +353,16 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                   type="button"
                   onClick={handleSubmit} 
                   disabled={!name.trim() || isUploading || (method === 'search' && !liveUrl) || (method === 'sales_nav' && !salesNavUrl.trim()) || (method === 'linkedin_url' && !urlList.trim()) || (method === 'csv' && step === 1 && !file) || (method === 'csv' && step === 2 && !mappings.linkedin_url)} 
-                  className="px-8 py-2.5 text-sm font-bold bg-foreground hover:bg-foreground/90 rounded-lg text-background transition-all disabled:opacity-50 flex justify-center items-center gap-2 shadow-sm"
+                  className="px-8 py-2.5 text-sm font-bold bg-foreground hover:bg-foreground/90 rounded-lg text-background transition-all disabled:opacity-50 flex justify-center items-center gap-2 shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {isUploading ? (
                     <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4 text-background" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      <Loader2 size={16} className="animate-spin text-background" />
                       Processing...
                     </span>
                   ) : (
                     <>
-                      {(method === 'csv' && step === 1) ? 'Next: Map Columns' : <><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-sparkles"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg> Import Leads</>}
+                      {(method === 'csv' && step === 1) ? 'Next: Map Columns' : <><Sparkles size={16} /> Import Leads</>}
                       {!(method === 'csv' && step === 1) && <ChevronRight size={16} />}
                     </>
                   )}

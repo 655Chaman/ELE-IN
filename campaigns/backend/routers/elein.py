@@ -5116,13 +5116,17 @@ def delete_campaign(
     except Exception as enr_err:
         logger.warning(f"Error during cascade cleanup of campaign enrollments: {enr_err}")
 
-    # 4. Clean up linked accounts and nodes
+    # 4. Clean up linked accounts, nodes, and edges
     try:
         client.table("campaign_accounts").delete().eq("campaign_id", campaign_id).execute()
     except Exception:
         pass
     try:
         client.table("campaign_nodes").delete().eq("campaign_id", campaign_id).execute()
+    except Exception:
+        pass
+    try:
+        client.table("campaign_edges").delete().eq("campaign_id", campaign_id).execute()
     except Exception:
         pass
 

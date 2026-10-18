@@ -203,7 +203,7 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-foreground"
+        className="w-full max-w-3xl rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col h-[90dvh] max-h-[90dvh] text-foreground"
       >
         {/* Modal Header */}
         <div className="p-6 border-b border-border flex items-center justify-between bg-muted/20 shrink-0">

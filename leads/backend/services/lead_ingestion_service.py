@@ -77,6 +77,7 @@ def execute_bulk_import_leads(
         return {"success": True, "inserted_count": 0, "duplicate_count": 0, "colliding_count": 0, "source": "empty"}
 
     from leads.backend.services.data_hygiene import DataHygieneService
+    from leads.backend.services.location_timezone_service import LocationTimezoneService
 
     # 1. Intra-batch deduplication and sanitization
     seen_identifiers = set()
@@ -129,6 +130,20 @@ def execute_bulk_import_leads(
                 logger.debug(f"DataHygiene clean_company error on '{company}': {e}")
                 clean_comp = company
 
+        # Resolve or infer lead timezone
+        raw_tz = lead.get("timezone")
+        valid_tz = LocationTimezoneService.validate_iana_timezone(raw_tz) if raw_tz else None
+        if not valid_tz:
+            lead_phone = lead.get("phone") or lead.get("phone_number")
+            inferred_tz = LocationTimezoneService.infer_timezone(
+                location=p_loc,
+                country=lead.get("country"),
+                phone=lead_phone
+            )
+            final_tz = inferred_tz or timezone or "UTC"
+        else:
+            final_tz = valid_tz
+
         processed_lead = dict(lead)
         processed_lead["norm_url"] = norm_url
         processed_lead["email"] = email
@@ -138,6 +153,7 @@ def execute_bulk_import_leads(
         processed_lead["job_title"] = job_title
         processed_lead["location"] = p_loc
         processed_lead["domain"] = lead_domain
+        processed_lead["timezone"] = final_tz
         deduped_leads.append(processed_lead)
 
     if not deduped_leads:
@@ -158,7 +174,8 @@ def execute_bulk_import_leads(
                         "company_name": l.get("company_name"),
                         "job_title": l.get("job_title"),
                         "location": l.get("location"),
-                        "domain": l.get("domain")
+                        "domain": l.get("domain"),
+                        "timezone": l.get("timezone")
                     }.items() if v
                 }
                 for l in deduped_leads
@@ -203,7 +220,7 @@ def execute_bulk_import_leads(
 
             existing_leads_map = {}
             try:
-                query = supabase.table("leads").select("id, linkedin_url, email, first_name, last_name, company_name, job_title, location").eq("workspace_id", workspace_id)
+                query = supabase.table("leads").select("id, linkedin_url, email, first_name, last_name, company_name, job_title, location, timezone").eq("workspace_id", workspace_id)
                 
                 if norm_urls and emails:
                     url_list_str = ",".join(f'"{u}"' for u in norm_urls[:50])
@@ -270,7 +287,7 @@ def execute_bulk_import_leads(
                         "job_title": lead.get("job_title"),
                         "location": lead.get("location"),
                         "domain": lead.get("domain"),
-                        "timezone": timezone or "UTC"
+                        "timezone": lead.get("timezone") or timezone or "UTC"
                     })
                     lead["assigned_id"] = new_id
 
@@ -305,6 +322,7 @@ def execute_bulk_import_leads(
                         if lead.get("company_name"): update_payload["company_name"] = lead["company_name"]
                         if lead.get("job_title"): update_payload["job_title"] = lead["job_title"]
                         if lead.get("location"): update_payload["location"] = lead["location"]
+                        if lead.get("timezone"): update_payload["timezone"] = lead["timezone"]
                         if update_payload:
                             supabase.table("leads").update(update_payload).eq("id", eid).execute()
                         inserted_lead_ids.append(eid)
