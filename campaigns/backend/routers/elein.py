@@ -27,6 +27,11 @@ from core.backend.services import storage_service
 from campaigns.backend.schemas.elein import CampaignCreate, CampaignResponse, AccountCreate, AccountResponse
 from campaigns.backend.services.collision_guard import get_conflicting_active_leads
 from core.backend.services.email_shield_service import EmailShieldService
+from integrations.backend.services.esp_webhook_processor import (
+    ESPWebhookProcessor,
+    ESPProvider,
+    WebhookEventType,
+)
 
 
 from fastapi import Request
@@ -7869,3 +7874,434 @@ def api_sanitize_copy(
     if isinstance(res, dict):
         res["workspace_id"] = workspace_id
     return res
+
+
+# ==============================================================================
+# PHASE 40: Unified ESP Webhook Feedback Loop, FBL ARF Abuse Processor
+#           & Runaway Bounce Circuit Breaker
+# ==============================================================================
+
+class CircuitBreakerEvaluationRequest(BaseModel):
+    campaign_id: Optional[str] = None
+    sent_count: Optional[int] = 0
+    bounce_count: Optional[int] = 0
+    spam_complaint_count: Optional[int] = 0
+    sample_size: Optional[int] = 50
+    auto_pause: Optional[bool] = True
+
+
+class ESPSimulateRequest(BaseModel):
+    provider: Optional[str] = "SENDGRID"
+    event_type: Optional[str] = "bounce_hard"
+    email: str
+    campaign_id: Optional[str] = None
+    lead_id: Optional[str] = None
+    node_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    reason: Optional[str] = "Simulated delivery failure"
+    smtp_code: Optional[Union[str, int]] = 550
+    raw_event: Optional[Dict[str, Any]] = None
+
+
+def _calculate_or_fetch_campaign_stats(
+    db: Any, campaign_id: str, tracker: Optional[Dict[str, int]] = None
+) -> Dict[str, int]:
+    """Helper to aggregate campaign statistics from tracker or database."""
+    stats = {"sent_count": 0, "bounce_count": 0, "spam_complaint_count": 0}
+    if tracker:
+        stats["sent_count"] += tracker.get("sent_count", 0)
+        stats["bounce_count"] += tracker.get("bounce_count", 0)
+        stats["spam_complaint_count"] += tracker.get("spam_complaint_count", 0)
+
+    if not db or not campaign_id:
+        return stats
+
+    try:
+        events_res = db.table("campaign_events").select("event_type").eq("campaign_id", campaign_id).execute()
+        events = getattr(events_res, "data", None) or []
+        for e in events:
+            ev_type = str(e.get("event_type") or "").lower()
+            if ev_type in ("delivered", "bounce_hard", "bounce_soft", "sent", "open", "click"):
+                stats["sent_count"] += 1
+            if ev_type in ("bounce_hard", "bounce"):
+                stats["bounce_count"] += 1
+            elif ev_type in ("spam_complaint", "spamreport", "spam"):
+                stats["spam_complaint_count"] += 1
+    except Exception as exc:
+        logger.debug(f"[CircuitBreaker] DB stats query non-fatal fallback: {exc}")
+
+    return stats
+
+
+def _trip_campaign_circuit_breaker(db: Any, campaign_id: str, tripwire: str) -> None:
+    """Helper to pause a campaign and cascade pause in-flight execution states upon circuit breaker trip."""
+    if not db or not campaign_id:
+        return
+    try:
+        # Layer 0 & 1: Update status to 'paused' and record status_reason
+        try:
+            db.table("campaigns").update({
+                "status": "paused",
+                "status_reason": tripwire,
+            }).eq("id", campaign_id).execute()
+        except Exception:
+            try:
+                db.table("campaigns").update({
+                    "status": "paused",
+                }).eq("id", campaign_id).execute()
+            except Exception as up_e:
+                logger.warning(f"[CircuitBreaker] Failed to update campaign status: {up_e}")
+
+        # Cascade pause execution states
+        try:
+            enr_res = db.table("campaign_enrollments").select("id").eq("campaign_id", campaign_id).execute()
+            enr_ids = [r["id"] for r in (getattr(enr_res, "data", None) or []) if isinstance(r, dict) and "id" in r]
+            if enr_ids:
+                for i in range(0, len(enr_ids), 100):
+                    chunk = enr_ids[i:i+100]
+                    db.table("campaign_execution_states").update({
+                        "status": "paused",
+                        "error_reason": f"Campaign paused by Circuit Breaker: {tripwire}"
+                    }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply", "running", "processing"]).execute()
+        except Exception as cascade_err:
+            logger.warning(f"[CircuitBreaker] Failed to cascade pause execution states: {cascade_err}")
+    except Exception as e:
+        logger.warning(f"[CircuitBreaker] Failed to trip campaign {campaign_id}: {e}")
+
+
+def _extract_header_val(val: Any) -> Optional[str]:
+    if val is None:
+        return None
+    if type(val).__name__ in ("Header", "Param", "FieldInfo", "ModelField"):
+        return None
+    s = str(val).strip()
+    return s if s else None
+
+
+@router.post("/webhooks/esp/sendgrid", response_model=dict)
+async def webhook_esp_sendgrid(
+    request: Request,
+    x_twilio_email_event_webhook_signature: Optional[str] = Header(None, alias="X-Twilio-Email-Event-Webhook-Signature"),
+    x_twilio_email_event_webhook_timestamp: Optional[str] = Header(None, alias="X-Twilio-Email-Event-Webhook-Timestamp"),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2:
+    Unauthenticated public webhook endpoint for SendGrid Event Webhook ingestion.
+    Validates ECDSA/HMAC signature if configured or passed in headers.
+    Processes batch events, updates lead states, adds to suppression list,
+    evaluates campaign circuit breakers, and returns processing metrics.
+    """
+    body_val = request.body() if callable(getattr(request, "body", None)) else getattr(request, "body", b"")
+    if asyncio.iscoroutine(body_val) or hasattr(body_val, "__await__"):
+        raw_body = await body_val
+    else:
+        raw_body = body_val
+
+    sig = _extract_header_val(x_twilio_email_event_webhook_signature)
+    if not sig and hasattr(request, "headers") and getattr(request, "headers", None) is not None:
+        try:
+            sig = _extract_header_val(request.headers.get("X-Twilio-Email-Event-Webhook-Signature"))
+        except Exception:
+            sig = None
+
+    ts = _extract_header_val(x_twilio_email_event_webhook_timestamp)
+    if not ts and hasattr(request, "headers") and getattr(request, "headers", None) is not None:
+        try:
+            ts = _extract_header_val(request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp"))
+        except Exception:
+            ts = None
+
+    # Cryptographic signature verification
+    sg_verification_key = (
+        os.environ.get("SENDGRID_WEBHOOK_VERIFICATION_KEY")
+        or os.environ.get("SENDGRID_EVENT_WEBHOOK_KEY")
+        or os.environ.get("SENDGRID_PUBLIC_KEY")
+        or os.environ.get("SENDGRID_VERIFICATION_KEY")
+    )
+    if sg_verification_key or (sig and ts):
+        key_to_use = sg_verification_key or "default-sendgrid-verification-key"
+        if not sig or not ts:
+            raise HTTPException(status_code=401, detail="Missing SendGrid signature or timestamp headers")
+        is_valid = ESPWebhookProcessor.verify_sendgrid_signature(
+            public_key=key_to_use,
+            payload_bytes=raw_body,
+            signature=sig,
+            timestamp=ts,
+        )
+        if not is_valid:
+            logger.warning("[ESPWebhook] Invalid SendGrid signature rejected")
+            raise HTTPException(status_code=401, detail="Invalid SendGrid webhook signature")
+
+    # JSON payload decoding
+    try:
+        if isinstance(raw_body, bytes):
+            body_str = raw_body.decode("utf-8")
+        else:
+            body_str = str(raw_body)
+        events_payload = json.loads(body_str) if body_str.strip() else []
+    except Exception as parse_err:
+        logger.warning(f"[ESPWebhook] Malformed JSON payload: {parse_err}")
+        raise HTTPException(status_code=400, detail="Malformed JSON payload")
+
+    if isinstance(events_payload, dict):
+        events_list = [events_payload]
+    elif isinstance(events_payload, list):
+        events_list = events_payload
+    else:
+        events_list = []
+
+    processed_count = 0
+    campaign_stats_tracker = {}
+    tripped_campaigns = []
+    seen_campaigns = set()
+
+    for ev in events_list:
+        if not isinstance(ev, dict):
+            continue
+        try:
+            norm = ESPWebhookProcessor.normalize_esp_event(ev, provider=ESPProvider.SENDGRID)
+            ESPWebhookProcessor.process_esp_event(db, norm, auto_cascade=True)
+            processed_count += 1
+
+            camp_id = norm.get("campaign_id")
+            ev_type = norm.get("event_type")
+            if camp_id:
+                seen_campaigns.add(camp_id)
+                if camp_id not in campaign_stats_tracker:
+                    campaign_stats_tracker[camp_id] = {
+                        "sent_count": 0,
+                        "bounce_count": 0,
+                        "spam_complaint_count": 0,
+                    }
+                if ev_type in (WebhookEventType.DELIVERED, WebhookEventType.BOUNCE_HARD, WebhookEventType.BOUNCE_SOFT):
+                    campaign_stats_tracker[camp_id]["sent_count"] += 1
+                if ev_type == WebhookEventType.BOUNCE_HARD:
+                    campaign_stats_tracker[camp_id]["bounce_count"] += 1
+                elif ev_type == WebhookEventType.SPAM_COMPLAINT:
+                    campaign_stats_tracker[camp_id]["spam_complaint_count"] += 1
+        except Exception as proc_err:
+            logger.warning(f"[ESPWebhook] Error processing SendGrid event: {proc_err}")
+
+    # Evaluate circuit breaker for all affected campaigns
+    for camp_id in seen_campaigns:
+        try:
+            stats = _calculate_or_fetch_campaign_stats(db, camp_id, campaign_stats_tracker.get(camp_id))
+            cb_res = ESPWebhookProcessor.evaluate_campaign_circuit_breaker(stats)
+            if cb_res.get("should_trip"):
+                tripwire = cb_res.get("tripwire", "CRITICAL_BOUNCE_SPIKE")
+                _trip_campaign_circuit_breaker(db, camp_id, tripwire)
+                tripped_campaigns.append(camp_id)
+        except Exception as cb_err:
+            logger.warning(f"[ESPWebhook] Circuit breaker evaluation error for campaign {camp_id}: {cb_err}")
+
+    return {
+        "status": "ok",
+        "events_processed": processed_count,
+        "tripped_campaigns": tripped_campaigns,
+    }
+
+
+@router.post("/webhooks/esp/mailgun", response_model=dict)
+async def webhook_esp_mailgun(
+    request: Request,
+    db: Any = Depends(get_service_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2:
+    Unauthenticated public webhook endpoint with Mailgun signature verification.
+    Normalizes and processes Mailgun events, triggering feedback loop and circuit breaker.
+    """
+    body_val = request.body() if callable(getattr(request, "body", None)) else getattr(request, "body", b"")
+    if asyncio.iscoroutine(body_val) or hasattr(body_val, "__await__"):
+        raw_body = await body_val
+    else:
+        raw_body = body_val
+    try:
+        if isinstance(raw_body, bytes):
+            body_str = raw_body.decode("utf-8")
+        else:
+            body_str = str(raw_body)
+        raw_payload = json.loads(body_str) if body_str.strip() else {}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Malformed JSON payload")
+
+    mailgun_signing_key = (
+        os.environ.get("MAILGUN_WEBHOOK_SIGNING_KEY")
+        or os.environ.get("MAILGUN_SIGNING_KEY")
+        or os.environ.get("MAILGUN_API_KEY")
+    )
+    sig_block = raw_payload.get("signature") if isinstance(raw_payload, dict) else {}
+    if not isinstance(sig_block, dict):
+        sig_block = {}
+
+    if mailgun_signing_key or (sig_block.get("signature") and sig_block.get("token")):
+        key_to_use = mailgun_signing_key or "default-mailgun-signing-key"
+        token = str(sig_block.get("token") or "")
+        timestamp = str(sig_block.get("timestamp") or "")
+        sig = str(sig_block.get("signature") or "")
+        if not token or not timestamp or not sig:
+            raise HTTPException(status_code=401, detail="Missing or incomplete Mailgun signature block")
+        is_valid = ESPWebhookProcessor.verify_mailgun_signature(
+            signing_key=key_to_use,
+            token=token,
+            timestamp=timestamp,
+            signature=sig,
+        )
+        if not is_valid:
+            logger.warning("[ESPWebhook] Invalid Mailgun signature rejected")
+            raise HTTPException(status_code=401, detail="Invalid Mailgun signature")
+
+    norm = ESPWebhookProcessor.normalize_esp_event(raw_payload, provider=ESPProvider.MAILGUN)
+    result = ESPWebhookProcessor.process_esp_event(db, norm, auto_cascade=True)
+
+    camp_id = norm.get("campaign_id")
+    tripped_campaigns = []
+    if camp_id:
+        try:
+            stats = _calculate_or_fetch_campaign_stats(db, camp_id)
+            cb_res = ESPWebhookProcessor.evaluate_campaign_circuit_breaker(stats)
+            if cb_res.get("should_trip"):
+                tripwire = cb_res.get("tripwire", "CRITICAL_BOUNCE_SPIKE")
+                _trip_campaign_circuit_breaker(db, camp_id, tripwire)
+                tripped_campaigns.append(camp_id)
+        except Exception as cb_e:
+            logger.warning(f"[ESPWebhook] Mailgun circuit breaker evaluation error: {cb_e}")
+
+    return {
+        "status": "ok",
+        "events_processed": 1,
+        "result": result,
+        "tripped_campaigns": tripped_campaigns,
+    }
+
+
+@router.post("/webhooks/esp/simulate", response_model=dict)
+def api_simulate_esp_event(
+    req: ESPSimulateRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2:
+    Workspace-scoped simulation endpoint for testing bounce/complaint processing without external MTA.
+    Enforces strict tenant scoping (IDOR defense) and executes feedback loop & circuit breaker.
+    """
+    # Tenant IDOR Defense: If caller specifies a different workspace_id in payload, reject
+    if req.workspace_id and req.workspace_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Cross-tenant simulation prohibited")
+
+    target_ws = workspace_id
+
+    # If raw_event is provided, use it, else synthesize event dict
+    if req.raw_event and isinstance(req.raw_event, dict):
+        event_dict = dict(req.raw_event)
+        event_dict.setdefault("email", req.email)
+        event_dict.setdefault("workspace_id", target_ws)
+    else:
+        event_dict = {
+            "email": req.email,
+            "event": req.event_type,
+            "event_type": req.event_type,
+            "type": req.event_type,
+            "reason": req.reason,
+            "status": str(req.smtp_code),
+            "campaign_id": req.campaign_id,
+            "lead_id": req.lead_id,
+            "node_id": req.node_id,
+            "workspace_id": target_ws,
+        }
+
+    prov = getattr(ESPProvider, (req.provider or "SENDGRID").upper(), ESPProvider.SENDGRID)
+    norm = ESPWebhookProcessor.normalize_esp_event(event_dict, provider=prov)
+    norm["workspace_id"] = target_ws
+
+    et_raw = str(req.event_type or "").lower().strip()
+    if et_raw in ("bounce_hard", "hard_bounce"):
+        norm["event_type"] = WebhookEventType.BOUNCE_HARD
+    elif et_raw in ("bounce_soft", "soft_bounce"):
+        norm["event_type"] = WebhookEventType.BOUNCE_SOFT
+    elif et_raw in ("spam_complaint", "spamreport", "complaint"):
+        norm["event_type"] = WebhookEventType.SPAM_COMPLAINT
+    elif et_raw in ("unsubscribe", "unsubscribed"):
+        norm["event_type"] = WebhookEventType.UNSUBSCRIBE
+    elif et_raw == "delivered":
+        norm["event_type"] = WebhookEventType.DELIVERED
+    elif et_raw in ("open", "opened"):
+        norm["event_type"] = WebhookEventType.OPEN
+    elif et_raw in ("click", "clicked"):
+        norm["event_type"] = WebhookEventType.CLICK
+
+    result = ESPWebhookProcessor.process_esp_event(db, norm, auto_cascade=True)
+
+    tripped = False
+    cb_result = {}
+    if req.campaign_id:
+        try:
+            stats = _calculate_or_fetch_campaign_stats(db, req.campaign_id)
+            cb_result = ESPWebhookProcessor.evaluate_campaign_circuit_breaker(stats)
+            if cb_result.get("should_trip"):
+                tripwire = cb_result.get("tripwire", "CRITICAL_BOUNCE_SPIKE")
+                _trip_campaign_circuit_breaker(db, req.campaign_id, tripwire)
+                tripped = True
+        except Exception as e:
+            logger.warning(f"[ESPWebhook] Simulation circuit breaker error: {e}")
+
+    return {
+        "status": "ok",
+        "simulated": True,
+        "workspace_id": target_ws,
+        "result": result,
+        "circuit_breaker_tripped": tripped,
+        "circuit_breaker_details": cb_result,
+    }
+
+
+@router.post("/deliverability/evaluate-campaign-circuit-breaker", response_model=dict)
+def api_evaluate_campaign_circuit_breaker(
+    req: CircuitBreakerEvaluationRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2:
+    Workspace-scoped endpoint: checks given campaign stats and trips if thresholds exceeded.
+    Auto-pauses campaign and cascades execution states if tripped and auto_pause is True.
+    """
+    stats = {
+        "sent_count": req.sent_count or 0,
+        "bounce_count": req.bounce_count or 0,
+        "spam_complaint_count": req.spam_complaint_count or 0,
+    }
+
+    # If campaign_id is provided, verify workspace ownership and fetch actual stats if not passed
+    if req.campaign_id:
+        if db:
+            try:
+                camp_res = db.table("campaigns").select("id, workspace_id").eq("id", req.campaign_id).eq("workspace_id", workspace_id).execute()
+                if not getattr(camp_res, "data", None):
+                    raise HTTPException(status_code=404, detail="Campaign not found in workspace")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.debug(f"[CircuitBreaker] Workspace check fallback: {e}")
+
+        # If zero stats provided in request, query DB stats
+        if stats["sent_count"] == 0 and stats["bounce_count"] == 0 and stats["spam_complaint_count"] == 0:
+            stats = _calculate_or_fetch_campaign_stats(db, req.campaign_id)
+
+    cb_res = ESPWebhookProcessor.evaluate_campaign_circuit_breaker(
+        campaign_stats=stats,
+        sample_size=req.sample_size or 50,
+    )
+
+    if cb_res.get("should_trip") and req.campaign_id and req.auto_pause:
+        tripwire = cb_res.get("tripwire", "CRITICAL_BOUNCE_SPIKE")
+        _trip_campaign_circuit_breaker(db, req.campaign_id, tripwire)
+
+    res = dict(cb_res)
+    res["workspace_id"] = workspace_id
+    if req.campaign_id:
+        res["campaign_id"] = req.campaign_id
+    return res
+

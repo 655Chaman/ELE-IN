@@ -11011,6 +11011,186 @@
         }
       }
     },
+    "/api/elein/webhooks/esp/sendgrid": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Webhook Esp Sendgrid",
+        "description": "Paranoia Layer 0, 1 & 2:\nUnauthenticated public webhook endpoint for SendGrid Event Webhook ingestion.\nValidates ECDSA/HMAC signature if configured or passed in headers.\nProcesses batch events, updates lead states, adds to suppression list,\nevaluates campaign circuit breakers, and returns processing metrics.",
+        "operationId": "webhook_esp_sendgrid_api_elein_webhooks_esp_sendgrid_post",
+        "parameters": [
+          {
+            "name": "X-Twilio-Email-Event-Webhook-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Twilio-Email-Event-Webhook-Signature"
+            }
+          },
+          {
+            "name": "X-Twilio-Email-Event-Webhook-Timestamp",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Twilio-Email-Event-Webhook-Timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Webhook Esp Sendgrid Api Elein Webhooks Esp Sendgrid Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/webhooks/esp/mailgun": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Webhook Esp Mailgun",
+        "description": "Paranoia Layer 0, 1 & 2:\nUnauthenticated public webhook endpoint with Mailgun signature verification.\nNormalizes and processes Mailgun events, triggering feedback loop and circuit breaker.",
+        "operationId": "webhook_esp_mailgun_api_elein_webhooks_esp_mailgun_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Webhook Esp Mailgun Api Elein Webhooks Esp Mailgun Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/webhooks/esp/simulate": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Simulate Esp Event",
+        "description": "Paranoia Layer 0, 1 & 2:\nWorkspace-scoped simulation endpoint for testing bounce/complaint processing without external MTA.\nEnforces strict tenant scoping (IDOR defense) and executes feedback loop & circuit breaker.",
+        "operationId": "api_simulate_esp_event_api_elein_webhooks_esp_simulate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ESPSimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Simulate Esp Event Api Elein Webhooks Esp Simulate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/evaluate-campaign-circuit-breaker": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Evaluate Campaign Circuit Breaker",
+        "description": "Paranoia Layer 0, 1 & 2:\nWorkspace-scoped endpoint: checks given campaign stats and trips if thresholds exceeded.\nAuto-pauses campaign and cascades execution states if tripped and auto_pause is True.",
+        "operationId": "api_evaluate_campaign_circuit_breaker_api_elein_deliverability_evaluate_campaign_circuit_breaker_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitBreakerEvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Evaluate Campaign Circuit Breaker Api Elein Deliverability Evaluate Campaign Circuit Breaker Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -19830,6 +20010,83 @@
         ],
         "title": "CheckoutRequest"
       },
+      "CircuitBreakerEvaluationRequest": {
+        "properties": {
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "sent_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent Count",
+            "default": 0
+          },
+          "bounce_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bounce Count",
+            "default": 0
+          },
+          "spam_complaint_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spam Complaint Count",
+            "default": 0
+          },
+          "sample_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Size",
+            "default": 50
+          },
+          "auto_pause": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Pause",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "CircuitBreakerEvaluationRequest"
+      },
       "ClassifyInboundReplyRequest": {
         "properties": {
           "message_text": {
@@ -20970,6 +21227,126 @@
         },
         "type": "object",
         "title": "DynamicRulesSyncRequest"
+      },
+      "ESPSimulateRequest": {
+        "properties": {
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "default": "SENDGRID"
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Type",
+            "default": "bounce_hard"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "lead_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Id"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "default": "Simulated delivery failure"
+          },
+          "smtp_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smtp Code",
+            "default": 550
+          },
+          "raw_event": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Event"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ESPSimulateRequest"
       },
       "EleInEdge": {
         "properties": {

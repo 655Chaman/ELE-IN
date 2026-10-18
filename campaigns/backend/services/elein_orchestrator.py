@@ -1524,9 +1524,48 @@ class EleInOrchestrator:
             self.update_state(state["id"], next_node_id, next_status, next_run, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'), use_sto=False)
             return
 
-        # Live check to prevent ghost execution after Panic Pause
-        campaign_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
-        if not campaign_check.data or campaign_check.data[0].get("status") != "ACTIVE":
+        # Live check to prevent ghost execution after Panic Pause or Circuit Breaker Trip
+        camp_row = None
+        try:
+            campaign_check = self.supabase.table("campaigns").select("status, status_reason").eq("id", state["campaign_id"]).execute()
+            if campaign_check and getattr(campaign_check, "data", None):
+                camp_row = campaign_check.data[0]
+        except Exception:
+            try:
+                campaign_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
+                if campaign_check and getattr(campaign_check, "data", None):
+                    camp_row = campaign_check.data[0]
+            except Exception as e:
+                logger.warning(f"Failed to fetch campaign status: {e}")
+
+        if not camp_row or str(camp_row.get("status") or "").upper() != "ACTIVE":
+            camp_status = str((camp_row or {}).get("status") or "").lower()
+            camp_reason = str(
+                (camp_row or {}).get("status_reason")
+                or (camp_row or {}).get("reason")
+                or (camp_row or {}).get("error_reason")
+                or ((camp_row or {}).get("metadata") or {}).get("status_reason", "")
+                or ""
+            ).upper()
+
+            # Phase 40: Runaway Bounce & Spam Circuit Breaker Check
+            if (camp_status == "paused" and "CIRCUIT_BREAKER" in camp_reason) or ("CIRCUIT_BREAKER" in camp_reason):
+                logger.warning(
+                    f"[Orchestrator] Campaign {state.get('campaign_id')} is paused by circuit breaker ({camp_reason}). "
+                    f"Skipping dispatch for lead {state.get('opportunity_id')}."
+                )
+                self.update_state(
+                    state["id"],
+                    current_node_id,
+                    "paused",
+                    None,
+                    lease_token,
+                    error_reason=f"Campaign paused by circuit breaker: {camp_reason}",
+                    variables=state.get("variables"),
+                    tz_str=state.get("tz_str", "UTC")
+                )
+                return
+
             logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE. Skipping execution for lead {state['opportunity_id']}.")
             next_run = datetime.utcnow() + timedelta(hours=6)
             self.update_state(
@@ -2003,6 +2042,23 @@ class EleInOrchestrator:
     ) -> dict:
         logger.info(f"Executing node '{action}' for lead '{opportunity_id}'")
     
+        # Phase 40: Runaway Bounce & Spam Circuit Breaker Check
+        if state and state.get("campaign_id"):
+            try:
+                camp_res = self.supabase.table("campaigns").select("status, status_reason").eq("id", state["campaign_id"]).execute()
+                if camp_res and getattr(camp_res, "data", None):
+                    c_row = camp_res.data[0]
+                    c_status = str(c_row.get("status") or "").lower()
+                    c_reason = str(c_row.get("status_reason") or c_row.get("reason") or "").upper()
+                    if (c_status == "paused" and "CIRCUIT_BREAKER" in c_reason) or ("CIRCUIT_BREAKER" in c_reason):
+                        logger.warning(
+                            f"[Orchestrator] Circuit breaker tripped for campaign {state['campaign_id']} ({c_reason}). "
+                            f"Skipping dispatch for lead {opportunity_id}."
+                        )
+                        return {"status": "skipped", "reason": f"circuit_breaker_paused: {c_reason}"}
+            except Exception as e:
+                logger.debug(f"[Orchestrator] Circuit breaker check fallback in execute_node_action: {e}")
+
         res = self.supabase.table("leads").select("id, first_name, last_name, company_name, job_title, linkedin_url, domain, email").eq("id", opportunity_id).eq("workspace_id", state["workspace_id"]).execute()
         opportunity = res.data[0] if res.data else {}
     

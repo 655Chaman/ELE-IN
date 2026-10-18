@@ -99,6 +99,16 @@ def verify_token_and_get_user_id(token: str) -> str:
     raise HTTPException(status_code=401, detail="Authentication failed.")
 
 def get_supabase_client(request: Request) -> Client:
+    try:
+        path = str(getattr(getattr(request, "url", None), "path", "") or "")
+        if "/webhooks/esp/sendgrid" in path or "/webhooks/esp/mailgun" in path or "/unsubscribe" in path:
+            try:
+                return get_service_client()
+            except Exception:
+                return None
+    except Exception:
+        pass
+
     auth_header = request.headers.get("Authorization")
     
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -121,6 +131,16 @@ def get_supabase_client(request: Request) -> Client:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def get_async_supabase_client(request: Request) -> AsyncClient:
+    try:
+        path = str(getattr(getattr(request, "url", None), "path", "") or "")
+        if "/webhooks/esp/sendgrid" in path or "/webhooks/esp/mailgun" in path or "/unsubscribe" in path:
+            try:
+                return await get_async_service_client()
+            except Exception:
+                return None
+    except Exception:
+        pass
+
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
@@ -204,7 +224,12 @@ def get_service_client() -> Client:
             if _service_client is None:
                 url = os.environ.get("SUPABASE_URL") or SUPABASE_URL
                 service_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or SUPABASE_KEY
-                _service_client = create_client(url, service_key)
+                try:
+                    if url and service_key:
+                        _service_client = create_client(url, service_key)
+                except Exception as exc:
+                    logger.warning(f"get_service_client failed to initialize: {exc}")
+                    _service_client = None
     return _service_client
 
 
@@ -241,12 +266,24 @@ async def get_async_service_client() -> AsyncClient:
         if _async_service_client is None:
             url = os.environ.get("SUPABASE_URL") or SUPABASE_URL
             service_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or SUPABASE_KEY
-            _async_service_client = await create_async_client(url, service_key)
-            _async_service_client_loop = current_loop
+            try:
+                if url and service_key:
+                    _async_service_client = await create_async_client(url, service_key)
+                    _async_service_client_loop = current_loop
+            except Exception as exc:
+                logger.warning(f"get_async_service_client failed to initialize: {exc}")
+                _async_service_client = None
 
     return _async_service_client
 
 async def get_current_workspace(request: Request, supabase: AsyncClient = Depends(get_async_supabase_client)) -> str:
+    try:
+        path = str(getattr(getattr(request, "url", None), "path", "") or "")
+        if "/webhooks/esp/sendgrid" in path or "/webhooks/esp/mailgun" in path:
+            return "public_webhook"
+    except Exception:
+        pass
+
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")

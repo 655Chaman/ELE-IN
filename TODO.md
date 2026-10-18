@@ -234,3 +234,15 @@
     - `EleInExecutor.handle_send_email`: Pre-flight content heuristic gate aborts dispatch on critical spam scores (`>= 6.0`) with `status="skipped"`, `reason="critical_spam_score"`, burning 0 SendGrid credits and preserving domain sender reputation. Enriches telemetry with `spam_score`, `spam_risk_level`, and `flagged_triggers_count`.
     - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/audit-spam-score` and `POST /api/elein/deliverability/sanitize-copy`.
   - **Verification**: 93/93 automated tests passing across `test_spam_score_service.py` (38/38), `test_spam_score_and_eop_guard.py` (20/20), `test_spam_score_executor_and_router.py` (10/10), and unit tests (25/25); 239/239 regression deliverability suite green; sub-second production build (688ms).
+
+- [x] **Phase 40: Unified ESP Webhook Feedback Loop, FBL ARF Abuse Processor & Runaway Bounce Circuit Breaker (100% Operational):**
+  - **ESP Webhook Core Engine (`integrations/backend/services/esp_webhook_processor.py`)**:
+    - `ESPProvider`: `SENDGRID`, `MAILGUN`, `POSTMARK`, `AMAZON_SES`, `GENERIC_SMTP`.
+    - `WebhookEventType`: `DELIVERED`, `OPEN`, `CLICK`, `BOUNCE_HARD`, `BOUNCE_SOFT`, `SPAM_COMPLAINT`, `UNSUBSCRIBE`, `UNKNOWN`.
+    - Timing-safe cryptographic signature verification: SendGrid ECDSA P-256 SHA-256 / HMAC fallback, Mailgun HMAC-SHA256 signature against signing key, and Postmark Bearer token validation with 600-second freshness window against replay attacks.
+    - Feedback Loop & Abuse Processor: Automatically cascades spam complaints (ARF format) and 5xx hard bounces to `leads` (`status="COMPLAINED"` or `status="BOUNCED"`), inserts into global workspace `suppression_list` (DNC), purges pending sequence tasks, and updates sender mailbox metrics (`record_inbox_delivery_outcome`).
+    - Runaway Campaign Circuit Breaker: Evaluates rolling bounce and spam rates with small-sample false-positive guard (< 20 sends ignored). Trips when bounce rate >= 3.0% (or >= 5 bounces) or spam complaint rate >= 0.1% (or >= 2 complaints), automatically flipping campaign status to `paused` (`status_reason="CIRCUIT_BREAKER_TRIPPED"`).
+  - **Router & Orchestrator Integration (`campaigns/backend/routers/elein.py`, `campaigns/backend/services/elein_orchestrator.py`, `core/backend/api/auth_dep.py`)**:
+    - Exposed public webhook endpoints `POST /api/elein/webhooks/esp/sendgrid` and `POST /api/elein/webhooks/esp/mailgun` with path-scoped JWT auth exemptions, and authenticated endpoints `POST /api/elein/webhooks/esp/simulate` and `POST /api/elein/deliverability/evaluate-campaign-circuit-breaker`.
+    - Integrated circuit breaker pause gate into `EleInOrchestrator.process_lead` and `execute_node_action` to halt outbound dispatches immediately when a campaign is tripped.
+  - **Verification**: 44/44 automated tests passing across `test_esp_webhook_processor.py` (29/29) and `test_esp_webhook_and_circuit_breaker.py` (15/15); 235/235 full deliverability regression suite green; sub-second production build (691ms).
