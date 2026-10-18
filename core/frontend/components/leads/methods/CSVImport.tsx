@@ -72,12 +72,21 @@ export function CSVImport() {
           const guessedFirst = guess(['first_name', 'first name', 'firstname', 'fname', 'first', 'given']);
           const guessedLast = guess(['last_name', 'last name', 'lastname', 'lname', 'last', 'surname']);
           const guessedFull = guess(['full_name', 'full name', 'fullname', 'contact name', 'lead name', 'prospect name', 'name']);
+          const guessedLinkedin = guess(['linkedin_url', 'linkedin url', 'linkedin', 'profile_url', 'profile url', 'url', 'profile', 'sales navigator url', 'sales_nav_url']);
+          const guessedEmail = guess(['email', 'e-mail', 'work email', 'work_email', 'email address', 'email_address', 'mail', 'contact email', 'lead email']);
+          const guessedCompany = guess(['company_name', 'company name', 'company', 'organization', 'org', 'account', 'employer']);
+          const guessedTitle = guess(['job_title', 'job title', 'title', 'position', 'role', 'designation', 'occupation', 'headline']);
+          const guessedLocation = guess(['location', 'city', 'country', 'geo', 'state', 'region', 'address']);
+
           setMappings({
             first_name: guessedFirst,
             last_name: guessedLast,
             full_name: (!guessedFirst && guessedFull) ? guessedFull : "",
-            linkedin_url: guess(['linkedin_url', 'linkedin url', 'linkedin', 'profile_url', 'profile url', 'url', 'profile', 'sales navigator url', 'sales_nav_url']),
-            company_name: guess(['company_name', 'company name', 'company', 'organization', 'org', 'account', 'employer'])
+            linkedin_url: guessedLinkedin,
+            email: guessedEmail,
+            company_name: guessedCompany,
+            job_title: guessedTitle,
+            location: guessedLocation,
           });
         }
       }
@@ -287,8 +296,11 @@ export function CSVImport() {
               first_name: { label: "First Name", required: false, desc: "Used for personalized greetings {{first_name}}" },
               last_name: { label: "Last Name", required: false, desc: "Used for formal outreach" },
               full_name: { label: "Full Name (Auto-Split)", required: false, desc: "Auto-splits single column into First & Last Name" },
-              linkedin_url: { label: "LinkedIn URL", required: true, desc: "Required for automated connections & messages" },
+              linkedin_url: { label: "LinkedIn URL", required: !mappings.email, desc: "Required for automated connections & messages (or map Work Email)" },
+              email: { label: "Work Email", required: !mappings.linkedin_url, desc: "Required for cold email sequences (or map LinkedIn URL)" },
               company_name: { label: "Company Name", required: false, desc: "Used for company variables {{company}}" },
+              job_title: { label: "Job Title", required: false, desc: "Used for title variables {{job_title}}" },
+              location: { label: "Location / City", required: false, desc: "Used for geographic variables" },
             }).map(([key, meta], i) => {
               const selectedCol = (mappings as any)[key]
               const sampleVal = sampleRows.length > 0 && selectedCol ? sampleRows[0][selectedCol] : null
@@ -334,21 +346,39 @@ export function CSVImport() {
           {/* Validation Status Radar */}
           {(() => {
             const linkedinCol = mappings.linkedin_url
-            if (!linkedinCol) {
+            const emailCol = mappings.email
+
+            if (!linkedinCol && !emailCol) {
               return (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
                   <AlertTriangle size={15} className="shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-bold">LinkedIn URL is required</p>
+                    <p className="font-bold">Contact identifier required</p>
                     <p className="text-[11px] text-rose-700/80 dark:text-rose-300/80">
-                      Automated LinkedIn sequences require a profile URL. Please select the column holding LinkedIn URLs.
+                      Please map at least one contact identifier column: <strong>LinkedIn URL</strong> (for LinkedIn outreach) or <strong>Work Email</strong> (for Email outreach).
                     </p>
                   </div>
                 </div>
               )
             }
 
-            const sampleUrls = sampleRows.map(r => r[linkedinCol]).filter(Boolean)
+            if (!linkedinCol && emailCol) {
+              return (
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
+                    <span className="font-medium">
+                      Email-First List mapped ({emailCol}) — Ready for Email Outreach
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Ready to Import
+                  </span>
+                </div>
+              )
+            }
+
+            const sampleUrls = sampleRows.map(r => r[linkedinCol!]).filter(Boolean)
             const hasValidLinkedinSample = sampleUrls.some(u => /linkedin\.com\/(in|pub|profile)/i.test(u) || u.startsWith("http"))
 
             if (sampleUrls.length > 0 && !hasValidLinkedinSample) {
@@ -371,6 +401,7 @@ export function CSVImport() {
                   <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
                   <span className="font-medium">
                     Valid LinkedIn column selected ({sampleUrls.length > 0 ? sampleUrls[0] : "Ready"})
+                    {emailCol && " + Work Email mapped"}
                   </span>
                 </div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
@@ -402,6 +433,7 @@ export function CSVImport() {
                       <th className="py-2 px-3 font-semibold">Last Name</th>
                       <th className="py-2 px-3 font-semibold">Company</th>
                       <th className="py-2 px-3 font-semibold">LinkedIn URL</th>
+                      <th className="py-2 px-3 font-semibold">Email</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -410,6 +442,7 @@ export function CSVImport() {
                       const lname = mappings.last_name ? row[mappings.last_name] : null
                       const company = mappings.company_name ? row[mappings.company_name] : null
                       const url = mappings.linkedin_url ? row[mappings.linkedin_url] : null
+                      const email = mappings.email ? row[mappings.email] : null
 
                       return (
                         <tr key={idx} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
@@ -420,7 +453,10 @@ export function CSVImport() {
                           <td className="py-2 px-3 text-foreground">{lname || "—"}</td>
                           <td className="py-2 px-3 text-foreground">{company || "—"}</td>
                           <td className="py-2 px-3 font-mono text-[10px] max-w-[200px] truncate text-primary">
-                            {url || <span className="text-rose-500 font-sans italic">Unmapped</span>}
+                            {url || <span className="text-muted-foreground font-sans italic">—</span>}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-[10px] max-w-[180px] truncate text-foreground">
+                            {email || <span className="text-muted-foreground font-sans italic">—</span>}
                           </td>
                         </tr>
                       )

@@ -532,8 +532,12 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
       role="dialog"
       aria-modal="true"
       aria-labelledby="abm-orchestrator-title"
+      onClick={onClose}
     >
-      <div className="relative w-full max-w-6xl h-[90dvh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-6xl h-[90dvh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground"
+      >
         
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between shrink-0">
@@ -751,19 +755,33 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredAccounts.map((acc) => (
-                      <tr key={acc.id} className="hover:bg-muted/40 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-foreground">{acc.company_name}</div>
-                          <a
-                            href={`https://${acc.domain}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 mt-0.5"
-                          >
-                            {acc.domain} <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
+                    {filteredAccounts.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-xs text-muted-foreground">
+                          No target accounts found matching your filter criteria.
                         </td>
+                      </tr>
+                    ) : (
+                      filteredAccounts.map((acc) => (
+                        <tr key={acc.id} className="hover:bg-muted/40 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-foreground flex items-center gap-1.5">
+                              <span>{acc.company_name}</span>
+                              {acc.id.startsWith('acc-') && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-medium bg-muted text-muted-foreground border border-border">
+                                  Simulated Demo
+                                </span>
+                              )}
+                            </div>
+                            <a
+                              href={`https://${acc.domain}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 mt-0.5"
+                            >
+                              {acc.domain} <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          </td>
 
                         <td className="py-3 px-3">
                           <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-muted/40 text-foreground border border-border">
@@ -829,7 +847,8 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    ))
+                  )}
                   </tbody>
                 </table>
               </div>
@@ -947,8 +966,15 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {activeMembers.map((m) => (
-                      <tr key={m.id} className="hover:bg-muted/40 transition-colors">
+                    {activeMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-xs text-muted-foreground">
+                          No committee members mapped for this account yet. Click "Add Stakeholder" above to define roles.
+                        </td>
+                      </tr>
+                    ) : (
+                      activeMembers.map((m) => (
+                        <tr key={m.id} className="hover:bg-muted/40 transition-colors">
                         <td className="py-3.5 px-4">
                           <div className="font-semibold text-foreground text-sm">{m.prospect_name}</div>
                           <div className="text-muted-foreground text-xs mt-0.5">{m.title}</div>
@@ -1196,8 +1222,12 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
             role="dialog"
             aria-modal="true"
             aria-labelledby="launch-cascade-title"
+            onClick={() => setLaunchModalOpen(false)}
           >
-            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-5 text-card-foreground">
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-5 text-card-foreground"
+            >
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Rocket className="w-4 h-4 text-muted-foreground" />
@@ -1298,8 +1328,12 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-account-modal-title"
+            onClick={() => setAddAccountOpen(false)}
           >
-            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground">
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground"
+            >
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-muted-foreground" />
@@ -1396,8 +1430,12 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-stakeholder-modal-title"
+            onClick={() => setAddMemberOpen(false)}
           >
-            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground">
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground"
+            >
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <UserPlus className="w-4 h-4 text-muted-foreground" />

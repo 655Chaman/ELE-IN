@@ -2020,8 +2020,8 @@ class EleInOrchestrator:
                 return {"status": "error", "error": f"Missing variable data for '{k}'. The lead does not have this information, and no fallback was provided.", "requires_approval": True}
     
         requires_linkedin = action in ACTION_TYPE_MAP
-        # LinkedIn actions and external side-effects require the idempotency lock
-        requires_idempotency = requires_linkedin or action == "push_to_crm"
+        # LinkedIn actions, outbound email, and external side-effects require the idempotency lock
+        requires_idempotency = requires_linkedin or action in ("push_to_crm", "send_email", "custom_webhook", "send_slack")
         idemp_key = None
         
         # Paranoia Layer 0 & 1 (AUDIT-02): Dynamic Multi-Sender Pod Load Balancer Integration
@@ -2279,7 +2279,70 @@ class EleInOrchestrator:
                                 logger.info(f"Idempotency hit ({idemp_key}): Retrying previously failed action ({col_err}).")
                                 pass 
                             elif col_status == "running":
-                                # ENG-02: Incremental crash recovery instead of immediate 5/5 retry exhaustion.
+                                # ENG-02 & Audit Finding #6: Incremental crash recovery with duplicate outreach prevention.
+                                # Check if previous worker already dispatched the outbound touch before crashing.
+                                already_dispatched = False
+                                fast_forward_payload = None
+                                lead_ident = state.get("lead_id") or state.get("opportunity_id") or opportunity_id
+                                enr_id = state.get("enrollment_id")
+                                ws_id = state.get("workspace_id")
+
+                                # 1. Check messages table for outbound touches logged for this enrollment & node
+                                if enr_id and current_node_id:
+                                    try:
+                                        msg_q = self.supabase.table("messages").select("id, direction, created_at").eq("enrollment_id", enr_id).eq("node_id", current_node_id).execute()
+                                        if msg_q.data and len(msg_q.data) > 0:
+                                            already_dispatched = True
+                                            fast_forward_payload = {
+                                                "branch": payload.get("branch") or "THEN",
+                                                "variables": payload.get("variables") or state.get("variables") or {},
+                                                "recovered_from_crash": True,
+                                                "message_id": msg_q.data[0].get("id")
+                                            }
+                                    except Exception as m_err:
+                                        logger.debug(f"[Orchestrator] Message dedup check skipped: {m_err}")
+
+                                # 2. Check action_log for successful execution on this state or idempotency key
+                                if not already_dispatched and ws_id and state.get("id"):
+                                    try:
+                                        act_q = self.supabase.table("action_log").select("id, result, action_type").eq("workspace_id", ws_id).eq("execution_state_id", state.get("id")).eq("result", "success").execute()
+                                        if act_q.data and len(act_q.data) > 0:
+                                            already_dispatched = True
+                                            fast_forward_payload = {
+                                                "branch": payload.get("branch") or "THEN",
+                                                "variables": payload.get("variables") or state.get("variables") or {},
+                                                "recovered_from_crash": True,
+                                                "action_id": act_q.data[0].get("id")
+                                            }
+                                    except Exception as a_err:
+                                        logger.debug(f"[Orchestrator] Action log dedup check skipped: {a_err}")
+
+                                # 3. Check outbox_events for terminal successful delivery
+                                if not already_dispatched and ws_id and idemp_key:
+                                    try:
+                                        ob_q = self.supabase.table("outbox_events").select("id, status").eq("workspace_id", ws_id).eq("idempotency_key", idemp_key).in_("status", ["sent", "delivered", "completed"]).execute()
+                                        if ob_q.data and len(ob_q.data) > 0:
+                                            already_dispatched = True
+                                            fast_forward_payload = {
+                                                "branch": payload.get("branch") or "THEN",
+                                                "variables": payload.get("variables") or state.get("variables") or {},
+                                                "recovered_from_crash": True,
+                                                "outbox_id": ob_q.data[0].get("id")
+                                            }
+                                    except Exception as ob_err:
+                                        logger.debug(f"[Orchestrator] Outbox event dedup check skipped: {ob_err}")
+
+                                if already_dispatched and fast_forward_payload:
+                                    logger.warning(f"Idempotency hit ({idemp_key}): Outreach already verified in downstream tables prior to worker crash. Fast-forwarding to avoid duplicate outreach to prospect {lead_ident}.")
+                                    try:
+                                        self.supabase.table("campaign_node_executions").update({
+                                            "status": "success",
+                                            "output_payload": fast_forward_payload
+                                        }).eq("idempotency_key", idemp_key).execute()
+                                    except Exception as upd_err:
+                                        logger.debug(f"Failed to update campaign_node_executions on crash recovery: {upd_err}")
+                                    return {"status": "fast_forward", "branch": fast_forward_payload.get("branch"), "variables": fast_forward_payload.get("variables")}
+
                                 # Reclaim the node execution lock and allow retry with attempts tracked incrementally.
                                 upd_res = self.supabase.table("campaign_node_executions").update({"status": "running"}).eq("idempotency_key", idemp_key).eq("status", "running").execute()
                                 if not upd_res.data:

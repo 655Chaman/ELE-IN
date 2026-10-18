@@ -74,8 +74,8 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
     }
 
     if (method === "csv" && step === 2) {
-      if (!mappings.linkedin_url) {
-        toast.error("Please map the LinkedIn URL column before importing.");
+      if (!mappings.linkedin_url && !mappings.email) {
+        toast.error("Please map at least the LinkedIn URL or Email column before importing.");
         return;
       }
     }

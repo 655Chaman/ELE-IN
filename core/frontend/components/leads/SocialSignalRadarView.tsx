@@ -730,16 +730,21 @@ export function SocialSignalRadarView({
                         <span className="text-sm font-bold text-foreground">
                           {lead.first_name} {lead.last_name}
                         </span>
-                        {lead.linkedin_url && (
-                          <a
-                            href={lead.linkedin_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-muted-foreground hover:text-primary transition-colors"
-                          >
-                            <Linkedin className="w-3.5 h-3.5" />
-                          </a>
-                        )}
+                        {lead.linkedin_url && (() => {
+                          const safeUrl = (lead.linkedin_url.startsWith('http://') || lead.linkedin_url.startsWith('https://'))
+                            ? lead.linkedin_url
+                            : `https://${lead.linkedin_url.replace(/^\/+/, '')}`;
+                          return (
+                            <a
+                              href={safeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                            >
+                              <Linkedin className="w-3.5 h-3.5" />
+                            </a>
+                          );
+                        })()}
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border flex items-center gap-1.5 ${badgeBg}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${isHot ? 'bg-destructive' : isWarm ? 'bg-amber-500' : 'bg-primary'}`} />
                           <span>{lead.social_intent_score}/100 {lead.social_intent_tier}</span>

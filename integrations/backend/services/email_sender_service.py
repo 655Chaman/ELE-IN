@@ -17,6 +17,10 @@ from core.backend.services.deliverability_guard import (
     evaluate_inbox_deliverability_tripwire,
     sanitize_domain_input,
 )
+from integrations.backend.services.mailbox_warmup_service import (
+    calculate_warmup_ramp_projection,
+    calculate_inbox_warmup_health_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -362,10 +366,15 @@ def is_valid_sender_email(email: Optional[str]) -> bool:
 
 def calculate_warmup_daily_cap(inbox: Dict[str, Any]) -> int:
     """
-    Paranoia Layer 0 & 2: Computes the effective daily sending cap for a sender inbox.
-    If warmup_enabled is True, ramps linearly from warmup_start_limit (default 15)
-    by warmup_increment_per_day (default 5) * warmup_days_active, capped at daily_limit.
-    Clamps values against human misconfiguration (e.g. negative limits or 100,000/day).
+    Paranoia Layer 0, 1 & 2: Computes the effective daily cold outreach cap for a sender inbox.
+    - If warmup_enabled is False, returns safe_daily_limit without ramp restrictions.
+    - If warmup_enabled is True:
+      - Reads curve_type = inbox.get("warmup_curve_type", "LOGARITHMIC").
+      - Uses calculate_warmup_ramp_projection to compute current day's allocated cold outreach cap.
+      - Evaluates calculate_inbox_warmup_health_score:
+        - If NEEDS_RECOVERY: applies 50% throttle to cold cap.
+        - If EMERGENCY_PAUSED: sets cold outreach cap to 0.
+      - Clamps return between 0 and safe_daily_limit.
     """
     if not isinstance(inbox, dict):
         return 50
@@ -376,27 +385,63 @@ def calculate_warmup_daily_cap(inbox: Dict[str, Any]) -> int:
         raw_max = 50
     safe_daily_limit = max(1, min(2000, raw_max))
 
-    warmup_enabled = bool(inbox.get("warmup_enabled", False))
+    # Check warmup status / enabled flag
+    warmup_flag = inbox.get("warmup_enabled")
+    if warmup_flag is False or str(warmup_flag).lower() in ("false", "0"):
+        warmup_enabled = False
+    elif warmup_flag is True or str(warmup_flag).lower() in ("true", "1"):
+        warmup_enabled = True
+    elif str(inbox.get("warmup_status", "")).lower() in ("warming", "active", "needs_recovery"):
+        warmup_enabled = True
+    else:
+        warmup_enabled = False
+
     if not warmup_enabled:
         return safe_daily_limit
 
-    try:
-        start_limit = max(1, min(safe_daily_limit, int(inbox.get("warmup_start_limit", 15) or 15)))
-    except (ValueError, TypeError):
-        start_limit = min(15, safe_daily_limit)
+    curve_type = inbox.get("warmup_curve_type") or inbox.get("ramp_strategy") or "LOGARITHMIC"
 
     try:
-        increment = max(1, min(100, int(inbox.get("warmup_increment_per_day", 5) or 5)))
+        start_limit = max(1, min(safe_daily_limit, int(inbox.get("warmup_start_limit") or inbox.get("start_limit") or 5)))
     except (ValueError, TypeError):
-        increment = 5
+        start_limit = min(5, safe_daily_limit)
 
     try:
-        days_active = max(0, min(365, int(inbox.get("warmup_days_active", 0) or 0)))
+        target_limit = max(start_limit, min(200, safe_daily_limit))
+    except (ValueError, TypeError):
+        target_limit = safe_daily_limit
+
+    try:
+        ramp_days = max(7, min(90, int(inbox.get("warmup_ramp_days") or inbox.get("ramp_days") or 28)))
+    except (ValueError, TypeError):
+        ramp_days = 28
+
+    try:
+        days_active = max(0, int(inbox.get("warmup_days_active") if inbox.get("warmup_days_active") is not None else (inbox.get("current_ramp_day") or 0)))
     except (ValueError, TypeError):
         days_active = 0
 
-    ramped_cap = start_limit + (days_active * increment)
-    return max(1, min(safe_daily_limit, ramped_cap))
+    # Calculate ramp projection
+    projection_data = calculate_warmup_ramp_projection(
+        curve_type=str(curve_type),
+        start_limit=start_limit,
+        target_limit=target_limit,
+        ramp_days=ramp_days,
+        current_day=days_active,
+    )
+    cold_cap = int(projection_data.get("today_cold_cap", 0))
+
+    # Evaluate health score
+    health = calculate_inbox_warmup_health_score(inbox)
+    status = str(health.get("status") or "").upper()
+    emergency_paused = bool(health.get("emergency_paused", False)) or (status == "EMERGENCY_PAUSED")
+
+    if emergency_paused or str(inbox.get("status") or "").upper() == "EMERGENCY_PAUSED" or str(inbox.get("warmup_status") or "").upper() == "EMERGENCY_PAUSED":
+        cold_cap = 0
+    elif status == "NEEDS_RECOVERY" or health.get("throttle_cold_ratio", 1.0) <= 0.5 or str(inbox.get("warmup_status") or "").upper() == "NEEDS_RECOVERY":
+        cold_cap = int(cold_cap * 0.5)
+
+    return max(0, min(safe_daily_limit, cold_cap))
 
 
 def _is_inbox_currently_quarantined(inbox: Dict[str, Any]) -> bool:
@@ -436,6 +481,9 @@ def select_rotating_sender_inbox(
     strategy: str = "HEALTH_WEIGHTED",
     domain_daily_cap: int = 150,
     affinity_fallback_mode: str = "same_domain",
+    campaign_type: str = "cold",
+    is_warmup: bool = False,
+    **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Paranoia Layer 0, 1 & 2: Selects the optimal healthy sender inbox from the workspace pool.
@@ -556,6 +604,38 @@ def select_rotating_sender_inbox(
             })
             continue
 
+        # Check warmup health status
+        w_health = calculate_inbox_warmup_health_score(inb)
+        w_status = str(w_health.get("status") or "PEAK_HEALTH").upper()
+        current_health_score = int(w_health.get("health_score", 100))
+        is_warmup_emergency_paused = False
+
+        if w_status == "EMERGENCY_PAUSED" or w_health.get("emergency_paused"):
+            is_warmup_emergency_paused = True
+        elif (
+            str(inb.get("warmup_status") or "").upper() == "EMERGENCY_PAUSED"
+            or str(inb.get("warmup_health_status") or "").upper() == "EMERGENCY_PAUSED"
+            or str(inb.get("status") or "").upper() == "EMERGENCY_PAUSED"
+            or bool(inb.get("emergency_paused", False))
+        ):
+            # Auto-recovery: If health score has recovered to >= 70, emergency pause lifts
+            if current_health_score < 70:
+                is_warmup_emergency_paused = True
+
+        # Check if cold campaign (default is cold unless explicitly warmup)
+        is_cold_campaign = (str(campaign_type or "cold").lower() != "warmup") and not is_warmup
+        if is_warmup_emergency_paused and is_cold_campaign:
+            logger.warning(
+                f"[EmailSenderPool] Mailbox {email_addr} rejected: WARMUP_EMERGENCY_PAUSED (health_score={current_health_score})"
+            )
+            rejected_inboxes.append({"id": inb_id, "email": email_addr, "reason": "WARMUP_EMERGENCY_PAUSED"})
+            continue
+
+        if w_status == "NEEDS_RECOVERY":
+            logger.info(
+                f"[EmailSenderPool] Mailbox {email_addr} is in NEEDS_RECOVERY (health_score={current_health_score}); respecting throttled capacity."
+            )
+
         # Check warmup daily capacity
         effective_cap = calculate_warmup_daily_cap(inb)
         try:
@@ -584,6 +664,11 @@ def select_rotating_sender_inbox(
         enriched["composite_score"] = round(remaining_today * ((deliv_score / 100.0) ** 2), 3)
         enriched["domain_metrics"] = d_metrics
         enriched["domain_burnout_status"] = d_metrics.get("domain_burnout_status", "HEALTHY")
+        curve_type_val = inb.get("warmup_curve_type") or inb.get("ramp_strategy") or "LOGARITHMIC"
+        enriched["warmup_health_score"] = current_health_score
+        enriched["warmup_curve_type"] = curve_type_val
+        enriched["warmup_health_status"] = w_status
+        enriched["warmup_days_active"] = inb.get("warmup_days_active") if inb.get("warmup_days_active") is not None else (inb.get("current_ramp_day") or 0)
         eligible_inboxes.append(enriched)
 
     pool_summary = {
@@ -644,6 +729,9 @@ def select_rotating_sender_inbox(
                     "sender_domain": chosen_domain,
                     "domain_metrics": d_metrics,
                     "domain_burnout_status": d_metrics.get("domain_burnout_status", "HEALTHY"),
+                    "warmup_health_score": chosen.get("warmup_health_score"),
+                    "warmup_curve_type": chosen.get("warmup_curve_type"),
+                    "warmup_days_active": chosen.get("warmup_days_active"),
                     "pool_summary": pool_summary,
                 }
 
@@ -690,6 +778,9 @@ def select_rotating_sender_inbox(
                         "sender_domain": chosen_domain,
                         "domain_metrics": d_metrics,
                         "domain_burnout_status": d_metrics.get("domain_burnout_status", "HEALTHY"),
+                        "warmup_health_score": chosen.get("warmup_health_score"),
+                        "warmup_curve_type": chosen.get("warmup_curve_type"),
+                        "warmup_days_active": chosen.get("warmup_days_active"),
                         "pool_summary": pool_summary,
                     }
                 else:
@@ -777,6 +868,9 @@ def select_rotating_sender_inbox(
         "sender_domain": chosen_domain,
         "domain_metrics": d_metrics,
         "domain_burnout_status": d_metrics.get("domain_burnout_status", "HEALTHY"),
+        "warmup_health_score": chosen.get("warmup_health_score"),
+        "warmup_curve_type": chosen.get("warmup_curve_type"),
+        "warmup_days_active": chosen.get("warmup_days_active"),
         "pool_summary": pool_summary,
     }
 

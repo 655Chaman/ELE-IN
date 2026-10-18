@@ -35,6 +35,7 @@ export function CrmAttributionStudioModal({ onClose, canCrmSync = true }: CrmAtt
   // Attribution calculator state
   const [dealName, setDealName] = useState('Snowflake Enterprise Tier');
   const [dealAmount, setDealAmount] = useState(120000);
+  const [dealAmountStr, setDealAmountStr] = useState('120000');
   const [attributionModel, setAttributionModel] = useState<'w_shaped' | 'first_touch' | 'last_touch' | 'linear'>('w_shaped');
   const [isCalculating, setIsCalculating] = useState(false);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
@@ -714,8 +715,18 @@ export function CrmAttributionStudioModal({ onClose, canCrmSync = true }: CrmAtt
                       type="number"
                       required
                       min={1}
-                      value={dealAmount}
-                      onChange={e => setDealAmount(Number(e.target.value))}
+                      value={dealAmountStr}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setDealAmountStr(val);
+                        const n = parseInt(val, 10);
+                        if (!isNaN(n)) setDealAmount(n);
+                      }}
+                      onBlur={() => {
+                        const n = Math.max(100, parseInt(dealAmountStr, 10) || 120000);
+                        setDealAmount(n);
+                        setDealAmountStr(String(n));
+                      }}
                       className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                     />
                   </div>

@@ -64,8 +64,12 @@ export interface LeadImportState {
   mappings: {
     first_name: string;
     last_name: string;
+    full_name?: string;
     linkedin_url: string;
+    email?: string;
     company_name: string;
+    job_title?: string;
+    location?: string;
   };
   setMappings: (m: any) => void;
   
@@ -166,8 +170,12 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
   const [mappings, setMappings] = useState({
     first_name: "",
     last_name: "",
+    full_name: "",
     linkedin_url: "",
-    company_name: ""
+    email: "",
+    company_name: "",
+    job_title: "",
+    location: ""
   })
 
   const generateSearchUrl = () => {

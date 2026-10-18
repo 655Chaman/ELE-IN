@@ -121,7 +121,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-4 text-center px-4">
-            We encrypt your token at rest. <br/> Don't have one? <a href="https://developers.hubspot.com/docs/api/private-apps" target="_blank" className="text-foreground hover:underline font-medium" rel="noreferrer">Learn how to create a Private App</a>.
+            We encrypt your token at rest. <br/> Don't have one? <a href="https://developers.hubspot.com/docs/api/private-apps" target="_blank" className="text-foreground hover:underline font-medium" rel="noopener noreferrer">Learn how to create a Private App</a>.
           </p>
         </div>
       ) : (

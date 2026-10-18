@@ -208,7 +208,7 @@ class TestIssue5ExecutorRouterIntegration(unittest.TestCase):
         locks_query.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
             {"inbox_id": "inb_affinity_locked"}
         ]
-        self.mock_supabase.table.return_value = locks_query
+        self.mock_supabase.table.side_effect = lambda t: locks_query if t in ("thread_affinity_locks", "campaign_lead_sender_locks") else MagicMock()
 
         res = self.executor.handle_send_email(
             data={

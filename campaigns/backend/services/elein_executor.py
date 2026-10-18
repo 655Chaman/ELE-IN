@@ -4757,6 +4757,20 @@ Respond ONLY with valid JSON."""
                     burnout_st = selected_inbox.get("domain_burnout_status") or selected_inbox.get("domain_health_status") or "HEALTHY"
                     res_dict["domain_burnout_status"] = burnout_st
                     res_dict["domain_health_status"] = burnout_st
+                    res_dict["warmup_health_score"] = selected_inbox.get("warmup_health_score")
+                    res_dict["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
+                    res_dict["warmup_days_active"] = selected_inbox.get("warmup_days_active")
+                elif data.get("selected_inbox"):
+                    res_dict["warmup_health_score"] = data["selected_inbox"].get("warmup_health_score")
+                    res_dict["warmup_curve_type"] = data["selected_inbox"].get("warmup_curve_type")
+                    res_dict["warmup_days_active"] = data["selected_inbox"].get("warmup_days_active")
+
+                if res_dict.get("warmup_health_score") is None and "warmup_health_score" in data:
+                    res_dict["warmup_health_score"] = data.get("warmup_health_score")
+                if res_dict.get("warmup_curve_type") is None and "warmup_curve_type" in data:
+                    res_dict["warmup_curve_type"] = data.get("warmup_curve_type")
+                if res_dict.get("warmup_days_active") is None and "warmup_days_active" in data:
+                    res_dict["warmup_days_active"] = data.get("warmup_days_active")
 
                 if ssl_tracking_bypassed:
                     res_dict["ssl_tracking_bypassed"] = True
@@ -4772,6 +4786,12 @@ Respond ONLY with valid JSON."""
                         )
                     except Exception as outcome_err:
                         logger.debug(f"[DeliverabilityPool] Non-fatal delivery outcome record error: {outcome_err}")
+
+                try:
+                    self._log_outbound_message(data, f"[Email: {subject}] {body}")
+                except Exception as log_err:
+                    logger.debug(f"[Executor] Non-fatal email log_outbound_message error: {log_err}")
+
                 return res_dict
 
             rewritten_count = 0

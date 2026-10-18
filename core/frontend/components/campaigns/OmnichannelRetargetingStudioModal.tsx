@@ -301,9 +301,14 @@ export function OmnichannelRetargetingStudioModal({
             {/* Input Attributes Form */}
             <form onSubmit={handleSimulateRoute} className="p-5 rounded-xl bg-card border border-border space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground block">
-                  Prospect Attribute Inputs
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-foreground block">
+                    Prospect Attribute Inputs
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-medium bg-muted text-muted-foreground border border-border">
+                    Simulated Sandbox
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={handleResetDefaults}

@@ -137,6 +137,8 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
   const [estimatedDuration, setEstimatedDuration] = useState<number>(24);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [copiedVoiceScript, setCopiedVoiceScript] = useState(false);
+  const [isEditingScript, setIsEditingScript] = useState(false);
+  const [confirmDeleteAssetId, setConfirmDeleteAssetId] = useState<string | null>(null);
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Tab 3: Video Prospecting Card State
@@ -529,8 +531,12 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
       role="dialog"
       aria-modal="true"
       aria-labelledby="event-multimodal-studio-title"
+      onClick={onClose}
     >
-      <div className="relative w-full max-w-5xl h-[90dvh] max-h-[90dvh] rounded-xl border border-border bg-card text-card-foreground shadow-2xl flex flex-col overflow-hidden">
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-5xl h-[90dvh] max-h-[90dvh] rounded-xl border border-border bg-card text-card-foreground shadow-2xl flex flex-col overflow-hidden"
+      >
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between shrink-0">
@@ -753,51 +759,61 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
               </div>
 
               {/* Attendees List */}
-              <div className="grid grid-cols-1 gap-3">
-                {filteredAttendees.map((att) => {
-                  const isSelected = selectedAttendeeIds.has(att.id);
-                  const isEnrolled = att.status === 'enrolled';
-                  const isExpanded = expandedIcebreakerIds.has(att.id);
+              {filteredAttendees.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground text-xs border border-dashed border-border rounded-lg">
+                  No attendees found matching "{seniorityFilter}" seniority.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {filteredAttendees.map((att) => {
+                    const isSelected = selectedAttendeeIds.has(att.id);
+                    const isEnrolled = att.status === 'enrolled';
+                    const isExpanded = expandedIcebreakerIds.has(att.id);
 
-                  return (
-                    <div
-                      key={att.id}
-                      className={`rounded-lg border p-3.5 transition-all ${
-                        isEnrolled
-                          ? 'border-border bg-muted/40'
-                          : isSelected
-                          ? 'border-foreground bg-muted/20'
-                          : 'border-border bg-card hover:bg-muted/20'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3 flex-1">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            disabled={isEnrolled}
-                            onChange={() => toggleAttendeeSelection(att.id)}
-                            className="mt-1 rounded border-border bg-background text-primary focus:ring-0 cursor-pointer"
-                          />
-                          <div className="space-y-1.5 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-xs text-foreground">{att.prospect_name}</span>
-                              <span className="text-xs text-muted-foreground">- {att.title} @ {att.company_name}</span>
-                              {att.linkedin_url && (
-                                <a
-                                  href={att.linkedin_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-0.5"
-                                  title="View LinkedIn Profile"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
-                              )}
-                              <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase bg-muted/40 text-foreground border border-border">
-                                {(att.seniority || 'member').replace('_', ' ')}
-                              </span>
-                            </div>
+                    return (
+                      <div
+                        key={att.id}
+                        className={`rounded-lg border p-3.5 transition-all ${
+                          isEnrolled
+                            ? 'border-border bg-muted/40'
+                            : isSelected
+                            ? 'border-foreground bg-muted/20'
+                            : 'border-border bg-card hover:bg-muted/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isEnrolled}
+                              onChange={() => toggleAttendeeSelection(att.id)}
+                              className="mt-1 rounded border-border bg-background text-primary focus:ring-0 cursor-pointer"
+                            />
+                            <div className="space-y-1.5 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-xs text-foreground">{att.prospect_name}</span>
+                                <span className="text-xs text-muted-foreground">- {att.title} @ {att.company_name}</span>
+                                {att.id.startsWith('att-') && (
+                                  <span className="rounded px-1.5 py-0.2 text-[9px] font-mono font-medium bg-muted text-muted-foreground border border-border">
+                                    Simulated Lead
+                                  </span>
+                                )}
+                                {att.linkedin_url && (
+                                  <a
+                                    href={att.linkedin_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-0.5"
+                                    title="View LinkedIn Profile"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                                <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase bg-muted/40 text-foreground border border-border">
+                                  {(att.seniority || 'member').replace('_', ' ')}
+                                </span>
+                              </div>
 
                             {/* Contextual Event Icebreaker */}
                             <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-foreground font-mono border border-border flex items-start justify-between gap-2">
@@ -850,8 +866,9 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -969,19 +986,43 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
 
                   {/* Teleprompter Script */}
                   <div className="space-y-1.5">
-                    <div className="text-[11px] text-muted-foreground font-medium">Spoken Teleprompter Script:</div>
-                    <div className="rounded-lg bg-background p-3.5 text-xs text-foreground leading-relaxed font-mono border border-border whitespace-pre-wrap">
-                      {(generatedScript || '').split('[pause]').map((chunk, idx, arr) => (
-                        <React.Fragment key={idx}>
-                          {chunk}
-                          {idx < arr.length - 1 && (
-                            <span className="inline-block mx-1 rounded bg-muted px-1 py-0.5 text-[10px] font-sans font-medium text-foreground border border-border">
-                              PAUSE 0.5s
-                            </span>
-                          )}
-                        </React.Fragment>
-                      ))}
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                      <span>Spoken Teleprompter Script:</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingScript(!isEditingScript)}
+                        className="text-primary hover:underline cursor-pointer"
+                      >
+                        {isEditingScript ? "Done Editing" : "Edit Script"}
+                      </button>
                     </div>
+                    {isEditingScript ? (
+                      <textarea
+                        value={generatedScript}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setGeneratedScript(val);
+                          const words = val.split(/\s+/).filter(Boolean).length;
+                          setEstimatedDuration(Math.max(5, Math.round(words / 2.5)));
+                        }}
+                        rows={4}
+                        className="w-full rounded-lg bg-background p-3 text-xs text-foreground font-mono border border-border focus:outline-none focus:border-foreground resize-none"
+                        placeholder="Customize voice note script..."
+                      />
+                    ) : (
+                      <div className="rounded-lg bg-background p-3.5 text-xs text-foreground leading-relaxed font-mono border border-border whitespace-pre-wrap">
+                        {(generatedScript || '').split('[pause]').map((chunk, idx, arr) => (
+                          <React.Fragment key={idx}>
+                            {chunk}
+                            {idx < arr.length - 1 && (
+                              <span className="inline-block mx-1 rounded bg-muted px-1 py-0.5 text-[10px] font-sans font-medium text-foreground border border-border">
+                                PAUSE 0.5s
+                              </span>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1225,14 +1266,37 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
                         >
                           <Copy className="h-3 w-3" /> Copy
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAsset(asset.id)}
-                          className="flex items-center gap-1 text-[11px] text-destructive hover:text-destructive/80 transition-colors cursor-pointer"
-                          title="Delete asset"
-                        >
-                          <Trash2 className="h-3 w-3" /> Delete
-                        </button>
+                        {confirmDeleteAssetId === asset.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-destructive font-medium">Delete?</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleDeleteAsset(asset.id);
+                                setConfirmDeleteAssetId(null);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-semibold hover:bg-destructive/90 cursor-pointer"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteAssetId(null)}
+                              className="px-1.5 py-0.5 rounded border border-border text-[10px] text-muted-foreground hover:text-foreground cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAssetId(asset.id)}
+                            className="flex items-center gap-1 text-[11px] text-destructive hover:text-destructive/80 transition-colors cursor-pointer"
+                            title="Delete asset"
+                          >
+                            <Trash2 className="h-3 w-3" /> Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -38,6 +38,8 @@ export function AdvocacyPodStudioModal({ onClose, canAdvocacyPod = true }: Advoc
   const [newAccountName, setNewAccountName] = useState('');
   const [newLikeCap, setNewLikeCap] = useState(15);
   const [newCommentCap, setNewCommentCap] = useState(5);
+  const [newLikeCapStr, setNewLikeCapStr] = useState('15');
+  const [newCommentCapStr, setNewCommentCapStr] = useState('5');
   const [isSubmittingMember, setIsSubmittingMember] = useState(false);
 
   // SWR queries
@@ -644,8 +646,18 @@ export function AdvocacyPodStudioModal({ onClose, canAdvocacyPod = true }: Advoc
                       min={1}
                       max={30}
                       placeholder="Daily Like Cap (Max 30)"
-                      value={newLikeCap}
-                      onChange={(e) => setNewLikeCap(Number(e.target.value))}
+                      value={newLikeCapStr}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNewLikeCapStr(val);
+                        const n = parseInt(val, 10);
+                        if (!isNaN(n)) setNewLikeCap(n);
+                      }}
+                      onBlur={() => {
+                        const n = Math.max(1, Math.min(30, parseInt(newLikeCapStr, 10) || 15));
+                        setNewLikeCap(n);
+                        setNewLikeCapStr(String(n));
+                      }}
                       className="px-3 py-2 rounded-lg bg-background border border-border text-xs focus:outline-none focus:border-primary"
                     />
                     <input 
@@ -653,8 +665,18 @@ export function AdvocacyPodStudioModal({ onClose, canAdvocacyPod = true }: Advoc
                       min={1}
                       max={15}
                       placeholder="Daily Comment Cap (Max 15)"
-                      value={newCommentCap}
-                      onChange={(e) => setNewCommentCap(Number(e.target.value))}
+                      value={newCommentCapStr}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNewCommentCapStr(val);
+                        const n = parseInt(val, 10);
+                        if (!isNaN(n)) setNewCommentCap(n);
+                      }}
+                      onBlur={() => {
+                        const n = Math.max(1, Math.min(15, parseInt(newCommentCapStr, 10) || 5));
+                        setNewCommentCap(n);
+                        setNewCommentCapStr(String(n));
+                      }}
                       className="px-3 py-2 rounded-lg bg-background border border-border text-xs focus:outline-none focus:border-primary"
                     />
                   </div>
