@@ -975,12 +975,12 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
           </div>
           <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-4 flex gap-4 text-left shadow-sm">
             <div className="mt-0.5 shrink-0">
-               <ShieldCheck size={20} className="text-emerald-400" />
+               <ShieldCheck size={20} className="text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h4 className="text-sm font-semibold text-foreground">Team Divide & Conquer (Zero Target Collision)</h4>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                   Moat Active
                 </span>
               </div>
@@ -1183,7 +1183,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
               <button
                 type="button"
                 onClick={() => setIsStoStudioOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-400 text-xs font-semibold transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 text-xs font-semibold transition-colors"
               >
                 <ElesiumLogo size={13} />
                 Open AI STO Simulator &amp; Heatmap Studio
@@ -1265,15 +1265,15 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Zap size={13} className="text-indigo-400" />
+                    <Zap size={13} className="text-indigo-600 dark:text-indigo-400" />
                     AI Send-Time (STO)
                   </span>
                   {!canAiSto ? (
-                    <span className="flex items-center gap-1 text-[10px] font-extrabold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                    <span className="flex items-center gap-1 text-[10px] font-extrabold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                       <Lock size={10} /> Pro
                     </span>
                   ) : currentMode === "ai_sto" ? (
-                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    <span className="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400" />
                   ) : null}
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -1284,15 +1284,16 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
 
             {currentMode === "ai_sto" && (
               <div className="p-3.5 rounded-lg bg-indigo-500/10 border border-indigo-500/25 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-indigo-200">
-                  <strong className="text-indigo-300">Predictive STO Active:</strong> Outreach steps will automatically fire at each prospect's highest-probability local active slot with deterministic MD5 jitter (+5m to +25m).
+                <div className="text-xs text-indigo-900 dark:text-indigo-200">
+                  <strong className="text-indigo-950 dark:text-indigo-300 font-semibold">Predictive STO Active:</strong> Outreach steps will automatically fire at each prospect's highest-probability local active slot with deterministic MD5 jitter (+5m to +25m).
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsStoStudioOpen(true)}
-                  className="text-xs font-semibold text-indigo-300 hover:text-white underline shrink-0"
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-white underline shrink-0 inline-flex items-center gap-1"
                 >
-                  Inspect 24h Heatmap &rarr;
+                  <span>Inspect 24h Heatmap</span>
+                  <ArrowRight size={12} />
                 </button>
               </div>
             )}
@@ -1761,6 +1762,17 @@ function EleInCreateCampaignInner() {
 
   const [draftErrors, setDraftErrors] = useState<string[]>([])
   const [activationErrors, setActivationErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    if (activationErrors.length === 0) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setActivationErrors([]);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activationErrors.length]);
 
   const canUndo = useHRTreeStore(s => s.history.length > 0)
   const canRedo = useHRTreeStore(s => s.future.length > 0)
@@ -2338,8 +2350,16 @@ function EleInCreateCampaignInner() {
 
       <AnimatePresence>
         {activationErrors.length > 0 && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setActivationErrors([]);
+            }}
+          >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="activation-error-title"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
@@ -2350,7 +2370,7 @@ function EleInCreateCampaignInner() {
                   <AlertTriangle className="text-destructive" size={20} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-foreground">Cannot Launch Campaign</h2>
+                  <h2 id="activation-error-title" className="text-lg font-bold text-foreground">Cannot Launch Campaign</h2>
                   <p className="text-xs text-muted-foreground">Please resolve the following pre-flight requirements before launch:</p>
                 </div>
               </div>

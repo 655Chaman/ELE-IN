@@ -8596,12 +8596,25 @@ export function EITreeNodeConfigPanel() {
     updateNodeData(selectedNode.id, { [key]: value })
   }
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        selectNode(null)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectNode])
+
   const Icon = config.icon
 
   return (
     <AnimatePresence>
       <motion.div
         key={selectedNodeId}
+        role="dialog"
+        aria-modal="true"
+        aria-label={config.title}
         initial={{ x: "100%", opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: "100%", opacity: 0 }}
@@ -8640,7 +8653,11 @@ export function EITreeNodeConfigPanel() {
                     </span>
                   )}
                 </p>
-                <button onClick={() => selectNode(null)} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+                <button
+                  onClick={() => selectNode(null)}
+                  aria-label="Close configuration panel"
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                >
                   <X size={16} />
                 </button>
               </div>
@@ -8693,10 +8710,10 @@ export function EITreeNodeConfigPanel() {
               disabled={nodeType === "connection_request" && (d.note?.length || 0) > 300}
               onClick={() => selectNode(null)}
               className={cn(
-                "px-5 py-2 rounded-lg text-xs font-bold text-white transition-all shadow-sm",
+                "px-5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm",
                 nodeType === "connection_request" && (d.note?.length || 0) > 300
                   ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
-                  : "bg-indigo-600 hover:bg-indigo-500"
+                  : "bg-primary hover:bg-primary/90 text-primary-foreground"
               )}
             >
               Save Changes

@@ -261,10 +261,37 @@ class EleInNodeExecutor:
       - LOGIC: Pure DB/state operations, no external calls needed
     """
 
-    def __init__(self, linkedin_worker: Optional[LinkedInWorker] = None, supabase=None, workspace_id: Optional[str] = None, worker: Optional[LinkedInWorker] = None):
+    def __init__(self, linkedin_worker: Optional[LinkedInWorker] = None, supabase=None, workspace_id: Optional[str] = None, worker: Optional[LinkedInWorker] = None, campaign_id: Optional[str] = None, **kwargs):
         self.worker = linkedin_worker or worker
         self.supabase = supabase  # needed for C7 idempotency and E1 suppression checks
         self.workspace_id = workspace_id or getattr(self.worker, "workspace_id", None) or "default-workspace"
+        self.campaign_id = campaign_id
+
+    def _deduct_credits(self, amount: int = 1, idempotency_key: Optional[str] = None) -> bool:
+        if not self.workspace_id or not self.supabase:
+            return True
+        try:
+            res = self.supabase.rpc('deduct_credits_safely', {
+                'p_workspace_id': self.workspace_id,
+                'p_amount': amount,
+                'p_action_type': 'sendgrid_email',
+                'p_idempotency_key': idempotency_key
+            }).execute()
+            if res.data and not res.data.get('success'):
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"Credit deduction warning in EleInNodeExecutor: {e}")
+            return True
+
+    def _refund_credits(self, amount: int = 1, idempotency_key: Optional[str] = None, reason: str = "execution_failed"):
+        if not self.workspace_id or not self.supabase or not idempotency_key:
+            return
+        try:
+            from integrations.backend.services.elein_crm_service import _safe_refund_credits
+            _safe_refund_credits(self.workspace_id, amount, idempotency_key, self.supabase, reason=reason)
+        except Exception as ref_err:
+            logger.warning(f"[EleInNodeExecutor] Failed to refund credit: {ref_err}")
 
     def _check_limit(self, action_type: str, tz_str: Optional[str] = None) -> Tuple[Optional[str], str]:
         effective_date = get_effective_usage_date(tz_str)
@@ -4528,8 +4555,11 @@ Respond ONLY with valid JSON."""
         Layer 2: Standardizes output branch to Branch.THEN.value ('then'). Prevents blank/malformed sends.
         """
         try:
-            lead_id = data.get("_lead_id") or data.get("lead_id")
-            to_email = data.get("to_email") or data.get("to") or data.get("email")
+            lead_dict = linkedin_url if isinstance(linkedin_url, dict) else {}
+            lead_id = data.get("_lead_id") or data.get("lead_id") or lead_dict.get("id") or lead_dict.get("lead_id")
+            to_email = data.get("to_email") or data.get("to") or data.get("email") or lead_dict.get("email")
+            if isinstance(linkedin_url, dict):
+                linkedin_url = linkedin_url.get("linkedin_url") or linkedin_url.get("url") or ""
             
             if not to_email and lead_id and self.supabase:
                 lead_res = self.supabase.table("leads").select("email").eq("id", lead_id).execute()
@@ -4591,29 +4621,15 @@ Respond ONLY with valid JSON."""
             if self.workspace_id and self.supabase:
                 import hashlib
                 idem_key = f"sendgrid_{self.workspace_id}_{lead_id or 'unknown'}_{data.get('_current_node_id', 'email')}"
-                try:
-                    res = self.supabase.rpc('deduct_credits_safely', {
-                        'p_workspace_id': self.workspace_id,
-                        'p_amount': 1,
-                        'p_action_type': 'sendgrid_email',
-                        'p_idempotency_key': idem_key
-                    }).execute()
-                    if res.data and not res.data.get('success'):
-                        return {"status": "error", "branch": Branch.FAILED.value, "error": "insufficient_credits"}
-                    deducted = True
-                except Exception as e:
-                    logger.warning(f"Credit deduction warning in handle_send_email: {e}")
+                if not self._deduct_credits(amount=1, idempotency_key=idem_key):
+                    return {"status": "error", "branch": Branch.FAILED.value, "error": "insufficient_credits"}
+                deducted = True
 
             def _refund_sendgrid_credit(reason: str):
                 nonlocal deducted
-                if deducted and idem_key and self.workspace_id and self.supabase:
-                    try:
-                        from integrations.backend.services.elein_crm_service import _safe_refund_credits
-                        _safe_refund_credits(self.workspace_id, 1, idem_key, self.supabase, reason=reason)
-                    except Exception as ref_err:
-                        logger.warning(f"[SendGridExecutor] Failed to refund credit: {ref_err}")
-                    finally:
-                        deducted = False
+                if deducted and idem_key:
+                    self._refund_credits(amount=1, idempotency_key=idem_key, reason=reason)
+                    deducted = False
 
             # Horizon 29: Multi-Inbox Cold-Email Deliverability Pool & Custom Tracking Link Rewriting
             from_email = data.get("from_email") or os.environ.get("SENDGRID_API_KEY_FROM") or os.environ.get("SENDGRID_FROM_EMAIL", "noreply@elein.ai")
@@ -4621,16 +4637,58 @@ Respond ONLY with valid JSON."""
             tracking_domain = data.get("tracking_domain")
             ssl_verified = bool(data.get("ssl_verified", True))
 
-            if data.get("use_sender_pool") or data.get("sender_pool_inboxes"):
+            # Horizon 29 & Issue 5: Dynamic Sender Domain & Mailbox Rotation with Burnout Protection
+            use_domain_balancing = bool(
+                data.get("use_domain_balancing")
+                or data.get("domain_balanced")
+                or data.get("rotation_strategy") == "DOMAIN_BALANCED"
+            )
+            domain_daily_cap = int(data.get("domain_daily_cap", 150) or 150)
+            affinity_fallback_mode = str(data.get("affinity_fallback_mode", "same_domain")).lower()
+
+            strategy = data.get("rotation_strategy")
+            if use_domain_balancing and not data.get("rotation_strategy"):
+                strategy = "DOMAIN_BALANCED"
+            elif not strategy:
+                strategy = "HEALTH_WEIGHTED"
+
+            selected_inbox = None
+            pool_res = {}
+
+            if data.get("use_sender_pool") or data.get("sender_pool_inboxes") or use_domain_balancing:
                 from integrations.backend.services.email_sender_service import select_rotating_sender_inbox
-                pool_res = select_rotating_sender_inbox(
-                    supabase=self.supabase,
-                    workspace_id=self.workspace_id or "ws-default",
-                    campaign_id=data.get("_campaign_id"),
-                    lead_id=lead_id,
-                    candidate_inboxes=data.get("sender_pool_inboxes"),
-                    strategy=data.get("rotation_strategy", "HEALTH_WEIGHTED"),
-                )
+                campaign_id = data.get("_campaign_id") or data.get("campaign_id") or getattr(self, "campaign_id", None)
+                try:
+                    pool_res = select_rotating_sender_inbox(
+                        supabase=self.supabase,
+                        workspace_id=self.workspace_id or "ws-default",
+                        campaign_id=campaign_id,
+                        lead_id=lead_id,
+                        candidate_inboxes=data.get("sender_pool_inboxes"),
+                        strategy=strategy,
+                        domain_daily_cap=domain_daily_cap,
+                        affinity_fallback_mode=affinity_fallback_mode,
+                    )
+                except TypeError:
+                    pool_res = select_rotating_sender_inbox(
+                        supabase=self.supabase,
+                        workspace_id=self.workspace_id or "ws-default",
+                        campaign_id=campaign_id,
+                        lead_id=lead_id,
+                        candidate_inboxes=data.get("sender_pool_inboxes"),
+                        strategy=strategy,
+                    )
+
+                if pool_res.get("postpone_required"):
+                    _refund_sendgrid_credit(reason="affinity_postponed")
+                    return {
+                        "status": "postponed",
+                        "reason": "affinity_inbox_daily_cap_reached",
+                        "branch": Branch.FAILED.value,
+                        "next_run_delta_hours": 12,
+                        "error": "Lead sender affinity inbox reached daily cap; deferred to next window.",
+                    }
+
                 selected_inbox = pool_res.get("selected")
                 if not selected_inbox:
                     _refund_sendgrid_credit(reason="no_healthy_inboxes")
@@ -4646,6 +4704,60 @@ Respond ONLY with valid JSON."""
                     tracking_domain = selected_inbox.get("tracking_domain")
                 if "ssl_verified" in selected_inbox:
                     ssl_verified = bool(selected_inbox.get("ssl_verified"))
+
+                # Persist lead-to-inbox affinity lock into campaign_lead_sender_locks via Supabase if not already locked
+                if lead_id and self.supabase and selected_inbox_id:
+                    try:
+                        existing_lock = (
+                            self.supabase.table("campaign_lead_sender_locks")
+                            .select("inbox_id")
+                            .eq("workspace_id", self.workspace_id or "ws-default")
+                            .eq("lead_id", str(lead_id))
+                            .limit(1)
+                            .execute()
+                        )
+                        has_lock = (
+                            existing_lock
+                            and getattr(existing_lock, "data", None)
+                            and isinstance(existing_lock.data, list)
+                            and len(existing_lock.data) > 0
+                        )
+                        if not has_lock:
+                            lock_payload = {
+                                "workspace_id": self.workspace_id or "ws-default",
+                                "lead_id": str(lead_id),
+                                "inbox_id": str(selected_inbox_id),
+                            }
+                            if campaign_id:
+                                lock_payload["campaign_id"] = str(campaign_id)
+                            self.supabase.table("campaign_lead_sender_locks").insert(lock_payload).execute()
+                    except Exception as lock_err:
+                        logger.debug(f"[DeliverabilityPool] Non-fatal affinity lock persist error: {lock_err}")
+
+            def _enrich_delivery_outcome(res_dict: Dict[str, Any]) -> Dict[str, Any]:
+                if selected_inbox:
+                    res_dict["sender_domain"] = selected_inbox.get("sender_domain") or (
+                        selected_inbox.get("email", "").split("@")[-1] if "@" in str(selected_inbox.get("email", "")) else None
+                    )
+                    res_dict["strategy_applied"] = pool_res.get("strategy_applied")
+                    res_dict["selection_reason"] = pool_res.get("selection_reason")
+                    res_dict["thread_affinity_maintained"] = bool("AFFINITY" in str(pool_res.get("selection_reason", "")))
+                    burnout_st = selected_inbox.get("domain_burnout_status") or selected_inbox.get("domain_health_status") or "HEALTHY"
+                    res_dict["domain_burnout_status"] = burnout_st
+                    res_dict["domain_health_status"] = burnout_st
+
+                if selected_inbox_id:
+                    try:
+                        from integrations.backend.services.email_sender_service import record_inbox_delivery_outcome
+                        record_inbox_delivery_outcome(
+                            supabase=self.supabase,
+                            workspace_id=self.workspace_id or "ws-default",
+                            inbox_id=selected_inbox_id,
+                            event_type="sent",
+                        )
+                    except Exception as outcome_err:
+                        logger.debug(f"[DeliverabilityPool] Non-fatal delivery outcome record error: {outcome_err}")
+                return res_dict
 
             rewritten_count = 0
             if tracking_domain:
@@ -4704,7 +4816,7 @@ Respond ONLY with valid JSON."""
                             out["list_unsubscribe"] = rfc_headers["List-Unsubscribe"]
                         if "List-Unsubscribe-Post" in rfc_headers:
                             out["list_unsubscribe_post"] = rfc_headers["List-Unsubscribe-Post"]
-                    return out
+                    return _enrich_delivery_outcome(out)
                 logger.error("SENDGRID_API_KEY is not configured")
                 _refund_sendgrid_credit(reason="missing_sendgrid_api_key")
                 return {"status": "error", "branch": Branch.FAILED.value, "error": "SENDGRID_API_KEY is not configured"}
@@ -4756,7 +4868,7 @@ Respond ONLY with valid JSON."""
                                 out["list_unsubscribe"] = rfc_headers["List-Unsubscribe"]
                             if "List-Unsubscribe-Post" in rfc_headers:
                                 out["list_unsubscribe_post"] = rfc_headers["List-Unsubscribe-Post"]
-                        return out
+                        return _enrich_delivery_outcome(out)
                     else:
                         _refund_sendgrid_credit(reason=f"sendgrid_http_status_{response.status}")
                         return {"status": "error", "branch": Branch.FAILED.value, "error": f"SendGrid returned unexpected status {response.status}"}
@@ -4781,7 +4893,7 @@ Respond ONLY with valid JSON."""
                     out["list_unsubscribe"] = rfc_headers["List-Unsubscribe"]
                 if "List-Unsubscribe-Post" in rfc_headers:
                     out["list_unsubscribe_post"] = rfc_headers["List-Unsubscribe-Post"]
-            return out
+            return _enrich_delivery_outcome(out)
         except Exception as e:
             logger.error(f"handle_send_email error: {e}")
             if 'deducted' in locals() and deducted:

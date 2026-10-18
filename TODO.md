@@ -115,5 +115,21 @@
     - Standardized and normalized `is_open_profile` across all truthy (`True`, `"true"`, `"1"`, `1`, `"yes"`, `"open"`) and falsy variations during bulk imports and updates.
   - **Verification**: 41/41 automated tests passing across `test_inmail_open_profile_arbitrage.py` (31/31) and `test_inmail_arbitrage.py` (10/10) with 0 regressions and sub-second Vite production build.
 
+- [x] **Phase 31: Dynamic Sender Domain & Mailbox Rotation with Burnout Protection (100% Operational):**
+  - **Root Domain Engine & Domain Aggregation (`integrations/backend/services/email_sender_service.py`)**:
+    - `extract_root_domain`: Normalizes email addresses, subdomains, and 2-part ccTLDs (`.co.uk`, `.com.au`, `.co.nz`, `.com.br`, `.co.jp`, `.co.in`, etc.) to clean effective root domains (eTLD+1), with Paranoia Layer 2 SSRF, IP literal, and localhost blocking.
+    - `aggregate_domain_metrics`: Groups inboxes by root domain, computing aggregate volume (`total_sent`, `total_sent_today`), domain daily capacity headroom (`remaining_domain_capacity`), bounce and spam rates, and live health status (`HEALTHY`, `AT_RISK`, `BURNOUT_QUARANTINED`).
+  - **Domain Circuit Breaker & Burnout Protection**:
+    - `evaluate_domain_burnout_tripwire`: Enforces a small-sample false-positive guard (`min_sample_size=15`), absolute ceiling floors (5 bounces or 2 spam complaints), percentage tripwires (bounce rate >= 3.0%, spam complaint rate >= 0.1%), and majority mailbox quarantine (>= 50% inboxes quarantined) triggering automatic 24h domain burnout cooldown.
+    - `record_inbox_delivery_outcome`: Automatically updates domain-level metrics and cascades quarantine across all mailboxes sharing a burned domain.
+  - **Cross-Domain Balancing & Thread Affinity Fallbacks**:
+    - `DOMAIN_BALANCED` rotation strategy balances sending volume evenly across distinct domains (selecting domain with lowest sends today, then highest-headroom inbox within that domain).
+    - Hourly velocity throttling (`hourly_limit`) defers mailboxes exceeding burst limits.
+    - Lead-to-sender thread affinity with multi-tier fallback: maintains original sender lock; if capped or quarantined, falls back gracefully to `same_domain` (sibling mailbox on the same root domain), `any_healthy` mailbox, or non-fatal `postpone` with zero credit debit.
+  - **Executor & Router Integration (`campaigns/backend/services/elein_executor.py`, `campaigns/backend/routers/elein.py`)**:
+    - Wired domain balancing, thread lock persistence into `campaign_lead_sender_locks`, and enriched telemetry (`sender_domain`, `strategy_applied`, `thread_affinity_maintained`, `domain_health_status`).
+    - Exposed `GET /api/elein/sender-pool/domains` providing full workspace domain health observability.
+  - **Verification**: 64/64 automated tests passing across `test_domain_rotation_and_burnout_protection.py` (35/35), `test_domain_grouping_burnout_circuit_breaker.py` (9/9), `test_issue5_executor_router.py` (7/7), and `test_horizon29_cold_email_deliverability_pool.py` (13/13) with sub-second production build (639ms).
+
 
 

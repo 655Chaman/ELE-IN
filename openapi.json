@@ -9730,7 +9730,7 @@
           "elein"
         ],
         "summary": "Evaluate Deliverability Pool Endpoint",
-        "description": "Horizon 29 (Paranoia Layer 0, 1 & 2): Evaluates multi-inbox sender rotation, warmup ramp,\nand bounce/spam tripwires for a workspace. Enforces strict IDOR tenant boundary on lead_id.",
+        "description": "Horizon 29 & Issue 5 (Paranoia Layer 0, 1 & 2): Evaluates multi-inbox sender rotation, warmup ramp,\ndomain balancing, and bounce/spam tripwires for a workspace. Enforces strict IDOR tenant boundary on lead_id.",
         "operationId": "evaluate_deliverability_pool_endpoint_api_elein_deliverability_evaluate_pool_post",
         "requestBody": {
           "content": {
@@ -9761,6 +9761,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/sender-pool/domains": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Get Sender Pool Domains Endpoint",
+        "description": "Issue 5 (Dynamic Sender Domain & Mailbox Rotation with Burnout Protection):\nQueries email_sender_inboxes for caller's workspace, calls aggregate_domain_metrics(inboxes),\nand returns aggregated domain deliverability metrics.",
+        "operationId": "get_sender_pool_domains_endpoint_api_elein_sender_pool_domains_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Sender Pool Domains Endpoint Api Elein Sender Pool Domains Get"
                 }
               }
             }
@@ -20146,6 +20170,42 @@
             ],
             "title": "Spam Threshold Pct",
             "default": 0.1
+          },
+          "domain_daily_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Daily Cap",
+            "default": 150
+          },
+          "affinity_fallback_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affinity Fallback Mode",
+            "default": "same_domain"
+          },
+          "use_domain_balancing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Domain Balancing",
+            "default": false
           }
         },
         "type": "object",

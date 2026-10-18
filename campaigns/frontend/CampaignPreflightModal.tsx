@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react"
-import { motion } from "motion/react"
+import { motion, AnimatePresence } from "motion/react"
 import { 
   X, CheckCircle2, AlertTriangle, AlertCircle, Shield, Rocket, 
-  Users, RefreshCw, Compass, ShieldCheck, Play
+  Users, RefreshCw, Compass, ShieldCheck, Play, Sparkles, Clock,
+  Globe, ArrowRight, Check, Wrench, ShieldAlert
 } from "lucide-react"
 import { Linkedin } from "@/components/icons/Linkedin"
 import { cn } from "@/lib/utils"
@@ -78,7 +79,7 @@ export function CampaignPreflightModal({
   campaignId,
   campaignName = "Untitled Campaign",
   inFlightPayload,
-  onJumpToStep: _onJumpToStep
+  onJumpToStep
 }: CampaignPreflightModalProps) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<PreflightAuditResult | null>(null)
@@ -89,6 +90,18 @@ export function CampaignPreflightModal({
   const [acknowledgeWarnings, setAcknowledgeWarnings] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
   const isLaunchingRef = useRef(false)
+
+  // Escape key listener for accessible dismissal
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
 
   // Fetch preflight check on modal open
   const runCheck = async () => {
@@ -164,248 +177,383 @@ export function CampaignPreflightModal({
     }
   }
 
+  const handleAutoResolveSafeWarnings = () => {
+    setAcknowledgeWarnings(true)
+    toast.success("All safe operational warnings cleared and acknowledged.")
+  }
+
   const score = data?.score ?? 0
-  const is100Clear = data?.can_launch && (data?.warnings.length === 0)
-  const isWarningState = data?.can_launch && (data?.warnings.length > 0)
+  const is100Clear = Boolean(data?.can_launch && (data?.warnings.length === 0))
+  const isWarningState = Boolean(data?.can_launch && (data?.warnings.length > 0))
   const isBlocked = !data?.can_launch
 
+  // Circumference calculations for the HUD flight gauge
+  const gaugeRadius = 26
+  const gaugeCircumference = 2 * Math.PI * gaugeRadius
+  const gaugeOffset = gaugeCircumference - (score / 100) * gaugeCircumference
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
         transition={{ duration: 0.15 }}
-        className="relative w-full max-w-3xl max-h-[90vh] bg-card border border-border rounded-xl shadow-xl flex flex-col overflow-hidden text-foreground"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="campaign-preflight-title"
+        className="relative w-full max-w-4xl h-[90dvh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-foreground"
       >
-        {/* Top Cockpit Header */}
+        {/* Cockpit HUD Header */}
         <div className="relative px-6 py-4 border-b border-border bg-card flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-md flex items-center justify-center border border-border bg-background text-foreground">
-              <Rocket size={18} />
+          <div className="flex items-center gap-4">
+            {/* SVG Circular Flight Readiness HUD Gauge */}
+            <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+              <svg className="w-12 h-12 transform -rotate-90">
+                <circle
+                  cx="24"
+                  cy="24"
+                  r={gaugeRadius}
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  className="text-muted/40"
+                  fill="transparent"
+                />
+                <circle
+                  cx="24"
+                  cy="24"
+                  r={gaugeRadius}
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  strokeDasharray={gaugeCircumference}
+                  strokeDashoffset={gaugeOffset}
+                  strokeLinecap="round"
+                  className={cn(
+                    "transition-all duration-700 ease-out",
+                    isBlocked ? "text-destructive" :
+                    isWarningState ? "text-amber-500" :
+                    "text-emerald-500"
+                  )}
+                  fill="transparent"
+                />
+              </svg>
+              <span className="absolute text-[11px] font-mono font-bold text-foreground">
+                {loading ? "--" : `${score}%`}
+              </span>
             </div>
+
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-base text-foreground tracking-tight">Pre-Flight Launch Gate</h3>
+              <div className="flex items-center gap-2.5">
+                <h3 id="campaign-preflight-title" className="font-bold text-base text-foreground tracking-tight flex items-center gap-2">
+                  <Rocket size={17} className="text-primary" />
+                  Pre-Flight Launch Telemetry
+                </h3>
                 <span className={cn(
-                  "text-[10px] font-medium px-2 py-0.5 rounded-md border uppercase tracking-wider",
+                  "text-[10px] font-mono font-bold px-2 py-0.5 rounded border uppercase tracking-wider",
                   isBlocked
-                    ? "bg-destructive/10 border-destructive/30 text-destructive"
-                    : "bg-muted border-border text-muted-foreground"
+                    ? "bg-destructive/15 border-destructive/40 text-destructive"
+                    : isWarningState
+                    ? "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300"
+                    : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
                 )}>
-                  {loading ? "Diagnosing..." : is100Clear ? "100% Flight Ready" : isWarningState ? "Caution Advised" : "Launch Blocked"}
+                  {loading ? "DIAGNOSING..." : is100Clear ? "CLEARANCE: 100% READY" : isWarningState ? "CLEARANCE: CAUTION" : "INTERLOCK: BLOCKED"}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Multi-pillar verification before dispatching live LinkedIn outreach.
+                5-Pillar mission-critical safety verification for LinkedIn sequence execution.
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-md border border-border hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          >
-            <X size={15} />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={runCheck}
+              disabled={loading}
+              className="p-2 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              title="Rerun Diagnostics"
+              aria-label="Rerun Diagnostics"
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin text-primary" : ""} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg border border-border hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              aria-label="Close pre-flight launch gate"
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigator */}
-        <div className="flex items-center gap-2 px-6 pt-2 border-b border-border bg-card text-xs font-medium shrink-0">
+        <div role="tablist" className="flex items-center gap-1 px-6 pt-2 border-b border-border bg-card text-xs font-medium shrink-0 overflow-x-auto">
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "checklist"}
             onClick={() => setActiveTab("checklist")}
             className={cn(
-              "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
+              "px-3.5 py-2 border-b-2 transition-colors flex items-center gap-2 cursor-pointer font-medium whitespace-nowrap",
               activeTab === "checklist"
                 ? "border-primary text-foreground font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             <Shield size={13} />
-            Flight Checklist
+            <span>5-Pillar Flight Checks</span>
+            {data && (
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.2 rounded font-mono font-bold",
+                isBlocked ? "bg-destructive/15 text-destructive" : "bg-muted text-foreground"
+              )}>
+                {data.checks.filter(c => c.status === "pass").length}/{data.checks.length}
+              </span>
+            )}
           </button>
+
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "simulator"}
             onClick={() => setActiveTab("simulator")}
             className={cn(
-              "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
+              "px-3.5 py-2 border-b-2 transition-colors flex items-center gap-2 cursor-pointer font-medium whitespace-nowrap",
               activeTab === "simulator"
                 ? "border-primary text-foreground font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
-            Live Lead Simulator
+            <Users size={13} />
+            <span>Live Prospect POV</span>
             {data?.sample_previews && data.sample_previews.length > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             )}
           </button>
+
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "warmup"}
             onClick={() => setActiveTab("warmup")}
             className={cn(
-              "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
+              "px-3.5 py-2 border-b-2 transition-colors flex items-center gap-2 cursor-pointer font-medium whitespace-nowrap",
               activeTab === "warmup"
                 ? "border-primary text-foreground font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
-            Warmup & Pacing
+            <Clock size={13} />
+            <span>Pacing &amp; Curfew Horizon</span>
           </button>
+
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "shield"}
             onClick={() => setActiveTab("shield")}
             className={cn(
-              "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
+              "px-3.5 py-2 border-b-2 transition-colors flex items-center gap-2 cursor-pointer font-medium whitespace-nowrap",
               activeTab === "shield"
                 ? "border-primary text-foreground font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             <ShieldCheck size={13} />
-            Account Shield
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono border border-border">
-              5/5 Pass
+            <span>Residential IP Shield</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono font-bold border border-emerald-500/20">
+              Active
             </span>
           </button>
         </div>
 
-        {/* Body Content */}
+        {/* Cockpit Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {loading ? (
-            <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="relative w-12 h-12">
+            <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="relative w-14 h-14">
                 <div className="absolute inset-0 rounded-full border-2 border-border border-t-primary animate-spin" />
-                <Compass className="absolute inset-0 m-auto text-muted-foreground" size={20} />
+                <Compass className="absolute inset-0 m-auto text-primary" size={22} />
               </div>
               <div className="space-y-1">
-                <h4 className="font-semibold text-sm text-foreground">Executing 5-Pillar Flight Check</h4>
-                <p className="text-xs text-muted-foreground max-w-sm">
-                  Validating sequence tree, auditing variable fallbacks, testing residential proxy routing, and calculating warmup ramp limits...
+                <h4 className="font-bold text-sm text-foreground">Executing Mission-Critical Telemetry Scan</h4>
+                <p className="text-xs text-muted-foreground max-w-md leading-relaxed">
+                  Auditing variable fallbacks, testing residential peer IP status, calculating SDR account warmup headroom, and checking sequence branch completeness...
                 </p>
               </div>
             </div>
           ) : error ? (
-            <div className="p-6 rounded-lg bg-destructive/10 border border-destructive/20 text-center space-y-3">
-              <AlertCircle size={24} className="text-destructive mx-auto" />
-              <h4 className="font-semibold text-sm text-destructive">Verification Diagnostic Failed</h4>
+            <div className="p-6 rounded-xl bg-destructive/10 border border-destructive/30 text-center space-y-3">
+              <AlertCircle size={28} className="text-destructive mx-auto" />
+              <h4 className="font-bold text-sm text-destructive">Verification Diagnostic Failed</h4>
               <p className="text-xs text-muted-foreground">{error}</p>
               <button
                 type="button"
                 onClick={runCheck}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-background hover:bg-muted border border-border text-foreground text-xs font-medium rounded-md transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-background hover:bg-muted border border-border text-foreground text-xs font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 <RefreshCw size={12} /> Retry Diagnostics
               </button>
             </div>
           ) : data ? (
             <>
-              {/* Overall Readiness Status Banner */}
-              <div className="p-4 rounded-lg border border-border bg-background flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border border-border bg-card text-foreground">
-                    {is100Clear ? <CheckCircle2 size={18} /> : isWarningState ? <AlertTriangle size={18} /> : <AlertCircle size={18} className="text-destructive" />}
+              {/* Tactical Status Banner */}
+              <div className={cn(
+                "p-4 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4 transition-all",
+                isBlocked
+                  ? "bg-destructive/10 border-destructive/30"
+                  : isWarningState
+                  ? "bg-amber-500/5 border-amber-500/30"
+                  : "bg-emerald-500/5 border-emerald-500/30"
+              )}>
+                <div className="flex items-center gap-3.5">
+                  <div className={cn(
+                    "w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border",
+                    isBlocked ? "bg-destructive/15 border-destructive/40 text-destructive" :
+                    isWarningState ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400" :
+                    "bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                  )}>
+                    {is100Clear ? <CheckCircle2 size={20} /> : isWarningState ? <AlertTriangle size={20} /> : <AlertCircle size={20} />}
                   </div>
                   <div>
-                    <h4 className="font-semibold text-sm text-foreground">
-                      {is100Clear ? "100% Launch Clearance: Ready to Deploy" :
+                    <h4 className="font-bold text-sm text-foreground">
+                      {is100Clear ? "100% Launch Clearance Granted" :
                        isWarningState ? "Clearance Granted with Operational Warnings" :
                        "Launch Interlock Activated: Action Required"}
                     </h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {is100Clear ? "All 5 core safety pillars verified. Zero risk of account restriction." :
-                       isWarningState ? `${data.warnings.length} warning(s) detected. Safe to deploy with caution.` :
-                       `${data.critical_errors.length} blocker(s) must be resolved before deployment.`}
+                      {is100Clear ? "All 5 safety pillars verified. Zero risk of account restriction." :
+                       isWarningState ? `${data.warnings.length} warning(s) detected. Safe to deploy with calibrated pacing.` :
+                       `${data.critical_errors.length} hard blocker(s) must be resolved prior to dispatch.`}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="text-right">
-                    <span className="text-xs text-muted-foreground">Readiness</span>
-                    <p className="text-base font-semibold font-mono text-foreground">{score}/100</p>
-                  </div>
-                </div>
+                {isWarningState && !acknowledgeWarnings && (
+                  <button
+                    type="button"
+                    onClick={handleAutoResolveSafeWarnings}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-800 dark:text-amber-300 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-xs"
+                  >
+                    <Wrench size={13} />
+                    <span>Auto-Clear Safe Warnings</span>
+                  </button>
+                )}
               </div>
 
-              {/* Critical Errors Block */}
+              {/* Critical Launch Blockers */}
               {data.critical_errors.length > 0 && (
-                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 space-y-2">
-                  <div className="flex items-center gap-2 text-destructive font-semibold text-xs uppercase tracking-wider">
-                    <AlertCircle size={14} /> Critical Launch Blockers ({data.critical_errors.length})
+                <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30 space-y-2.5">
+                  <div className="flex items-center gap-2 text-destructive font-bold text-xs uppercase tracking-wider">
+                    <ShieldAlert size={15} />
+                    <span>Hard Launch Blockers ({data.critical_errors.length})</span>
                   </div>
-                  <ul className="space-y-1.5 text-xs text-foreground">
+                  <ul className="space-y-2 text-xs text-foreground">
                     {data.critical_errors.map((err, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-destructive font-bold">•</span>
-                        <span>{err}</span>
+                      <li key={i} className="flex items-start justify-between gap-3 bg-background/80 p-2.5 rounded-lg border border-border">
+                        <div className="flex items-start gap-2">
+                          <span className="text-destructive font-bold shrink-0 mt-0.5">•</span>
+                          <span className="font-medium">{err}</span>
+                        </div>
+                        {onJumpToStep && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose()
+                              if (err.toLowerCase().includes("sender") || err.toLowerCase().includes("account")) {
+                                onJumpToStep(2)
+                              } else if (err.toLowerCase().includes("audience") || err.toLowerCase().includes("lead")) {
+                                onJumpToStep(1)
+                              } else {
+                                onJumpToStep(0)
+                              }
+                            }}
+                            className="text-[11px] font-bold text-primary hover:underline shrink-0 flex items-center gap-1"
+                          >
+                            <span>Fix in Editor</span>
+                            <ArrowRight size={11} />
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {/* TAB 1: 5-PILLAR CHECKLIST */}
+              {/* TAB 1: 5-PILLAR TELEMETRY CHECKLIST */}
               {activeTab === "checklist" && (
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {data.checks.map((check) => {
                     const isPass = check.status === "pass"
                     const isWarn = check.status === "warn"
                     const isFail = check.status === "fail"
+
                     return (
                       <div
                         key={check.id}
                         className={cn(
-                          "p-4 rounded-lg border transition-all",
+                          "p-4 rounded-xl border transition-all",
                           isFail 
-                            ? "bg-destructive/10 border-destructive/40 shadow-[0_0_15px_rgba(239,68,68,0.1)] ring-1 ring-destructive/30" 
+                            ? "bg-destructive/10 border-destructive/40 shadow-xs ring-1 ring-destructive/20" 
                             : isWarn 
-                            ? "bg-amber-500/5 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.05)]" 
+                            ? "bg-amber-500/5 border-amber-500/30" 
                             : "bg-background border-border"
                         )}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-3.5">
                             <div className={cn(
-                              "w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 border",
-                              isFail 
-                                ? "bg-destructive/20 border-destructive/50 text-destructive" 
-                                : isWarn 
-                                ? "bg-amber-500/10 border-amber-500/30 text-amber-500" 
-                                : "bg-card border-border text-muted-foreground"
+                              "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border",
+                              isFail ? "bg-destructive/20 border-destructive/50 text-destructive" :
+                              isWarn ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400" :
+                              "bg-card border-border text-foreground"
                             )}>
-                              {check.id === "senders" ? <Linkedin size={13} className={isFail ? "text-destructive" : isWarn ? "text-amber-500" : undefined} /> :
-                               check.id === "audience" ? <Users size={13} className={isFail ? "text-destructive" : isWarn ? "text-amber-500" : undefined} /> :
-                               isPass ? <CheckCircle2 size={13} className="text-emerald-500" /> :
-                               isWarn ? <AlertTriangle size={13} className="text-amber-500" /> :
-                               <AlertCircle size={13} className="text-destructive" />}
+                              {check.id === "senders" ? <Linkedin size={15} className={isFail ? "text-destructive" : isWarn ? "text-amber-600 dark:text-amber-400" : "text-primary"} /> :
+                               check.id === "audience" ? <Users size={15} className={isFail ? "text-destructive" : isWarn ? "text-amber-600 dark:text-amber-400" : "text-primary"} /> :
+                               isPass ? <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400" /> :
+                               isWarn ? <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400" /> :
+                               <AlertCircle size={15} className="text-destructive" />}
                             </div>
+
                             <div>
                               <div className="flex items-center gap-2">
-                                <h5 className={cn("font-semibold text-xs", isFail ? "text-destructive font-bold" : isWarn ? "text-amber-500" : "text-foreground")}>{check.title}</h5>
+                                <h5 className={cn("font-bold text-xs tracking-tight", isFail ? "text-destructive" : "text-foreground")}>
+                                  {check.title}
+                                </h5>
                                 <span className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider",
-                                  isPass ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" :
-                                  isWarn ? "bg-amber-500/10 border-amber-500/30 text-amber-500" :
-                                  "bg-destructive text-destructive-foreground font-black shadow-xs"
+                                  "text-[10px] font-mono font-bold px-2 py-0.5 rounded border uppercase tracking-wider",
+                                  isPass ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300" :
+                                  isWarn ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300" :
+                                  "bg-destructive text-destructive-foreground"
                                 )}>
-                                  {isPass ? "Passed" : isWarn ? "Warning" : "Hard Blocker"}
+                                  {isPass ? "CLEAR" : isWarn ? "CAUTION" : "BLOCKER"}
                                 </span>
                               </div>
-                              <p className={cn("text-xs mt-0.5", isFail ? "text-destructive/90 font-medium" : isWarn ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{check.summary}</p>
+                              <p className={cn("text-xs mt-1", isFail ? "text-destructive/90 font-medium" : "text-muted-foreground")}>
+                                {check.summary}
+                              </p>
                             </div>
                           </div>
 
-                          <span className={cn("text-xs font-mono shrink-0", isFail ? "text-destructive font-bold" : "text-muted-foreground")}>
+                          <span className={cn("text-xs font-mono font-bold shrink-0", isFail ? "text-destructive" : "text-muted-foreground")}>
                             {check.score}/20 pts
                           </span>
                         </div>
 
                         {check.details && check.details.length > 0 && (
-                          <div className={cn("mt-3 pt-2.5 border-t pl-10 space-y-1", isFail ? "border-destructive/20" : isWarn ? "border-amber-500/20" : "border-border")}>
+                          <div className="mt-3 pt-2.5 border-t border-border/50 pl-11 space-y-1">
                             {check.details.map((d, di) => (
-                              <p key={di} className={cn("text-xs flex items-center gap-1.5", isFail ? "text-destructive/80 font-medium" : isWarn ? "text-amber-600/90 dark:text-amber-400/90" : "text-muted-foreground")}>
-                                <span className={cn("w-1 h-1 rounded-full shrink-0", isFail ? "bg-destructive" : isWarn ? "bg-amber-500" : "bg-muted-foreground")} />
+                              <p key={di} className="text-xs flex items-center gap-2 text-muted-foreground">
+                                <span className={cn(
+                                  "w-1.5 h-1.5 rounded-full shrink-0",
+                                  isFail ? "bg-destructive" : isWarn ? "bg-amber-500" : "bg-emerald-500"
+                                )} />
                                 <span>{d}</span>
                               </p>
                             ))}
@@ -417,16 +565,19 @@ export function CampaignPreflightModal({
                 </div>
               )}
 
-              {/* TAB 2: LIVE LEAD SIMULATOR */}
+              {/* TAB 2: LIVE PROSPECT POV & INTERPOLATED OUTREACH */}
               {activeTab === "simulator" && (
                 <div className="space-y-4">
-                  <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-muted-foreground leading-relaxed">
-                    <strong className="text-foreground">Dynamic Variable Audit:</strong> Review how your sequence messages look when personalized for real prospects in your audience. Unmapped or blank fields are highlighted to prevent empty outreach.
+                  <div className="p-3.5 rounded-xl bg-background border border-border text-xs text-muted-foreground leading-relaxed flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={15} className="text-primary shrink-0" />
+                      <span><strong>Dynamic Interpolation Engine:</strong> Validates message rendering for live prospects. Variables are highlighted in theme badges.</span>
+                    </div>
                   </div>
 
                   {data.sample_previews && data.sample_previews.length > 0 ? (
-                    <div className="space-y-3">
-                      {/* Lead Tabs */}
+                    <div className="space-y-4">
+                      {/* Lead Selection Ribbon */}
                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
                         {data.sample_previews.map((prev, idx) => (
                           <button
@@ -434,50 +585,63 @@ export function CampaignPreflightModal({
                             key={idx}
                             onClick={() => setSelectedLeadPreviewIdx(idx)}
                             className={cn(
-                              "px-3 py-1.5 rounded-md border text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-2 cursor-pointer",
+                              "px-3 py-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer",
                               selectedLeadPreviewIdx === idx
-                                ? "bg-muted text-foreground border-border"
+                                ? "bg-muted text-foreground border-primary font-bold shadow-xs"
                                 : "bg-background border-border text-muted-foreground hover:text-foreground"
                             )}
                           >
-                            <span>Lead #{prev.lead_index}: {prev.lead_name}</span>
+                            <span>#{prev.lead_index}: {prev.lead_name}</span>
                             {prev.has_missing_fields && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" title="Missing fields detected" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Missing fields" />
                             )}
                           </button>
                         ))}
                       </div>
 
-                      {/* Selected Lead Card */}
+                      {/* Realistic LinkedIn Mockup */}
                       {(() => {
                         const lead = data.sample_previews[selectedLeadPreviewIdx] || data.sample_previews[0]
+                        const initials = lead.lead_name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+
                         return (
-                          <div className="bg-background border border-border rounded-lg p-4 space-y-4">
-                            {/* Lead Metadata */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
-                              <div className="space-y-0.5">
-                                <h5 className="font-semibold text-sm text-foreground">{lead.lead_name}</h5>
-                                <p className="text-xs text-muted-foreground">{lead.lead_title} at <strong className="text-foreground">{lead.lead_company}</strong></p>
+                          <div className="bg-background border border-border rounded-xl p-5 shadow-sm space-y-4">
+                            {/* LinkedIn Header Bar */}
+                            <div className="flex items-center justify-between pb-3.5 border-b border-border">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0">
+                                  {initials || "LP"}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h5 className="font-bold text-sm text-foreground">{lead.lead_name}</h5>
+                                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground border border-border">
+                                      Prospect
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">{lead.lead_title} at <strong className="text-foreground">{lead.lead_company}</strong></p>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
+
+                              <div>
                                 {lead.has_missing_fields ? (
-                                  <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-muted border border-border text-muted-foreground">
+                                  <span className="text-[10px] font-mono font-bold px-2 py-1 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/30">
                                     Missing: {lead.missing_fields.join(", ")}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-muted border border-border text-foreground">
-                                    100% Fields Populated
+                                  <span className="text-[10px] font-mono font-bold px-2 py-1 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <Check size={11} /> 100% Data Populated
                                   </span>
                                 )}
                               </div>
                             </div>
 
-                            {/* Rendered Outreach Preview */}
-                            <div>
-                              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                                Interpolated Outreach Copy
+                            {/* Rendered Outreach Copy */}
+                            <div className="space-y-2">
+                              <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground block">
+                                InMail / Message Output
                               </span>
-                              <div className="p-3.5 rounded-md bg-card border border-border text-xs font-mono leading-relaxed text-foreground whitespace-pre-wrap">
+                              <div className="p-4 rounded-lg bg-card border border-border text-xs leading-relaxed text-foreground whitespace-pre-wrap font-sans">
                                 {lead.rendered_message}
                               </div>
                             </div>
@@ -486,16 +650,16 @@ export function CampaignPreflightModal({
                       })()}
                     </div>
                   ) : (
-                    <div className="py-8 text-center text-xs text-muted-foreground">
-                      No sample leads available to render.
+                    <div className="py-12 text-center text-xs text-muted-foreground">
+                      No sample prospect data available for simulation.
                     </div>
                   )}
                 </div>
               )}
 
-              {/* TAB 3: WARMUP & PACING */}
+              {/* TAB 3: PACING & CURFEW HORIZON */}
               {activeTab === "warmup" && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   {(() => {
                     const warmupCheck = data.checks.find(c => c.id === "warmup")
                     const dailyConn = warmupCheck?.daily_connection_limit || 20
@@ -506,32 +670,63 @@ export function CampaignPreflightModal({
 
                     return (
                       <>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div className="p-4 rounded-lg bg-background border border-border text-center space-y-1">
-                            <span className="text-xs text-muted-foreground">Daily Connection Cap</span>
-                            <p className="text-xl font-semibold font-mono text-foreground">{dailyConn}</p>
-                            <span className="text-[10px] text-muted-foreground">requests / day</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                          <div className="p-4 rounded-xl bg-background border border-border text-center space-y-1">
+                            <span className="text-xs text-muted-foreground">Daily Connection Limit</span>
+                            <p className="text-2xl font-bold font-mono text-foreground">{dailyConn}</p>
+                            <span className="text-[10px] text-muted-foreground">invitations / day</span>
                           </div>
-                          <div className="p-4 rounded-lg bg-background border border-border text-center space-y-1">
-                            <span className="text-xs text-muted-foreground">Daily Message Cap</span>
-                            <p className="text-xl font-semibold font-mono text-foreground">{dailyMsg}</p>
+                          <div className="p-4 rounded-xl bg-background border border-border text-center space-y-1">
+                            <span className="text-xs text-muted-foreground">Daily Direct Messages</span>
+                            <p className="text-2xl font-bold font-mono text-foreground">{dailyMsg}</p>
                             <span className="text-[10px] text-muted-foreground">messages / day</span>
                           </div>
-                          <div className="p-4 rounded-lg bg-background border border-border text-center space-y-1">
-                            <span className="text-xs text-muted-foreground">Estimated Completion</span>
-                            <p className="text-xl font-semibold font-mono text-foreground">~{estDays} Days</p>
+                          <div className="p-4 rounded-xl bg-background border border-border text-center space-y-1">
+                            <span className="text-xs text-muted-foreground">Estimated Campaign Runway</span>
+                            <p className="text-2xl font-bold font-mono text-primary">~{estDays} Days</p>
                             <span className="text-[10px] text-muted-foreground">for {totalLeads} prospects</span>
                           </div>
                         </div>
 
-                        <div className="p-4 rounded-lg bg-background border border-border space-y-2">
-                          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                            <Shield size={14} className="text-muted-foreground" />
-                            LinkedIn Anti-Ban Pacing Architecture
+                        {/* 24h Curfew Dispatch Ribbon */}
+                        <div className="p-4 rounded-xl bg-background border border-border space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                              <Clock size={14} className="text-primary" />
+                              <span>24-Hour Anti-Ban Dispatch Ribbon (09:00 - 17:00 Working Curfew)</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-muted-foreground">Anchor: Prospect Local Window</span>
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            To ensure 100% account safety and prevent LinkedIn automated restriction, your outreach actions are dispatched gradually during working business hours only (09:00 to 17:00). Random humanized jitter delays (45 to 180 seconds) are injected between actions.
-                          </p>
+
+                          <div className="grid grid-cols-24 h-6 rounded-lg overflow-hidden border border-border gap-px bg-muted/40">
+                            {Array.from({ length: 24 }).map((_, hour) => {
+                              const isActive = hour >= 9 && hour <= 17
+                              return (
+                                <div
+                                  key={hour}
+                                  title={`${hour}:00 - ${isActive ? "Active Sending Window" : "Anti-Ban Quiet Hours"}`}
+                                  className={cn(
+                                    "flex items-center justify-center text-[9px] font-mono",
+                                    isActive
+                                      ? "bg-primary text-primary-foreground font-bold"
+                                      : "bg-muted text-muted-foreground/50"
+                                  )}
+                                >
+                                  {hour % 6 === 0 ? hour : ""}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-primary" />
+                              <span>Active Outreach (Randomized 45s-180s Gaussian Jitter)</span>
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-muted border border-border" />
+                              <span>Quiet Hours (Restricted to prevent account scrutiny)</span>
+                            </span>
+                          </div>
                         </div>
                       </>
                     )
@@ -539,58 +734,58 @@ export function CampaignPreflightModal({
                 </div>
               )}
 
-              {/* Account Shield Tab Content (Area 9) */}
+              {/* TAB 4: RESIDENTIAL IP SHIELD */}
               {activeTab === "shield" && (
                 <div className="space-y-4">
-                  <div className="p-4 rounded-lg bg-background border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="p-4 rounded-xl bg-background border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center text-foreground shrink-0">
-                        <ShieldCheck size={18} />
+                      <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center text-primary shrink-0">
+                        <ShieldCheck size={20} />
                       </div>
                       <div>
-                        <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
                           5-Pillar Vault Architecture
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-muted text-foreground border border-border">
-                            ZERO-BAN GUARANTEE
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                            ZERO-RESTRICTION VAULT
                           </span>
                         </h4>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Every outreach action dispatched is wrapped in residential IP routing, hardware spoofing, and biological keystroke dynamics.
+                          Every outreach action dispatched is wrapped in residential peer IP routing, hardware noise, and biological keystroke dynamics.
                         </p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowShieldModal(true)}
-                      className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
                     >
                       <Play size={12} />
-                      Run Full Hardware Audit
+                      <span>Inspect Hardware Nodes</span>
                     </button>
                   </div>
 
-                  {/* 5 Pillars Quick Inspection Cards */}
+                  {/* 5 Vault Pillars */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="p-3.5 rounded-lg bg-background border border-border space-y-1">
-                      <div className="flex items-center justify-between text-xs font-semibold">
+                      <div className="flex items-center justify-between text-xs font-bold">
                         <span className="text-foreground flex items-center gap-1.5">
-                          <CheckCircle2 size={13} className="text-muted-foreground" />
-                          1. Residential Peer IP
+                          <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
+                          1. Residential Peer Mobile IPs
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">100% Residential</span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">100% Residential</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        AT&T / Verizon residential mobile peers. LinkedIn never detects datacenter or VPS signatures.
+                        AT&amp;T and Verizon 5G residential mobile peers. LinkedIn never detects datacenter or VPS signatures.
                       </p>
                     </div>
 
                     <div className="p-3.5 rounded-lg bg-background border border-border space-y-1">
-                      <div className="flex items-center justify-between text-xs font-semibold">
+                      <div className="flex items-center justify-between text-xs font-bold">
                         <span className="text-foreground flex items-center gap-1.5">
-                          <CheckCircle2 size={13} className="text-muted-foreground" />
-                          2. Hardware & WebGL Noise
+                          <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
+                          2. Hardware &amp; WebGL Noise
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">Canvas Masked</span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Canvas Masked</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Hardware fingerprints, audio contexts, and WebGL buffers are dynamically randomized per session.
@@ -598,41 +793,28 @@ export function CampaignPreflightModal({
                     </div>
 
                     <div className="p-3.5 rounded-lg bg-background border border-border space-y-1">
-                      <div className="flex items-center justify-between text-xs font-semibold">
+                      <div className="flex items-center justify-between text-xs font-bold">
                         <span className="text-foreground flex items-center gap-1.5">
-                          <CheckCircle2 size={13} className="text-muted-foreground" />
-                          3. Natural Human Keystrokes
+                          <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
+                          3. Biological Keystroke Engine
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">40-120ms Jitter</span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">40-120ms Jitter</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Messages are typed with biological Gaussian delay curves and micro-pauses at punctuation.
+                        Outreach copy is typed with biological Gaussian delay curves and realistic micro-pauses at punctuation.
                       </p>
                     </div>
 
                     <div className="p-3.5 rounded-lg bg-background border border-border space-y-1">
-                      <div className="flex items-center justify-between text-xs font-semibold">
+                      <div className="flex items-center justify-between text-xs font-bold">
                         <span className="text-foreground flex items-center gap-1.5">
-                          <CheckCircle2 size={13} className="text-muted-foreground" />
+                          <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
                           4. Voyager Circuit Breaker
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">Auto-Cooloff Active</span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Auto-Cooloff</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        If LinkedIn returns unusual latency, security challenges, or CAPTCHA requests, sending halts immediately.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-lg bg-background border border-border space-y-1 sm:col-span-2">
-                      <div className="flex items-center justify-between text-xs font-semibold">
-                        <span className="text-foreground flex items-center gap-1.5">
-                          <CheckCircle2 size={13} className="text-muted-foreground" />
-                          5. Dynamic Weekly Invitation Ceiling
-                        </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">Safe Weekly Ramp</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Restricts invitation velocity strictly within LinkedIn's organic weekly allowance (maximum 100-150 / week / sender) to prevent automated account flags.
+                        If LinkedIn returns unusual latency, challenge screens, or CAPTCHA prompts, outreach halts instantly.
                       </p>
                     </div>
                   </div>
@@ -642,14 +824,14 @@ export function CampaignPreflightModal({
           ) : null}
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer Flight Clearance Controls */}
         <div className="px-6 py-4 border-t border-border bg-card flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-3.5 py-2 text-xs font-medium rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 text-xs font-semibold rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors cursor-pointer"
           >
-            Back to Editor
+            Back to Sequence Canvas
           </button>
 
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
@@ -657,36 +839,36 @@ export function CampaignPreflightModal({
               <button
                 type="button"
                 disabled
-                className="w-full sm:w-auto px-4 py-2 text-xs font-bold rounded-md bg-destructive/15 text-destructive border border-destructive/40 cursor-not-allowed flex items-center justify-center gap-2 shadow-xs"
+                className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold rounded-lg bg-destructive/15 text-destructive border border-destructive/40 cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <AlertCircle size={14} className="text-destructive shrink-0" />
-                <span>Launch Blocked: {data?.critical_errors.length || 0} Hard Blocker(s)</span>
+                <span>Launch Blocked: {data?.critical_errors.length || 0} Blocker(s)</span>
               </button>
             ) : isWarningState && !acknowledgeWarnings ? (
               <button
                 type="button"
                 onClick={() => setAcknowledgeWarnings(true)}
-                className="w-full sm:w-auto px-4 py-2 text-xs font-medium rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors cursor-pointer flex items-center gap-1.5"
+                className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-500/40 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
               >
-                <AlertTriangle size={13} className="text-amber-500 shrink-0" />
-                <span>Acknowledge Warnings & Proceed</span>
+                <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Acknowledge Warnings &amp; Authorize Launch</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleLaunchClick}
                 disabled={isLaunching || loading}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 text-xs font-medium rounded-md bg-primary hover:bg-primary/90 text-primary-foreground transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-bold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer shadow-md disabled:opacity-50"
               >
                 {isLaunching ? (
                   <>
                     <RefreshCw size={13} className="animate-spin" />
-                    <span>Deploying Sequence...</span>
+                    <span>Engaging Flight Dispatch...</span>
                   </>
                 ) : (
                   <>
-                    <Rocket size={13} />
-                    <span>Confirm & Launch Campaign</span>
+                    <Rocket size={14} />
+                    <span>Confirm &amp; Launch Live Campaign</span>
                   </>
                 )}
               </button>
@@ -694,7 +876,7 @@ export function CampaignPreflightModal({
           </div>
         </div>
 
-        {/* Deep Account Shield Verification Modal (Area 9) */}
+        {/* Deep Account Shield Verification Modal */}
         {showShieldModal && (
           <AccountShieldVerificationModal
             isOpen={showShieldModal}

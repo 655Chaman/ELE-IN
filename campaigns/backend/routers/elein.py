@@ -6295,6 +6295,9 @@ class EvaluateDeliverabilityPoolRequest(BaseModel):
     candidate_inboxes: Optional[List[Dict[str, Any]]] = None
     bounce_threshold_pct: Optional[float] = 2.5
     spam_threshold_pct: Optional[float] = 0.1
+    domain_daily_cap: Optional[int] = 150
+    affinity_fallback_mode: Optional[str] = "same_domain"
+    use_domain_balancing: Optional[bool] = False
 
 
 @router.post("/deliverability/verify-domain", response_model=dict)
@@ -6332,8 +6335,8 @@ def evaluate_deliverability_pool_endpoint(
     supabase: Client = Depends(get_supabase_client),
 ):
     """
-    Horizon 29 (Paranoia Layer 0, 1 & 2): Evaluates multi-inbox sender rotation, warmup ramp,
-    and bounce/spam tripwires for a workspace. Enforces strict IDOR tenant boundary on lead_id.
+    Horizon 29 & Issue 5 (Paranoia Layer 0, 1 & 2): Evaluates multi-inbox sender rotation, warmup ramp,
+    domain balancing, and bounce/spam tripwires for a workspace. Enforces strict IDOR tenant boundary on lead_id.
     """
     _check_workspace_tier_permission(workspace_id, "can_deliverability_pool", supabase)
     from integrations.backend.services.email_sender_service import select_rotating_sender_inbox
@@ -6358,14 +6361,69 @@ def evaluate_deliverability_pool_endpoint(
         except Exception as exc:
             logger.debug(f"[DeliverabilityPool] Lead lookup fallback: {exc}")
 
-    return select_rotating_sender_inbox(
-        supabase=supabase,
-        workspace_id=workspace_id,
-        campaign_id=req.campaign_id,
-        lead_id=req.lead_id,
-        candidate_inboxes=req.candidate_inboxes,
-        strategy=req.strategy or "HEALTH_WEIGHTED",
-    )
+    strategy = req.strategy or "HEALTH_WEIGHTED"
+    if req.use_domain_balancing and (not req.strategy or req.strategy == "HEALTH_WEIGHTED"):
+        strategy = "DOMAIN_BALANCED"
+
+    try:
+        return select_rotating_sender_inbox(
+            supabase=supabase,
+            workspace_id=workspace_id,
+            campaign_id=req.campaign_id,
+            lead_id=req.lead_id,
+            candidate_inboxes=req.candidate_inboxes,
+            strategy=strategy,
+            domain_daily_cap=req.domain_daily_cap if req.domain_daily_cap is not None else 150,
+            affinity_fallback_mode=req.affinity_fallback_mode or "same_domain",
+        )
+    except TypeError:
+        return select_rotating_sender_inbox(
+            supabase=supabase,
+            workspace_id=workspace_id,
+            campaign_id=req.campaign_id,
+            lead_id=req.lead_id,
+            candidate_inboxes=req.candidate_inboxes,
+            strategy=strategy,
+        )
+
+
+@router.get("/sender-pool/domains", response_model=dict)
+def get_sender_pool_domains_endpoint(
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Issue 5 (Dynamic Sender Domain & Mailbox Rotation with Burnout Protection):
+    Queries email_sender_inboxes for caller's workspace, calls aggregate_domain_metrics(inboxes),
+    and returns aggregated domain deliverability metrics.
+    """
+    inboxes: List[Dict[str, Any]] = []
+    clean_ws = str(workspace_id or "").strip()
+    if supabase and clean_ws:
+        try:
+            res = (
+                supabase.table("email_sender_inboxes")
+                .select("*")
+                .eq("workspace_id", clean_ws)
+                .execute()
+            )
+            if res and isinstance(getattr(res, "data", None), list):
+                inboxes = res.data
+        except Exception as exc:
+            logger.warning(f"[SenderPoolDomains] Error querying inboxes for workspace {clean_ws}: {exc}")
+
+    try:
+        from integrations.backend.services.email_sender_service import aggregate_domain_metrics
+        domain_metrics = aggregate_domain_metrics(inboxes)
+    except Exception as agg_err:
+        logger.warning(f"[SenderPoolDomains] Error aggregating domain metrics: {agg_err}")
+        domain_metrics = {}
+
+    return {
+        "domains": domain_metrics,
+        "total_domains": len(domain_metrics) if isinstance(domain_metrics, (dict, list)) else 0,
+        "workspace_id": workspace_id,
+    }
 
 
 class ClassifyInboundReplyRequest(BaseModel):

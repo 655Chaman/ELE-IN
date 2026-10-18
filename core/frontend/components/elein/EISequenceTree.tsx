@@ -3,7 +3,7 @@ import React from "react";
 import { cn } from "@/lib/utils"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { DotPattern } from "@/components/ui/dot-pattern"
 import { AnimatedBeam } from "@/components/ui/animated-beam"
@@ -12,7 +12,7 @@ import {
   UserPlus, MessageSquare, Eye, Heart, Users, Mail,
   AtSign, Zap, CheckCircle2, Shield, StopCircle, AlertCircle,
   Phone, CalendarCheck, Star, Mic2, Tag, Bell, Database, Info, ZoomIn, ZoomOut, Maximize, Undo, Redo, FileText, Save,
-  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame
+  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight
 } from "lucide-react"
 import useSWR, { useSWRConfig } from "swr"
 import { fetcher } from "@/lib/apiClient"
@@ -227,227 +227,288 @@ interface PickerPanelProps {
 function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
   const nodeList = isFirstStep ? FIRST_STEP_NODES : SUBSEQUENT_NODES
   const [infoNode, setInfoNode] = useState<EINodeType | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
   const { openPaywall } = usePaywall()
   const { data: billingData } = useSWR<any>('/api/elein/workspaces/billing', fetcher)
   const isWorkspacePro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE'
   const canUseIcp = isWorkspacePro || Boolean(billingData?.tier_limits?.can_use_bayesian_icp)
+
+  // Escape key handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (infoNode) {
+          setInfoNode(null)
+        } else {
+          onClose()
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [infoNode, onClose])
   
-  // Group by category
+  // Group by category with search filter
+  const query = searchQuery.trim().toLowerCase()
   const grouped: Record<string, string[]> = {}
   for (const [cat, type] of nodeList) {
+    const def = HR_NODE_DEFS[type as EINodeType]
+    if (query && def) {
+      const match = def.label.toLowerCase().includes(query) || 
+                    def.description.toLowerCase().includes(query) ||
+                    cat.toLowerCase().includes(query)
+      if (!match) continue
+    }
     if (!grouped[cat]) grouped[cat] = []
     grouped[cat].push(type)
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 z-[60] pointer-events-none flex">
-      <motion.div 
-        initial={{ x: "100%" }}
-        animate={{ x: 0 }}
-        exit={{ x: "100%" }}
-        transition={{ type: "spring", damping: 25, stiffness: 200 }}
-        className={cn(
-          "pointer-events-auto bg-background/95 backdrop-blur-xl shadow-2xl border-l border-border/40 flex flex-col h-full",
-          "w-[360px]"
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 bg-muted/10">
-          <div>
-            <p className="text-[15px] font-bold text-foreground tracking-tight">
-              {isFirstStep ? "Build sequence" : "Add a step"}
-            </p>
-
-          </div>
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors z-50">
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-        
-          <>
-
-        {/* Node list */}
-        <div className="flex-1 overflow-y-auto overscroll-none px-6 py-5 space-y-10">
-          {Object.entries(grouped).map(([cat, types]) => (
-            <div key={cat}>
-              <div className="flex items-center gap-2 mb-4">
-                {cat === 'ai' && <ElesiumLogo size={15} className="shrink-0" />}
-                <p className="text-[14px] font-bold text-foreground tracking-wide uppercase">{CAT_LABELS[cat]}</p>
-                <span className="text-[10px] font-semibold text-muted-foreground bg-muted/20 border border-border/40 rounded-md px-2 py-0.5">
-                  {types.length}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {types.map(type => {
-                  const def = HR_NODE_DEFS[type as EINodeType]
-                  if (!def) return null
-                  const Icon = NODE_ICONS[type] || Zap
-                  const color = CAT_ICON_COLORS[cat]
-                  const isEnrichmentNode = cat === "enrichment" || type === "find_email" || type.includes("enrich") || type.includes("scrape")
-                  const isIcpNode = type === "ai_score_icp" || type === "icp_score_gate"
-                  const isLocked = (isEnrichmentNode && !isWorkspacePro) || (isIcpNode && !canUseIcp)
-                  return (
-                    <div key={type} className="relative group h-full">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isLocked) {
-                            if (isIcpNode) {
-                              openPaywall({
-                                campaignName: "Bayesian ICP Machine Learning",
-                                featureName: def.label,
-                                reason: `Unlock ${def.label} with Growth Pro to qualify prospects probabilistically using continuous Bayesian learning.`,
-                              });
-                            } else {
-                              openPaywall({
-                                campaignName: "Automated Data Enrichment",
-                                featureName: def.label,
-                                reason: `Unlock ${def.label} with Growth Tier to run automated multi-channel enrichment.`,
-                              });
-                            }
-                            return;
-                          }
-                          if (!(def as any).comingSoon) onPick(type as EINodeType)
-                        }}
-                        disabled={(def as any).comingSoon}
-                        className={cn(
-                          "w-full h-full flex flex-col items-start p-4 rounded-xl border border-border/40 bg-muted/10 text-left relative overflow-hidden transition-all duration-200 shadow-sm",
-                          (def as any).comingSoon 
-                            ? "opacity-60 cursor-not-allowed grayscale" 
-                            : isLocked
-                            ? "hover:bg-primary/5 hover:border-primary/40 group-hover:border-primary/40"
-                            : "hover:bg-muted/30 hover:border-border/80 group-hover:border-border/80"
-                        )}
-                      >
-                        {/* Glow effect */}
-                        {!(def as any).comingSoon && <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: `radial-gradient(circle at center, ${color}15 0%, transparent 70%)` }} />}
-                        
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mb-3 border z-10 transition-colors"
-                          style={{ borderColor: `${color}33`, color, background: `${color}10` }}
-                        >
-                          <Icon size={18} strokeWidth={1.5} />
-                        </div>
-                        <div className="min-w-0 z-10 flex-1 w-full relative">
-                          {(def as any).comingSoon ? (
-                            <span className="absolute top-0 right-0 text-[9px] font-medium tracking-wider uppercase bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/40">
-                              Coming Soon
-                            </span>
-                          ) : isLocked ? (
-                            <span className="absolute top-0 right-0 text-[9px] font-bold tracking-wider uppercase bg-primary/20 text-primary px-1.5 py-0.5 rounded border border-primary/30 flex items-center gap-1 shadow-sm">
-                              <Lock size={9} /> PRO
-                            </span>
-                          ) : null}
-                          <p className="text-[13px] font-bold text-foreground leading-tight transition-colors pr-14 flex items-center gap-1.5">
-                            {(cat === "ai" || def.label.includes("AI")) && (
-                              <ElesiumLogo size={13} className="shrink-0" />
-                            )}
-                            <span>{def.label}</span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug line-clamp-2">{def.description}</p>
-                        </div>
-                        {type === "find_email" && !(def as any).comingSoon && (
-                          <div className="absolute left-4 bottom-4 flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded text-[10px] font-bold border border-emerald-500/20">
-                            <Database size={9} /> 1
-                          </div>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setInfoNode(type as EINodeType) }}
-                        className="absolute right-2 top-2 p-2 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-all z-20 cursor-pointer"
-                        title="More info"
-                      >
-                        <Info size={14} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
+    <>
+      {/* Backdrop overlay */}
+      <div 
+        className="fixed inset-0 z-[59] bg-background/60 backdrop-blur-xs transition-opacity" 
+        onClick={onClose} 
+      />
+      <div className="fixed inset-y-0 right-0 z-[60] pointer-events-none flex">
+        <motion.div 
+          initial={{ x: "100%" }}
+          animate={{ x: 0 }}
+          exit={{ x: "100%" }}
+          transition={{ type: "spring", damping: 25, stiffness: 200 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add a step to sequence"
+          className={cn(
+            "pointer-events-auto bg-background/95 backdrop-blur-xl shadow-2xl border-l border-border/40 flex flex-col h-full",
+            "w-[380px]"
+          )}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 bg-muted/10">
+            <div>
+              <p className="text-[15px] font-bold text-foreground tracking-tight">
+                {isFirstStep ? "Build sequence" : "Add a step"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Select an outreach action, condition gate, or AI tool.
+              </p>
             </div>
-          ))}
-        </div>
-
-        <div className="flex-none border-t border-border/40 px-6 py-4 bg-background/80">
-          <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg border border-border/50 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border bg-muted/20 hover:bg-muted/40 transition-all cursor-pointer">
-            Dismiss
-          </button>
-        </div>
-
-        {/* Info Popover */}
-        <AnimatePresence>
-          {infoNode && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-background/80"
-              onClick={() => setInfoNode(null)}
-            >
-              <div 
-                className="w-full max-w-sm bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
-                onClick={e => e.stopPropagation()}
+            <div className="flex items-center gap-2 pointer-events-auto">
+              <button 
+                type="button" 
+                onClick={onClose} 
+                className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-muted"
+                aria-label="Close step picker"
               >
-                <div className="p-6 border-b border-border/40 bg-card">
-                  <div className="flex items-center justify-between mb-4">
-                    <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center border"
-                      style={{ 
-                        color: CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category] || "currentColor",
-                        borderColor: `${CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category]}40`,
-                        background: `${CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category]}15`
-                      }}
-                    >
-                      {(() => {
-                        const Icon = NODE_ICONS[infoNode] || Zap
-                        return <Icon size={24} />
-                      })()}
-                    </div>
-                    <button type="button" onClick={() => setInfoNode(null)} className="p-2 text-muted-foreground hover:text-foreground bg-muted/50 rounded-lg transition-colors cursor-pointer">
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <h3 className="text-lg font-bold text-foreground mb-1">{HR_NODE_DEFS[infoNode].label}</h3>
-                  <div className="flex gap-2 mb-4">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/40">
-                      {CAT_LABELS[HR_NODE_DEFS[infoNode].category]}
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Search Filter Bar */}
+          <div className="px-6 py-3 border-b border-border/40 bg-card">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filter actions, AI gates, delays..."
+                className="w-full bg-background border border-border/60 rounded-lg pl-8 pr-8 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  aria-label="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* Node list */}
+          <div className="flex-1 overflow-y-auto overscroll-none px-6 py-5 space-y-8">
+            {Object.keys(grouped).length === 0 ? (
+              <div className="py-12 text-center text-xs text-muted-foreground">
+                No sequence steps found matching &quot;{searchQuery}&quot;.
+              </div>
+            ) : (
+              Object.entries(grouped).map(([cat, types]) => (
+                <div key={cat}>
+                  <div className="flex items-center gap-2 mb-3">
+                    {cat === 'ai' && <ElesiumLogo size={15} className="shrink-0" />}
+                    <p className="text-[12px] font-bold text-foreground tracking-wide uppercase">{CAT_LABELS[cat] || cat}</p>
+                    <span className="text-[10px] font-semibold text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-2 py-0.5">
+                      {types.length}
                     </span>
                   </div>
-                  <p className="text-[13px] text-muted-foreground leading-relaxed">
-                    {HR_NODE_DEFS[infoNode].description}
-                  </p>
-                </div>
-                <div className="p-6 bg-muted/10 space-y-4">
-                  <div>
-                    <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Branches / Outputs</p>
-                    <div className="flex flex-wrap gap-2">
-                      {HR_NODE_DEFS[infoNode].outputs?.map(out => (
-                        <span key={out} className="text-xs font-semibold text-foreground bg-muted/30 border border-border/40 px-2 py-1 rounded-md">
-                          {out}
-                        </span>
-                      ))}
-                      {!HR_NODE_DEFS[infoNode].outputs?.length && (
-                        <span className="text-xs text-muted-foreground italic">None (Ends Sequence)</span>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {types.map(type => {
+                      const def = HR_NODE_DEFS[type as EINodeType]
+                      if (!def) return null
+                      const Icon = NODE_ICONS[type] || Zap
+                      const color = CAT_ICON_COLORS[cat] || "#6366f1"
+                      const isEnrichmentNode = cat === "enrichment" || type === "find_email" || type.includes("enrich") || type.includes("scrape")
+                      const isIcpNode = type === "ai_score_icp" || type === "icp_score_gate"
+                      const isLocked = (isEnrichmentNode && !isWorkspacePro) || (isIcpNode && !canUseIcp)
+                      return (
+                        <div key={type} className="relative group h-full">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isLocked) {
+                                if (isIcpNode) {
+                                  openPaywall({
+                                    campaignName: "Bayesian ICP Machine Learning",
+                                    featureName: def.label,
+                                    reason: `Unlock ${def.label} with Growth Pro to qualify prospects probabilistically using continuous Bayesian learning.`,
+                                  });
+                                } else {
+                                  openPaywall({
+                                    campaignName: "Automated Data Enrichment",
+                                    featureName: def.label,
+                                    reason: `Unlock ${def.label} with Growth Tier to run automated multi-channel enrichment.`,
+                                  });
+                                }
+                                return;
+                              }
+                              if (!(def as any).comingSoon) onPick(type as EINodeType)
+                            }}
+                            disabled={(def as any).comingSoon}
+                            className={cn(
+                              "w-full h-full flex flex-col items-start p-3.5 rounded-xl border border-border/50 bg-card text-left relative overflow-hidden transition-all duration-200 shadow-xs",
+                              (def as any).comingSoon 
+                                ? "opacity-60 cursor-not-allowed grayscale" 
+                                : isLocked
+                                ? "hover:bg-primary/5 hover:border-primary/40 group-hover:border-primary/40 cursor-pointer"
+                                : "hover:bg-muted/40 hover:border-border group-hover:border-border cursor-pointer"
+                            )}
+                          >
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mb-2.5 border z-10 transition-colors"
+                              style={{ borderColor: `${color}33`, color, background: `${color}10` }}
+                            >
+                              <Icon size={16} strokeWidth={1.5} />
+                            </div>
+                            <div className="min-w-0 z-10 flex-1 w-full relative">
+                              {(def as any).comingSoon ? (
+                                <span className="absolute top-0 right-0 text-[9px] font-medium tracking-wider uppercase bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/40">
+                                  Soon
+                                </span>
+                              ) : isLocked ? (
+                                <span className="absolute top-0 right-0 text-[9px] font-bold tracking-wider uppercase bg-primary/20 text-primary px-1.5 py-0.5 rounded border border-primary/30 flex items-center gap-1 shadow-xs">
+                                  <Lock size={9} /> PRO
+                                </span>
+                              ) : null}
+                              <p className="text-[12px] font-bold text-foreground leading-tight transition-colors pr-12 flex items-center gap-1">
+                                {(cat === "ai" || def.label.includes("AI")) && (
+                                  <ElesiumLogo size={12} className="shrink-0" />
+                                )}
+                                <span className="line-clamp-1">{def.label}</span>
+                              </p>
+                              <p className="text-[11px] text-muted-foreground mt-1 leading-snug line-clamp-2">{def.description}</p>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setInfoNode(type as EINodeType) }}
+                            className="absolute right-2 top-2 p-1.5 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-all z-20 cursor-pointer"
+                            title="More info"
+                            aria-label={`More info about ${def.label}`}
+                          >
+                            <Info size={13} />
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <button 
-                    type="button"
-                    onClick={() => { onPick(infoNode); setInfoNode(null) }}
-                    className="w-full py-2.5 bg-foreground text-background font-bold rounded-lg hover:opacity-90 transition-opacity mt-2 cursor-pointer"
-                  >
-                    Add to Sequence
-                  </button>
                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-          </>
-      </motion.div>
-    </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex-none border-t border-border/40 px-6 py-4 bg-background/80">
+            <button type="button" onClick={onClose} className="w-full py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-all cursor-pointer">
+              Dismiss Drawer
+            </button>
+          </div>
+
+          {/* Info Popover */}
+          <AnimatePresence>
+            {infoNode && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-background/80 backdrop-blur-xs"
+                onClick={() => setInfoNode(null)}
+              >
+                <div 
+                  className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="p-6 border-b border-border/40 bg-card">
+                    <div className="flex items-center justify-between mb-4">
+                      <div 
+                        className="w-12 h-12 rounded-xl flex items-center justify-center border"
+                        style={{ 
+                          color: CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category] || "currentColor",
+                          borderColor: `${CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category]}40`,
+                          background: `${CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category]}15`
+                        }}
+                      >
+                        {(() => {
+                          const Icon = NODE_ICONS[infoNode] || Zap
+                          return <Icon size={24} />
+                        })()}
+                      </div>
+                      <button type="button" onClick={() => setInfoNode(null)} className="p-2 text-muted-foreground hover:text-foreground bg-muted/50 rounded-lg transition-colors cursor-pointer" aria-label="Close info">
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground mb-1">{HR_NODE_DEFS[infoNode].label}</h3>
+                    <div className="flex gap-2 mb-4">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/40">
+                        {CAT_LABELS[HR_NODE_DEFS[infoNode].category]}
+                      </span>
+                    </div>
+                    <p className="text-[13px] text-muted-foreground leading-relaxed">
+                      {HR_NODE_DEFS[infoNode].description}
+                    </p>
+                  </div>
+                  <div className="p-6 bg-muted/10 space-y-4">
+                    <div>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Branches / Outputs</p>
+                      <div className="flex flex-wrap gap-2">
+                        {HR_NODE_DEFS[infoNode].outputs?.map(out => (
+                          <span key={out} className="text-xs font-semibold text-foreground bg-muted/30 border border-border/40 px-2 py-1 rounded-md">
+                            {out}
+                          </span>
+                        ))}
+                        {!HR_NODE_DEFS[infoNode].outputs?.length && (
+                          <span className="text-xs text-muted-foreground italic">None (Ends Sequence)</span>
+                        )}
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => { onPick(infoNode); setInfoNode(null) }}
+                      className="w-full py-2.5 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition-opacity mt-2 cursor-pointer shadow-xs text-xs"
+                    >
+                      Add to Sequence
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </div>
+    </>
   )
 }
 
@@ -557,15 +618,15 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       onClick={onSelect}
-      className={`!p-0 group w-[320px] !rounded-lg !bg-card border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[2px] ${
-        isSelected ? "!border-indigo-600 ring-2 ring-indigo-500/20 shadow-md z-10" : "hover:!border-indigo-500/50"
-      } ${isDragging ? "opacity-30 scale-95" : ""} ${isDragOver ? "border-dashed !border-indigo-500 !bg-indigo-50/50" : ""}`}
+      className={`!p-0 group w-[320px] !rounded-xl !bg-card border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[2px] ${
+        isSelected ? "!border-primary ring-2 ring-primary/20 shadow-md z-10" : "hover:!border-primary/50"
+      } ${isDragging ? "opacity-30 scale-95" : ""} ${isDragOver ? "border-dashed !border-primary !bg-primary/5 dark:!bg-primary/10" : ""}`}
      
       style={(!isDragOver && !isSelected) ? { borderColor: `${color}45` } : {}}
     >
       {/* Delay Configurator */}
       {delay !== undefined && !hideDelay && (
-        <div className="border-b border-border/40 bg-muted/10 rounded-t-lg overflow-hidden">
+        <div className="border-b border-border/40 bg-muted/10 rounded-t-xl overflow-hidden">
           <div 
             className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
             onClick={(e) => {
@@ -573,9 +634,9 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
               setIsEditingDelay(!isEditingDelay)
             }}
           >
-            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2 text-muted-foreground">
               <Clock size={14} />
-              <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-100">
+              <span className="text-[12px] font-semibold text-foreground">
                 {delay === 0 ? "No delay" : `Wait ${delay} ${node.data.delayUnit || 'days'}, then`}
               </span>
             </div>
@@ -633,6 +694,10 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
         const displayColor = hasError ? "#ef4444" : color
         
         const isAiNode = def?.category === 'ai' || node.type.startsWith('ai_') || node.type.includes('brain') || node.type.includes('icebreaker')
+        const noteText = node.data?.note || node.data?.message || ""
+        const isConnection = node.type.includes("connection")
+        const charCount = noteText.length
+        const isConnWithNote = isConnection && charCount > 0
         
         return (
           <div className={`flex flex-col px-4 py-3.5 relative ${hasError ? 'bg-red-500/5' : ''}`}>
@@ -674,6 +739,34 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                 </button>
               )}
             </div>
+
+            {/* Real-time Connection Note Safe Character Budget Bar */}
+            {isConnWithNote && (
+              <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                  <span className={cn(
+                    "font-bold",
+                    charCount > 300 ? "text-destructive" :
+                    charCount > 240 ? "text-amber-600 dark:text-amber-400" :
+                    "text-emerald-600 dark:text-emerald-400"
+                  )}>
+                    {charCount}
+                  </span>
+                  <span className="text-muted-foreground">/ 300 chars</span>
+                </div>
+                <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div 
+                    className={cn(
+                      "h-full rounded-full transition-all",
+                      charCount > 300 ? "bg-destructive" :
+                      charCount > 240 ? "bg-amber-500" :
+                      "bg-emerald-500"
+                    )}
+                    style={{ width: `${Math.min(100, (charCount / 300) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {analytics && (
               <div className="mt-3 flex items-center gap-4 pt-3 border-t border-border/40">
@@ -738,8 +831,8 @@ function BranchPill({ label }: { label: string }) {
 
   return (
     <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase bg-background border border-border/50 shadow-sm z-10 transition-all hover:border-border hover:shadow-md">
-      <div className={`w-1.5 h-1.5 rounded-full ${isPositive ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}`} />
-      <span className="text-slate-800 dark:text-slate-100 font-bold">{label}</span>
+      <div className={`w-2 h-2 rounded-full ${isPositive ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}`} />
+      <span className="text-foreground font-bold">{label}</span>
     </div>
   )
 }
@@ -842,7 +935,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
             
             {/* Drop-off badge */}
             {readOnly && parentAnalytics && nodeAnalytics?.[node.id] && parentAnalytics.sent > 0 && (
-              <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)] flex items-center gap-1.5">
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-600 dark:text-red-400 shadow-sm flex items-center gap-1.5">
                 Drop-off: {Math.max(0, parentAnalytics.sent - nodeAnalytics[node.id].sent)} ({parentAnalytics.sent > 0 ? Math.round(Math.max(0, parentAnalytics.sent - nodeAnalytics[node.id].sent) / parentAnalytics.sent * 100) : '0'}%)
               </div>
             )}
@@ -1262,18 +1355,29 @@ export function EISequenceTree({
       {/* Auto-withdraw Conflict Modal */}
       <AnimatePresence>
         {conflictModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setConflictModalOpen(false)
+                setPendingAddParams(null)
+              }
+            }}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border border-border/50 shadow-2xl rounded-xl p-6 max-w-md w-full mx-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="conflict-dialog-title"
+              className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full"
             >
               <div className="flex items-center gap-3 text-primary mb-4">
-                <AlertCircle size={24} />
-                <h3 className="text-lg font-bold text-foreground">Conflict Detected</h3>
+                <AlertCircle size={22} />
+                <h3 id="conflict-dialog-title" className="text-base font-bold text-foreground">Conflict Detected</h3>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+              <p className="text-xs text-muted-foreground leading-relaxed mb-6">
                 You already have auto-withdraw enabled on your Connection node. Adding a manual Withdraw node will create a conflict. Do you want to disable auto-withdraw on the Connection node first?
               </p>
               <div className="flex items-center justify-end gap-3">
@@ -1283,7 +1387,7 @@ export function EISequenceTree({
                     setConflictModalOpen(false)
                     setPendingAddParams(null)
                   }}
-                  className="px-4 py-2 rounded-lg border border-border/50 text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1301,7 +1405,7 @@ export function EISequenceTree({
                     setConflictModalOpen(false)
                     setPendingAddParams(null)
                   }}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-xs font-bold text-primary-foreground transition-colors cursor-pointer shadow-xs"
                 >
                   Disable Auto-Withdraw and Continue
                 </button>
@@ -1311,35 +1415,46 @@ export function EISequenceTree({
         )}
       </AnimatePresence>
 
-      {/* Preset Overwrite Confirmation Modal (Paranoia Framework Layer 1 & 2) */}
+      {/* Preset Overwrite Confirmation Modal */}
       <AnimatePresence>
         {presetModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setPresetModalOpen(false)
+                setSelectedPreset(null)
+              }
+            }}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full mx-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="preset-dialog-title"
+              className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full"
             >
-              <div className="flex items-center gap-3 text-amber-500 mb-3">
-                <AlertTriangle size={24} />
-                <h3 className="text-lg font-bold text-foreground">Replace Sequence Canvas?</h3>
+              <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-3">
+                <AlertTriangle size={22} />
+                <h3 id="preset-dialog-title" className="text-base font-bold text-foreground">Replace Sequence Canvas?</h3>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+              <p className="text-xs text-muted-foreground leading-relaxed mb-6">
                 You currently have <span className="font-semibold text-foreground">{rootNodes.length} step(s)</span> on your canvas. Loading <span className="font-semibold text-foreground">&quot;{selectedPreset?.name}&quot;</span> will replace your existing sequence with this calibrated architecture.
               </p>
               <div className="flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => { setPresetModalOpen(false); setSelectedPreset(null); }}
-                  className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
                 >
                   Keep Current Sequence
                 </button>
                 <button
                   type="button"
                   onClick={confirmApplyPreset}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-colors shadow-sm cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-xs font-bold text-primary-foreground transition-colors shadow-xs cursor-pointer"
                 >
                   Replace Canvas
                 </button>
@@ -1355,7 +1470,7 @@ export function EISequenceTree({
           <button
             type="button"
             onClick={onTemplatesClick}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border/60 hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
           >
             <Layers size={14} className="text-primary" />
             <span>Templates</span>
@@ -1366,7 +1481,7 @@ export function EISequenceTree({
         {sequenceStats.nodeCount > 0 && (
           <div className="flex items-center">
             {sequenceStats.isFullySafe ? (
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold shadow-sm">
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold shadow-sm">
                 <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
                 <span>100% Anti-Spam Safe</span>
                 <span className="text-emerald-500/40">•</span>
@@ -1378,7 +1493,7 @@ export function EISequenceTree({
                 <span>{sequenceStats.errorCount} Issue{sequenceStats.errorCount > 1 ? 's' : ''} to Resolve</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-semibold shadow-sm">
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-semibold shadow-sm">
                 <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
                 <span>{sequenceStats.warningCount} Optimization Notice{sequenceStats.warningCount > 1 ? 's' : ''}</span>
               </div>
@@ -1390,60 +1505,71 @@ export function EISequenceTree({
       {/* Left Vertical Toolbar */}
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-3 pointer-events-auto">
         {/* Zoom Group */}
-        <div className="flex flex-row bg-card/90 backdrop-blur-md border border-border/40 shadow-sm rounded-xl overflow-hidden w-fit">
-          <button type="button" onClick={() => setZoom(z => Math.min(z + 0.1, 2))} className="w-11 h-11 flex items-center justify-center hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors border-r border-border/30 cursor-pointer" title="Zoom In">
-            <ZoomIn size={18} />
+        <div className="flex flex-row bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden w-fit">
+          <button 
+            type="button" 
+            onClick={() => setZoom(z => Math.min(z + 0.1, 2))} 
+            className="w-10 h-10 flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors border-r border-border cursor-pointer" 
+            title="Zoom In"
+            aria-label="Zoom in"
+          >
+            <ZoomIn size={16} />
           </button>
-          <button type="button" onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} className="w-11 h-11 flex items-center justify-center hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors border-r border-border/30 cursor-pointer" title="Zoom Out">
-            <ZoomOut size={18} />
+          <button 
+            type="button" 
+            onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} 
+            className="w-10 h-10 flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors border-r border-border cursor-pointer" 
+            title="Zoom Out"
+            aria-label="Zoom out"
+          >
+            <ZoomOut size={16} />
           </button>
           <button 
             type="button"
             onClick={() => {
-            if (hasFitView) return;
-            setHasFitView(true);
-            if (containerRef.current) {
-              const el = containerRef.current;
-              const contentEl = el.firstElementChild as HTMLElement;
-              if (contentEl) {
-                // Determine unscaled dimensions
-                // Since zoom is applied via CSS 'zoom' on this element, scrollWidth is already the intrinsic (unscaled) width
-                const unscaledW = contentEl.scrollWidth;
-                const unscaledH = contentEl.scrollHeight;
-                
-                // Calculate required zoom to fit inside container with padding
-                const targetZoom = Math.min(
-                  (el.clientWidth - 80) / Math.max(unscaledW, 1),
-                  (el.clientHeight - 80) / Math.max(unscaledH, 1)
-                );
-                
-                // Clamp zoom between 0.2 and 1.0
-                const finalZoom = Math.max(0.2, Math.min(1.0, targetZoom));
-                setZoom(finalZoom);
-                
-                // Center it after zoom applies
-                setTimeout(() => {
-                  el.scrollTo({
-                    left: (el.scrollWidth - el.clientWidth) / 2,
-                    top: (el.scrollHeight - el.clientHeight) / 2,
-                    behavior: 'smooth'
-                  });
-                }, 50);
+              if (hasFitView) return;
+              setHasFitView(true);
+              if (containerRef.current) {
+                const el = containerRef.current;
+                const contentEl = el.firstElementChild as HTMLElement;
+                if (contentEl) {
+                  const unscaledW = contentEl.scrollWidth;
+                  const unscaledH = contentEl.scrollHeight;
+                  const targetZoom = Math.min(
+                    (el.clientWidth - 80) / Math.max(unscaledW, 1),
+                    (el.clientHeight - 80) / Math.max(unscaledH, 1)
+                  );
+                  const finalZoom = Math.max(0.2, Math.min(1.0, targetZoom));
+                  setZoom(finalZoom);
+                  setTimeout(() => {
+                    el.scrollTo({
+                      left: (el.scrollWidth - el.clientWidth) / 2,
+                      top: (el.scrollHeight - el.clientHeight) / 2,
+                      behavior: 'smooth'
+                    });
+                  }, 50);
+                }
               }
-            }
-          }} className={cn("w-11 h-11 flex items-center justify-center transition-colors cursor-pointer", hasFitView ? "text-muted-foreground/30 cursor-not-allowed pointer-events-none" : "hover:bg-muted/50 text-muted-foreground hover:text-foreground")} title="Fit to Canvas">
-            <Maximize size={18} />
+            }} 
+            className={cn(
+              "w-10 h-10 flex items-center justify-center transition-colors", 
+              hasFitView ? "text-muted-foreground/30 cursor-not-allowed pointer-events-none" : "hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+            )} 
+            title="Fit to Canvas"
+            aria-label="Fit to canvas"
+          >
+            <Maximize size={16} />
           </button>
         </div>
 
         {/* Action Group */}
         {!readOnly && (
-          <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border/40 shadow-sm rounded-xl overflow-hidden mt-2">
+          <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden mt-1">
             <button
               type="button"
               onClick={() => useHRTreeStore.getState().undo()}
               disabled={useHRTreeStore.getState().history.length === 0}
-              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors border-b border-border/30 w-full cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-b border-border w-full cursor-pointer"
             >
               <Undo size={14} className="shrink-0" /> <span className="font-medium">Undo</span>
             </button>
@@ -1451,7 +1577,7 @@ export function EISequenceTree({
               type="button"
               onClick={() => useHRTreeStore.getState().redo()}
               disabled={useHRTreeStore.getState().future.length === 0}
-              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors border-b border-border/30 w-full cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-b border-border w-full cursor-pointer"
             >
               <Redo size={14} className="shrink-0" /> <span className="font-medium">Redo</span>
             </button>
@@ -1466,7 +1592,7 @@ export function EISequenceTree({
                 }
                 addStickyNote(x, y);
               }}
-              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors border-b border-border/30 w-full cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors border-b border-border w-full cursor-pointer"
             >
               <MessageSquare size={14} className="shrink-0" /> <span className="font-medium">Add Sticky Note</span>
             </button>
@@ -1483,14 +1609,14 @@ export function EISequenceTree({
                 }
               }}
               disabled={isSaving}
-              className="flex items-center gap-2 px-4 py-3 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-colors w-full disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-colors w-full disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSaving ? (
                 <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
               ) : (
                 <Save size={14} className="shrink-0" />
               )}
-              <span className="font-medium">{isSaving ? 'Saving...' : 'Save'}</span>
+              <span>{isSaving ? 'Saving...' : 'Save Canvas'}</span>
             </button>
           </div>
         )}
@@ -1531,8 +1657,8 @@ export function EISequenceTree({
         >
           {stickyNotes?.map(note => <EIStickyNote key={note.id} note={note} />)}
           {/* Sequence start node */}
-          <div ref={startNodeRef} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-card/80 backdrop-blur-md border border-border/40 shadow-sm text-foreground text-sm font-semibold">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500 dark:text-indigo-400">
+          <div ref={startNodeRef} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm text-foreground text-sm font-semibold">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
             Sequence start
@@ -1543,11 +1669,11 @@ export function EISequenceTree({
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-6 max-w-xl w-full p-6 rounded-xl border border-dashed border-border/80 bg-card/60 backdrop-blur-md shadow-sm text-center"
+              className="mt-6 max-w-xl w-full p-6 rounded-xl border border-dashed border-border bg-card/80 backdrop-blur-md shadow-sm text-center"
             >
-              <h3 className="text-sm font-semibold text-foreground mb-1">Sequence Blueprints</h3>
+              <h3 className="text-sm font-bold text-foreground mb-1">Calibrated Sequence Architectures</h3>
               <p className="text-xs text-muted-foreground mb-4">
-                Calibrated sequence architectures with built-in cadence delays:
+                Pre-calibrated outreach blueprints with built-in cadence delays and branch logic:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
                 {QUICK_PRESETS.map((p) => {
@@ -1557,14 +1683,14 @@ export function EISequenceTree({
                       type="button"
                       key={p.id}
                       onClick={() => applyPreset(p)}
-                      className="p-3.5 rounded-lg border border-border/60 bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between text-left"
+                      className="p-3.5 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between text-left"
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <span className={`p-1.5 rounded-md border text-xs ${p.color}`}>
                             <PIcon size={13} />
                           </span>
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
+                          <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
                             {p.badge}
                           </span>
                         </div>
@@ -1575,8 +1701,9 @@ export function EISequenceTree({
                           {p.description}
                         </p>
                       </div>
-                      <div className="mt-3 pt-2 border-t border-border/40 text-[11px] font-semibold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                        Load Preset &rarr;
+                      <div className="mt-3 pt-2 border-t border-border/40 text-[11px] font-bold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                        <span>Load Blueprint</span>
+                        <ArrowRight size={11} />
                       </div>
                     </button>
                   );
@@ -1586,9 +1713,10 @@ export function EISequenceTree({
                 <button
                   type="button"
                   onClick={onTemplatesClick}
-                  className="mt-4 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:underline cursor-pointer"
+                  className="mt-4 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:underline cursor-pointer inline-flex items-center gap-1"
                 >
-                  Or browse complete template library &rarr;
+                  <span>Or browse complete template library</span>
+                  <ArrowRight size={11} />
                 </button>
               )}
             </motion.div>
