@@ -157,5 +157,18 @@
     - Exposed `POST /api/elein/spintax/analyze`, `POST /api/elein/spintax/generate`, and `POST /api/elein/spintax/preview`.
   - **Verification**: 50/50 automated tests passing across `test_spintax_and_linguistic_variation_multiplier.py` (39/39) and `test_issue7_spintax_multiplier_entropy.py` (11/11), 215/215 deliverability regression suite green, sub-second frontend production build (675ms).
 
+- [x] **Phase 34: Smart Mailbox Auto-Warmup Engine & Adaptive Ramp Curves (100% Operational):**
+  - **Adaptive Ramp Curves & Reputation Health Engine (`integrations/backend/services/mailbox_warmup_service.py`)**:
+    - `WarmupCurveType`: `LINEAR`, `LOGARITHMIC` (Sigmoid S-curve with gentle 1-5 day initial IP crawl, accelerated 6-18 day ramp, and smooth plateau to target cap), and `AGGRESSIVE` (square-root curve for pre-warmed / aged domains).
+    - `calculate_warmup_ramp_projection`: Models daily volume splits between Warmup vs Cold Outreach (e.g. Day 0: 100% warmup / 0% cold; Day 14: 40% warmup / 60% cold; Day 28+: 20% warmup maintenance floor / 80% cold).
+    - `calculate_inbox_warmup_health_score`: Computes 0-100 reputation score based on inbox age, aggregate bounce rate, spam complaints, and peer engagement. Categorizes into `PEAK_HEALTH` (>=85), `RAMPING_OPTIMAL` (70-84), `NEEDS_RECOVERY` (50-69: automatic 50% cold outreach throttle), and `EMERGENCY_PAUSED` (<50: 100% cold outreach pause).
+    - `simulate_peer_warmup_exchange`: Simulates realistic multi-turn peer B2B email threads with formula injection sanitization (`=`, `+`, `-`, `@`), spam folder rescue, star/priority marking, and response engagement.
+    - `advance_inbox_warmup_tick`: Automatically advances mailbox days active, recalculates health scores, updates daily caps, and handles database drops with non-fatal fallbacks.
+  - **Email Sender Pool & Router Integration (`integrations/backend/services/email_sender_service.py`, `campaigns/backend/routers/elein.py`)**:
+    - `calculate_warmup_daily_cap`: Integrates adaptive curves and reputation health throttle while maintaining backward compatibility for legacy `warmup_increment_per_day` configurations.
+    - `select_rotating_sender_inbox`: Rejects `EMERGENCY_PAUSED` inboxes with `WARMUP_EMERGENCY_PAUSED` for cold campaigns and applies 50% capacity throttling for inboxes in `NEEDS_RECOVERY`. Enriches all returned mailboxes with telemetry (`warmup_health_score`, `warmup_curve_type`, `warmup_days_active`).
+    - Exposed endpoints `POST /api/elein/warmup/calculate-ramp`, `POST /api/elein/warmup/health`, `POST /api/elein/warmup/simulate-tick`, and `GET /api/elein/warmup/inbox/{inbox_id}` with tenant IDOR protection.
+  - **Verification**: 69/69 automated tests passing across `test_smart_mailbox_warmup_engine.py` (39/39), `test_mailbox_warmup_service.py` (17/17), and `test_horizon29_cold_email_deliverability_pool.py` (13/13) with sub-second production build (783ms).
+
 
 
