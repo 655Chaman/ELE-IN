@@ -253,60 +253,60 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
   return (
     <section aria-label="Account Warm-Up and Safety Telemetry" className="space-y-6 pb-4">
       {/* 1. PRIMARY TELEMETRY CONTAINER (Linear / Supabase Quiet Chrome Architecture) */}
-      <div className="p-6 rounded-2xl bg-[#12151C] border border-white/[0.08] shadow-xl relative overflow-hidden">
+      <div className="p-6 rounded-lg bg-card border border-border shadow-xs relative overflow-hidden">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
           {/* Left: Active Phase Identity & Status Pills */}
           <div className="space-y-2.5 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-300 font-semibold text-xs">
-                <Activity size={13} className="text-amber-300 shrink-0" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-500 dark:text-amber-300 font-semibold text-xs">
+                <Activity size={13} className="shrink-0" aria-hidden="true" />
                 <span>Day {Math.max(1, data.streak_days || 1)} Pacing Active</span>
               </span>
 
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
                 <ShieldCheck size={13} className="shrink-0" aria-hidden="true" />
                 <span>{data.is_graduated ? "Full Production Velocity" : `Warm-Up Ramp: Day ${currentDayNum} of 7`}</span>
               </span>
 
               {data.is_graduated && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-zinc-200 text-xs font-semibold">
-                  <Award size={13} className="text-emerald-400 shrink-0" aria-hidden="true" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/40 border border-border text-foreground text-xs font-semibold">
+                  <Award size={13} className="text-emerald-500 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                   <span>Graduated Sender</span>
                 </span>
               )}
 
               {lastVerifiedAt && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.04] text-zinc-400 text-[11px] font-medium">
-                  <Clock size={11} className="text-emerald-400 shrink-0" aria-hidden="true" />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/30 border border-border/40 text-muted-foreground text-[11px] font-medium">
+                  <Clock size={11} className="text-emerald-500 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                   <span>Verified {lastVerifiedAt}</span>
                 </span>
               )}
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
               {currentMilestone.title}
             </h2>
 
-            <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
-              {currentMilestone.safety_focus}. Unlocked today: <strong className="text-zinc-200 font-semibold">{currentMilestone.unlocked_capability}</strong>.
+            <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
+              {currentMilestone.safety_focus}. Unlocked today: <strong className="text-foreground font-semibold">{currentMilestone.unlocked_capability}</strong>.
             </p>
           </div>
 
           {/* Right: 98% Safety Gauge (2-Line No-Wrap Lockup) + Primary/Secondary CTAs */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 pt-4 lg:pt-0 border-white/[0.06] shrink-0">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 pt-4 lg:pt-0 border-border/60 shrink-0">
             {/* Circular Safety Ring + Guaranteed 2-Line Text Lockup */}
             <div className="flex items-center gap-3 shrink-0">
               <div className="relative w-14 h-14 flex items-center justify-center shrink-0" role="img" aria-label={`Vault safety score ${safeSafetyScore} percent`}>
                 <svg className="w-14 h-14 -rotate-90" viewBox="0 0 36 36" aria-hidden="true">
                   <path
-                    className="text-white/10"
+                    className="text-muted/40"
                     strokeWidth="3.5"
                     stroke="currentColor"
                     fill="none"
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                   />
                   <path
-                    className={safeSafetyScore >= 85 ? "text-emerald-400" : "text-amber-300"}
+                    className={safeSafetyScore >= 85 ? "text-emerald-500 dark:text-emerald-400" : "text-amber-500 dark:text-amber-300"}
                     strokeDasharray={`${safeSafetyScore}, 100`}
                     strokeWidth="3.5"
                     strokeLinecap="round"
@@ -316,16 +316,16 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                   />
                 </svg>
                 <div className="absolute flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-extrabold text-zinc-100 tabular-nums">{safeSafetyScore}%</span>
+                  <span className="text-xs font-extrabold text-foreground tabular-nums">{safeSafetyScore}%</span>
                 </div>
               </div>
 
               <div className="shrink-0 min-w-[148px] space-y-0.5">
-                <div className="text-xs font-bold text-zinc-100 flex items-center gap-1.5 whitespace-nowrap">
-                  <Shield size={13} className="text-emerald-400 shrink-0" aria-hidden="true" />
+                <div className="text-xs font-bold text-foreground flex items-center gap-1.5 whitespace-nowrap">
+                  <Shield size={13} className="text-emerald-500 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                   <span>Vault Safety Shield</span>
                 </div>
-                <div className="text-[11px] text-emerald-400 font-semibold whitespace-nowrap">
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">
                   {safeSafetyScore >= 90 ? "Optimal Safety Margin" : "Controlled Pacing Active"}
                 </div>
               </div>
@@ -336,7 +336,7 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
               <button
                 type="button"
                 onClick={() => setShowShieldModal(true)}
-                className="min-h-[36px] px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#12151C]"
+                className="min-h-[36px] px-3.5 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 title="Open 5-pillar security inspection and keystroke simulator"
               >
                 <ShieldCheck size={14} className="shrink-0" aria-hidden="true" />
@@ -348,10 +348,10 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                 onClick={handleRunDiagnostic}
                 disabled={isRunningDiagnostic}
                 aria-busy={isRunningDiagnostic}
-                className="min-h-[36px] px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 active:scale-[0.99] border border-white/15 text-zinc-100 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#12151C]"
+                className="min-h-[36px] px-3.5 py-2 rounded-md bg-secondary hover:bg-secondary/80 active:scale-[0.99] border border-border text-secondary-foreground text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 title="Run real-time session cookie, proxy latency, and jitter diagnostic"
               >
-                <RefreshCw size={13} className={isRunningDiagnostic ? "animate-spin text-emerald-400 shrink-0" : "text-zinc-400 shrink-0"} aria-hidden="true" />
+                <RefreshCw size={13} className={isRunningDiagnostic ? "animate-spin text-emerald-500 dark:text-emerald-400 shrink-0" : "text-muted-foreground shrink-0"} aria-hidden="true" />
                 <span>{isRunningDiagnostic ? "Scanning Vitals..." : "Diagnostic"}</span>
               </button>
             </div>
@@ -359,12 +359,12 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
         </div>
 
         {diagnosticError && (
-          <div role="status" aria-live="polite" className="mt-4 px-3.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs flex items-center justify-between gap-2">
+          <div role="status" aria-live="polite" className="mt-4 px-3.5 py-2 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-xs flex items-center justify-between gap-2">
             <span>{diagnosticError}</span>
             <button
               type="button"
               onClick={handleRunDiagnostic}
-              className="text-xs font-semibold underline hover:text-amber-200 cursor-pointer shrink-0"
+              className="text-xs font-semibold underline hover:text-amber-700 dark:hover:text-amber-200 cursor-pointer shrink-0"
             >
               Retry Check
             </button>
@@ -372,61 +372,61 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
         )}
 
         {/* 1B. 4-CELL DIVIDED TELEMETRY STRIP (Zero Nested Card Fatigue, WCAG 1.4.1 Explicit Status Labels) */}
-        <div className="mt-6 rounded-xl bg-zinc-950/70 border border-white/[0.08] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-white/[0.06] text-xs">
+        <div className="mt-6 rounded-lg bg-muted/20 border border-border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60 text-xs">
           {/* Cell 1: Proxy Shield */}
           <div className="p-3.5 space-y-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase font-semibold tracking-wider text-zinc-400">Proxy Shield</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+              <span className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">Proxy Shield</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" aria-hidden="true" />
                 <span>Verified</span>
               </span>
             </div>
-            <div className="font-semibold text-zinc-100 truncate">
+            <div className="font-semibold text-foreground truncate">
               {sanitizeText(data.vitals.proxy_type, "Dedicated Residential 4G")}
             </div>
-            <p className="text-[11px] text-zinc-400 truncate">Zero datacenter IP footprint</p>
+            <p className="text-[11px] text-muted-foreground truncate">Zero datacenter IP footprint</p>
           </div>
 
           {/* Cell 2: Human Jitter */}
           <div className="p-3.5 space-y-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase font-semibold tracking-wider text-zinc-400">Action Pacing</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+              <span className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">Action Pacing</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" aria-hidden="true" />
                 <span>Active</span>
               </span>
             </div>
-            <div className="font-semibold text-zinc-100 truncate">
+            <div className="font-semibold text-foreground truncate">
               {sanitizeText(data.vitals.jitter_range, "45s - 180s Randomized Delay")}
             </div>
-            <p className="text-[11px] text-zinc-400 truncate">Human-like randomized intervals</p>
+            <p className="text-[11px] text-muted-foreground truncate">Human-like randomized intervals</p>
           </div>
 
           {/* Cell 3: Canonical Daily Action Cap + Accessible 28x28px "Why?" Button */}
           <div className="p-3.5 space-y-1.5 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase font-semibold tracking-wider text-zinc-400">Day {currentDayNum} Daily Cap</span>
+              <span className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">Day {currentDayNum} Daily Cap</span>
               <button 
                 type="button" 
                 onClick={() => setShowWhyCappedModal(true)}
                 aria-label={`Explain why Day ${currentDayNum} daily action limits are capped at ${safeDailyLimit}`}
-                className="min-h-[28px] min-w-[52px] px-2 py-1 -my-1 rounded-md text-[11px] font-semibold text-emerald-400 hover:bg-emerald-500/10 flex items-center justify-center gap-1 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="min-h-[28px] min-w-[52px] px-2 py-1 -my-1 rounded-md text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center justify-center gap-1 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
                 <HelpCircle size={12} className="shrink-0" aria-hidden="true" />
                 <span>Why?</span>
               </button>
             </div>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-bold text-zinc-100 tabular-nums">
+              <span className="font-bold text-foreground tabular-nums">
                 {safeActionsToday} / {safeDailyLimit} actions
               </span>
-              <span className="text-[11px] text-zinc-400 font-medium tabular-nums">
+              <span className="text-[11px] text-muted-foreground font-medium tabular-nums">
                 {remainingActionsToday} left
               </span>
             </div>
             <div
-              className="w-full bg-white/[0.08] h-1.5 rounded-full overflow-hidden"
+              className="w-full bg-muted/40 h-1.5 rounded-full overflow-hidden"
               role="progressbar"
               aria-valuenow={safeActionsToday}
               aria-valuemin={0}
@@ -434,7 +434,7 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
               aria-label={`Daily actions used: ${safeActionsToday} of ${safeDailyLimit}`}
             >
               <div 
-                className="bg-emerald-400 h-full rounded-full transition-all duration-300" 
+                className="bg-emerald-500 dark:bg-emerald-400 h-full rounded-full transition-all duration-300" 
                 style={{ width: `${dailyProgressPct}%` }} 
               />
             </div>
@@ -443,16 +443,16 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
           {/* Cell 4: Acceptance Health */}
           <div className="p-3.5 space-y-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase font-semibold tracking-wider text-zinc-400">Acceptance Health</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+              <span className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">Acceptance Health</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
                 <TrendingUp size={11} className="shrink-0" aria-hidden="true" />
                 <span>Top 15%</span>
               </span>
             </div>
-            <div className="font-semibold text-emerald-400 truncate tabular-nums">
+            <div className="font-semibold text-emerald-600 dark:text-emerald-400 truncate tabular-nums">
               {data.vitals.acceptance_rate}% Benchmark
             </div>
-            <p className="text-[11px] text-zinc-400 truncate">Above 20% safety threshold</p>
+            <p className="text-[11px] text-muted-foreground truncate">Above 20% safety threshold</p>
           </div>
         </div>
       </div>
@@ -461,18 +461,18 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
-              <Award size={15} className="text-emerald-400 shrink-0" aria-hidden="true" />
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Award size={15} className="text-emerald-500 dark:text-emerald-400 shrink-0" aria-hidden="true" />
               <span>7-Day Warm-Up Milestone Roadmap</span>
             </h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Select any day to inspect its daily volume ceiling, protection rules, and unlocked capabilities.
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#12151C] border border-white/[0.08] text-xs font-medium text-zinc-400 self-start sm:self-auto">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-card border border-border text-xs font-medium text-muted-foreground self-start sm:self-auto">
             <span>Ramp Curve:</span>
-            <strong className="text-zinc-200 font-semibold">Conservative Ramp</strong>
+            <strong className="text-foreground font-semibold">Conservative Ramp</strong>
           </div>
         </div>
 
@@ -499,50 +499,50 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                 tabIndex={isSelected ? 0 : -1}
                 onClick={() => setSelectedMilestoneDay(m.day)}
                 onKeyDown={(e) => handleTabKeyDown(e, idx)}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between min-h-[120px] min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 ${
+                className={`p-3.5 rounded-lg border text-left transition-all cursor-pointer relative flex flex-col justify-between min-h-[120px] min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                   isSelected 
-                    ? 'bg-emerald-500/[0.12] border-emerald-400 shadow-md ring-1 ring-emerald-400/50' 
+                    ? 'bg-emerald-500/[0.12] border-emerald-400 shadow-xs ring-1 ring-emerald-400/50' 
                     : isCurrent 
-                    ? 'bg-[#12151C] border-amber-400/40 hover:border-amber-400/70 hover:bg-zinc-900'
+                    ? 'bg-card border-amber-400/40 hover:border-amber-400/70 hover:bg-muted/40'
                     : isCompleted 
-                    ? 'bg-[#12151C] border-emerald-500/30 hover:border-emerald-500/60 hover:bg-zinc-900' 
-                    : 'bg-[#12151C] border-white/[0.08] hover:border-white/25 hover:bg-zinc-900/90'
+                    ? 'bg-card border-emerald-500/30 hover:border-emerald-500/60 hover:bg-muted/40' 
+                    : 'bg-card border-border hover:border-border/80 hover:bg-muted/40'
                 }`}
               >
                 {/* Top Row: Day Number + Semantic Status Icon */}
                 <div className="flex items-center justify-between w-full gap-1 mb-2">
-                  <span className={`text-[11px] font-bold tracking-tight ${isSelected ? 'text-emerald-300' : 'text-zinc-400'}`}>
+                  <span className={`text-[11px] font-bold tracking-tight ${isSelected ? 'text-emerald-600 dark:text-emerald-300' : 'text-muted-foreground'}`}>
                     Day {m.day}
                   </span>
                   {isCompleted ? (
-                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0" aria-hidden="true" />
+                    <CheckCircle2 size={14} className="text-emerald-500 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                   ) : isCurrent ? (
-                    <Activity size={14} className="text-amber-300 shrink-0" aria-hidden="true" />
+                    <Activity size={14} className="text-amber-500 dark:text-amber-300 shrink-0" aria-hidden="true" />
                   ) : (
-                    <Eye size={13} className={isSelected ? "text-emerald-400 shrink-0" : "text-zinc-400 shrink-0"} aria-hidden="true" />
+                    <Eye size={13} className={isSelected ? "text-emerald-500 dark:text-emerald-400 shrink-0" : "text-muted-foreground shrink-0"} aria-hidden="true" />
                   )}
                 </div>
 
                 {/* Middle Row: Full 2-Line Milestone Title (Zero Truncation) & Daily Limit */}
                 <div className="my-auto">
-                  <span className="block text-xs font-bold text-zinc-100 leading-snug line-clamp-2 min-h-[2.25rem]">
+                  <span className="block text-xs font-bold text-foreground leading-snug line-clamp-2 min-h-[2.25rem]">
                     {m.title}
                   </span>
-                  <div className="text-[11px] font-semibold text-zinc-400 mt-1.5 tabular-nums">
+                  <div className="text-[11px] font-semibold text-muted-foreground mt-1.5 tabular-nums">
                     {m.daily_limit} actions/day
                   </div>
                 </div>
 
                 {/* Bottom Row: Accessible State Pill */}
-                <div className="mt-2.5 pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-semibold">
+                <div className="mt-2.5 pt-2 border-t border-border/60 flex items-center justify-between text-[11px] font-semibold">
                   {isCompleted ? (
-                    <span className="text-emerald-400 flex items-center gap-1">
+                    <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <span>Completed</span>
                     </span>
                   ) : isCurrent ? (
-                    <span className="text-amber-300">Active Today</span>
+                    <span className="text-amber-500 dark:text-amber-300">Active Today</span>
                   ) : (
-                    <span className={isSelected ? "text-emerald-300" : "text-zinc-400"}>
+                    <span className={isSelected ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"}>
                       {isSelected ? "Inspecting" : "Preview"}
                     </span>
                   )}
@@ -564,36 +564,36 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="p-5 rounded-2xl bg-[#12151C] border border-white/[0.08] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
+            className="p-5 rounded-lg bg-card border border-border flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
           >
             <div className="space-y-2 flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                   isInspectingPreviewDay
-                    ? 'bg-zinc-800 text-zinc-200 border-white/15'
-                    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    ? 'bg-muted text-muted-foreground border-border'
+                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
                 }`}>
                   {isInspectingPreviewDay ? `Previewing Day ${activeDetailMilestone.day}` : `Day ${activeDetailMilestone.day} Active Milestone`}
                 </span>
 
-                <h4 className="text-sm font-bold text-zinc-100">
+                <h4 className="text-sm font-bold text-foreground">
                   {activeDetailMilestone.title}
                 </h4>
 
-                <span className="text-xs font-semibold text-zinc-400 tabular-nums">
+                <span className="text-xs font-semibold text-muted-foreground tabular-nums">
                   · {activeDetailMilestone.daily_limit} actions/day ceiling
                 </span>
 
-                <span className="px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] text-[11px] font-medium text-zinc-300">
+                <span className="px-2 py-0.5 rounded-md bg-muted/40 border border-border text-[11px] font-medium text-foreground">
                   {activeDetailMilestone.reward_badge}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-0.5 text-xs">
-                <p className="text-zinc-200 leading-relaxed">
-                  <strong className="text-zinc-400 font-semibold">Protection Protocol:</strong> {activeDetailMilestone.safety_focus}
+                <p className="text-foreground leading-relaxed">
+                  <strong className="text-muted-foreground font-semibold">Protection Protocol:</strong> {activeDetailMilestone.safety_focus}
                 </p>
-                <p className="text-emerald-400 flex items-center gap-1.5 leading-relaxed">
+                <p className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 leading-relaxed">
                   <Zap size={13} className="shrink-0" aria-hidden="true" />
                   <span><strong className="font-semibold">Unlocked Capability:</strong> {activeDetailMilestone.unlocked_capability}</span>
                 </p>
@@ -601,10 +601,10 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
             </div>
 
             {/* Right Operational Control Slot (Replaces Inert Zombie Button) */}
-            <div className="shrink-0 flex items-center gap-2.5 w-full lg:w-auto justify-end border-t lg:border-t-0 pt-3 lg:pt-0 border-white/[0.06]">
+            <div className="shrink-0 flex items-center gap-2.5 w-full lg:w-auto justify-end border-t lg:border-t-0 pt-3 lg:pt-0 border-border/60">
               {isInspectingPreviewDay ? (
                 <>
-                  <span className="text-xs text-zinc-400 font-medium">
+                  <span className="text-xs text-muted-foreground font-medium">
                     Unlocks on Day {activeDetailMilestone.day}
                   </span>
                   <button
@@ -613,7 +613,7 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                       setSelectedMilestoneDay(currentDayNum);
                       tabRefs.current[currentDayNum]?.focus();
                     }}
-                    className="min-h-[34px] px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-white/15 text-xs font-semibold text-zinc-100 flex items-center gap-1.5 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                    className="min-h-[34px] px-3 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 border border-border text-xs font-semibold text-secondary-foreground flex items-center gap-1.5 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                   >
                     <ArrowLeft size={13} aria-hidden="true" />
                     <span>Return to Day {currentDayNum}</span>
@@ -621,8 +621,8 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                 </>
               ) : (
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs font-semibold text-emerald-300 flex items-center gap-2 tabular-nums">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
+                  <span className="px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-xs font-semibold text-emerald-600 dark:text-emerald-300 flex items-center gap-2 tabular-nums">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400" aria-hidden="true" />
                     <span>Outreach Active · {remainingActionsToday} Actions Remaining Today</span>
                   </span>
                 </div>
@@ -647,42 +647,42 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg p-6 rounded-2xl bg-[#12151C] border border-white/15 shadow-2xl space-y-4 text-zinc-100 relative"
+              className="w-full max-w-lg p-6 rounded-xl bg-card border border-border shadow-2xl space-y-4 text-foreground relative"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+                  <div className="p-2 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
                     <ShieldCheck size={20} aria-hidden="true" />
                   </div>
                   <div>
-                    <h3 id="why-capped-dialog-title" className="text-base font-bold text-zinc-100">
+                    <h3 id="why-capped-dialog-title" className="text-base font-bold text-foreground">
                       Why does Ele-in cap actions on Day {currentDayNum}?
                     </h3>
-                    <p className="text-xs text-zinc-400">LinkedIn Voyager domain trust and rate-limit protection</p>
+                    <p className="text-xs text-muted-foreground">LinkedIn Voyager domain trust and rate-limit protection</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowWhyCappedModal(false)}
                   aria-label="Close modal"
-                  className="min-h-[32px] min-w-[32px] flex items-center justify-center text-zinc-400 hover:text-zinc-100 rounded-lg hover:bg-white/10 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="min-h-[32px] min-w-[32px] flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <X size={16} aria-hidden="true" />
                 </button>
               </div>
 
-              <div className="space-y-3 text-xs text-zinc-200 leading-relaxed">
+              <div className="space-y-3 text-xs text-muted-foreground leading-relaxed">
                 <p>
-                  LinkedIn security systems monitor sudden spikes in outbound connection velocity. When an account jumps abruptly from 0 to 100 invites per day, automated heuristics trigger <strong className="text-rose-400">temporary verification holds (Checkpoint 99)</strong>.
+                  LinkedIn security systems monitor sudden spikes in outbound connection velocity. When an account jumps abruptly from 0 to 100 invites per day, automated heuristics trigger <strong className="text-rose-500 dark:text-rose-400">temporary verification holds (Checkpoint 99)</strong>.
                 </p>
-                <div className="p-3.5 rounded-xl bg-zinc-950 border border-white/[0.08] space-y-1.5 text-[11px]">
-                  <div className="text-emerald-400 font-bold mb-1">The Ele-in 7-Day Graduated Ramp Curve:</div>
+                <div className="p-3.5 rounded-lg bg-muted/30 border border-border space-y-1.5 text-[11px] text-foreground">
+                  <div className="text-emerald-600 dark:text-emerald-400 font-bold mb-1">The Ele-in 7-Day Graduated Ramp Curve:</div>
                   <div>· Day 1: 15 actions/day (Profile sync and soft connection invites)</div>
                   <div>· Days 2 to 3: 20 to 25 actions/day (Business window pacing and ICP filtering)</div>
                   <div>· Days 4 to 5: 30 to 35 actions/day (Multi-channel fallback and typing cadence)</div>
                   <div>· Days 6 to 7: 45 to 60 actions/day (Full production velocity with auto-throttling)</div>
                 </div>
-                <p className="text-zinc-400">
+                <p>
                   By following this graduated schedule with 45s-180s randomized intervals, your sender fleet builds lasting domain reputation without triggering automated restrictions.
                 </p>
               </div>
@@ -691,7 +691,7 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                 <button
                   type="button"
                   onClick={() => setShowWhyCappedModal(false)}
-                  className="min-h-[36px] px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold rounded-xl transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  className="min-h-[36px] px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold rounded-md transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   Understood, Keep Protection Active
                 </button>

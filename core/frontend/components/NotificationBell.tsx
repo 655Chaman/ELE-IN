@@ -273,7 +273,9 @@ export function NotificationBell() {
     <>
       <div className="relative" ref={dropdownRef}>
         <button 
+          type="button"
           onClick={handleOpen}
+          aria-label="Open notifications"
           className="relative p-2 rounded-full hover:bg-muted/50 transition-colors cursor-pointer text-foreground/80 hover:text-foreground"
           title="Notifications"
         >
@@ -289,7 +291,7 @@ export function NotificationBell() {
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="absolute right-0 mt-2 w-84 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden text-card-foreground"
+              className="absolute right-0 mt-2 w-84 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden text-card-foreground"
             >
               {/* Header */}
               <div className="p-3.5 border-b border-border bg-card flex items-center justify-between">
@@ -306,7 +308,7 @@ export function NotificationBell() {
                     <button
                       type="button"
                       onClick={markAllRead}
-                      className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded hover:bg-muted/50 transition-colors cursor-pointer"
+                      className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded-md hover:bg-muted/50 transition-colors cursor-pointer"
                       title="Mark all as read"
                     >
                       <CheckCheck size={12} />
@@ -319,7 +321,7 @@ export function NotificationBell() {
                       setIsOpen(false);
                       setShowTeaserModal(true);
                     }}
-                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors cursor-pointer"
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors cursor-pointer"
                     title="Configure notification channels & test alerts"
                   >
                     <Settings size={14} />
@@ -352,7 +354,7 @@ export function NotificationBell() {
                   >
                     <span>Unread</span>
                     {unreadCount > 0 && (
-                      <span className="text-[9px] px-1 py-0.2 bg-primary/10 text-primary font-semibold rounded">
+                      <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary font-semibold rounded-md">
                         {unreadCount}
                       </span>
                     )}
@@ -375,14 +377,14 @@ export function NotificationBell() {
                     <button
                       type="button"
                       onClick={handleEnableFromBanner}
-                      className="px-2.5 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium rounded-lg transition-colors cursor-pointer shadow-xs"
+                      className="px-2.5 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium rounded-md transition-colors cursor-pointer shadow-xs"
                     >
                       Enable
                     </button>
                     <button
                       type="button"
                       onClick={() => dismissTeaser(true)}
-                      className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors cursor-pointer"
+                      className="p-1 text-muted-foreground hover:text-foreground rounded-md transition-colors cursor-pointer"
                       title="Dismiss"
                     >
                       <X size={13} />

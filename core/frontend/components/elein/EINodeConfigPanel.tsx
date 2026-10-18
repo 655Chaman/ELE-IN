@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { useHRTreeStore } from "@campaigns/eiTreeStore"
 import { HR_NODE_DEFS } from "@/lib/eiNodeDefs"
 import { DeliverabilityStudioModal } from "@/components/campaigns/DeliverabilityStudioModal"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export const hasNodeType = (nodes: any[], type: string): boolean => {
   for (const n of nodes) {
@@ -305,21 +306,17 @@ function DelaySelector({ value, unit = "days", onChange }: { value: number; unit
           }}
           className="w-16 rounded-lg bg-card border border-border px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary text-center font-mono"
         />
-        <div className="relative">
-          <select 
-            value={unit} 
-            onChange={e => onChange(displayVal, e.target.value)}
-            className="appearance-none rounded-lg bg-card border border-border pl-2.5 pr-6 py-1 text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer"
-          >
-            <option value="minutes">Minutes</option>
-            <option value="hours">Hours</option>
-            <option value="days">Days</option>
-            <option value="weeks">Weeks</option>
-          </select>
-          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-            <ChevronDown size={12} />
-          </div>
-        </div>
+        <Select value={unit} onValueChange={val => onChange(displayVal, val)}>
+          <SelectTrigger size="sm" className="w-24 bg-card border-border text-xs h-7">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="minutes">Minutes</SelectItem>
+            <SelectItem value="hours">Hours</SelectItem>
+            <SelectItem value="days">Days</SelectItem>
+            <SelectItem value="weeks">Weeks</SelectItem>
+          </SelectContent>
+        </Select>
         <span className="text-[11px] text-muted-foreground">before executing</span>
       </div>
     </div>
@@ -975,20 +972,18 @@ function AIModelSelector({
           </span>
         )}
       </div>
-      <select
-        value={selectedValue}
-        onChange={(e) => handleSelect(e.target.value)}
-        className="w-full rounded-lg bg-card border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
-      >
-        {models.map((m) => {
-          const isModelPro = m !== "Auto-Route (Recommended)";
-          return (
-            <option key={m} value={m}>
+      <Select value={selectedValue} onValueChange={handleSelect}>
+        <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+          <SelectValue placeholder="Select model..." />
+        </SelectTrigger>
+        <SelectContent>
+          {models.map((m) => (
+            <SelectItem key={m} value={m}>
               {m}
-            </option>
-          );
-        })}
-      </select>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -1066,13 +1061,17 @@ function SendAiMessageConfig({ data, onChange }: { data: any; onChange: (k: stri
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">Tone</label>
-          <select
+          <Select
             value={data.tone || tones[1]}
-            onChange={e => onChange("tone", e.target.value)}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:border-indigo-600"
+            onValueChange={val => onChange("tone", val)}
           >
-            {tones.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {tones.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <AIModelSelector
@@ -1648,15 +1647,19 @@ function SendEmailConfig({ data, onChange }: { data: any; onChange: (k: string, 
               <label className="block text-[11px] font-semibold text-foreground mb-1">
                 Pool Rotation Strategy
               </label>
-              <select
+              <Select
                 value={rotationStrategy}
-                onChange={e => onChange("rotation_strategy", e.target.value)}
-                className="w-full rounded-lg bg-card border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:border-indigo-600"
+                onValueChange={val => onChange("rotation_strategy", val)}
               >
-                <option value="HEALTH_WEIGHTED">Health Weighted (Dynamic Deliverability Score)</option>
-                <option value="ROUND_ROBIN">Round Robin (Equal Volume Spread)</option>
-                <option value="CAPACITY_FIRST">Capacity First (Fill Largest Headroom)</option>
-              </select>
+                <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="HEALTH_WEIGHTED">Health Weighted (Dynamic Deliverability Score)</SelectItem>
+                  <SelectItem value="ROUND_ROBIN">Round Robin (Equal Volume Spread)</SelectItem>
+                  <SelectItem value="CAPACITY_FIRST">Capacity First (Fill Largest Headroom)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-foreground mb-1">
@@ -2082,16 +2085,20 @@ function CommentOnPostConfig({ data, onChange }: { data: any; onChange: (k: stri
               <ElesiumLogo size={13} />
               <span>AI Perspective & Tone</span>
             </label>
-            <select
+            <Select
               value={aiTone}
-              onChange={e => onChange("ai_tone", e.target.value)}
-              className="w-full rounded-lg bg-card border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:border-indigo-600"
+              onValueChange={val => onChange("ai_tone", val)}
             >
-              <option value="Insightful Industry Perspective">Insightful Industry Perspective (Constructive & analytical)</option>
-              <option value="Thoughtful Question">Thoughtful Question (Engages prospect in conversation)</option>
-              <option value="Congratulatory & Supportive">Congratulatory & Supportive (Warm & encouraging)</option>
-              <option value="Agree & Add Value">Agree & Add Value (Validates thesis and adds quick data point)</option>
-            </select>
+              <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Insightful Industry Perspective">Insightful Industry Perspective (Constructive & analytical)</SelectItem>
+                <SelectItem value="Thoughtful Question">Thoughtful Question (Engages prospect in conversation)</SelectItem>
+                <SelectItem value="Congratulatory & Supportive">Congratulatory & Supportive (Warm & encouraging)</SelectItem>
+                <SelectItem value="Agree & Add Value">Agree & Add Value (Validates thesis and adds quick data point)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -2671,16 +2678,20 @@ function DailyLimitCheckConfig({ data, onChange }: { data: any; onChange: (k: st
 
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">Action Quota to Audit</label>
-          <select
+          <Select
             value={actionType}
-            onChange={e => onChange("action_type", e.target.value)}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:border-indigo-600"
+            onValueChange={val => onChange("action_type", val)}
           >
-            <option value="All actions">All actions (Warmup & sending caps)</option>
-            <option value="Connection requests">Connection requests (Weekly/daily quota)</option>
-            <option value="Messages">Direct messages</option>
-            <option value="Profile views">Profile views</option>
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All actions">All actions (Warmup & sending caps)</SelectItem>
+              <SelectItem value="Connection requests">Connection requests (Weekly/daily quota)</SelectItem>
+              <SelectItem value="Messages">Direct messages</SelectItem>
+              <SelectItem value="Profile views">Profile views</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -4923,14 +4934,18 @@ function SendWebhookConfig({ data, onChange }: { data: any; onChange: (k: string
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">HTTP Method</label>
-          <select
+          <Select
             value={method}
-            onChange={e => onChange("method", e.target.value)}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600"
+            onValueChange={val => onChange("method", val)}
           >
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="POST">POST</SelectItem>
+              <SelectItem value="PUT">PUT</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">
@@ -5625,15 +5640,19 @@ export function AISummarizeProfileConfig({ data, onChange }: AISummarizeProfileC
         <label className="block text-xs font-semibold text-foreground mb-1.5">
           Summary Focus Lens
         </label>
-        <select
+        <Select
           value={focus}
-          onChange={e => onChange("summary_focus", e.target.value)}
-          className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+          onValueChange={val => onChange("summary_focus", val)}
         >
-          {FOCUS_OPTIONS.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FOCUS_OPTIONS.map(opt => (
+              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="p-3.5 rounded-xl bg-muted/40 border border-border flex items-center justify-between">
@@ -6247,30 +6266,38 @@ export function AIPersonalizeConfig({ data, onChange }: AIPersonalizeConfigProps
           <label className="block text-xs font-semibold text-foreground mb-1.5">
             Hook Source
           </label>
-          <select
+          <Select
             value={hookSource}
-            onChange={e => onChange("hook_sources", e.target.value)}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+            onValueChange={val => onChange("hook_sources", val)}
           >
-            {HOOK_SOURCES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HOOK_SOURCES.map(s => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">
             Hook Length
           </label>
-          <select
+          <Select
             value={hookLength}
-            onChange={e => onChange("hook_length", e.target.value)}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+            onValueChange={val => onChange("hook_length", val)}
           >
-            {HOOK_LENGTHS.map(l => (
-              <option key={l} value={l}>{l}</option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HOOK_LENGTHS.map(l => (
+                <SelectItem key={l} value={l}>{l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -6457,15 +6484,19 @@ export function AIIcebreakerConfig({ data, onChange }: AIIcebreakerConfigProps) 
         <label className="block text-xs font-semibold text-foreground mb-1.5">
           Conversation Tone
         </label>
-        <select
+        <Select
           value={tone}
-          onChange={e => onChange("tone", e.target.value)}
-          className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+          onValueChange={val => onChange("tone", val)}
         >
-          {TONES.map(t => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TONES.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
@@ -6604,18 +6635,22 @@ export function AITranslateMessageConfig({ data, onChange }: AITranslateMessageC
         <label className="block text-xs font-semibold text-foreground mb-1.5">
           Target Language
         </label>
-        <select
+        <Select
           value={targetLang}
-          onChange={e => {
-            onChange("target_language", e.target.value);
-            onChange("fallback_language", e.target.value);
+          onValueChange={val => {
+            onChange("target_language", val);
+            onChange("fallback_language", val);
           }}
-          className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
         >
-          {LANGUAGES.map(l => (
-            <option key={l} value={l}>{l}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LANGUAGES.map(l => (
+              <SelectItem key={l} value={l}>{l}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <AIModelSelector
@@ -6705,15 +6740,19 @@ export function AIWriteConnectionNoteConfig({ data, onChange }: AIWriteConnectio
         <label className="block text-xs font-semibold text-foreground mb-1.5">
           Connection Angle
         </label>
-        <select
+        <Select
           value={angle}
-          onChange={e => onChange("angle", e.target.value)}
-          className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+          onValueChange={val => onChange("angle", val)}
         >
-          {ANGLES.map(a => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ANGLES.map(a => (
+              <SelectItem key={a} value={a}>{a}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <AIModelSelector
@@ -7529,17 +7568,21 @@ const NODE_CONFIG: Record<string, {
         </div>
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">Duration</label>
-          <select
-            value={data.duration_minutes || 20}
-            onChange={e => onChange("duration_minutes", Number(e.target.value))}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+          <Select
+            value={String(data.duration_minutes || 20)}
+            onValueChange={val => onChange("duration_minutes", Number(val))}
           >
-            <option value={15}>15 minutes</option>
-            <option value={20}>20 minutes (Recommended)</option>
-            <option value={30}>30 minutes</option>
-            <option value={45}>45 minutes</option>
-            <option value={60}>60 minutes</option>
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="15">15 minutes</SelectItem>
+              <SelectItem value="20">20 minutes (Recommended)</SelectItem>
+              <SelectItem value="30">30 minutes</SelectItem>
+              <SelectItem value="45">45 minutes</SelectItem>
+              <SelectItem value="60">60 minutes</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <MessageEditor
           label="Invitation note body"
@@ -7574,15 +7617,19 @@ const NODE_CONFIG: Record<string, {
         <div className="space-y-6">
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">New Lifecycle Status</label>
-            <select
+            <Select
               value={data.status || "Interested"}
-              onChange={e => onChange("status", e.target.value)}
-              className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+              onValueChange={val => onChange("status", val)}
             >
-              {STATUS_OPTIONS.map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map(opt => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">CRM Tag <span className="text-muted-foreground font-normal">(optional)</span></label>
@@ -7756,17 +7803,21 @@ const NODE_CONFIG: Record<string, {
         </div>
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">Disqualification Reason</label>
-          <select
+          <Select
             value={data.reason || "Not a fit"}
-            onChange={e => onChange("reason", e.target.value)}
-            className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 cursor-pointer"
+            onValueChange={val => onChange("reason", val)}
           >
-            <option value="Not a fit">Not a fit / Bad ICP</option>
-            <option value="Using competitor">Already using competitor</option>
-            <option value="No budget">No budget / Freeze</option>
-            <option value="Bad timing">Bad timing / Follow up in 6 months</option>
-            <option value="Explicit decline">Explicitly declined</option>
-          </select>
+            <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Not a fit">Not a fit / Bad ICP</SelectItem>
+              <SelectItem value="Using competitor">Already using competitor</SelectItem>
+              <SelectItem value="No budget">No budget / Freeze</SelectItem>
+              <SelectItem value="Bad timing">Bad timing / Follow up in 6 months</SelectItem>
+              <SelectItem value="Explicit decline">Explicitly declined</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1.5">Internal Note <span className="text-muted-foreground font-normal">(optional)</span></label>
@@ -8436,20 +8487,19 @@ function DynamicNodeConfig({ data, onChange, def }: { data: any; onChange: (k: s
               <NakedVariableWarning text={data[f.key] || ""} />
             </>
           ) : f.type === "select" ? (
-            <div className="relative">
-              <select
-                value={data[f.key] !== undefined ? data[f.key] : (f.default || "")}
-                onChange={e => onChange(f.key, e.target.value)}
-                className="appearance-none w-full rounded-lg bg-card border border-border pl-3 pr-8 py-2.5 text-xs text-foreground focus:outline-none focus:border-indigo-600 transition-colors"
-              >
+            <Select
+              value={data[f.key] !== undefined ? String(data[f.key]) : (String(f.default || ""))}
+              onValueChange={val => onChange(f.key, val)}
+            >
+              <SelectTrigger className="w-full bg-card border-border text-xs h-9">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
                 {f.options?.map((opt: string) => (
-                  <option key={opt} value={opt}>{opt}</option>
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                 ))}
-              </select>
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                <ChevronDown size={14} />
-              </div>
-            </div>
+              </SelectContent>
+            </Select>
           ) : f.type === "toggle" ? (
             <div className="flex items-center gap-2 mt-1">
               <button
@@ -8570,9 +8620,9 @@ export function EITreeNodeConfigPanel() {
                       Elesium
                     </span>
                   )}
-                  {dynamicCostMap[nodeType] ? (
+                  {CREDIT_COST_MAP[nodeType] ? (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold shrink-0">
-                      {dynamicCostMap[nodeType]} credits
+                      {CREDIT_COST_MAP[nodeType]} credits
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium shrink-0">

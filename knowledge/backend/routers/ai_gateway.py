@@ -359,19 +359,16 @@ def get_ai_token_telemetry(
     tier = _get_workspace_tier(supabase, workspace_id)
 
     if not can_telemetry:
-        # Layer 2: Return locked state with informative preview benchmarks
+        # Layer 2: Return locked state with authentic empty metrics
         return {
             "status": "success",
             "is_locked": True,
             "tier": tier,
-            "total_tokens": 14250,
-            "total_cost": 0.048,
-            "total_calls": 38,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+            "total_calls": 0,
             "monthly_token_budget": 500000,
-            "model_breakdown": [
-                {"model": "Auto-Route (Llama-3.2)", "count": 28, "tokens": 9800, "cost": 0.015},
-                {"model": "Nemotron-3.5", "count": 10, "tokens": 4450, "cost": 0.033},
-            ],
+            "model_breakdown": [],
             "recent_generations": [],
             "upgrade_required": True,
             "message": "AI Token Cost Telemetry is locked on the Free tier. Upgrade to Growth Pro to access real-time inference telemetry and cost accounting."

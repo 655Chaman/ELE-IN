@@ -19,16 +19,23 @@ export const ElesiumLogo: React.FC<ElesiumLogoProps> = ({
   alt = 'Elesium AI',
 }) => {
   const dimension = typeof size === 'number' ? `${size}px` : size;
-  const style = size ? { width: dimension, height: dimension } : undefined;
+  const style = size ? { width: dimension, height: dimension, minWidth: dimension, minHeight: dimension } : undefined;
 
   const renderImg = () => {
+    const commonProps = {
+      alt,
+      style,
+      draggable: false,
+      loading: "eager" as const,
+      decoding: "async" as const,
+    };
+
     if (variant === 'full') {
       return (
         <img
-          src="/elesium-logo.png"
-          alt={alt}
-          style={style}
-          className={cn("object-contain shrink-0", imgClassName)}
+          src="/elesium-logo.png?v=3"
+          {...commonProps}
+          className={cn("aspect-square object-contain shrink-0 block", imgClassName)}
         />
       );
     }
@@ -36,10 +43,9 @@ export const ElesiumLogo: React.FC<ElesiumLogoProps> = ({
     if (variant === 'white') {
       return (
         <img
-          src="/elesium-white.png"
-          alt={alt}
-          style={style}
-          className={cn("object-contain shrink-0", imgClassName)}
+          src="/elesium-white.png?v=3"
+          {...commonProps}
+          className={cn("aspect-square object-contain shrink-0 block", imgClassName)}
         />
       );
     }
@@ -47,10 +53,9 @@ export const ElesiumLogo: React.FC<ElesiumLogoProps> = ({
     if (variant === 'dark') {
       return (
         <img
-          src="/elesium-dark.png"
-          alt={alt}
-          style={style}
-          className={cn("object-contain shrink-0", imgClassName)}
+          src="/elesium-dark.png?v=3"
+          {...commonProps}
+          className={cn("aspect-square object-contain shrink-0 block", imgClassName)}
         />
       );
     }
@@ -59,24 +64,29 @@ export const ElesiumLogo: React.FC<ElesiumLogoProps> = ({
       <>
         {/* Light mode: crisp dark charcoal emblem */}
         <img
-          src="/elesium-dark.png"
-          alt={alt}
-          style={style}
-          className={cn("object-contain shrink-0 dark:hidden", imgClassName)}
+          src="/elesium-dark.png?v=3"
+          {...commonProps}
+          className={cn("aspect-square object-contain shrink-0 block dark:hidden", imgClassName)}
         />
         {/* Dark mode: crisp white emblem */}
         <img
-          src="/elesium-white.png"
-          alt={alt}
-          style={style}
-          className={cn("object-contain shrink-0 hidden dark:inline-block", imgClassName)}
+          src="/elesium-white.png?v=3"
+          {...commonProps}
+          className={cn("aspect-square object-contain shrink-0 hidden dark:block", imgClassName)}
         />
       </>
     );
   };
 
   return (
-    <span className={cn("inline-flex items-center gap-1.5 align-middle select-none shrink-0", className)}>
+    <span
+      style={!showBadge ? style : undefined}
+      className={cn(
+        "inline-flex items-center select-none shrink-0",
+        showBadge ? "gap-1.5 align-middle" : "justify-center aspect-square",
+        className
+      )}
+    >
       {renderImg()}
       {showBadge && (
         <span className="text-xs font-bold text-foreground tracking-tight">

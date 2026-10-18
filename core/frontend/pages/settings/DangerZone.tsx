@@ -114,7 +114,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
         Psychological Principle: High Friction by Design
         Desaturated background, heavy red borders, warning iconography 
       */}
-      <div className="p-6 md:p-8 rounded-[24px] border border-border bg-card relative overflow-hidden shadow-sm">
+      <div className="p-6 md:p-8 rounded-xl border border-border bg-card relative overflow-hidden shadow-sm">
         
         {isPendingDeletion && (
           <div className="bg-destructive text-destructive-foreground px-6 py-4 flex items-center justify-between font-bold rounded-t-xl mb-4">
@@ -130,9 +130,8 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
 
         <div>
           <div className="flex items-start gap-5 mb-8">
-            <div className="p-4 bg-destructive/10 text-destructive rounded-2xl relative">
-              <AlertTriangle size={32} className="relative z-10" />
-              <div className="absolute inset-0 bg-destructive/20 rounded-2xl animate-pulse blur-xl"></div>
+            <div className="p-4 bg-destructive/10 text-destructive rounded-xl border border-destructive/20 relative">
+              <AlertTriangle size={32} />
             </div>
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-destructive mb-1">
@@ -148,7 +147,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
             
             {isPendingDeletion ? (
               <div className="space-y-6">
-                <div className="p-5 bg-destructive/10 rounded-lg border-l-4 border-destructive">
+                <div className="p-5 bg-destructive/10 rounded-lg border border-destructive/30">
                   <h3 className="text-lg font-bold tracking-tight text-foreground">
                     Deletion Grace Period Active
                   </h3>
@@ -173,9 +172,10 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
                     Changed your mind? Restore this workspace immediately:
                   </p>
                   <button
+                    type="button"
                     onClick={handleCancelDeletion}
                     disabled={cancelling}
-                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
                   >
                     {cancelling ? (
                       <>
@@ -243,6 +243,7 @@ export function DangerZone({ workspaceId }: { workspaceId: string | null }) {
 
                 <div className="pt-2 flex justify-end">
                   <button
+                    type="button"
                     onClick={confirmDeletion}
                     disabled={!isConfirmed || requesting}
                     className={`

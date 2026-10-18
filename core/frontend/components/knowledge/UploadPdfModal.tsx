@@ -68,20 +68,31 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
 
   return (
     <div
+      role="button"
+      tabIndex={isUploading ? -1 : 0}
       onClick={handleZoneClick}
-      className={`relative border border-dashed border-slate-300 dark:border-border/60 bg-slate-50 dark:bg-muted/10 hover:bg-blue-50/60 dark:hover:bg-blue-500/5 hover:border-blue-400 dark:hover:border-blue-500/50 transition-all rounded-3xl p-6 flex flex-col items-center justify-center text-center group ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleZoneClick();
+        }
+      }}
+      aria-label={isCapped ? "Upgrade to Upload Docs" : "Upload a Document"}
+      className={`relative border border-dashed border-border/60 bg-muted/20 hover:bg-muted/40 hover:border-primary/50 transition-colors rounded-lg p-6 flex flex-col items-center justify-center text-center group ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); toast.info("Upload a PDF document or pitch deck about your company. Good examples: your sales pitch, capabilities one-pager, case studies, or product overview."); }}
-        className="absolute top-3 right-3 w-6 h-6 rounded-full bg-slate-200 dark:bg-muted text-muted-foreground hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center text-xs font-bold transition-colors z-10"
+        className="absolute top-3 right-3 w-6 h-6 rounded-full bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground flex items-center justify-center text-xs font-bold transition-colors z-10"
         title="What should I upload?"
+        aria-label="What should I upload?"
       >
         i
       </button>
       {isCapped ? (
         <Lock size={24} className="text-amber-500 mb-3" />
       ) : (
-        <UploadCloud size={24} className={`text-blue-600 dark:text-blue-500 mb-3 group-hover:scale-110 transition-transform ${isUploading ? 'animate-bounce' : ''}`} />
+        <UploadCloud size={24} className={`text-primary mb-3 ${isUploading ? 'animate-pulse' : ''}`} />
       )}
       <h3 className="font-semibold text-sm text-foreground">{isUploading ? "Uploading..." : isCapped ? "Upgrade to Upload Docs" : "Upload a Document"}</h3>
       <p className="text-xs text-muted-foreground mt-1">

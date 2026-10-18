@@ -53,7 +53,7 @@ export function LeadTable({
               <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               {"Backend connection lost. Retrying..."}
             </div>
-            <button onClick={() => mutate()} className="text-xs font-bold hover:underline">Reconnect</button>
+            <button type="button" onClick={() => mutate()} className="text-xs font-bold hover:underline">Reconnect</button>
           </motion.div>
         ) : isLoading && lists.length === 0 ? (
           <motion.div key="skeleton" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
@@ -61,8 +61,8 @@ export function LeadTable({
           </motion.div>
         ) : lists.length === 0 ? (
           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
-            <div className="flex flex-col items-center justify-center py-20 border border-border/50 bg-card/40 backdrop-blur-sm text-center px-8 rounded-2xl shadow-sm">
-              <div className="w-14 h-14 rounded-2xl border border-border/60 bg-muted/40 flex items-center justify-center mb-5">
+            <div className="flex flex-col items-center justify-center py-20 border border-border/50 bg-card/40 backdrop-blur-sm text-center px-8 rounded-xl shadow-sm">
+              <div className="w-14 h-14 rounded-lg border border-border/60 bg-muted/40 flex items-center justify-center mb-5">
                 <Users size={22} className="text-primary" />
               </div>
               <h2 className="text-lg font-semibold tracking-tight text-foreground mb-2">
@@ -79,8 +79,9 @@ export function LeadTable({
                 <Download size={12} /> Download CSV template
               </a>
               <button 
+                type="button"
                 onClick={onAddLeads}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 rounded-xl text-xs font-bold text-primary-foreground transition-all shadow-sm"
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 rounded-lg text-xs font-bold text-primary-foreground transition-all shadow-sm"
               >
                 <Plus size={14} /> Import a lead list
               </button>
@@ -104,8 +105,11 @@ export function LeadTable({
           transition={{ delay: i * 0.05 }}
         >
           <div 
-            className="relative overflow-hidden flex items-center gap-4 px-4 sm:px-5 py-3.5 border border-border/50 bg-card/40 backdrop-blur-sm cursor-pointer hover:border-border hover:bg-card/70 transition-all rounded-xl shadow-xs group" 
+            role="button"
+            tabIndex={0}
+            className="relative overflow-hidden flex items-center gap-4 px-4 sm:px-5 py-3.5 border border-border/50 bg-card/40 backdrop-blur-sm cursor-pointer hover:border-border hover:bg-card/70 transition-all rounded-xl shadow-xs group focus:outline-none focus:ring-1 focus:ring-primary/40" 
             onClick={() => onSelectList(list)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectList(list); } }}
           >
             <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
               switch(list.type) {
@@ -209,6 +213,7 @@ export function LeadTable({
                 {new Date(list.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
               <button
+                type="button"
                 onClick={(e) => { e.stopPropagation(); onDeleteList(list); }}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                 title="Delete list"

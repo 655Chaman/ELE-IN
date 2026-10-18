@@ -636,7 +636,7 @@ export function NotificationPrePermissionTeaser({
 
   if (variant === 'card') {
     return (
-      <div className="p-5 sm:p-6 rounded-2xl bg-card border border-border shadow-xl">
+      <div className="p-5 sm:p-6 rounded-xl bg-card border border-border shadow-xl">
         {content}
       </div>
     );
@@ -657,7 +657,7 @@ export function NotificationPrePermissionTeaser({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full max-w-[420px] max-h-[90vh] overflow-y-auto p-5 sm:p-6 rounded-2xl bg-card border border-border shadow-2xl relative"
+        className="w-full max-w-[420px] max-h-[90vh] overflow-y-auto p-5 sm:p-6 rounded-xl bg-card border border-border shadow-2xl relative"
       >
         {content}
       </motion.div>

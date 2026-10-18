@@ -5,6 +5,7 @@ import { Download, LayoutTemplate, Sparkles, Upload, Rocket, ArrowRight, ShieldC
 import { useLeadImport } from "../LeadImportContext"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
+import { CustomSelect } from "@/components/ui/select"
 
 export function CSVImport() {
   const { 
@@ -90,9 +91,21 @@ export function CSVImport() {
               <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">Upload CSV File</label>
               <a href="/template_leads.csv" download className="text-xs text-primary hover:underline flex items-center gap-1"><Download size={12} /> Download template</a>
             </div>
-            <div className="border-dashed border-2 border-border hover:border-primary/70 hover:bg-primary/5 rounded-xl p-10 flex flex-col items-center gap-3 transition-all cursor-pointer bg-muted/20 group" onClick={() => fileInputRef.current?.click()}>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Upload CSV file"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className="border-dashed border-2 border-border hover:border-primary/70 hover:bg-primary/5 rounded-lg p-10 flex flex-col items-center gap-3 transition-all cursor-pointer bg-muted/20 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileChange} />
-              <div className="p-5 rounded-2xl bg-background border shadow-sm group-hover:scale-105 transition-transform"><Upload size={24} className="text-foreground" /></div>
+              <div className="p-5 rounded-lg bg-background border border-border/60 shadow-xs"><Upload size={24} className="text-foreground" /></div>
               <div className="text-center">
                 <p className="text-sm font-semibold">{file ? <span className="text-primary">{file.name}</span> : "Click to browse or drag CSV here"}</p>
                 <p className="text-xs font-medium text-muted-foreground mt-1">Max 50MB · CSV only</p>
@@ -104,15 +117,13 @@ export function CSVImport() {
           {/* Lead Volume Pay Ramp: High-Intent Audience Priming */}
           {file && detectedRowCount > 50 && !isPro && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.98, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background to-primary/5 p-5 shadow-lg relative overflow-hidden"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/10 via-background to-primary/5 p-5 shadow-xs relative overflow-hidden"
             >
-              <div className="absolute -top-12 -right-12 w-32 h-32 bg-primary/20 rounded-full blur-2xl pointer-events-none" />
-
               <div className="flex items-start justify-between gap-4 relative z-10">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
+                  <div className="w-10 h-10 rounded-md bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
                     <Rocket size={20} />
                   </div>
                   <div>
@@ -131,15 +142,15 @@ export function CSVImport() {
 
               {/* Free vs Growth Breakdown */}
               <div className="grid grid-cols-3 gap-2.5 my-4 relative z-10 text-center">
-                <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-xl p-2.5">
+                <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-2.5">
                   <span className="text-[10px] font-medium text-muted-foreground block">Free Tier</span>
                   <span className="text-xs font-bold text-muted-foreground">1 Campaign</span>
                 </div>
-                <div className="bg-background/80 backdrop-blur-sm border border-primary/30 rounded-xl p-2.5">
+                <div className="bg-background/80 backdrop-blur-sm border border-primary/30 rounded-lg p-2.5">
                   <span className="text-[10px] font-bold text-primary block">Growth Scale</span>
                   <span className="text-xs font-black text-foreground">20 Campaigns</span>
                 </div>
-                <div className="bg-background/80 backdrop-blur-sm border border-success/30 rounded-xl p-2.5">
+                <div className="bg-background/80 backdrop-blur-sm border border-success/30 rounded-lg p-2.5">
                   <span className="text-[10px] font-bold text-success block">Monthly Fuel</span>
                   <span className="text-xs font-black text-foreground">5,000 Credits</span>
                 </div>
@@ -153,10 +164,10 @@ export function CSVImport() {
                     campaignName: name || file?.name?.replace(/\.csv$/i, '') || "CSV Outreach",
                     featureName: `${detectedRowCount.toLocaleString()} Prospect Outreach`
                   })}
-                  className="w-full py-3 px-4 rounded-xl bg-foreground text-background font-bold text-xs hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md group"
+                  className="w-full py-3 px-4 rounded-lg bg-foreground text-background font-bold text-xs hover:opacity-90 active:opacity-95 transition-opacity flex items-center justify-center gap-2 shadow-xs group"
                 >
                   <span>Unlock Growth Tier to Outreach All {detectedRowCount.toLocaleString()} Prospects</span>
-                  <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
                 </button>
                 <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
                   <ShieldCheck size={11} className="text-primary" /> No commitment • Cancel anytime • Includes Apollo & Apify waterfall
@@ -165,7 +176,7 @@ export function CSVImport() {
             </motion.div>
           )}
 
-          <div className="border rounded-xl p-5 bg-gradient-to-r from-muted/50 to-muted/20 flex flex-col gap-2">
+          <div className="border border-border/60 rounded-lg p-5 bg-gradient-to-r from-muted/50 to-muted/20 flex flex-col gap-2">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <ElesiumLogo size={16} />
@@ -178,7 +189,7 @@ export function CSVImport() {
               </label>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">Clean messy data before it hits the database. Automatically removes emojis, fixes ALL CAPS formatting, and drops corporate suffixes like "LLC/Inc.".</p>
-            <div className="text-[11px] text-muted-foreground flex justify-between mt-2 pt-2 border-t">
+            <div className="text-[11px] text-muted-foreground flex justify-between mt-2 pt-2 border-t border-border/40">
               <span>Cost: {hygieneCost} credit{hygieneCost > 1 ? 's' : ''} ({detectedRowCount > 0 ? `${detectedRowCount.toLocaleString()} leads` : '100 leads / credit'})</span>
               <span className="font-medium">Balance: {billing?.data_cleaning_credits ?? '...'}</span>
             </div>
@@ -189,9 +200,9 @@ export function CSVImport() {
       {step === 2 && (
         <div className="space-y-6 animate-in fade-in max-w-2xl">
           {detectedRowCount > 50 && !isPro && (
-            <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-3 text-xs">
+            <div className="p-3.5 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
+                <div className="p-1.5 rounded-md bg-primary/20 text-primary">
                   <Rocket size={15} />
                 </div>
                 <div>
@@ -209,7 +220,7 @@ export function CSVImport() {
                   campaignName: name || file?.name?.replace(/\.csv$/i, '') || "CSV Outreach", 
                   featureName: "Multi-Campaign Scale" 
                 })}
-                className="px-3 py-1.5 rounded-lg bg-foreground text-background font-bold text-xs hover:opacity-90 transition-all shrink-0 flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-md bg-foreground text-background font-bold text-xs hover:opacity-90 transition-all shrink-0 flex items-center gap-1.5"
               >
                 <span>Upgrade</span>
                 <ArrowRight size={12} />
@@ -218,7 +229,7 @@ export function CSVImport() {
           )}
 
           {/* Column Mapping Section */}
-          <div className="border rounded-xl overflow-hidden bg-background shadow-sm">
+          <div className="border border-border/60 rounded-lg overflow-hidden bg-background shadow-xs">
             <div className="px-4 py-3 bg-muted/30 border-b border-border/60 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <LayoutTemplate size={14} className="text-primary" />
@@ -248,7 +259,7 @@ export function CSVImport() {
                         {meta.required && <span className="text-rose-500 font-bold">*</span>}
                       </label>
                       {selectedCol && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
                           Mapped
                         </span>
                       )}
@@ -261,14 +272,17 @@ export function CSVImport() {
                     )}
                   </div>
 
-                  <select
-                    value={selectedCol}
-                    onChange={e => setMappings({ ...mappings, [key]: e.target.value })}
-                    className="flex h-9 w-full sm:w-56 rounded-lg border border-input bg-card px-3 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary shadow-xs"
-                  >
-                    <option value="">-- Ignore --</option>
-                    {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={selectedCol || ""}
+                    onValueChange={val => setMappings({ ...mappings, [key]: val })}
+                    size="sm"
+                    className="w-full sm:w-56"
+                    triggerClassName="h-9 text-xs bg-card border-input"
+                    options={[
+                      { value: "", label: "-- Ignore --" },
+                      ...headers.map(h => ({ value: h, label: h }))
+                    ]}
+                  />
                 </div>
               )
             })}
@@ -279,7 +293,7 @@ export function CSVImport() {
             const linkedinCol = mappings.linkedin_url
             if (!linkedinCol) {
               return (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
                   <AlertTriangle size={15} className="shrink-0 mt-0.5" />
                   <div>
                     <p className="font-bold">LinkedIn URL is required</p>
@@ -296,7 +310,7 @@ export function CSVImport() {
 
             if (sampleUrls.length > 0 && !hasValidLinkedinSample) {
               return (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2.5">
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2.5">
                   <AlertTriangle size={15} className="shrink-0 mt-0.5" />
                   <div>
                     <p className="font-bold">Format Warning on &quot;{linkedinCol}&quot;</p>
@@ -309,7 +323,7 @@ export function CSVImport() {
             }
 
             return (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-xs flex items-center justify-between">
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-xs flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
                   <span className="font-medium">
@@ -325,7 +339,7 @@ export function CSVImport() {
 
           {/* Pre-Flight 3-Row Sample Verification Table */}
           {sampleRows.length > 0 && (
-            <div className="border border-border/80 rounded-xl overflow-hidden bg-card shadow-xs">
+            <div className="border border-border/80 rounded-lg overflow-hidden bg-card shadow-xs">
               <div className="px-4 py-2.5 bg-muted/40 border-b border-border/60 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Table size={13} className="text-primary" />

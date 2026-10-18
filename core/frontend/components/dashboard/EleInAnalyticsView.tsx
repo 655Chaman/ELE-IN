@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { 
   Users, RefreshCw, AlertTriangle, X, ArrowRight, 
-  ExternalLink, Download, Search, Copy, Check
+  ExternalLink, Download, Search, Copy, Check, Lock,
+  Loader2
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -28,7 +29,7 @@ const formatXAxisDate = (dateStr: string) => {
 const CustomAreaTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-card/95 border border-border/60 p-4 rounded-xl shadow-xl shadow-foreground/5">
+      <div className="bg-card/95 border border-border/60 p-4 rounded-lg shadow-xl shadow-foreground/5">
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
           {formatXAxisDate(label) || label}
         </p>
@@ -49,42 +50,6 @@ const CustomAreaTooltip = ({ active, payload, label }: any) => {
   return null
 }
 
-// --- Mock Data Generators ---
-const generateMockTimeSeries = (range: string = '7d') => {
-  const points = range === '24h' ? 24 : range === '30d' ? 30 : range === '90d' ? 90 : 7;
-  const isHourly = range === '24h';
-  const now = new Date();
-  const data = [];
-
-  for (let i = points - 1; i >= 0; i--) {
-    const d = new Date(now);
-    if (isHourly) {
-      d.setHours(now.getHours() - i);
-    } else {
-      d.setDate(now.getDate() - i);
-    }
-
-    const progress = (points - i) / points;
-    const baseWave = Math.sin(progress * Math.PI * 2) * 10 + Math.cos(progress * Math.PI * 4) * 5;
-    const dayOfWeek = d.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const weekdayFactor = isHourly ? 1 : (isWeekend ? 0.35 : 1.15);
-
-    const connections = Math.max(2, Math.round((28 + baseWave + ((i * 3) % 7)) * weekdayFactor));
-    const messages = Math.max(5, Math.round((64 + baseWave * 1.8 + ((i * 5) % 11)) * weekdayFactor));
-    const inmails = Math.max(0, Math.round((8 + baseWave * 0.3 + (i % 3)) * weekdayFactor));
-    const replied = Math.max(1, Math.round((14 + baseWave * 0.5) * weekdayFactor));
-
-    data.push({
-      date: isHourly ? d.toISOString() : d.toLocaleDateString('en-CA'),
-      connections,
-      messages,
-      inmails,
-      replied
-    });
-  }
-  return data;
-};
 
 const timeAgo = (dateString: string) => {
   if (!dateString) return '';
@@ -118,7 +83,7 @@ export function FunnelPipelineFlow() {
   ]
 
   return (
-    <div className="flex items-center justify-between px-3 py-2.5 mb-3 rounded-xl bg-background/50 border border-border/60">
+    <div className="flex items-center justify-between px-3 py-2.5 mb-3 rounded-lg bg-background/50 border border-border/60">
       {stages.map((stage, idx) => (
         <div key={stage.name} className="flex items-center gap-2 flex-1 last:flex-initial">
           <div className="flex flex-col items-center gap-1">
@@ -157,7 +122,7 @@ export function DataSectionWrapper({
 }) {
   if (isLoading) {
     return (
-      <div className={`w-full ${skeletonHeightClass} flex items-center justify-center animate-pulse bg-background rounded-xl border border-border`}>
+      <div className={`w-full ${skeletonHeightClass} flex items-center justify-center animate-pulse bg-background rounded-lg border border-border`}>
         <div className="text-muted-foreground text-sm flex items-center gap-2">
           <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
         </div>
@@ -167,7 +132,7 @@ export function DataSectionWrapper({
 
   if (!data || data.length === 0) {
     return (
-      <div className={`w-full ${skeletonHeightClass} relative rounded-xl border border-border/80 bg-background/50 flex flex-col items-center justify-center p-4 text-center`}>
+      <div className={`w-full ${skeletonHeightClass} relative rounded-lg border border-border/80 bg-background/50 flex flex-col items-center justify-center p-4 text-center`}>
         <div className="text-xs font-semibold text-foreground/80">{emptyLabel}</div>
         {emptySubtext && <div className="text-[11px] text-muted-foreground mt-0.5">{emptySubtext}</div>}
       </div>
@@ -207,8 +172,8 @@ export function LimitProgressBar({ used, limit, pct, label }: { used: number, li
         <span className="text-muted-foreground">{label}</span>
         <span className="font-medium text-foreground">{used} / {limit}</span>
       </div>
-      <div className="w-full h-1.5 bg-muted rounded-xl overflow-hidden">
-        <div className={`h-full rounded-xl ${colorClass}`} style={{ width: `${clampedWidth}%` }} />
+      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${clampedWidth}%` }} />
       </div>
     </div>
   );
@@ -265,10 +230,12 @@ interface EleInAnalyticsViewProps {
   isExtendedLocked?: boolean;
   isPdfLocked?: boolean;
   isFunnelCsvLocked?: boolean;
+  workspaceName?: string;
 }
 
 export function EleInAnalyticsView({ 
-  summary, today, timeSeries, heatmapData, timeOfDayData, aiInsight: _aiInsight, funnelSteps, leadSources, radarStats, liveFeed, errorFeed, accountHealth, onTimeRangeChange, onExportPdf, isExportingPdf = false, senders = [], campaigns = [], selectedSenders = [], selectedCampaigns = [], onSendersChange, onCampaignsChange, isLoading, primaryColor = "#10B981", secondaryColor = "#6366F1", fetchFunnelLeads, live_feed_error, timeRange = '7d', isExtendedLocked = false, isPdfLocked = false, isFunnelCsvLocked = false
+  summary, today, timeSeries, heatmapData, timeOfDayData, aiInsight: _aiInsight, funnelSteps, leadSources, radarStats, liveFeed, errorFeed, accountHealth, onTimeRangeChange, onExportPdf, isExportingPdf = false, senders = [], campaigns = [], selectedSenders = [], selectedCampaigns = [], onSendersChange, onCampaignsChange, isLoading, primaryColor = "#10B981", secondaryColor = "#6366F1", fetchFunnelLeads, live_feed_error, timeRange = '7d', isExtendedLocked = false, isPdfLocked = false, isFunnelCsvLocked = false,
+  workspaceName
 }: EleInAnalyticsViewProps) {
   const navigate = useNavigate()
   const [hoveredSeries, setHoveredSeries] = useState<string | null>(null)
@@ -289,8 +256,10 @@ export function EleInAnalyticsView({
 
   // Layer 2: Close cohort lead drawer on Escape key press
   useEffect(() => {
-    if (!selectedFunnelStep) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
       if (e.key === 'Escape') {
         setSelectedFunnelStep(null);
         setFunnelSearch("");
@@ -298,7 +267,7 @@ export function EleInAnalyticsView({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedFunnelStep]);
+  }, []);
 
   // Stage explanations
   const STAGE_DESCRIPTIONS: Record<string, string> = {
@@ -321,34 +290,8 @@ export function EleInAnalyticsView({
     )
   }, [funnelLeads, funnelSearch])
 
-  // Sample Preview State: automatically enabled when no live telemetry exists
-  const hasLiveTimeSeries = Boolean(timeSeries && timeSeries.length > 0);
-  const [showSampleData, setShowSampleData] = useState<boolean>(!hasLiveTimeSeries);
-
-  useEffect(() => {
-    if (hasLiveTimeSeries) {
-      setShowSampleData(false);
-    }
-  }, [hasLiveTimeSeries]);
-
-  // Generate dynamic sample curve for the current window
-  const mockTimeSeries = useMemo(() => generateMockTimeSeries(timeRange), [timeRange]);
-  const safeTimeSeries = hasLiveTimeSeries && !showSampleData ? (timeSeries ?? []) : (showSampleData ? mockTimeSeries : []);
-
-  const sampleFunnelSteps = useMemo(() => [
-    { label: "Extracted", value: 1240, count: 1240 },
-    { label: "Enrolled",  value: 980,  count: 980 },
-    { label: "Connected", value: 412,  count: 412 },
-    { label: "Replied",   value: 178,  count: 178 },
-    { label: "Booked",    value: 46,   count: 46 },
-    { label: "Failed/Bounced", value: 14, count: 14, color: "#ef4444" }
-  ], []);
-
-  const hasLiveFunnel = useMemo(() => {
-    return Boolean(funnelSteps && funnelSteps.some((s: any) => (s.value || s.count || 0) > 0));
-  }, [funnelSteps]);
-
-  const activeFunnelSteps = (hasLiveFunnel || !showSampleData) ? (funnelSteps ?? []) : sampleFunnelSteps;
+  const safeTimeSeries = timeSeries ?? [];
+  const activeFunnelSteps = funnelSteps ?? [];
   
   const liveFeedError = live_feed_error ?? false;
 
@@ -497,11 +440,7 @@ export function EleInAnalyticsView({
             <h2 className="text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
               Performance Overview
               {isLoading && (
-                <span className="flex space-x-1 ml-1.5" title="Syncing telemetry">
-                  <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                  <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                  <span className="w-1.5 h-1.5 bg-primary/80 rounded-full animate-bounce"></span>
-                </span>
+                <Loader2 size={13} className="animate-spin text-muted-foreground ml-1.5" />
               )}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">Live telemetry across outreach fleet</p>
@@ -606,17 +545,29 @@ export function EleInAnalyticsView({
             {/* Export Action */}
             {onExportPdf && (
               <button
+                type="button"
                 onClick={onExportPdf}
                 disabled={isExportingPdf}
-                className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg text-primary bg-primary/10 border border-primary/20 hover:bg-primary/15 disabled:opacity-50 transition-colors cursor-pointer"
-                title="Export performance overview to PDF"
+                className={`inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-xs active:scale-[0.98] ${
+                  isPdfLocked
+                    ? "text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/15"
+                    : "text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20"
+                }`}
+                title={isPdfLocked ? "Executive PDF Export requires Growth Pro or Enterprise (click to upgrade)" : "Export performance overview to PDF"}
               >
                 {isExportingPdf ? (
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : isPdfLocked ? (
+                  <Lock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 ) : (
-                  <Download className="h-3.5 w-3.5" />
+                  <Download className="h-3.5 w-3.5 shrink-0" />
                 )}
-                <span>{isExportingPdf ? "Exporting..." : "Export PDF"}</span>
+                <span>{isExportingPdf ? "Generating..." : "Export PDF"}</span>
+                {isPdfLocked && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                    PRO
+                  </span>
+                )}
               </button>
             )}
           </div>
@@ -630,7 +581,7 @@ export function EleInAnalyticsView({
             {primaryKpis.map((stat) => (
               <div 
                 key={stat.label}
-                className="rounded-xl border border-border bg-card p-4 shadow-xs hover:border-foreground/20 flex flex-col justify-between transition-colors"
+                className="rounded-lg border border-border bg-card p-4 shadow-xs hover:border-foreground/20 flex flex-col justify-between transition-colors"
               >
                 <div className="flex items-center justify-between text-muted-foreground mb-2.5">
                   <span className="text-[11px] font-medium uppercase tracking-wider">{stat.label}</span>
@@ -642,6 +593,7 @@ export function EleInAnalyticsView({
                   </p>
                   {stat.action && (
                     <button
+                      type="button"
                       onClick={() => stat.action?.href && navigate(stat.action.href)}
                       className="text-[10px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                     >
@@ -655,7 +607,7 @@ export function EleInAnalyticsView({
           </div>
 
           {/* Secondary Telemetry Strip (Linear/Vercel Divider Pattern - Zero Decorative Icons) */}
-          <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+          <div className="rounded-lg border border-border bg-card shadow-xs overflow-hidden">
             <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
               <div className="px-4 py-2.5 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Inmails (24h)</span>
@@ -688,10 +640,11 @@ export function EleInAnalyticsView({
 
         {/* Sender Fleet Throttle Status */}
         {accountHealth?.accounts && accountHealth.accounts.length > 0 && (
-          <div className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-3">
+          <div className="p-4 rounded-lg border border-border bg-card shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-foreground">Fleet Throttle & Capacity</span>
               <button
+                type="button"
                 onClick={() => navigate('/elein/accounts')}
                 className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
               >
@@ -710,14 +663,14 @@ export function EleInAnalyticsView({
                 else if (maxPct >= 70) dotColor = 'bg-primary'
 
                 return (
-                  <div key={i} className="rounded-xl border border-border bg-background p-3 text-xs space-y-2">
+                  <div key={i} className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={`w-2 h-2 rounded-full ${dotColor}`} />
                         <span className="font-semibold text-foreground truncate">{acc.name}</span>
                       </div>
                       {acc.throttled && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-xl bg-destructive/10 text-destructive">Paced</span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-destructive/10 text-destructive">Paced</span>
                       )}
                     </div>
                     <div className="space-y-1.5">
@@ -734,38 +687,36 @@ export function EleInAnalyticsView({
         {/* Dual Cockpit Row: Velocity Chart (Left) + Conversion Funnel (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Network Velocity Area Chart */}
-          <div className="lg:col-span-7 rounded-xl border border-border bg-card p-5 shadow-xs flex flex-col">
+          <div className="lg:col-span-7 rounded-lg border border-border bg-card p-5 shadow-xs flex flex-col">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-bold text-foreground">Network Velocity</h3>
-                  {showSampleData && !hasLiveTimeSeries && (
-                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
-                      Sample Preview
-                    </span>
-                  )}
                 </div>
                 <p className="text-[11px] text-muted-foreground">Connections & message actions over time</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-3 text-xs">
                   <button 
+                    type="button"
                     onClick={() => setHoveredSeries(hoveredSeries === 'connections' ? null : 'connections')}
-                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-xl transition-colors cursor-pointer ${hoveredSeries === 'connections' ? 'bg-primary/20 font-bold' : ''}`}
+                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition-colors cursor-pointer ${hoveredSeries === 'connections' ? 'bg-primary/20 font-bold' : ''}`}
                   >
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
                     <span className="text-foreground">Connections</span>
                   </button>
                   <button 
+                    type="button"
                     onClick={() => setHoveredSeries(hoveredSeries === 'messages' ? null : 'messages')}
-                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-xl transition-colors cursor-pointer ${hoveredSeries === 'messages' ? 'bg-primary/20 font-bold' : ''}`}
+                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition-colors cursor-pointer ${hoveredSeries === 'messages' ? 'bg-primary/20 font-bold' : ''}`}
                   >
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: secondaryColor }} />
                     <span className="text-foreground">Messages</span>
                   </button>
                   <button 
+                    type="button"
                     onClick={() => setHoveredSeries(hoveredSeries === 'inmails' ? null : 'inmails')}
-                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-xl transition-colors cursor-pointer ${hoveredSeries === 'inmails' ? 'bg-amber-500/20 font-bold' : ''}`}
+                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition-colors cursor-pointer ${hoveredSeries === 'inmails' ? 'bg-amber-500/20 font-bold' : ''}`}
                   >
                     <div className="w-2 h-2 rounded-full bg-amber-500" />
                     <span className="text-foreground">Inmails</span>
@@ -810,15 +761,10 @@ export function EleInAnalyticsView({
           </div>
 
           {/* Interactive Conversion Funnel */}
-          <div className="lg:col-span-5 rounded-xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between">
+          <div className="lg:col-span-5 rounded-lg border border-border bg-card p-5 shadow-xs flex flex-col justify-between">
             <div className="mb-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-foreground">Conversion Funnel</h3>
-                {showSampleData && !hasLiveFunnel && (
-                  <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
-                    Sample Preview
-                  </span>
-                )}
               </div>
               <p className="text-[11px] text-muted-foreground">Click any stage to inspect cohort leads</p>
             </div>
@@ -840,12 +786,21 @@ export function EleInAnalyticsView({
                 return (
                   <div 
                     key={step.label} 
-                    className={`p-2 rounded-xl transition-colors ${isFunnelLoading ? 'cursor-wait opacity-80' : 'cursor-pointer hover:bg-muted/60'} ${isFailedStep ? 'border-t border-border pt-2.5' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Inspect ${step.label} stage leads (${(stepVal ?? 0).toLocaleString()})`}
+                    className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${isFunnelLoading ? 'cursor-wait opacity-80' : 'cursor-pointer hover:bg-muted/60'} ${isFailedStep ? 'border-t border-border pt-2.5' : ''}`}
                     onMouseEnter={() => setHoveredFunnelStep(i)} 
                     onMouseLeave={() => setHoveredFunnelStep(null)}
                     onClick={() => {
                       if (isFunnelLoading) return;
                       setSelectedFunnelStep(step.label);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (!isFunnelLoading) setSelectedFunnelStep(step.label);
+                      }
                     }}
                   >
                     <div className="flex justify-between items-center text-xs mb-1.5">
@@ -856,9 +811,9 @@ export function EleInAnalyticsView({
                         {(stepVal ?? 0).toLocaleString()}
                       </span>
                     </div>
-                    <div className="w-full h-2 bg-muted rounded-xl overflow-hidden">
+                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                       <div 
-                        className="h-full rounded-xl transition-[width] duration-500 ease-out" 
+                        className="h-full rounded-full transition-[width] duration-500 ease-out" 
                         style={{ backgroundColor: stepColor, width: `${widthPct}%` }} 
                       />
                     </div>
@@ -870,7 +825,7 @@ export function EleInAnalyticsView({
         </div>
 
         {/* Fleet Deep Telemetry Deck (Topography Heatmaps | Radar | Real-Time Stream) */}
-        <div className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_260px]">
+        <div className="rounded-lg border border-border bg-card p-5 space-y-4 shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_260px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
             <div>
               <h3 className="text-sm font-bold text-foreground">Fleet Telemetry & Activity Matrix</h3>
@@ -884,7 +839,7 @@ export function EleInAnalyticsView({
             {/* Segmented Tab Pill */}
             <div 
               onMouseLeave={() => setHoveredIntelligenceTab(null)}
-              className="relative inline-flex items-center p-1 bg-muted/60 rounded-xl border border-border text-xs font-semibold overflow-x-auto max-w-full scrollbar-hide shrink-0"
+              className="relative inline-flex items-center p-1 bg-muted/60 rounded-lg border border-border text-xs font-semibold overflow-x-auto max-w-full scrollbar-hide shrink-0"
               role="tablist"
               aria-label="Fleet telemetry views"
             >
@@ -954,7 +909,7 @@ export function EleInAnalyticsView({
           {intelligenceTab === 'topography' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1">
               {/* 12-Month Consistency Heatmap */}
-              <div className="space-y-3 p-3.5 rounded-xl bg-background/60 border border-border/60">
+              <div className="space-y-3 p-3.5 rounded-lg bg-background/60 border border-border/60">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-foreground">
                     12-Month Consistency
@@ -1034,7 +989,7 @@ export function EleInAnalyticsView({
               </div>
 
               {/* 24/7 Time of Day Heatmap */}
-              <div className="space-y-3 p-3.5 rounded-xl bg-background/60 border border-border/60">
+              <div className="space-y-3 p-3.5 rounded-lg bg-background/60 border border-border/60">
                 <span className="text-xs font-semibold text-foreground">
                   High-Conversion Hours (24/7)
                 </span>
@@ -1081,7 +1036,7 @@ export function EleInAnalyticsView({
                     <PolarAngleAxis dataKey="subject" tick={{ fill: "currentColor", fontSize: 11, fontWeight: 500 }} />
                     <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                     <Radar name="Metrics" dataKey="value" stroke={primaryColor} fill={primaryColor} fillOpacity={0.25} />
-                    <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }} />
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }} />
                   </RadarChart>
                 </ResponsiveContainer>
               ) : (
@@ -1099,7 +1054,7 @@ export function EleInAnalyticsView({
                 return (
                   <div
                     key={item.id || `${item.time}-${item.text}`}
-                    className={`flex items-center justify-between text-xs p-2.5 rounded-xl border ${
+                    className={`flex items-center justify-between text-xs p-2.5 rounded-lg border ${
                       isError ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-muted/40 border-border text-foreground'
                     }`}
                   >
@@ -1156,20 +1111,22 @@ export function EleInAnalyticsView({
 
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={handleExportFunnelCsv}
                         disabled={funnelLeads.length === 0}
-                        className="px-2.5 py-1.5 rounded-xl bg-card hover:bg-muted border border-border text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer shadow-xs"
+                        className="px-2.5 py-1.5 rounded-md bg-card hover:bg-muted border border-border text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer shadow-xs"
                         title="Export this stage's leads to CSV"
                       >
                         <Download size={13} className="text-primary" />
                         <span>Export CSV</span>
                       </button>
                       <button 
+                        type="button"
                         onClick={() => {
                           setSelectedFunnelStep(null);
                           setFunnelSearch("");
                         }} 
-                        className="p-1.5 bg-card border border-border rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                        className="p-1.5 bg-card border border-border rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
                         title="Close drawer (Esc)"
                       >
                         <kbd className="hidden sm:inline-block text-[10px] font-mono px-1 py-0.2 rounded bg-muted border border-border text-muted-foreground">Esc</kbd>
@@ -1192,10 +1149,11 @@ export function EleInAnalyticsView({
                       value={funnelSearch}
                       onChange={(e) => setFunnelSearch(e.target.value)}
                       placeholder="Search leads by name, title, company..."
-                      className="w-full bg-card border border-border rounded-xl pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50"
+                      className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50"
                     />
                     {funnelSearch && (
                       <button
+                        type="button"
                         onClick={() => setFunnelSearch("")}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
                       >
@@ -1212,7 +1170,7 @@ export function EleInAnalyticsView({
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {isFunnelLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="p-3.5 rounded-xl border border-border bg-background/50 flex items-center gap-3 animate-pulse">
+                      <div key={i} className="p-3.5 rounded-lg border border-border bg-background/50 flex items-center gap-3 animate-pulse">
                         <div className="w-9 h-9 rounded-full bg-muted flex-shrink-0" />
                         <div className="space-y-1.5 flex-1">
                           <div className="h-3.5 bg-muted rounded w-1/3" />
@@ -1221,14 +1179,15 @@ export function EleInAnalyticsView({
                       </div>
                     ))
                   ) : funnelError ? (
-                    <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-center space-y-2">
+                    <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-center space-y-2">
                       <div className="text-xs text-destructive font-semibold flex items-center justify-center gap-1.5">
                         <AlertTriangle size={14} /> Failed to load leads for {selectedFunnelStep}
                       </div>
                       <p className="text-[11px] text-muted-foreground">{funnelError}</p>
                       <button
+                        type="button"
                         onClick={() => setFunnelFetchTrigger(t => t + 1)}
-                        className="px-3 py-1 bg-destructive/20 text-destructive text-xs font-bold rounded-xl hover:bg-destructive/30 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        className="px-3 py-1 bg-destructive/20 text-destructive text-xs font-bold rounded-md hover:bg-destructive/30 transition-colors inline-flex items-center gap-1 cursor-pointer"
                       >
                         <RefreshCw size={12} /> Retry Fetch
                       </button>
@@ -1237,7 +1196,7 @@ export function EleInAnalyticsView({
                     filteredFunnelLeads.map((lead, i) => (
                       <div 
                         key={lead.id || i} 
-                        className="p-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-muted/30 transition-colors flex items-center justify-between group shadow-xs"
+                        className="p-3.5 rounded-lg border border-border bg-card hover:border-primary/40 hover:bg-muted/30 transition-colors flex items-center justify-between group shadow-xs"
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="w-9 h-9 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-xs shrink-0">
@@ -1260,7 +1219,7 @@ export function EleInAnalyticsView({
                               href={lead.linkedin_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-[10px] cursor-pointer flex items-center gap-1"
+                              className="p-1.5 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-[10px] cursor-pointer flex items-center gap-1"
                               title="Open LinkedIn Profile"
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -1268,22 +1227,24 @@ export function EleInAnalyticsView({
                             </a>
                           )}
                           <button
+                            type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(lead.id || '');
                               setCopiedLeadId(lead.id);
                               toast.success(`Copied ID for ${lead.name}`);
                               setTimeout(() => setCopiedLeadId(null), 2000);
                             }}
-                            className="p-1.5 rounded-xl bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground text-[10px] cursor-pointer"
+                            className="p-1.5 rounded-md bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground text-[10px] cursor-pointer"
                             title="Copy Lead ID"
                           >
                             {copiedLeadId === lead.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
                               navigate('/elein/leads');
                             }}
-                            className="p-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-[10px] cursor-pointer"
+                            className="p-1.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary text-[10px] cursor-pointer"
                             title="View in Leads Hub"
                           >
                             <Users size={12} />
@@ -1295,6 +1256,7 @@ export function EleInAnalyticsView({
                     <div className="text-center py-12 text-xs text-muted-foreground space-y-1">
                       <p>No leads in this stage matched "{funnelSearch}"</p>
                       <button
+                        type="button"
                         onClick={() => setFunnelSearch("")}
                         className="text-primary hover:underline font-semibold cursor-pointer"
                       >
@@ -1314,6 +1276,8 @@ export function EleInAnalyticsView({
               </motion.div>
             </motion.div>
           )}
+
+
         </AnimatePresence>
 
       </div>

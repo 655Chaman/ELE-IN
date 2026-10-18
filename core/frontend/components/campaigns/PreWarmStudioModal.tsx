@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { OmnichannelRetargetingStudioModal } from './OmnichannelRetargetingStudioModal';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PreWarmStudioProps {
   onClose?: () => void;
@@ -276,7 +277,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
   };
 
   return (
-    <div className="bg-card border border-border rounded-2xl text-foreground shadow-lg max-w-4xl w-full mx-auto overflow-hidden animate-in fade-in duration-200">
+    <div className="bg-card border border-border rounded-xl text-foreground shadow-lg max-w-4xl w-full mx-auto overflow-hidden animate-in fade-in duration-200">
       {/* Studio Header */}
       <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
         <div>
@@ -539,16 +540,20 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
             <div className="flex items-center justify-between gap-3 p-3 bg-muted/30 border border-border rounded-lg">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground">Timeout Threshold:</span>
-                <select
-                  value={daysThreshold}
-                  onChange={(e) => setDaysThreshold(Number(e.target.value))}
-                  className="bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-foreground outline-none cursor-pointer"
+                <Select
+                  value={String(daysThreshold)}
+                  onValueChange={(val) => setDaysThreshold(Number(val))}
                 >
-                  <option value={5}>5 Days Pending</option>
-                  <option value={7}>7 Days Pending (Recommended)</option>
-                  <option value={10}>10 Days Pending</option>
-                  <option value={14}>14 Days Pending</option>
-                </select>
+                  <SelectTrigger size="sm" className="w-[190px] bg-background border-border text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 Days Pending</SelectItem>
+                    <SelectItem value="7">7 Days Pending (Recommended)</SelectItem>
+                    <SelectItem value="10">10 Days Pending</SelectItem>
+                    <SelectItem value="14">14 Days Pending</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <button

@@ -12,6 +12,7 @@ import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
 import SpotlightCard from '@/components/SpotlightCard';
 import { ElesiumLogo } from '@/components/ElesiumLogo';
+import { CustomSelect } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(async r => {
   if (!r.ok) {
@@ -95,9 +96,7 @@ export function EleInEngagementStudio() {
   const [isScheduling, setIsScheduling] = useState(false);
 
   // ── Tab 2: Social Pre-Warm State ──
-  const [prospectPostText, setProspectPostText] = useState(
-    "Excited to share that we just closed our $8M Series A! Huge shoutout to the entire team. We are actively hiring 5 outbound SDRs to build our enterprise pipeline in Q4."
-  );
+  const [prospectPostText, setProspectPostText] = useState('');
   const [isAnalyzingPost, setIsAnalyzingPost] = useState(false);
   const [postAnalysis, setPostAnalysis] = useState<any>(null);
   const [selectedCommentTone, setSelectedCommentTone] = useState<'insightful_query' | 'benchmark_data' | 'contrarian_value_add'>('insightful_query');
@@ -105,8 +104,8 @@ export function EleInEngagementStudio() {
   const [isGeneratingComment, setIsGeneratingComment] = useState(false);
 
   // 3-Touch Prewarm Form
-  const [prewarmLeadUrl, setPrewarmLeadUrl] = useState('https://www.linkedin.com/in/sarah-connor-cro');
-  const [prewarmLeadName, setPrewarmLeadName] = useState('Sarah Connor');
+  const [prewarmLeadUrl, setPrewarmLeadUrl] = useState('');
+  const [prewarmLeadName, setPrewarmLeadName] = useState('');
   const [isSchedulingPrewarm, setIsSchedulingPrewarm] = useState(false);
   const [prewarmLeadIdInput, setPrewarmLeadIdInput] = useState('');
   const [prewarmStatusResult, setPrewarmStatusResult] = useState<any>(null);
@@ -115,47 +114,9 @@ export function EleInEngagementStudio() {
   // ── Tab 3: Omnichannel Fallback State ──
   const [fallbackDaysThreshold, setFallbackDaysThreshold] = useState<number>(7);
   const [isEvaluatingFallback, setIsEvaluatingFallback] = useState(false);
-  const [evaluatedLeads, setEvaluatedLeads] = useState<any[]>([
-    {
-      lead_id: 'lead-sim-101',
-      name: 'Michael Vance',
-      company: 'Datacore Systems',
-      days_pending: 9,
-      recommended_channel: 'email',
-      email: 'm.vance@datacore.io',
-      status: 'pending_withdrawal'
-    },
-    {
-      lead_id: 'lead-sim-102',
-      name: 'Elena Rostova',
-      company: 'AeroCloud Security',
-      days_pending: 8,
-      recommended_channel: 'inmail',
-      email: null,
-      status: 'pending_withdrawal'
-    },
-    {
-      lead_id: 'lead-sim-103',
-      name: 'David Sterling',
-      company: 'OmniHealth SaaS',
-      days_pending: 12,
-      recommended_channel: 'email',
-      email: 'david@omnihealth.co',
-      status: 'pending_withdrawal'
-    }
-  ]);
+  const [evaluatedLeads, setEvaluatedLeads] = useState<any[]>([]);
   const [executingFallbackId, setExecutingFallbackId] = useState<string | null>(null);
-  const [executedLogs, setExecutedLogs] = useState<any[]>([
-    {
-      id: 'log-1',
-      lead_name: 'Jessica Reynolds',
-      original_channel: 'linkedin',
-      target_channel: 'email',
-      trigger_reason: 'linkedin_pending_timeout_7d',
-      status: 'completed',
-      timestamp: new Date(Date.now() - 3600000 * 4).toLocaleTimeString()
-    }
-  ]);
+  const [executedLogs, setExecutedLogs] = useState<any[]>([]);
 
   // Fetch accounts for scheduling
   const { data: accountsData } = useSWR<any[]>('/api/elein/accounts', fetcher);
@@ -683,7 +644,7 @@ export function EleInEngagementStudio() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Framework & Prompt Form (5 cols) */}
             <div className="lg:col-span-5 space-y-4">
-              <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
                     <Compass size={15} className="text-primary" />
@@ -781,7 +742,7 @@ export function EleInEngagementStudio() {
 
             {/* Right Column: LinkedIn Post Preview & Scheduler (7 cols) */}
             <div className="lg:col-span-7 space-y-4">
-              <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs">
@@ -858,21 +819,21 @@ export function EleInEngagementStudio() {
                       <label className="text-[11px] text-muted-foreground block mb-1">
                         Select Sender Account
                       </label>
-                      <select
+                      <CustomSelect
                         value={selectedAccountId}
-                        onChange={(e) => setSelectedAccountId(e.target.value)}
-                        className="w-full bg-card border border-border/60 rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none"
-                      >
-                        {accounts.length > 0 ? (
-                          accounts.map((a: any) => (
-                            <option key={a.id} value={a.id} className="bg-card text-foreground">
-                              {a.name} ({a.email || 'LinkedIn'})
-                            </option>
-                          ))
-                        ) : (
-                          <option value="">Default Primary Sender</option>
-                        )}
-                      </select>
+                        onValueChange={setSelectedAccountId}
+                        size="sm"
+                        placeholder="Select Sender Account..."
+                        triggerClassName="bg-card border-border/60 text-xs"
+                        options={
+                          accounts.length > 0
+                            ? accounts.map((a: any) => ({
+                                value: String(a.id),
+                                label: `${a.name} (${a.email || 'LinkedIn'})`,
+                              }))
+                            : [{ value: "", label: "Default Primary Sender" }]
+                        }
+                      />
                     </div>
 
                     <div>
@@ -906,7 +867,7 @@ export function EleInEngagementStudio() {
           </div>
 
           {/* Scheduled & Draft Thought Leadership Posts Queue */}
-          <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+          <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1002,7 +963,7 @@ export function EleInEngagementStudio() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Post Analysis & Safety Radar (6 cols) */}
             <div className="lg:col-span-6 space-y-4">
-              <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
                     <Flame size={15} className="text-amber-400" />
@@ -1016,13 +977,6 @@ export function EleInEngagementStudio() {
                     <label className="text-xs font-semibold text-foreground">
                       Prospect Post Content
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setProspectPostText("Excited to share that we just closed our $8M Series A! Huge shoutout to the entire team. We are actively hiring 5 outbound SDRs to build our enterprise pipeline in Q4.")}
-                      className="text-[10px] text-primary hover:underline font-medium"
-                    >
-                      Load Sample Funding Post
-                    </button>
                   </div>
                   <textarea
                     value={prospectPostText}
@@ -1156,7 +1110,7 @@ export function EleInEngagementStudio() {
 
             {/* 3-Touch Prewarm Cadence Enqueuer (6 cols) */}
             <div className="lg:col-span-6 space-y-4">
-              <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
                     <Clock size={15} className="text-primary" />
@@ -1271,7 +1225,7 @@ export function EleInEngagementStudio() {
           </div>
 
           {/* Active Pre-Warm Fleet Queue Table */}
-          <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+          <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1359,7 +1313,7 @@ export function EleInEngagementStudio() {
       {/* ── TAB 3: OMNICHANNEL FALLBACK CASCADE ── */}
       {activeTab === 'omnichannel' && (
         <div className="space-y-6">
-          <SpotlightCard className="p-5 rounded-2xl bg-card/40 border border-border/50 space-y-4">
+          <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1372,17 +1326,20 @@ export function EleInEngagementStudio() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground font-medium">Pending Threshold:</span>
-                <select
-                  value={fallbackDaysThreshold}
-                  onChange={(e) => setFallbackDaysThreshold(Number(e.target.value))}
-                  className="bg-card border border-border/60 rounded-lg px-2.5 py-1 text-xs text-foreground focus:outline-none"
-                >
-                  <option value={5}>5 Days</option>
-                  <option value={7}>7 Days (Recommended)</option>
-                  <option value={10}>10 Days</option>
-                  <option value={14}>14 Days</option>
-                </select>
+                <span className="text-xs text-muted-foreground font-medium shrink-0">Pending Threshold:</span>
+                <CustomSelect
+                  value={String(fallbackDaysThreshold)}
+                  onValueChange={(val) => setFallbackDaysThreshold(Number(val))}
+                  size="sm"
+                  className="w-48"
+                  triggerClassName="bg-card border-border/60 text-xs h-8"
+                  options={[
+                    { value: "5", label: "5 Days" },
+                    { value: "7", label: "7 Days (Recommended)" },
+                    { value: "10", label: "10 Days" },
+                    { value: "14", label: "14 Days" },
+                  ]}
+                />
 
                 <button
                   type="button"

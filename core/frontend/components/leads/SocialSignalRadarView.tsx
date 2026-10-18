@@ -5,7 +5,6 @@ import {
   Radio,
   Flame,
   Clock,
-  Sparkles,
   RotateCw,
   Copy,
   Check,
@@ -25,6 +24,7 @@ import {
 import { toast } from "sonner"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { Linkedin } from "../icons/Linkedin"
+import { CustomSelect } from "@/components/ui/select"
 
 interface SocialLead {
   id: string
@@ -40,7 +40,6 @@ interface SocialLead {
   best_outreach_angle: string
   social_icebreaker: string
   recommended_timing: string
-  is_demo?: boolean
 }
 
 interface SocialSignal {
@@ -110,7 +109,6 @@ export function SocialSignalRadarView({
   const [signalFilter, setSignalFilter] = useState<string>("ALL")
   const [sortBy, setSortBy] = useState<"score" | "recency" | "engagement">("score")
   const [searchQuery, setSearchQuery] = useState<string>("")
-  const [includeDemo, setIncludeDemo] = useState<boolean>(true)
   const [scanningLeadId, setScanningLeadId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   
@@ -159,7 +157,9 @@ export function SocialSignalRadarView({
   } | null>(null)
 
   // API Queries
-  const feedEndpoint = `/api/leads/social-radar/feed?include_demo_fallback=${includeDemo}${tierFilter !== "ALL" ? `&tier=${tierFilter}` : ""}`
+  const feedEndpoint = tierFilter !== "ALL"
+    ? `/api/leads/social-radar/feed?tier=${tierFilter}`
+    : "/api/leads/social-radar/feed"
   const { data: feedData, isLoading, mutate: mutateFeed } = useSWR<{ feed: FeedItem[]; total_items: number }>(feedEndpoint, fetcher)
   const { data: lists } = useSWR<any[]>('/api/elein/leads/lists', fetcher)
   const { data: campaigns } = useSWR<any[]>('/api/elein/campaigns', fetcher)
@@ -254,7 +254,11 @@ export function SocialSignalRadarView({
   const handleExportCsv = async () => {
     setIsExportingCsv(true)
     try {
-      const url = `/api/leads/social-radar/export-csv?include_demo_fallback=${includeDemo}${tierFilter !== "ALL" ? `&tier=${tierFilter}` : ""}${signalFilter !== "ALL" ? `&signal_type=${signalFilter}` : ""}`
+      const params = new URLSearchParams()
+      if (tierFilter !== "ALL") params.append("tier", tierFilter)
+      if (signalFilter !== "ALL") params.append("signal_type", signalFilter)
+      const queryStr = params.toString() ? `?${params.toString()}` : ""
+      const url = `/api/leads/social-radar/export-csv${queryStr}`
       const res = await fetchWithAuth(url)
       if (res.ok) {
         const blob = await res.blob()
@@ -466,7 +470,7 @@ export function SocialSignalRadarView({
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between"
+          className="p-4 rounded-lg bg-card border border-border/60 shadow-xs flex items-center justify-between"
         >
           <div>
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
@@ -476,7 +480,7 @@ export function SocialSignalRadarView({
               {metrics.total}
             </span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+          <div className="w-10 h-10 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
             <Radio size={20} className="animate-pulse" />
           </div>
         </motion.div>
@@ -485,17 +489,17 @@ export function SocialSignalRadarView({
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="p-4 rounded-2xl bg-gradient-to-br from-red-950/20 to-card border border-red-500/20 shadow-xs flex items-center justify-between"
+          className="p-4 rounded-lg bg-gradient-to-br from-destructive/10 to-card border border-destructive/20 shadow-xs flex items-center justify-between"
         >
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-red-400 block">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-destructive block">
               High Intent (Hot)
             </span>
-            <span className="text-2xl font-bold text-red-300 mt-0.5 block">
+            <span className="text-2xl font-bold text-foreground mt-0.5 block">
               {metrics.hotCount}
             </span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400">
+          <div className="w-10 h-10 rounded-md bg-destructive/10 border border-destructive/30 flex items-center justify-center text-destructive">
             <Flame size={20} />
           </div>
         </motion.div>
@@ -504,17 +508,17 @@ export function SocialSignalRadarView({
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between"
+          className="p-4 rounded-lg bg-card border border-border/60 shadow-xs flex items-center justify-between"
         >
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400 block">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-500 dark:text-amber-400 block">
               Warm Opportunity
             </span>
             <span className="text-2xl font-bold text-foreground mt-0.5 block">
               {metrics.warmCount}
             </span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 dark:text-amber-400">
             <TrendingUp size={20} />
           </div>
         </motion.div>
@@ -523,7 +527,7 @@ export function SocialSignalRadarView({
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between"
+          className="p-4 rounded-lg bg-card border border-border/60 shadow-xs flex items-center justify-between"
         >
           <div>
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
@@ -533,14 +537,14 @@ export function SocialSignalRadarView({
               {metrics.avgScore}<span className="text-xs text-muted-foreground font-normal">/100</span>
             </span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-md bg-primary/10 border border-primary/25 flex items-center justify-center">
             <img src="/elesium-icon.png" alt="Elesium" className="w-5 h-5 object-contain" />
           </div>
         </motion.div>
       </div>
 
       {/* Action Bar & Controls */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 rounded-2xl bg-card/60 border border-border/60 backdrop-blur-md">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 rounded-lg bg-card/60 border border-border/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -549,7 +553,7 @@ export function SocialSignalRadarView({
               placeholder="Search prospect, company, role, or post..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-background border border-border/60 focus:border-primary focus:outline-none transition-all placeholder:text-muted-foreground/60"
+              className="w-full pl-9 pr-3 py-1.5 rounded-md text-xs bg-background border border-border/60 focus:border-primary focus:outline-none transition-all placeholder:text-muted-foreground/60"
             />
           </div>
 
@@ -563,8 +567,9 @@ export function SocialSignalRadarView({
             ].map((t) => (
               <button
                 key={t.id}
+                type="button"
                 onClick={() => setTierFilter(t.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   tierFilter === t.id
                     ? "bg-primary text-primary-foreground shadow-xs"
                     : "text-muted-foreground hover:bg-muted/40"
@@ -578,49 +583,41 @@ export function SocialSignalRadarView({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Signal Filter Dropdown */}
-          <select
+          <CustomSelect
             value={signalFilter}
-            onChange={(e) => setSignalFilter(e.target.value)}
-            className="px-2.5 py-1.5 rounded-xl text-xs bg-background border border-border/60 text-foreground focus:outline-none focus:border-primary transition-all cursor-pointer"
-          >
-            <option value="ALL">All Intent Signals</option>
-            {Object.keys(SIGNAL_LABELS).map((st) => (
-              <option key={st} value={st}>
-                {SIGNAL_LABELS[st].label}
-              </option>
-            ))}
-          </select>
+            onValueChange={setSignalFilter}
+            size="sm"
+            className="w-auto"
+            triggerClassName="px-2.5 py-1.5 text-xs bg-background border-border/60 min-w-[160px]"
+            options={[
+              { value: "ALL", label: "All Intent Signals" },
+              ...Object.keys(SIGNAL_LABELS).map((st) => ({
+                value: st,
+                label: SIGNAL_LABELS[st].label,
+              })),
+            ]}
+          />
 
           {/* Sort By Dropdown */}
-          <select
+          <CustomSelect
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-2.5 py-1.5 rounded-xl text-xs bg-background border border-border/60 text-foreground focus:outline-none focus:border-primary transition-all cursor-pointer"
-          >
-            <option value="score">Sort: Intent Score</option>
-            <option value="recency">Sort: Post Recency</option>
-            <option value="engagement">Sort: Social Engagement</option>
-          </select>
-
-          {/* Demo Sandbox Toggle */}
-          <button
-            onClick={() => setIncludeDemo(!includeDemo)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-              includeDemo
-                ? "bg-primary/10 text-primary border-primary/30"
-                : "bg-background text-muted-foreground border-border/60 hover:text-foreground"
-            }`}
-            title="Toggle high-fidelity demo signals for testing intent triggers"
-          >
-            <Sparkles size={13} className={includeDemo ? "text-primary" : "text-muted-foreground"} />
-            <span>{includeDemo ? "Sandbox Active" : "Live Only"}</span>
-          </button>
+            onValueChange={(val) => setSortBy(val as any)}
+            size="sm"
+            className="w-auto"
+            triggerClassName="px-2.5 py-1.5 text-xs bg-background border-border/60 min-w-[170px]"
+            options={[
+              { value: "score", label: "Sort: Intent Score" },
+              { value: "recency", label: "Sort: Post Recency" },
+              { value: "engagement", label: "Sort: Social Engagement" },
+            ]}
+          />
 
           {/* Export Radar CSV */}
           <button
+            type="button"
             onClick={handleExportCsv}
             disabled={isExportingCsv}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-background border border-border/80 text-foreground hover:bg-muted transition-all shadow-xs shrink-0 cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-background border border-border/80 text-foreground hover:bg-muted transition-all shadow-xs shrink-0 cursor-pointer disabled:opacity-50"
             title="Export filtered social intent signals to sanitized CSV"
           >
             <Download size={13} className={isExportingCsv ? "animate-spin" : ""} />
@@ -629,8 +626,9 @@ export function SocialSignalRadarView({
 
           {/* Launch Batch Scan Button */}
           <button
+            type="button"
             onClick={() => setShowBatchModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all shadow-xs shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all shadow-xs shrink-0 cursor-pointer"
           >
             <Radio size={14} />
             <span>Scan Lead List</span>
@@ -645,8 +643,8 @@ export function SocialSignalRadarView({
           <span>Sweeping LinkedIn social feeds for intent signals & buying triggers...</span>
         </div>
       ) : filteredFeed.length === 0 ? (
-        <div className="p-12 rounded-2xl border border-dashed border-border/70 text-center space-y-3 bg-card/20">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto">
+        <div className="p-12 rounded-lg border border-dashed border-border/70 text-center space-y-3 bg-card/20">
+          <div className="w-12 h-12 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto">
             <Radio size={24} />
           </div>
           <div>
@@ -657,25 +655,21 @@ export function SocialSignalRadarView({
           </div>
           <div className="flex items-center justify-center gap-3 pt-2">
             <button
+              type="button"
               onClick={() => setShowBatchModal(true)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer shadow-sm"
+              className="px-4 py-2 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer shadow-xs"
             >
               Launch Radar Scan on List
             </button>
             {onSwitchToLists && (
               <button
+                type="button"
                 onClick={onSwitchToLists}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-background border border-border/80 text-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-md text-xs font-semibold bg-background border border-border/80 text-foreground hover:bg-muted/40 transition-all cursor-pointer"
               >
                 View Lead Lists
               </button>
             )}
-            <button
-              onClick={() => setIncludeDemo(true)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border/60 transition-all cursor-pointer"
-            >
-              Enable Sandbox Demo Stream
-            </button>
           </div>
         </div>
       ) : (
@@ -686,7 +680,6 @@ export function SocialSignalRadarView({
             const signals = item.signals || []
             const isScanning = scanningLeadId === lead.id
             const isCopied = copiedId === lead.id
-            const isDemo = Boolean(lead.is_demo || lead.id.startsWith("demo-"))
 
             // Tier styling
             const isHot = lead.social_intent_tier === "HOT"
@@ -703,12 +696,12 @@ export function SocialSignalRadarView({
                 layout
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-5 rounded-2xl bg-card border border-border/60 hover:border-primary/40 transition-all shadow-xs space-y-4"
+                className="p-5 rounded-lg bg-card border border-border/60 hover:border-primary/40 transition-all shadow-xs space-y-4"
               >
                 {/* Card Top: Prospect Identity & Intent Score */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-muted/60 border border-border/60 flex items-center justify-center font-bold text-xs text-foreground shrink-0 uppercase">
+                    <div className="w-10 h-10 rounded-md bg-muted/60 border border-border/60 flex items-center justify-center font-bold text-xs text-foreground shrink-0 uppercase">
                       {lead.first_name?.[0] || ""}{lead.last_name?.[0] || ""}
                     </div>
                     <div>
@@ -730,12 +723,6 @@ export function SocialSignalRadarView({
                           <span className={`w-1.5 h-1.5 rounded-full ${isHot ? 'bg-destructive' : isWarm ? 'bg-amber-500' : 'bg-primary'}`} />
                           <span>{lead.social_intent_score}/100 {lead.social_intent_tier}</span>
                         </span>
-                        {isDemo && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
-                            <Sparkles size={10} />
-                            <span>Sandbox Demo</span>
-                          </span>
-                        )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {lead.job_title} at <span className="font-medium text-foreground">{lead.company_name}</span>
@@ -746,17 +733,19 @@ export function SocialSignalRadarView({
 
                   <div className="flex items-center gap-2 self-start sm:self-auto">
                     {/* Timing Window Pill */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-background border border-border/60 text-[11px] font-medium text-muted-foreground">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-background border border-border/60 text-[11px] font-medium text-muted-foreground">
                       <Clock size={12} className="text-primary" />
                       <span>{lead.recommended_timing.replace(/_/g, " ")}</span>
                     </div>
 
                     {/* Rescan Button */}
                     <button
+                      type="button"
                       disabled={isScanning}
                       onClick={() => handleRescanLead(lead.id)}
                       title="Re-scan prospect social activity"
-                      className="p-1.5 rounded-xl bg-background border border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground transition-all cursor-pointer disabled:opacity-50"
+                      aria-label="Re-scan prospect social activity"
+                      className="p-1.5 rounded-md bg-background border border-border/60 hover:border-primary/40 text-muted-foreground hover:text-foreground transition-all cursor-pointer disabled:opacity-50"
                     >
                       <RotateCw size={13} className={isScanning ? "animate-spin text-primary" : ""} />
                     </button>
@@ -775,13 +764,15 @@ export function SocialSignalRadarView({
                       return (
                         <div
                           key={idx}
-                          className={`inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-lg border font-semibold ${meta.color}`}
+                          className={`inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-md border font-semibold ${meta.color}`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${meta.dotColor}`} />
                           <span>{meta.label} ({Math.round(sig.confidence_score * 100)}% match)</span>
                           <button
+                            type="button"
                             onClick={() => handleDismissSignal(lead.id, sig)}
                             title="Dismiss signal as false positive"
+                            aria-label="Dismiss signal as false positive"
                             className="ml-1 text-muted-foreground/60 hover:text-foreground transition-colors cursor-pointer"
                           >
                             <X size={11} />
@@ -794,7 +785,7 @@ export function SocialSignalRadarView({
 
                 {/* Quoted Post Excerpt */}
                 {topPost && (
-                  <div className="p-3 rounded-xl bg-muted/30 border border-border/40 text-xs text-foreground/90 space-y-2">
+                  <div className="p-3 rounded-lg bg-muted/30 border border-border/40 text-xs text-foreground/90 space-y-2">
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                       <span className="font-semibold uppercase tracking-wider">Prospect LinkedIn Post Excerpt</span>
                       {topPost.engagement_count && (
@@ -809,13 +800,13 @@ export function SocialSignalRadarView({
                       )}
                     </div>
                     <p className="italic text-muted-foreground/90 leading-relaxed font-sans">
-                      "{topPost.post_text}"
+                      &quot;{topPost.post_text}&quot;
                     </p>
                   </div>
                 )}
 
                 {/* AI Opening Hook Box & Dual Action Strip */}
-                <div className="p-3.5 rounded-xl bg-gradient-to-r from-primary/5 via-primary/10 to-transparent border border-primary/20 space-y-2.5">
+                <div className="p-3.5 rounded-lg bg-gradient-to-r from-primary/5 via-primary/10 to-transparent border border-primary/20 space-y-2.5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
                       <img src="/elesium-icon.png" alt="Elesium" className="w-3.5 h-3.5 object-contain" />
@@ -824,32 +815,35 @@ export function SocialSignalRadarView({
                     </div>
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={() => handleOpenDraftStudio(lead, signals[0])}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-background border border-primary/30 text-primary hover:bg-primary/10 transition-all cursor-pointer shadow-2xs"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-background border border-primary/30 text-primary hover:bg-primary/10 transition-all cursor-pointer shadow-xs"
                       >
                         <Wand2 size={12} />
                         <span>Review & Draft</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleCopyText(lead.id, lead.social_icebreaker, "Icebreaker")}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-background border border-border/60 hover:border-primary/40 text-foreground transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-background border border-border/60 hover:border-primary/40 text-foreground transition-all cursor-pointer"
                       >
                         {isCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                         <span>{isCopied ? "Copied" : "Copy"}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setEnrollingLead(lead)
                           setCustomIcebreaker(lead.social_icebreaker)
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer shadow-xs"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer shadow-xs"
                       >
                         <Send size={12} />
                         <span>Enroll</span>
                       </button>
                     </div>
                   </div>
-                  <p className="text-xs text-foreground font-medium leading-relaxed bg-background/60 p-2.5 rounded-lg border border-border/40">
+                  <p className="text-xs text-foreground font-medium leading-relaxed bg-background/60 p-2.5 rounded-md border border-border/40">
                     {lead.social_icebreaker || "No icebreaker generated yet. Click Review & Draft to synthesize."}
                   </p>
                 </div>
@@ -864,14 +858,15 @@ export function SocialSignalRadarView({
         {draftLead && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-2xl p-6 rounded-2xl bg-card border border-border shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-2xl p-6 rounded-xl bg-card border border-border shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between border-b border-border/60 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                  <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                     <Wand2 size={16} />
                   </div>
                   <div>
@@ -884,15 +879,17 @@ export function SocialSignalRadarView({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setDraftLead(null)}
-                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                  aria-label="Close draft studio"
+                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                 >
                   <X size={16} />
                 </button>
               </div>
 
               {/* Tone Selector */}
-              <div className="flex items-center justify-between gap-2 bg-muted/30 p-2 rounded-xl border border-border/50">
+              <div className="flex items-center justify-between gap-2 bg-muted/30 p-2 rounded-md border border-border/50">
                 <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 pl-1">
                   <SlidersHorizontal size={13} />
                   <span>Outreach Tone:</span>
@@ -906,11 +903,12 @@ export function SocialSignalRadarView({
                   ].map((t) => (
                     <button
                       key={t.id}
+                      type="button"
                       onClick={() => handleRegenerateWithTone(t.id as any)}
                       disabled={isGeneratingDraft}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                         draftTone === t.id
-                          ? "bg-primary text-primary-foreground shadow-2xs"
+                          ? "bg-primary text-primary-foreground shadow-xs"
                           : "text-muted-foreground hover:bg-muted/60"
                       }`}
                     >
@@ -947,6 +945,7 @@ export function SocialSignalRadarView({
                           {generatedDraft.connection_note.length}/280 chars
                         </span>
                         <button
+                          type="button"
                           onClick={() => handleCopyText("cn-note", generatedDraft.connection_note, "Connection note")}
                           className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                         >
@@ -958,7 +957,7 @@ export function SocialSignalRadarView({
                       rows={3}
                       value={generatedDraft.connection_note}
                       onChange={(e) => setGeneratedDraft({ ...generatedDraft, connection_note: e.target.value })}
-                      className="w-full p-3 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
+                      className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
                     />
                     {generatedDraft.connection_note.length > 280 && (
                       <p className="text-[10px] text-rose-400 flex items-center gap-1 font-medium">
@@ -976,6 +975,7 @@ export function SocialSignalRadarView({
                         <span>Conversational Follow-Up Message (3-Paragraph Sequence)</span>
                       </div>
                       <button
+                        type="button"
                         onClick={() => handleCopyText("fu-msg", generatedDraft.follow_up_message, "Follow-up message")}
                         className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                       >
@@ -986,12 +986,12 @@ export function SocialSignalRadarView({
                       rows={6}
                       value={generatedDraft.follow_up_message}
                       onChange={(e) => setGeneratedDraft({ ...generatedDraft, follow_up_message: e.target.value })}
-                      className="w-full p-3 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
+                      className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans leading-relaxed"
                     />
                   </div>
 
                   {/* Metadata Pill */}
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/20 p-2.5 rounded-xl border border-border/40">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/20 p-2.5 rounded-md border border-border/40">
                     <span className="flex items-center gap-1">
                       <Info size={12} className="text-primary" />
                       <span>Angle: <strong>{generatedDraft.angle}</strong></span>
@@ -1009,7 +1009,7 @@ export function SocialSignalRadarView({
                 <button
                   type="button"
                   onClick={() => setDraftLead(null)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-md text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
                 >
                   Close
                 </button>
@@ -1023,7 +1023,7 @@ export function SocialSignalRadarView({
                     setEnrollingLead(leadToEnroll)
                     setCustomIcebreaker(noteToUse)
                   }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
                 >
                   <Send size={13} />
                   <span>Transfer to Sequence Enrollment</span>
@@ -1039,21 +1039,24 @@ export function SocialSignalRadarView({
         {showBatchModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md p-6 rounded-2xl bg-card border border-border shadow-xl space-y-4"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-md p-6 rounded-xl bg-card border border-border shadow-xl space-y-4"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                  <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                     <Radio size={16} />
                   </div>
                   <h3 className="text-sm font-bold text-foreground">Launch Radar Scan on List</h3>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowBatchModal(false)}
-                  className="text-muted-foreground hover:text-foreground text-xs p-1"
+                  aria-label="Close batch scan modal"
+                  className="text-muted-foreground hover:text-foreground text-xs p-1 rounded-md"
                 >
                   <X size={14} />
                 </button>
@@ -1068,18 +1071,20 @@ export function SocialSignalRadarView({
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                     Select Target Lead List
                   </label>
-                  <select
+                  <CustomSelect
                     value={selectedListId}
-                    onChange={(e) => setSelectedListId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all cursor-pointer"
-                  >
-                    <option value="">Select a list...</option>
-                    {(lists || []).map((l: any) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name} ({l.row_count || 0} leads)
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setSelectedListId}
+                    size="sm"
+                    placeholder="Select a list..."
+                    triggerClassName="px-3 py-2 text-xs bg-background border-border/80"
+                    options={[
+                      { value: "", label: "Select a list..." },
+                      ...(lists || []).map((l: any) => ({
+                        value: l.id,
+                        label: `${l.name} (${l.row_count || 0} leads)`,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 <div>
@@ -1106,7 +1111,7 @@ export function SocialSignalRadarView({
                 <button
                   type="button"
                   onClick={() => setShowBatchModal(false)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-md text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1114,7 +1119,7 @@ export function SocialSignalRadarView({
                   type="button"
                   disabled={isBatchScanning || !selectedListId}
                   onClick={handleLaunchBatchScan}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
                 >
                   {isBatchScanning ? (
                     <>
@@ -1139,14 +1144,15 @@ export function SocialSignalRadarView({
         {enrollingLead && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg p-6 rounded-2xl bg-card border border-border shadow-xl space-y-4"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-lg p-6 rounded-xl bg-card border border-border shadow-xl space-y-4"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                  <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                     <Send size={16} />
                   </div>
                   <div>
@@ -1159,8 +1165,10 @@ export function SocialSignalRadarView({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setEnrollingLead(null)}
-                  className="text-muted-foreground hover:text-foreground text-xs cursor-pointer p-1"
+                  aria-label="Close enrollment modal"
+                  className="text-muted-foreground hover:text-foreground text-xs cursor-pointer p-1 rounded-md"
                 >
                   <X size={14} />
                 </button>
@@ -1172,18 +1180,20 @@ export function SocialSignalRadarView({
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                     Select Target Campaign Sequence
                   </label>
-                  <select
+                  <CustomSelect
                     value={selectedCampaignId}
-                    onChange={(e) => setSelectedCampaignId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all cursor-pointer"
-                  >
-                    <option value="">Select an active sequence...</option>
-                    {(campaigns || []).map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.status})
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setSelectedCampaignId}
+                    size="sm"
+                    placeholder="Select an active sequence..."
+                    triggerClassName="px-3 py-2 text-xs bg-background border-border/80"
+                    options={[
+                      { value: "", label: "Select an active sequence..." },
+                      ...(campaigns || []).map((c: any) => ({
+                        value: c.id,
+                        label: `${c.name} (${c.status})`,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* Sender Pod Account Selector */}
@@ -1191,18 +1201,20 @@ export function SocialSignalRadarView({
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                     Sender Account (Pod Balancing)
                   </label>
-                  <select
+                  <CustomSelect
                     value={selectedSenderAccountId}
-                    onChange={(e) => setSelectedSenderAccountId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all cursor-pointer"
-                  >
-                    <option value="">Auto (Campaign Pod Load Balancer)</option>
-                    {(accounts || []).map((acc: any) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name || acc.first_name ? `${acc.first_name || ""} ${acc.last_name || ""}`.trim() : acc.id} ({acc.status || "active"})
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setSelectedSenderAccountId}
+                    size="sm"
+                    placeholder="Auto (Campaign Pod Load Balancer)"
+                    triggerClassName="px-3 py-2 text-xs bg-background border-border/80"
+                    options={[
+                      { value: "", label: "Auto (Campaign Pod Load Balancer)" },
+                      ...(accounts || []).map((acc: any) => ({
+                        value: acc.id,
+                        label: `${acc.name || acc.first_name ? `${acc.first_name || ""} ${acc.last_name || ""}`.trim() : acc.id} (${acc.status || "active"})`,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* Personalized Social Icebreaker Field */}
@@ -1214,7 +1226,7 @@ export function SocialSignalRadarView({
                     rows={3}
                     value={customIcebreaker}
                     onChange={(e) => setCustomIcebreaker(e.target.value)}
-                    className="w-full p-3 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans"
+                    className="w-full p-3 rounded-md text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all font-sans"
                     placeholder="Customize the generated hook before enrolling..."
                   />
                 </div>
@@ -1224,7 +1236,7 @@ export function SocialSignalRadarView({
                 <button
                   type="button"
                   onClick={() => setEnrollingLead(null)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-md text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1232,7 +1244,7 @@ export function SocialSignalRadarView({
                   type="button"
                   disabled={isEnrolling || !selectedCampaignId}
                   onClick={() => handleEnrollLead(false)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
                 >
                   {isEnrolling ? (
                     <>
@@ -1257,13 +1269,14 @@ export function SocialSignalRadarView({
         {collisionWarning && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md p-6 rounded-2xl bg-card border border-rose-500/40 shadow-2xl space-y-4"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-md p-6 rounded-xl bg-card border border-rose-500/40 shadow-2xl space-y-4"
             >
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <div className="w-10 h-10 rounded-md bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
                   <ShieldAlert size={20} />
                 </div>
                 <div>
@@ -1276,7 +1289,7 @@ export function SocialSignalRadarView({
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-muted/40 border border-border/50 text-[11px] text-muted-foreground space-y-1">
+              <div className="p-3 rounded-md bg-muted/40 border border-border/50 text-[11px] text-muted-foreground space-y-1">
                 <p>
                   <strong>Why was this blocked?</strong> Enrolling a prospect who is already active in another campaign leads to double-messaging, burns sender reputation, and causes prospect churn.
                 </p>
@@ -1286,7 +1299,7 @@ export function SocialSignalRadarView({
                 <button
                   type="button"
                   onClick={() => setCollisionWarning(null)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-background border border-border/60 hover:bg-muted/40 text-foreground transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-md text-xs font-semibold bg-background border border-border/60 hover:bg-muted/40 text-foreground transition-all cursor-pointer"
                 >
                   Cancel (Protect Prospect)
                 </button>
@@ -1294,7 +1307,7 @@ export function SocialSignalRadarView({
                   type="button"
                   disabled={isEnrolling}
                   onClick={() => handleEnrollLead(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer shadow-xs"
                 >
                   {isEnrolling ? <RotateCw size={13} className="animate-spin" /> : <AlertTriangle size={13} />}
                   <span>Force Override & Enroll</span>
@@ -1310,13 +1323,14 @@ export function SocialSignalRadarView({
         {cooldownWarning && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md p-6 rounded-2xl bg-card border border-amber-500/40 shadow-2xl space-y-4"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-md p-6 rounded-xl bg-card border border-amber-500/40 shadow-2xl space-y-4"
             >
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <div className="w-10 h-10 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
                   <Clock size={20} />
                 </div>
                 <div>
@@ -1329,7 +1343,7 @@ export function SocialSignalRadarView({
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-muted/40 border border-border/50 text-[11px] text-muted-foreground space-y-1">
+              <div className="p-3 rounded-md bg-muted/40 border border-border/50 text-[11px] text-muted-foreground space-y-1">
                 <p>
                   <strong>Why was this blocked?</strong> Re-messaging the same prospect across multiple social posts inside of 14 days looks robotic and damages connection acceptance rates.
                 </p>
@@ -1339,7 +1353,7 @@ export function SocialSignalRadarView({
                 <button
                   type="button"
                   onClick={() => setCooldownWarning(null)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-background border border-border/60 hover:bg-muted/40 text-foreground transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-md text-xs font-semibold bg-background border border-border/60 hover:bg-muted/40 text-foreground transition-all cursor-pointer"
                 >
                   Respect Cooldown Window
                 </button>
@@ -1347,7 +1361,7 @@ export function SocialSignalRadarView({
                   type="button"
                   disabled={isEnrolling}
                   onClick={() => handleEnrollLead(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-all cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-all cursor-pointer shadow-xs"
                 >
                   {isEnrolling ? <RotateCw size={13} className="animate-spin" /> : <AlertTriangle size={13} />}
                   <span>Force Override Cooldown</span>

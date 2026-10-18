@@ -27,6 +27,7 @@ class CampaignCreate(BaseModel):
     expected_version: Optional[int] = None
     expected_updated_at: Optional[str] = None
     allow_active_graph_mutation: Optional[bool] = False
+    lead_list_id: Optional[str] = None
 
 class CampaignResponse(BaseModel):
     id: str
@@ -67,7 +68,9 @@ class AccountResponse(BaseModel):
     id: str
     name: str
     linkedin_profile_url: Optional[str] = None
-    # Returns the decrypted cookie JSON string (never the raw BYTEA)
+    # Security Hardening (VULN-13): Session cookies are never streamed over REST API.
+    # has_valid_session indicates cookie presence without exposing sensitive tokens.
+    has_valid_session: bool = True
     session_cookies_json: Optional[str] = None
     daily_connection_limit: Optional[int] = 20
     daily_message_limit: Optional[int] = 40

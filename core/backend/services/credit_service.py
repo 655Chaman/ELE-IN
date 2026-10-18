@@ -1073,7 +1073,8 @@ def clamp_negative_balance(balance: Any, min_allowed: int = 0) -> int:
 def reconcile_workspace_credit_ledger(
     workspace_id: str,
     auto_repair: bool = False,
-    supabase: Optional[Any] = None
+    supabase: Optional[Any] = None,
+    blocking: bool = True
 ) -> Dict[str, Any]:
     """
     Paranoia Layer 0, 1 & 2: Reconciles workspace credit balance against ledger transactions.
@@ -1085,7 +1086,7 @@ def reconcile_workspace_credit_ledger(
         return {"status": "error", "reason": "missing_workspace_id"}
 
     lock_name = f"ledger_reconcile:{workspace_id}"
-    with distributed_workspace_lock(lock_name, ttl_seconds=60, supabase=supabase) as acquired:
+    with distributed_workspace_lock(lock_name, ttl_seconds=60, supabase=supabase, blocking=blocking) as acquired:
         if not acquired:
             logger.warning(f"[CreditReconciliation] Ledger reconciliation already in progress for workspace {workspace_id} on another worker. Skipping duplicate run.")
             return {"status": "in_progress", "reason": "lock_active", "workspace_id": workspace_id}

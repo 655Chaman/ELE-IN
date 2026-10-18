@@ -80,7 +80,7 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
   return (
     <div className="md:col-span-1 group outline-none">
-      <div className="h-full bg-white dark:bg-card/40 border border-slate-200 dark:border-border/50 rounded-[40px] p-8 overflow-hidden relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl">
+      <div className="h-full bg-white dark:bg-card/40 border border-slate-200 dark:border-border/50 rounded-xl p-8 overflow-hidden relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl">
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-6">
 
@@ -95,15 +95,16 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
           <div className="space-y-6">
             {(synthesis?.is_draft || synthesis?.status === "pending_review") && (
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col gap-2.5">
+              <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                     <ElesiumLogo size={13} /> Draft Ready for Review
                   </span>
                   <button
+                    type="button"
                     onClick={handleApproveSynthesis}
                     disabled={isApproving}
-                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1 shadow-sm"
+                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1 shadow-sm cursor-pointer"
                   >
                     {isApproving ? "Locking in..." : "Approve & Lock In"}
                   </button>
@@ -135,7 +136,7 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
             {/* Quick-Start Presets for cold-start (Transcript 2: Goal Gradient Effect) */}
             {!synthesis?.core_value_prop && !isEditingSynthesis && (
-              <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 flex flex-col gap-3">
+              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                     <ElesiumLogo size={13} />
@@ -152,7 +153,7 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
                       key={preset.id}
                       type="button"
                       onClick={() => handleLoadPreset(preset)}
-                      className="p-3 rounded-xl border border-border/70 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all text-left group flex items-start justify-between cursor-pointer"
+                      className="p-3 rounded-lg border border-border/70 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all text-left group flex items-start justify-between cursor-pointer"
                     >
                       <div>
                         <div className="flex items-center gap-2">
@@ -180,7 +181,7 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
                <div className="flex justify-between items-center mb-2">
                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block">Core Value Prop</span>
                  {synthesis?.core_value_prop && !isEditingSynthesis && (
-                   <button onClick={() => setIsEditingSynthesis(true)} className="text-[10px] text-blue-500 hover:text-blue-600 font-semibold flex items-center gap-1"><ElesiumLogo size={11} /> Override AI</button>
+                   <button type="button" onClick={() => setIsEditingSynthesis(true)} className="text-[10px] text-blue-500 hover:text-blue-600 font-semibold flex items-center gap-1 cursor-pointer"><ElesiumLogo size={11} /> Override AI</button>
                  )}
                </div>
                
@@ -342,8 +343,8 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
             
             {isEditingSynthesis && (
               <div className="flex gap-2">
-                <button onClick={() => setIsEditingSynthesis(false)} disabled={isSaving} className="flex-1 py-2 text-xs font-semibold text-muted-foreground bg-slate-100 dark:bg-muted rounded-xl hover:bg-slate-200 dark:hover:bg-muted/80 disabled:opacity-50">Cancel</button>
-                <button onClick={handleSaveSynthesis} disabled={isSaving} className="flex-1 py-2 text-xs font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm disabled:opacity-50 flex items-center justify-center">
+                <button type="button" onClick={() => setIsEditingSynthesis(false)} disabled={isSaving} className="flex-1 py-2 text-xs font-semibold text-muted-foreground bg-slate-100 dark:bg-muted rounded-lg hover:bg-slate-200 dark:hover:bg-muted/80 disabled:opacity-50 cursor-pointer">Cancel</button>
+                <button type="button" onClick={handleSaveSynthesis} disabled={isSaving} className="flex-1 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-50 flex items-center justify-center cursor-pointer">
                   {isSaving ? <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : 'Save Overrides'}
                 </button>
               </div>

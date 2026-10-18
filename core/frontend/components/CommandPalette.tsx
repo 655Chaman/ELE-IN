@@ -243,7 +243,7 @@ export function CommandPalette() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -16 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
-            className="fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden z-[101]"
+            className="fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-xl bg-card border border-border shadow-2xl rounded-xl overflow-hidden z-[101]"
           >
             {/* Search Input Bar */}
             <div className="flex items-center px-4 py-3.5 border-b border-border bg-muted/20">
@@ -284,18 +284,19 @@ export function CommandPalette() {
                         </div>
                       )}
                       <button
+                        type="button"
                         id={item.id}
                         role="option"
                         aria-selected={isSelected}
                         onClick={() => handleExecute(item.path)}
                         onMouseEnter={() => setSelectedIndex(index)}
-                        className={`w-full flex items-center text-left px-3.5 py-2.5 rounded-xl transition-all cursor-pointer group ${
+                        className={`w-full flex items-center text-left px-3.5 py-2.5 rounded-lg transition-all cursor-pointer group ${
                           isSelected
                             ? "bg-primary/10 border border-primary/25 shadow-xs"
                             : "hover:bg-muted/50 border border-transparent"
                         }`}
                       >
-                        <div className={`p-2 rounded-lg mr-3.5 shrink-0 ${item.bg}`}>
+                        <div className={`p-2 rounded-md mr-3.5 shrink-0 ${item.bg}`}>
                           {item.useElesiumLogo ? (
                             <ElesiumLogo size={16} />
                           ) : (
@@ -308,7 +309,7 @@ export function CommandPalette() {
                               {item.title}
                             </span>
                             {item.badge && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-muted text-muted-foreground border border-border/60">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/60">
                                 {item.badge}
                               </span>
                             )}

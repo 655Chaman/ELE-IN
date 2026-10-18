@@ -12,6 +12,7 @@ import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { SettingsLoadingSkeleton } from "@/components/SettingsLoadingSkeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { usePaywall } from "@/contexts/PaywallContext";
+import { CustomSelect } from "@/components/ui/select";
 
 const COMMON_TIMEZONES = [
   { value: "UTC", label: "UTC (Coordinated Universal Time)", region: "Global" },
@@ -305,13 +306,11 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
 
   return (
     <div className="space-y-6 max-w-4xl font-sans">
-      <div className="p-8 rounded-[24px] border border-gray-100 bg-white relative overflow-hidden shadow-sm">
-        <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/60"></div>
-        
+      <div className="p-8 rounded-xl border border-gray-100 bg-white relative overflow-hidden shadow-sm">
         {/* Header Station */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-primary/10 rounded-2xl text-primary shadow-xs">
+            <div className="p-3 bg-primary/10 rounded-xl text-primary shadow-xs">
               <ShieldCheck size={26} />
             </div>
             <div>
@@ -337,7 +336,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
         </div>
 
         {/* Global Template Advisory */}
-        <div className="mb-6 p-4 bg-primary/5 border border-primary/20 rounded-2xl flex gap-3.5 items-start">
+        <div className="mb-6 p-4 bg-primary/5 border border-primary/20 rounded-xl flex gap-3.5 items-start">
           <Info className="text-primary shrink-0 mt-0.5" size={19} />
           <div className="text-xs text-gray-700 leading-relaxed">
             <strong className="text-primary font-bold">Template Inheritance Model:</strong> Changing these values establishes the baseline parameters for <strong>newly connected accounts</strong>. Existing sender profiles preserve their individual custom calibrations unless manually synced in the LinkedIn Accounts Command Center.
@@ -346,7 +345,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
 
         {/* Pro Paywall Teaser */}
         {isCustomSendingLocked && (
-          <div className="mb-8 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-primary/10 to-amber-500/5 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="mb-8 p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-primary/10 to-amber-500/5 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
                 <Lock size={18} />
@@ -366,8 +365,9 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
               </div>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Custom Sending Schedules & Ramp Pacing" })}
-              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-amber-500/25 shrink-0 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-amber-500/25 shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Zap size={13} className="fill-current" />
               Upgrade to Growth Pro
@@ -377,7 +377,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
 
         <div className="space-y-6">
           {/* Section 1: Calibrated Safety Profiles */}
-          <div className="p-5 rounded-2xl border border-gray-200/80 bg-gray-50/50">
+          <div className="p-5 rounded-xl border border-gray-200/80 bg-gray-50/50">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
@@ -479,7 +479,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
           </div>
 
           {/* Section 2: Working Hours & Timezone Pacing Station (Layer 0 & 1) */}
-          <div className="border border-gray-200 bg-white rounded-2xl p-6 shadow-xs">
+          <div className="border border-gray-200 bg-white rounded-xl p-6 shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-gray-100">
               <div>
                 <h3 className="text-base font-bold tracking-tight text-gray-900 flex items-center gap-2">
@@ -524,18 +524,17 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                     </span>
                   )}
                 </label>
-                <select
+                <CustomSelect
                   value={timezone}
                   disabled={isCustomSendingLocked}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:ring-2 ring-primary outline-none disabled:opacity-60 disabled:cursor-pointer"
-                >
-                  {COMMON_TIMEZONES.map(tz => (
-                    <option key={tz.value} value={tz.value}>
-                      {tz.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setTimezone}
+                  size="sm"
+                  triggerClassName="bg-gray-50 border-gray-200 rounded-xl text-xs font-semibold text-gray-900"
+                  options={COMMON_TIMEZONES.map(tz => ({
+                    value: tz.value,
+                    label: tz.label,
+                  }))}
+                />
                 <p className="text-[11px] text-gray-400 mt-1">Actions are scheduled relative to this clock.</p>
               </div>
 
@@ -665,7 +664,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
           </div>
 
           {/* Section 3: Daily Limits Card (Layer 0 & Layer 2) */}
-          <div className="border border-gray-200 bg-white rounded-2xl p-6 shadow-xs">
+          <div className="border border-gray-200 bg-white rounded-xl p-6 shadow-xs">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
               <div>
                 <h3 className="text-base font-bold tracking-tight text-gray-900 flex items-center gap-2">
@@ -815,7 +814,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
 
               {/* Extreme Volume Paranoia Checkbox (Layer 2) */}
               {isExtremeVolume && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
                   <ShieldAlert size={18} className="text-red-600 shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <h4 className="text-xs font-bold text-red-900">High Volume Acknowledgment Required</h4>
@@ -840,7 +839,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
           </div>
 
           {/* Section 4: Warmup Ramp Configuration */}
-          <div className="border border-gray-200 bg-white rounded-2xl p-6 shadow-xs">
+          <div className="border border-gray-200 bg-white rounded-xl p-6 shadow-xs">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
               <div>
                 <h3 className="text-base font-bold tracking-tight text-gray-900 flex items-center gap-2">
@@ -904,7 +903,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
               </div>
 
               {/* 30-Day Warmup Projection SVG */}
-              <div className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50/50">
+              <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50/50">
                 <button 
                   type="button"
                   onClick={() => setShowChart(!showChart)}
@@ -989,7 +988,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-2xl flex items-start gap-3 shadow-xs"
+                className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-start gap-3 shadow-xs"
               >
                 <CheckCircle2 className="shrink-0 mt-0.5 text-emerald-600" size={20} />
                 <div>
@@ -1019,7 +1018,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
               <button
                 type="button"
                 onClick={() => openPaywall({ featureName: "Custom Sending Schedules & Ramp Pacing" })}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer text-xs"
+                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl transition-all shadow-md shadow-amber-500/20 cursor-pointer text-xs"
               >
                 <Lock size={16} />
                 <span>Upgrade to Customize Defaults</span>
@@ -1029,7 +1028,7 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                 type="button"
                 onClick={handleSave}
                 disabled={isSaveBlocked}
-                className="flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/20 active:scale-95 text-xs cursor-pointer"
+                className="flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/20 text-xs cursor-pointer"
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 {saving ? "Saving Defaults..." : "Save Guardrails & Defaults"}

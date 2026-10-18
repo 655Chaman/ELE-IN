@@ -2,6 +2,7 @@ import logging
 import uuid
 import csv
 import io
+import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
@@ -33,6 +34,34 @@ def sanitize_text(val: Optional[str]) -> str:
     return cleaned
 
 
+# Paranoia Layer 1 & 2: In-memory suppression list for offline & test safety
+_IN_MEMORY_SUPPRESSIONS: List[Dict[str, Any]] = []
+
+
+def register_in_memory_suppression(
+    workspace_id: str,
+    linkedin_url: Optional[str] = None,
+    email: Optional[str] = None,
+    domain: Optional[str] = None,
+    reason: Optional[str] = "Manual suppression"
+) -> None:
+    """
+    Registers an entry in the in-memory suppression list for testing or zero-migration safety.
+    """
+    _IN_MEMORY_SUPPRESSIONS.append({
+        "workspace_id": workspace_id,
+        "linkedin_url": linkedin_url.strip().lower() if linkedin_url else None,
+        "email": email.strip().lower() if email else None,
+        "domain": domain.strip().lower() if domain else None,
+        "reason": reason
+    })
+
+
+def clear_in_memory_suppressions() -> None:
+    """Clears all in-memory suppression entries."""
+    _IN_MEMORY_SUPPRESSIONS.clear()
+
+
 # Paranoia Layer 1: In-memory fallback for zero-migration resilience
 _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
     {
@@ -41,6 +70,8 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
         "lead_id": "lead-trig-1",
         "prospect_name": "Elena Rostova",
         "company_name": "Veloce Systems",
+        "email": "elena@velocesystems.com",
+        "linkedin_url": "https://linkedin.com/in/elena-rostova",
         "event_type": "NEW_ROLE",
         "event_data": {
             "new_title": "VP of Revenue Operations",
@@ -59,6 +90,8 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
         "lead_id": "lead-trig-2",
         "prospect_name": "Marcus Vance",
         "company_name": "Apex Cloud",
+        "email": "marcus@apexcloud.io",
+        "linkedin_url": "https://linkedin.com/in/marcusvance",
         "event_type": "FUNDING_ROUND",
         "event_data": {
             "round_type": "Series B",
@@ -77,6 +110,8 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
         "lead_id": "lead-trig-3",
         "prospect_name": "Sarah Lin",
         "company_name": "Quantify Health",
+        "email": "sarah@quantifyhealth.com",
+        "linkedin_url": "https://linkedin.com/in/sarah-lin",
         "event_type": "PROMOTION",
         "event_data": {
             "new_title": "Chief Growth Officer",
@@ -94,6 +129,8 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
         "lead_id": "lead-trig-4",
         "prospect_name": "Devin Miller",
         "company_name": "HyperScale Labs",
+        "email": "devin@hyperscalelabs.com",
+        "linkedin_url": "https://linkedin.com/in/devin-miller",
         "event_type": "HIRING_SURGE",
         "event_data": {
             "open_sales_roles": 6,
@@ -114,37 +151,125 @@ def generate_trigger_icebreaker(
     event_type: str,
     prospect_name: str,
     company_name: str,
-    event_data: Dict[str, Any]
+    event_data: Optional[Dict[str, Any]] = None
 ) -> str:
     """
-    Paranoia Layer 0 & 2: Generates high-converting, personalized opening icebreaker.
-    Neutralizes formula injection and enforces maximum 280 characters.
+    Paranoia Layer 0, 1 & 2: Generates high-converting, personalized opening icebreaker.
+    - Layer 0: Null/None string sanitization for names, company, amounts, and roles.
+    - Layer 1: Stale Trigger Detection: If tenure_days > 90, adaptively shifts from "first 90 days" ramp
+               to active leadership execution to prevent automated bot embarrassment.
+    - Layer 2: Neutralizes formula injection and enforces intelligent word-boundary length clamping (<= 280 chars).
     """
-    safe_prospect = sanitize_text(prospect_name)
-    safe_company = sanitize_text(company_name)
-    first_name = safe_prospect.split()[0] if safe_prospect else "there"
-    
-    if event_type == "NEW_ROLE":
-        title = sanitize_text(event_data.get("new_title", "your new role"))
-        icebreaker = f"{first_name}, congrats on taking the {title} seat at {safe_company}! Usually in the first 90 days, pipeline predictability is top priority. Thought this benchmark might be useful as you ramp up."
-    elif event_type == "FUNDING_ROUND":
-        round_type = sanitize_text(event_data.get("round_type", "new round"))
-        amount = sanitize_text(event_data.get("amount_raised", ""))
-        amount_str = f" {amount}" if amount else ""
-        icebreaker = f"Huge congrats on the{amount_str} {round_type} for {safe_company}! As your team accelerates outbound to hit aggressive ARR targets, our pre-warm workflows double meeting conversions."
-    elif event_type == "PROMOTION":
-        title = sanitize_text(event_data.get("new_title", "your expanded role"))
-        icebreaker = f"Saw your well-deserved promotion to {title} at {safe_company}! With the broader mandate, curious how your team is tackling multi-channel outbound efficiency this quarter?"
-    elif event_type == "HIRING_SURGE":
-        roles = event_data.get("open_sales_roles", "multiple")
-        icebreaker = f"Noticed {safe_company} is actively hiring {roles} new SDRs. We help high-growth teams equip new reps with automated social pre-warming so they hit quota from week 2."
-    else:
-        icebreaker = f"Hey {first_name}, noticed exciting momentum at {safe_company} recently. Wanted to share a quick teardown on how peers in your space are driving outbound meetings."
+    safe_data = event_data if isinstance(event_data, dict) else {}
 
-    # Paranoia Layer 2: Bound length
-    if len(icebreaker) > 280:
-        icebreaker = icebreaker[:277] + "..."
-        
+    # Paranoia Layer 0: Defend against None / null / undefined string contamination
+    raw_prospect = sanitize_text(prospect_name)
+    if not raw_prospect or raw_prospect.strip().lower() in ("none", "null", "undefined", "there", "prospect"):
+        first_name = "there"
+    else:
+        first_part = raw_prospect.split()[0]
+        first_name = "there" if first_part.strip().lower() in ("none", "null", "undefined") else first_part
+
+    raw_company = sanitize_text(company_name)
+    if not raw_company or raw_company.strip().lower() in ("none", "null", "undefined", "n/a", "company", "your company"):
+        safe_company = "your company"
+    else:
+        safe_company = raw_company
+
+    clean_type = str(event_type or "NEW_ROLE").strip().upper()
+
+    if clean_type == "NEW_ROLE":
+        raw_title = sanitize_text(safe_data.get("new_title", ""))
+        if not raw_title or raw_title.strip().lower() in ("none", "null", "undefined", "n/a"):
+            title = "your new role"
+        else:
+            title = raw_title
+
+        # Paranoia Layer 1: Stale Trigger Defense (Tenure > 90 Days)
+        tenure_days = safe_data.get("tenure_days")
+        if tenure_days is None and safe_data.get("start_date"):
+            parsed_start = _parse_iso_or_ymd(str(safe_data.get("start_date")))
+            if parsed_start:
+                tenure_days = max(0, (datetime.utcnow() - parsed_start).days)
+
+        try:
+            tenure_val = int(tenure_days) if tenure_days is not None else None
+        except (ValueError, TypeError):
+            tenure_val = None
+
+        if tenure_val is not None and tenure_val > 90:
+            icebreaker = (
+                f"{first_name}, congrats on leading the {title} team at {safe_company}! "
+                f"As you steer ongoing initiatives, pipeline predictability is always top of mind. "
+                f"Thought this benchmark might be useful for your team."
+            )
+        else:
+            icebreaker = (
+                f"{first_name}, congrats on taking the {title} seat at {safe_company}! "
+                f"Usually in the initial ramp, pipeline predictability is top priority. "
+                f"Thought this benchmark might be useful as you ramp up."
+            )
+
+    elif clean_type == "FUNDING_ROUND":
+        raw_round = sanitize_text(safe_data.get("round_type", ""))
+        if not raw_round or raw_round.strip().lower() in ("none", "null", "undefined", "n/a"):
+            round_type = "funding round"
+        else:
+            round_type = raw_round
+
+        raw_amount = sanitize_text(safe_data.get("amount_raised", ""))
+        if raw_amount and raw_amount.strip().lower() not in ("none", "null", "undefined", "undisclosed", "n/a", "$0", "0"):
+            amount_str = f" {raw_amount}"
+        else:
+            amount_str = ""
+
+        icebreaker = (
+            f"Huge congrats on the{amount_str} {round_type} for {safe_company}! "
+            f"As your team accelerates outbound to hit aggressive ARR targets, "
+            f"our pre-warm workflows double meeting conversions."
+        )
+
+    elif clean_type == "PROMOTION":
+        raw_title = sanitize_text(safe_data.get("new_title", ""))
+        if not raw_title or raw_title.strip().lower() in ("none", "null", "undefined", "n/a"):
+            title = "your expanded role"
+        else:
+            title = raw_title
+
+        icebreaker = (
+            f"Saw your well-deserved promotion to {title} at {safe_company}! "
+            f"With the broader mandate, curious how your team is tackling multi-channel outbound efficiency this quarter?"
+        )
+
+    elif clean_type == "HIRING_SURGE":
+        raw_roles = safe_data.get("open_sales_roles", "")
+        roles_str = sanitize_text(raw_roles)
+        if not roles_str or roles_str.strip().lower() in ("none", "null", "undefined", "0", "n/a", "multiple"):
+            roles_clause = "new SDRs"
+        else:
+            roles_clause = f"{roles_str} new SDRs"
+
+        icebreaker = (
+            f"Noticed {safe_company} is actively hiring {roles_clause}. "
+            f"We help high-growth teams equip new reps with automated social pre-warming so they hit quota from week 2."
+        )
+
+    else:
+        icebreaker = (
+            f"Hey {first_name}, noticed exciting momentum at {safe_company} recently. "
+            f"Wanted to share a quick teardown on how peers in your space are driving outbound meetings."
+        )
+
+    # Paranoia Layer 2: Intelligent word-boundary length clamping (Max 280 chars)
+    max_len = 280
+    if len(icebreaker) > max_len:
+        truncated = icebreaker[:max_len - 3]
+        last_space = truncated.rfind(" ")
+        if last_space > 0:
+            icebreaker = truncated[:last_space].rstrip(",;:- ") + "..."
+        else:
+            icebreaker = truncated + "..."
+
     return sanitize_text(icebreaker)
 
 
@@ -411,7 +536,10 @@ def enroll_lead_from_trigger(
     """
     Paranoia Layer 0, 1 & 2:
     Enrolls lead into a high-priority trigger sequence.
-    Guarantees no duplicate enrollment, tenant scoping, and formula sanitization.
+    - Layer 0: Guarantees no duplicate enrollment, tenant scoping, and formula sanitization.
+    - Layer 1: In-flight race defense & cross-workspace authorization.
+    - Layer 2: Workspace Suppression List (DNC) defense. Blocks enrollment if lead email,
+               LinkedIn URL, or company domain is suppressed.
     """
     target_event = None
     norm_ws = _normalize_uuid(workspace_id, "workspace")
@@ -461,6 +589,79 @@ def enroll_lead_from_trigger(
             "message": "Lead is already enrolled in a trigger sequence.",
             "trigger_event": target_event
         }
+
+    # Paranoia Layer 1 & 2: Contact Info Resolution & Suppression (DNC) Defense
+    lead_email = target_event.get("email") or target_event.get("event_data", {}).get("email")
+    lead_li = target_event.get("linkedin_url") or target_event.get("event_data", {}).get("linkedin_url")
+    lead_company = target_event.get("company_name")
+    lead_domain = target_event.get("domain") or (
+        f"{re.sub(r'[^a-zA-Z0-9-]', '', lead_company.lower())}.com" if lead_company else None
+    )
+
+    if supabase:
+        if target_event.get("lead_id"):
+            try:
+                l_res = supabase.table("leads").select("email, linkedin_url, company").eq("id", target_event["lead_id"]).limit(1).execute()
+                if l_res.data and len(l_res.data) > 0:
+                    lrow = l_res.data[0]
+                    lead_email = lead_email or lrow.get("email")
+                    lead_li = lead_li or lrow.get("linkedin_url")
+            except Exception as e:
+                logger.warning(f"Could not fetch lead details from DB for suppression check: {e}")
+
+        try:
+            from leads.backend.services.suppression_service import check_lead_suppression
+            sup_res = check_lead_suppression(
+                supabase=supabase,
+                workspace_id=workspace_id,
+                linkedin_url=lead_li,
+                email=lead_email,
+                domain=lead_domain
+            )
+            if sup_res.get("suppressed"):
+                target_event["status"] = "BLOCKED_SUPPRESSED"
+                return {
+                    "status": "blocked_suppressed",
+                    "message": f"Enrollment blocked: prospect is on workspace suppression list (matched by {sup_res.get('matched_by')}). Outreach prohibited.",
+                    "reason": "SUPPRESSION_LIST_MATCH",
+                    "matched_by": sup_res.get("matched_by"),
+                    "trigger_event_id": trigger_event_id
+                }
+        except Exception as e:
+            logger.warning(f"Suppression list DB check failed in trigger enrollment: {e}")
+
+    # Check in-memory suppression registry (zero-migration & offline fallback)
+    for entry in _IN_MEMORY_SUPPRESSIONS:
+        entry_ws = entry.get("workspace_id")
+        if entry_ws and entry_ws not in (workspace_id, norm_ws, "ws-default"):
+            continue
+        if lead_email and entry.get("email") and entry["email"] == lead_email.lower().strip():
+            target_event["status"] = "BLOCKED_SUPPRESSED"
+            return {
+                "status": "blocked_suppressed",
+                "message": f"Enrollment blocked: prospect is on workspace suppression list (matched by email). Outreach prohibited.",
+                "reason": "SUPPRESSION_LIST_MATCH",
+                "matched_by": "email",
+                "trigger_event_id": trigger_event_id
+            }
+        if lead_li and entry.get("linkedin_url") and entry["linkedin_url"] == lead_li.lower().strip():
+            target_event["status"] = "BLOCKED_SUPPRESSED"
+            return {
+                "status": "blocked_suppressed",
+                "message": f"Enrollment blocked: prospect is on workspace suppression list (matched by linkedin_url). Outreach prohibited.",
+                "reason": "SUPPRESSION_LIST_MATCH",
+                "matched_by": "linkedin_url",
+                "trigger_event_id": trigger_event_id
+            }
+        if lead_domain and entry.get("domain") and entry["domain"] == lead_domain.lower().strip():
+            target_event["status"] = "BLOCKED_SUPPRESSED"
+            return {
+                "status": "blocked_suppressed",
+                "message": f"Enrollment blocked: company domain is on workspace suppression list (matched by domain). Outreach prohibited.",
+                "reason": "SUPPRESSION_LIST_MATCH",
+                "matched_by": "domain",
+                "trigger_event_id": trigger_event_id
+            }
 
     raw_icebreaker = custom_icebreaker or target_event.get("generated_icebreaker") or generate_trigger_icebreaker(
         target_event.get("event_type", "NEW_ROLE"),

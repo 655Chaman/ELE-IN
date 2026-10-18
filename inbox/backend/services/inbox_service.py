@@ -148,17 +148,23 @@ def resolve_inbound_lead_and_campaign_context(
         except Exception as e:
             logger.warning(f"Error resolving lead_id from thread with workspace_id: {e}")
 
-    # 2. Fallback to profile_url / linkedin_url
+    # 2. Fallback to profile_url / linkedin_url (Strictly Workspace-Scoped)
     profile_url = message.get("profile_url") or message.get("linkedin_url")
     if not lead_id and profile_url:
         try:
-            lead_direct = supabase.table("leads").select("id").eq("workspace_id", workspace_id).eq("linkedin_url", profile_url).limit(1).execute()
+            from leads.backend.services.data_hygiene import DataHygieneService
+            norm_url = DataHygieneService.normalize_linkedin_url(profile_url) or profile_url
+            
+            # Query strictly scoped to workspace_id using canonical and raw URL
+            lead_q = supabase.table("leads").select("id").eq("workspace_id", workspace_id)
+            if norm_url != profile_url:
+                lead_direct = lead_q.or_(f"linkedin_url.eq.{norm_url},linkedin_url.eq.{profile_url}").limit(1).execute()
+            else:
+                lead_direct = lead_q.eq("linkedin_url", norm_url).limit(1).execute()
+
             if lead_direct.data:
                 lead_id = lead_direct.data[0]["id"]
-            else:
-                lead_any = supabase.table("leads").select("id").eq("linkedin_url", profile_url).limit(1).execute()
-                if lead_any.data:
-                    lead_id = lead_any.data[0]["id"]
+            # Paranoia Layer 1: Under no circumstances resolve across foreign workspaces!
         except Exception as e:
             logger.warning(f"Error resolving lead_id from profile_url: {e}")
 
@@ -166,7 +172,7 @@ def resolve_inbound_lead_and_campaign_context(
 
     if lead_id:
         try:
-            enroll_res = supabase.table("campaign_enrollments").select("id, campaign_id").eq("lead_id", lead_id).execute()
+            enroll_res = supabase.table("campaign_enrollments").select("id, campaign_id").eq("workspace_id", workspace_id).eq("lead_id", lead_id).execute()
             if enroll_res.data:
                 enroll_ids = [e["id"] for e in enroll_res.data]
                 # Filter campaign_execution_states by status including 'pending' and 'waiting_for_reply'

@@ -30,6 +30,7 @@ import { ReplySentimentStudioModal } from "@/components/campaigns/ReplySentiment
 import { DisplacementStudioModal } from "@/components/campaigns/DisplacementStudioModal"
 import { CalendarConciergeStudioModal } from "@/components/campaigns/CalendarConciergeStudioModal"
 import { usePaywall } from "@/contexts/PaywallContext"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const STATUS_CONFIG: Record<string, any> = {
   ACTIVE: { label: "Active", dot: "bg-success", text: "text-success", badgeBg: "bg-success/10 border-success/20" },
@@ -56,12 +57,13 @@ export interface Campaign {
 
 function EmptyCampaignCard({ id, icon: Icon, title, desc, onSelect }: any) {
   return (
-    <div 
-      className="p-7 md:p-8 rounded-2xl border border-border bg-card hover:border-foreground/30 hover:bg-card/90 hover:shadow-lg transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[210px]" 
+    <button 
+      type="button"
+      className="p-7 md:p-8 rounded-lg border border-border bg-card hover:border-foreground/30 hover:bg-card/90 hover:shadow-lg transition-all text-left flex flex-col justify-between group cursor-pointer min-h-[210px] w-full" 
       onClick={() => onSelect(id)}
     >
       <div>
-        <div className="w-11 h-11 rounded-xl bg-muted/60 border border-border/50 flex items-center justify-center mb-5 group-hover:border-primary/40 group-hover:bg-primary/5 transition-all">
+        <div className="w-11 h-11 rounded-lg bg-muted/60 border border-border/50 flex items-center justify-center mb-5 group-hover:border-primary/40 group-hover:bg-primary/5 transition-all">
           {Icon && <Icon size={22} className="text-muted-foreground group-hover:text-primary transition-colors" />}
         </div>
         <h3 className="text-base font-semibold text-foreground mb-2 group-hover:text-primary transition-colors">{title}</h3>
@@ -71,7 +73,7 @@ function EmptyCampaignCard({ id, icon: Icon, title, desc, onSelect }: any) {
         <span>Start</span>
         <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -583,6 +585,7 @@ export function EleInCampaigns() {
         {/* Global Action Controls */}
         <div className="flex items-center gap-2.5">
           <button
+            type="button"
             onClick={() => setShowGrowthHub(true)}
             className="px-3.5 py-2 bg-background hover:bg-muted text-foreground border border-border rounded-xl font-medium text-xs transition-colors cursor-pointer"
           >
@@ -590,6 +593,7 @@ export function EleInCampaigns() {
           </button>
 
           <button
+            type="button"
             onClick={() => { resetTree(); navigate('/elein/campaigns/new'); }}
             className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl font-medium text-xs transition-colors cursor-pointer whitespace-nowrap"
           >
@@ -601,7 +605,7 @@ export function EleInCampaigns() {
 
       {/* ─── FLEET VITAL STATISTICS RIBBON (Clean 3-Metric Overview) ─────────── */}
       {campaigns.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border border border-border rounded-2xl bg-card mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border border border-border rounded-xl bg-card mb-6">
           {/* Cell 1: Total Leads */}
           <div className="p-4">
             <p className="text-xs text-muted-foreground">Total Leads</p>
@@ -641,7 +645,7 @@ export function EleInCampaigns() {
 
       {/* ─── ENVIRONMENTAL ATTENTION BANNERS (Layer 1) ───────────────────────── */}
       {fleetStats.activeWithZeroSenders > 0 && (
-        <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+        <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-xl flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 text-foreground">
             <span className="font-medium">
               {fleetStats.activeWithZeroSenders} active campaign{fleetStats.activeWithZeroSenders > 1 ? 's' : ''} with 0 senders assigned.
@@ -651,8 +655,9 @@ export function EleInCampaigns() {
             </span>
           </div>
           <button
+            type="button"
             onClick={() => navigate('/elein/accounts')}
-            className="px-3 py-1.5 bg-background hover:bg-muted text-foreground border border-border rounded-xl text-xs font-medium shrink-0 transition-colors cursor-pointer"
+            className="px-3 py-1.5 bg-background hover:bg-muted text-foreground border border-border rounded-lg text-xs font-medium shrink-0 transition-colors cursor-pointer"
           >
             Assign Senders
           </button>
@@ -661,13 +666,14 @@ export function EleInCampaigns() {
 
       {/* ─── DRAFT RESTORATION BANNER ────────────────────────────────────────── */}
       {draftExists && (
-        <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+        <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-xl flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <span className="font-medium text-foreground">Unsaved campaign draft</span>
             <span className="text-muted-foreground">Saved locally from {draftTime}.</span>
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => {
                 setConfirmModal({
                   isOpen: true,
@@ -685,8 +691,9 @@ export function EleInCampaigns() {
               Discard
             </button>
             <button
+              type="button"
               onClick={() => navigate("/elein/campaigns/new?resume=true")}
-              className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium transition-colors cursor-pointer"
             >
               Resume Draft
             </button>
@@ -727,6 +734,7 @@ export function EleInCampaigns() {
           </div>
           
           <button
+            type="button"
             onClick={() => {
               useHRTreeStore.getState().reset();
               try { localStorage.removeItem("elein_unsaved_draft"); } catch (_) {}
@@ -741,7 +749,7 @@ export function EleInCampaigns() {
         <div className="space-y-4">
           {/* Multi-Campaign Scaling Pay Ramp Banner */}
           {!isPro && statusCounts.ACTIVE >= maxActiveCampaigns && (
-            <div className="border border-border bg-card px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs">
+            <div className="border border-border bg-card px-4 py-2.5 rounded-xl flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-foreground">
                   Free plan limit reached ({statusCounts.ACTIVE}/{maxActiveCampaigns} active)
@@ -751,8 +759,9 @@ export function EleInCampaigns() {
                 </span>
               </div>
               <button
+                type="button"
                 onClick={() => openPaywall({ featureName: "Active Campaigns Limit" })}
-                className="px-3.5 py-1.5 rounded-xl bg-background hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg bg-background hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer"
               >
                 Unlock 20 Campaigns
               </button>
@@ -760,7 +769,7 @@ export function EleInCampaigns() {
           )}
 
           {/* ─── CONTROLS BAR: SEARCH, FILTERS & SORT ──────────────────────────── */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-card border border-border rounded-2xl">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-card border border-border rounded-xl">
             {/* Filter chips */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {[
@@ -772,9 +781,10 @@ export function EleInCampaigns() {
                 const isActive = statusFilter === tab.key;
                 return (
                   <button
+                    type="button"
                     key={tab.key}
                     onClick={() => setStatusFilter(tab.key as any)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors border cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border cursor-pointer ${
                       isActive
                         ? 'bg-muted border-border text-foreground'
                         : 'bg-background hover:bg-muted/50 border-transparent text-muted-foreground hover:text-foreground'
@@ -793,7 +803,7 @@ export function EleInCampaigns() {
             {/* Search & Sort Controls */}
             <div className="flex items-center gap-2 flex-wrap">
               {/* Search Box */}
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-background border border-border rounded-xl w-full sm:w-56">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-background border border-border rounded-lg w-full sm:w-56">
                 <Search size={13} className="text-muted-foreground shrink-0" />
                 <input
                   value={search}
@@ -802,26 +812,29 @@ export function EleInCampaigns() {
                   className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground focus:outline-none"
                 />
                 {search && (
-                  <button onClick={() => setSearch("")} className="text-muted-foreground hover:text-foreground">
+                  <button type="button" onClick={() => setSearch("")} className="text-muted-foreground hover:text-foreground">
                     <X size={12} />
                   </button>
                 )}
               </div>
 
               {/* Sort Dropdown */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-xl text-xs text-muted-foreground">
-                <ArrowUpDown size={13} className="shrink-0 text-muted-foreground" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent text-xs text-foreground font-medium outline-none cursor-pointer"
-                >
-                  <option value="created_desc">Newest First</option>
-                  <option value="created_asc">Oldest First</option>
-                  <option value="leads_desc">Most Prospects</option>
-                  <option value="conversion_desc">Top Conversion</option>
-                  <option value="name_asc">Name (A-Z)</option>
-                </select>
+              <div className="flex items-center gap-1.5">
+                <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
+                  <SelectTrigger size="sm" className="w-[150px] bg-background border-border text-xs">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <ArrowUpDown size={13} className="shrink-0 text-muted-foreground" />
+                      <SelectValue placeholder="Sort by..." />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="created_desc">Newest First</SelectItem>
+                    <SelectItem value="created_asc">Oldest First</SelectItem>
+                    <SelectItem value="leads_desc">Most Prospects</SelectItem>
+                    <SelectItem value="conversion_desc">Top Conversion</SelectItem>
+                    <SelectItem value="name_asc">Name (A-Z)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
@@ -833,7 +846,7 @@ export function EleInCampaigns() {
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className="bg-card text-foreground border border-border rounded-2xl shadow-sm px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3"
+                className="bg-card text-foreground border border-border rounded-xl shadow-sm px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3"
               >
                 <div className="flex items-center gap-2.5">
                   <span className="px-2 py-0.5 rounded-lg bg-muted text-foreground font-mono text-xs font-medium">
@@ -843,6 +856,7 @@ export function EleInCampaigns() {
                     Campaign{selectedIds.size > 1 ? 's' : ''} Selected
                   </span>
                   <button
+                    type="button"
                     onClick={() => setSelectedIds(new Set())}
                     className="text-xs text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer"
                   >
@@ -852,25 +866,28 @@ export function EleInCampaigns() {
 
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
+                    type="button"
                     onClick={handleBatchResume}
                     disabled={isBatchOperating}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isBatchOperating && batchActionType === 'resume' ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
                     <span>Resume Selected</span>
                   </button>
                   <button
+                    type="button"
                     onClick={handleBatchPause}
                     disabled={isBatchOperating}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isBatchOperating && batchActionType === 'pause' ? <Loader2 size={13} className="animate-spin" /> : <Pause size={13} />}
                     <span>Pause Selected</span>
                   </button>
                   <button
+                    type="button"
                     onClick={handleBatchDelete}
                     disabled={isBatchOperating}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-destructive text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-destructive text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isBatchOperating && batchActionType === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                     <span>Delete Selected</span>
@@ -882,14 +899,15 @@ export function EleInCampaigns() {
 
           {/* ─── CAMPAIGNS DATA TABLE ─────────────────────────────────────────── */}
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-10 text-center rounded-2xl border border-border bg-card">
+            <div className="flex flex-col items-center justify-center p-10 text-center rounded-xl border border-border bg-card">
               <h3 className="text-sm font-semibold text-foreground mb-1">No matching campaigns found</h3>
               <p className="text-xs text-muted-foreground max-w-sm mb-4">
                 No campaigns matched your current filter criteria.
               </p>
               <button
+                type="button"
                 onClick={() => { setSearch(""); setStatusFilter("ALL"); }}
-                className="px-3.5 py-1.5 rounded-xl border border-border bg-background text-foreground text-xs font-medium hover:bg-muted cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-medium hover:bg-muted cursor-pointer"
               >
                 Clear Filters
               </button>
@@ -903,7 +921,7 @@ export function EleInCampaigns() {
                 </div>
               </div>
 
-              <div className="bg-card rounded-2xl border border-border overflow-hidden">
+              <div className="bg-card rounded-xl border border-border overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-muted/30 border-b border-border text-muted-foreground text-xs font-medium">
@@ -1120,7 +1138,7 @@ export function EleInCampaigns() {
                                 {openRowMenuId === c.id && (
                                   <div
                                     ref={rowMenuRef}
-                                    className="absolute right-0 top-full mt-1 w-48 p-1.5 bg-popover border border-border rounded-2xl shadow-lg z-50 text-left"
+                                    className="absolute right-0 top-full mt-1 w-48 p-1.5 bg-popover border border-border rounded-xl shadow-lg z-50 text-left"
                                   >
                                     <button
                                       type="button"
@@ -1129,7 +1147,7 @@ export function EleInCampaigns() {
                                         handleDuplicateCampaign(c.id, c.name);
                                       }}
                                       disabled={duplicatingId === c.id}
-                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
                                     >
                                       <Copy size={14} className="text-muted-foreground" />
                                       <span>Duplicate Campaign</span>
@@ -1141,7 +1159,7 @@ export function EleInCampaigns() {
                                         setOpenRowMenuId(null);
                                         setSelectedCertCampaign({ id: c.id, name: c.name });
                                       }}
-                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
                                     >
                                       <Award size={14} className="text-muted-foreground" />
                                       <span>Performance Report</span>
@@ -1153,7 +1171,7 @@ export function EleInCampaigns() {
                                         setOpenRowMenuId(null);
                                         setBanditCampaign({ id: c.id, name: c.name });
                                       }}
-                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
                                     >
                                       <BarChart2 size={14} className="text-muted-foreground" />
                                       <span>Copy Intelligence</span>
@@ -1167,7 +1185,7 @@ export function EleInCampaigns() {
                                         setOpenRowMenuId(null);
                                         remove(c.id);
                                       }}
-                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-xl transition-colors cursor-pointer"
+                                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
                                     >
                                       <Trash2 size={14} />
                                       <span>Delete Campaign</span>
@@ -1228,7 +1246,7 @@ export function EleInCampaigns() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-xl overflow-hidden"
+              className="w-full max-w-sm bg-card border border-border rounded-xl shadow-xl overflow-hidden"
             >
               <div className="p-6">
                 <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
@@ -1239,14 +1257,16 @@ export function EleInCampaigns() {
               </div>
               <div className="px-6 py-4 bg-muted/30 border-t border-border flex items-center justify-end gap-3">
                 <button 
+                  type="button"
                   onClick={() => setConfirmModal(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-muted text-foreground transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold hover:bg-muted text-foreground transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
+                  type="button"
                   onClick={confirmModal.onConfirm}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-destructive hover:bg-destructive/90 text-white transition-colors shadow-xs active:scale-95 cursor-pointer"
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-destructive hover:bg-destructive/90 text-white transition-colors shadow-xs cursor-pointer"
                 >
                   Confirm Delete
                 </button>
@@ -1273,7 +1293,7 @@ export function EleInCampaigns() {
               exit={{ opacity: 0, scale: 0.98, y: 8 }}
               transition={{ duration: 0.15 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-3xl max-h-[88vh] bg-card border border-border rounded-2xl shadow-xl overflow-hidden flex flex-col"
+              className="w-full max-w-3xl max-h-[88vh] bg-card border border-border rounded-xl shadow-xl overflow-hidden flex flex-col"
             >
               {/* Hub Header */}
               <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
@@ -1284,8 +1304,9 @@ export function EleInCampaigns() {
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowGrowthHub(false)}
-                  className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 >
                   <X size={16} />
                 </button>
@@ -1299,9 +1320,10 @@ export function EleInCampaigns() {
                     1. Increase Replies & Bookings
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setBanditCampaign({ id: "", name: "Global Portfolio" }); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">A/B Test Messages</h4>
@@ -1310,11 +1332,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowSentimentModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Auto-Snooze & Intent Filters</h4>
@@ -1323,11 +1346,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowStoModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Active Hours Scheduling</h4>
@@ -1336,11 +1360,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowCalendarModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">1-Click Meeting Link</h4>
@@ -1349,7 +1374,7 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
                   </div>
                 </div>
 
@@ -1359,9 +1384,10 @@ export function EleInCampaigns() {
                     2. Multi-Channel Follow-ups & Triggers
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowOmnichannelModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Email if No LinkedIn Reply</h4>
@@ -1370,11 +1396,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowAbmModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Target Multiple People at One Company</h4>
@@ -1383,11 +1410,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowBoomerangModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Job Change Alerts</h4>
@@ -1396,11 +1424,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowEventModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Message Event Attendees</h4>
@@ -1409,7 +1438,7 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
                   </div>
                 </div>
 
@@ -1419,9 +1448,10 @@ export function EleInCampaigns() {
                     3. Account Safety & Domain Health
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowPreWarmModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">LinkedIn Profile Warmup</h4>
@@ -1430,11 +1460,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowDeliverabilityModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Email Spam & Domain Check</h4>
@@ -1443,11 +1474,12 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowDisplacementModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-sm font-medium text-foreground">Competitor Technology Triggers</h4>
@@ -1456,7 +1488,7 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
                   </div>
                 </div>
 
@@ -1466,9 +1498,10 @@ export function EleInCampaigns() {
                     Deliverability & Sender Reputation
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    <div
+                    <button
+                      type="button"
                       onClick={() => { setShowGrowthHub(false); setShowDeliverabilityModal(true); }}
-                      className="p-4 rounded-2xl border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
+                      className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
                         <h4 className="text-xs font-semibold text-foreground">Email Deliverability & Spam Check</h4>
@@ -1477,7 +1510,7 @@ export function EleInCampaigns() {
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </div>
+                    </button>
                   </div>
                 </div>
               </div>

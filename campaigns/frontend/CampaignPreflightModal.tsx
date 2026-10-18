@@ -176,12 +176,12 @@ export function CampaignPreflightModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
         transition={{ duration: 0.15 }}
-        className="relative w-full max-w-3xl max-h-[90vh] bg-card border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden text-foreground"
+        className="relative w-full max-w-3xl max-h-[90vh] bg-card border border-border rounded-xl shadow-xl flex flex-col overflow-hidden text-foreground"
       >
         {/* Top Cockpit Header */}
         <div className="relative px-6 py-4 border-b border-border bg-card flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center border border-border bg-background text-foreground">
+            <div className="w-9 h-9 rounded-md flex items-center justify-center border border-border bg-background text-foreground">
               <Rocket size={18} />
             </div>
             <div>
@@ -202,8 +202,9 @@ export function CampaignPreflightModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-xl border border-border hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-md border border-border hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
             <X size={15} />
           </button>
@@ -212,6 +213,7 @@ export function CampaignPreflightModal({
         {/* Tab Navigator */}
         <div className="flex items-center gap-2 px-6 pt-2 border-b border-border bg-card text-xs font-medium shrink-0">
           <button
+            type="button"
             onClick={() => setActiveTab("checklist")}
             className={cn(
               "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
@@ -224,6 +226,7 @@ export function CampaignPreflightModal({
             Flight Checklist
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("simulator")}
             className={cn(
               "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
@@ -238,6 +241,7 @@ export function CampaignPreflightModal({
             )}
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("warmup")}
             className={cn(
               "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
@@ -249,6 +253,7 @@ export function CampaignPreflightModal({
             Warmup & Pacing
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("shield")}
             className={cn(
               "px-3 py-2 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
@@ -286,6 +291,7 @@ export function CampaignPreflightModal({
               <h4 className="font-semibold text-sm text-destructive">Verification Diagnostic Failed</h4>
               <p className="text-xs text-muted-foreground">{error}</p>
               <button
+                type="button"
                 onClick={runCheck}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-background hover:bg-muted border border-border text-foreground text-xs font-medium rounded-md transition-colors cursor-pointer"
               >
@@ -409,6 +415,7 @@ export function CampaignPreflightModal({
                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
                         {data.sample_previews.map((prev, idx) => (
                           <button
+                            type="button"
                             key={idx}
                             onClick={() => setSelectedLeadPreviewIdx(idx)}
                             className={cn(

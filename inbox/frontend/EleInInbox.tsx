@@ -9,7 +9,6 @@ import { fetcher, fetchWithAuth } from '@/lib/apiClient';
 import { ElesiumLogo } from './components/ElesiumLogo';
 import { usePaywall } from '@/contexts/PaywallContext';
 import { EleInApprovals } from './EleInApprovals';
-import { SIMULATED_SCENARIOS, type SimulatedMessage } from './inboxPlaygroundData';
 import {
   DEAL_STAGES, OUTCOMES, type DealStage, type Message, type ObjectionData,
   type OutcomeType, type ThreadSummary
@@ -144,23 +143,8 @@ export function EleInInbox() {
     }
   };
 
-  // ── Playground Simulator State ──
-  const [emptyViewPreference, setEmptyViewPreference] = useState<'playground' | 'quiet'>(() => {
-    if (typeof window !== 'undefined') {
-      return (
-        (localStorage.getItem('elein_inbox_empty_preference') as 'playground' | 'quiet') ||
-        'playground'
-      );
-    }
-    return 'playground';
-  });
-  const [isManualPlaygroundActive, setIsManualPlaygroundActive] = useState(false);
-
+  // ── Production Inbox: Live Threads Only ──
   const safeThreads = Array.isArray(threads) ? threads : [];
-  const isPlaygroundActive =
-    safeThreads.length === 0
-      ? emptyViewPreference === 'playground'
-      : isManualPlaygroundActive;
 
   // ── Resizable Thread List Width ──
   const [threadListWidth, setThreadListWidth] = useState<number>(() => {
@@ -219,61 +203,6 @@ export function EleInInbox() {
       document.body.style.userSelect = '';
     };
   }, []);
-
-  const [activeScenarioId, setActiveScenarioId] = useState<string>(SIMULATED_SCENARIOS[0].id);
-  const [scenarioMessages, setScenarioMessages] = useState<
-    Record<string, SimulatedMessage[]>
-  >(() => {
-    const init: Record<string, SimulatedMessage[]> = {};
-    SIMULATED_SCENARIOS.forEach((sc) => {
-      init[sc.id] = [...sc.messages];
-    });
-    return init;
-  });
-
-  const [scenarioOutcomes, setScenarioOutcomes] = useState<Record<string, OutcomeType>>(() => {
-    const init: Record<string, OutcomeType> = {};
-    SIMULATED_SCENARIOS.forEach((sc) => {
-      init[sc.id] = sc.initialOutcome;
-    });
-    return init;
-  });
-
-  const [isSimulatingProspectReply, setIsSimulatingProspectReply] = useState(false);
-
-  const activeScenario = useMemo(() => {
-    return (
-      SIMULATED_SCENARIOS.find((s) => s.id === activeScenarioId) || SIMULATED_SCENARIOS[0]
-    );
-  }, [activeScenarioId]);
-
-  // Sync selected thread key when playground is active
-  useEffect(() => {
-    // Only auto-select initial scenario on desktop (>= 768px) so mobile users can navigate back to the scenario list
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    if (isPlaygroundActive && !isMobile && (!selectedThreadKey || !selectedThreadKey.startsWith('sim-'))) {
-      setSelectedThreadKey(activeScenario.threadKey);
-      setSelectedSender(activeScenario.senderName);
-    }
-  }, [isPlaygroundActive, activeScenario, selectedThreadKey]);
-
-  // Reset scenario handler
-  const handleResetScenario = (scenarioId: string) => {
-    const sc = SIMULATED_SCENARIOS.find((s) => s.id === scenarioId);
-    if (!sc) return;
-    setScenarioMessages((prev) => ({
-      ...prev,
-      [scenarioId]: [...sc.messages],
-    }));
-    setScenarioOutcomes((prev) => ({
-      ...prev,
-      [scenarioId]: sc.initialOutcome,
-    }));
-    setReplyText('');
-    setSavedDraftBeforeAI(null);
-    previousDraftRef.current = '';
-    toast.info(`Reset "${sc.senderName}" scenario to initial objection`);
-  };
 
   // ── Composer & Memory State ──
   const [replyText, setReplyText] = useState('');
@@ -448,20 +377,13 @@ export function EleInInbox() {
       setSelectedSender(thread.sender_name);
       setSelectedLeadId(thread.lead_id || null);
 
-      if (isPlaygroundActive) {
-        const matchSc = SIMULATED_SCENARIOS.find((s) => s.threadKey === thread.thread_key);
-        if (matchSc) {
-          setActiveScenarioId(matchSc.id);
-        }
-      }
-
       const cachedDraft = draftsByThreadRef.current[thread.thread_key] || '';
       setReplyText(cachedDraft);
       setSavedDraftBeforeAI(null);
       previousDraftRef.current = '';
       setActiveAIIntent(null);
     },
-    [selectedThreadKey, replyText, isPlaygroundActive]
+    [selectedThreadKey, replyText]
   );
 
   // ── Send Reply with Paranoia Safeguards & 4s Undo ──
@@ -517,49 +439,6 @@ export function EleInInbox() {
     senderName: string,
     leadId: string | null
   ) => {
-    if (isPlaygroundActive) {
-      const newMsg: SimulatedMessage = {
-        id: `sim-user-${Date.now()}`,
-        sender_name: 'You',
-        message_text: sentDraft,
-        direction: 'outbound',
-        created_at: new Date().toISOString(),
-      };
-
-      setScenarioMessages((prev) => ({
-        ...prev,
-        [activeScenarioId]: [...(prev[activeScenarioId] || []), newMsg],
-      }));
-
-      toast.success(
-        'Simulated message sent! In live mode, this dispatches via residential proxy.'
-      );
-
-      setIsSimulatingProspectReply(true);
-      setTimeout(() => {
-        const followUpMsg: SimulatedMessage = {
-          id: `sim-prospect-${Date.now()}`,
-          sender_name: activeScenario.senderName,
-          message_text: activeScenario.simulatedProspectFollowUp.message_text,
-          direction: 'inbound',
-          created_at: new Date().toISOString(),
-        };
-        setScenarioMessages((prev) => ({
-          ...prev,
-          [activeScenarioId]: [...(prev[activeScenarioId] || []), followUpMsg],
-        }));
-        setScenarioOutcomes((prev) => ({
-          ...prev,
-          [activeScenarioId]: activeScenario.simulatedProspectFollowUp.resultingOutcome,
-        }));
-        setIsSimulatingProspectReply(false);
-        toast.success(activeScenario.simulatedProspectFollowUp.celebrationText, {
-          duration: 6000,
-        });
-      }, 1800);
-      return;
-    }
-
     isSendingRef.current = true;
     setIsSending(true);
 
@@ -595,7 +474,7 @@ export function EleInInbox() {
 
   // ── AI Ghostwriter Streaming ──
   const handleSparklesClick = async (customIntent: string = 'unknown') => {
-    const sender = isPlaygroundActive ? activeScenario.senderName : selectedSender;
+    const sender = selectedSender;
     if (!sender || isDraftingRef.current || isSending) return;
 
     if (replyText.trim()) {
@@ -610,27 +489,6 @@ export function EleInInbox() {
     setIsDraftingAI(true);
     setActiveAIIntent(customIntent);
     setReplyText('');
-
-    if (isPlaygroundActive) {
-      const matchingChip = activeScenario.intentChips.find((c) => c.intent === customIntent);
-      const fallbackDraft =
-        matchingChip?.suggestedDraft ||
-        'Thanks for connecting! Completely understand your priorities. Would love to share a quick 2-page brief if that helps your evaluation?';
-
-      const words = fallbackDraft.split(' ');
-      let accumulated = '';
-      for (let i = 0; i < words.length; i++) {
-        if (!isDraftingRef.current) break;
-        accumulated += (i > 0 ? ' ' : '') + words[i];
-        setReplyText(accumulated);
-        await new Promise((r) => setTimeout(r, 22));
-      }
-
-      setIsDraftingAI(false);
-      isDraftingRef.current = false;
-      setActiveAIIntent(null);
-      return;
-    }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -727,67 +585,20 @@ export function EleInInbox() {
   const currentLeadKey = selectedLeadId || selectedSender || 'unknown';
 
   const currentDealStage: DealStage = useMemo(() => {
-    if (isPlaygroundActive) {
-      return (dealStagesByLead[activeScenarioId] as DealStage) || 'OBJECTION_RAISED';
-    }
     if (dealStagesByLead[currentLeadKey]) {
       return dealStagesByLead[currentLeadKey];
     }
     const matchedThread = safeThreads.find((t) => t.thread_key === selectedThreadKey);
     return (matchedThread?.deal_stage as DealStage) || 'NEW_REPLY';
-  }, [
-    isPlaygroundActive,
-    dealStagesByLead,
-    activeScenarioId,
-    currentLeadKey,
-    safeThreads,
-    selectedThreadKey,
-  ]);
+  }, [dealStagesByLead, currentLeadKey, safeThreads, selectedThreadKey]);
 
   const activeObjection: ObjectionData | null = useMemo(() => {
-    if (isPlaygroundActive && activeScenario) {
-      if (activeScenario.objectionType === 'competitor') {
-        return {
-          objection_type: 'COMPETITOR_INCUMBENT',
-          confidence: 0.96,
-          detected_competitor: 'Apollo.io',
-          competitor_intel: {
-            competitor: 'Apollo.io',
-            strengths_acknowledged: 'Broad contact database and export tooling.',
-            kill_points: [
-              '30%+ stale contact bounce rates trigger domain blacklisting and spam filtering.',
-              'No anti-detect residential IP jitter - triggers LinkedIn verification checkpoints.',
-            ],
-            pivot_angle:
-              'Keep Apollo for bulk lists, but run delivery through Ele-in for 3x higher reply conversion.',
-          },
-          summary:
-            'Prospect is evaluating Apollo.io. Pivot to residential jitter deliverability and free 25-lead benchmark.',
-        };
-      } else if (activeScenario.objectionType === 'budget') {
-        return {
-          objection_type: 'BUDGET_FREEZE',
-          confidence: 0.94,
-          detected_timing: 'Q3 Freeze / November',
-          summary:
-            'Company-wide budget freeze. Offer zero-spend benchmark audit to generate real performance data before Q4 planning.',
-        };
-      } else {
-        return {
-          objection_type: 'SKEPTICISM_AUTHENTICITY',
-          confidence: 0.88,
-          summary:
-            'Prospect is skeptical of automated outreach. Use ultra-transparent, peer-to-peer challenger tone.',
-        };
-      }
-    }
-
     const matchedThread = safeThreads.find((t) => t.thread_key === selectedThreadKey);
     return matchedThread?.objection_data || null;
-  }, [isPlaygroundActive, activeScenario, safeThreads, selectedThreadKey]);
+  }, [safeThreads, selectedThreadKey]);
 
   const handleUpdateDealStage = async (newStage: DealStage) => {
-    if (!isPro && !isPlaygroundActive && newStage !== 'NEW_REPLY') {
+    if (!isPro && newStage !== 'NEW_REPLY') {
       openPaywall({
         featureName: 'Deal Pipeline Progression',
         description:
@@ -797,13 +608,7 @@ export function EleInInbox() {
       return;
     }
 
-    const leadKey = isPlaygroundActive ? activeScenarioId : currentLeadKey;
-    setDealStagesByLead((prev) => ({ ...prev, [leadKey]: newStage }));
-
-    if (isPlaygroundActive) {
-      toast.success(`Deal Stage updated to ${DEAL_STAGES[newStage].label}`);
-      return;
-    }
+    setDealStagesByLead((prev) => ({ ...prev, [currentLeadKey]: newStage }));
 
     if (!selectedLeadId) {
       toast.success(`Deal Stage updated to ${DEAL_STAGES[newStage].label}`);
@@ -839,7 +644,7 @@ export function EleInInbox() {
   ) => {
     if (!activeObjection || isGeneratingBattlecard || isSending) return;
 
-    if (!isPro && !isPlaygroundActive) {
+    if (!isPro) {
       openPaywall({
         featureName: 'Elesium Objection Battlecards',
         description:
@@ -856,60 +661,6 @@ export function EleInInbox() {
 
     setIsGeneratingBattlecard(true);
     setActiveBattlecardTone(tone);
-
-    if (isPlaygroundActive) {
-      let draftText = '';
-      if (activeObjection.objection_type === 'COMPETITOR_INCUMBENT') {
-        if (tone === 'challenger') {
-          draftText = `Totally fair, ${
-            selectedSender || 'there'
-          } - Apollo has a solid database for raw contact volume. But what most teams find is that without residential IP jitter and Bayesian scoring, their SDRs burn domain reputation and get hit with 30%+ bounce rates. Rather than replacing Apollo, teams keep Apollo for data but pipe delivery through Ele-in for 3x higher reply conversion. Open to a 10-minute comparison this Thursday?`;
-        } else if (tone === 'consultative') {
-          draftText = `Understood, ${
-            selectedSender || 'there'
-          }! Apollo is a great tool. We actually work alongside Apollo users frequently - would you be open to running 25 free leads through our Bayesian engine just to benchmark deliverability vs your current stack? Zero spend required, and you'll have real data for comparison. Let me know if Thursday works!`;
-        } else {
-          draftText = `Makes sense, ${
-            selectedSender || 'there'
-          }! Appreciate you sharing that. Curious - are your SDRs seeing good inbox placement with Apollo right now, or is deliverability starting to dip? Either way, happy to share our 2-page deliverability playbook if helpful!`;
-        }
-      } else if (activeObjection.objection_type === 'BUDGET_FREEZE') {
-        if (tone === 'challenger') {
-          draftText = `Totally respect the budget freeze, ${
-            selectedSender || 'there'
-          }. We certainly aren't asking for spend right now. But outbound pipelines don't pause when budgets do - would you be open to a 25-lead free benchmark pilot so your SDRs have real deliverability data ready for November planning? Let's do a 10-minute preview Thursday at 2pm.`;
-        } else if (tone === 'consultative') {
-          draftText = `Completely understand the executive hold, ${
-            selectedSender || 'there'
-          }! Rather than a paid rollout, would you be open to running a zero-cost benchmark on 25 leads to compare response rates vs your existing process? No budget needed. Does Thursday 2pm work for a quick look?`;
-        } else {
-          draftText = `Appreciate the candor, ${
-            selectedSender || 'there'
-          }! I'll put a placeholder on the calendar for November. If you'd like, I can send over our 1-page SDR efficiency benchmark so you have it on file. Stay great!`;
-        }
-      } else {
-        draftText = `Appreciate the response, ${
-          selectedSender || 'there'
-        }! Completely understand. Would love to share our quick 1-pager on how we solve this with residential jitter. Do you have 10 minutes open Thursday or Friday?`;
-      }
-
-      const words = draftText.split(' ');
-      let accumulated = '';
-      setReplyText('');
-      for (let i = 0; i < words.length; i++) {
-        accumulated += (i > 0 ? ' ' : '') + words[i];
-        setReplyText(accumulated);
-        await new Promise((r) => setTimeout(r, 18));
-      }
-
-      setIsGeneratingBattlecard(false);
-      setActiveBattlecardTone(null);
-      if (currentDealStage === 'NEW_REPLY' || currentDealStage === 'OBJECTION_RAISED') {
-        handleUpdateDealStage('BATTLECARD_ENGAGED');
-      }
-      toast.success(`Generated ${tone.toUpperCase()} counter-pitch!`);
-      return;
-    }
 
     try {
       const res = await fetchWithAuth('/api/elein/inbox/battlecard/generate', {
@@ -967,49 +718,6 @@ export function EleInInbox() {
 
   // ── Filtered Threads Memo ──
   const filteredThreads = useMemo(() => {
-    if (isPlaygroundActive) {
-      const simList: ThreadSummary[] = SIMULATED_SCENARIOS.map((sc) => {
-        const msgs = scenarioMessages[sc.id] || sc.messages;
-        const lastMsg = msgs[msgs.length - 1];
-        return {
-          sender_name: sc.senderName,
-          lead_id: `sim-lead-${sc.id}`,
-          thread_key: sc.threadKey,
-          last_message: lastMsg ? lastMsg.message_text : '',
-          direction: lastMsg ? lastMsg.direction : 'inbound',
-          created_at: lastMsg ? lastMsg.created_at : new Date().toISOString(),
-          type: sc.badge,
-          company: sc.company,
-          title: sc.title,
-        };
-      });
-
-      return simList.filter((t) => {
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          const matchesName = t.sender_name.toLowerCase().includes(query);
-          const matchesMsg = t.last_message.toLowerCase().includes(query);
-          if (!matchesName && !matchesMsg) return false;
-        }
-
-        if (outcomeFilter !== 'ALL') {
-          if (outcomeFilter === 'INBOUND' && t.direction !== 'inbound') return false;
-          if (outcomeFilter !== 'INBOUND') {
-            const sc = SIMULATED_SCENARIOS.find((s) => s.threadKey === t.thread_key);
-            if (!sc || scenarioOutcomes[sc.id] !== outcomeFilter) return false;
-          }
-        }
-
-        if (dealStageFilter !== 'ALL') {
-          const sc = SIMULATED_SCENARIOS.find((s) => s.threadKey === t.thread_key);
-          const stage = sc ? dealStagesByLead[sc.id] || 'OBJECTION_RAISED' : 'NEW_REPLY';
-          if (stage !== dealStageFilter) return false;
-        }
-
-        return true;
-      });
-    }
-
     return safeThreads.filter((t) => {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -1037,9 +745,6 @@ export function EleInInbox() {
       return true;
     });
   }, [
-    isPlaygroundActive,
-    scenarioMessages,
-    scenarioOutcomes,
     safeThreads,
     searchQuery,
     outcomeFilter,
@@ -1051,10 +756,8 @@ export function EleInInbox() {
   // Counts for filter pills
   const counts = useMemo(() => {
     const res: Record<string, number> = {
-      ALL: isPlaygroundActive ? SIMULATED_SCENARIOS.length : safeThreads.length,
-      INBOUND: isPlaygroundActive
-        ? SIMULATED_SCENARIOS.length
-        : safeThreads.filter((t) => t.direction === 'inbound').length,
+      ALL: safeThreads.length,
+      INBOUND: safeThreads.filter((t) => t.direction === 'inbound').length,
       INTERESTED: 0,
       MEETING_BOOKED: 0,
       FOLLOW_UP: 0,
@@ -1062,84 +765,48 @@ export function EleInInbox() {
       NOT_INTERESTED: 0,
     };
 
-    if (isPlaygroundActive) {
-      SIMULATED_SCENARIOS.forEach((sc) => {
-        const oc = scenarioOutcomes[sc.id];
-        if (oc && res[oc] !== undefined) res[oc]++;
-      });
-    } else {
-      safeThreads.forEach((t) => {
-        const oc = threadOutcomes[t.thread_key];
-        if (oc && res[oc] !== undefined) res[oc]++;
-      });
-    }
+    safeThreads.forEach((t) => {
+      const oc = threadOutcomes[t.thread_key];
+      if (oc && res[oc] !== undefined) res[oc]++;
+    });
 
     return res;
-  }, [isPlaygroundActive, scenarioOutcomes, safeThreads, threadOutcomes]);
+  }, [safeThreads, threadOutcomes]);
 
   const dealStageCounts = useMemo(() => {
     const res: Record<string, number> = {
-      ALL: isPlaygroundActive ? SIMULATED_SCENARIOS.length : safeThreads.length,
+      ALL: safeThreads.length,
     };
     (Object.keys(DEAL_STAGES) as DealStage[]).forEach((st) => {
       res[st] = 0;
     });
-    if (isPlaygroundActive) {
-      SIMULATED_SCENARIOS.forEach((sc) => {
-        const stage = (dealStagesByLead[sc.id] as DealStage) || 'OBJECTION_RAISED';
-        if (res[stage] !== undefined) res[stage]++;
-      });
-    } else {
-      safeThreads.forEach((t) => {
-        const stage =
-          (dealStagesByLead[t.lead_id || t.thread_key] as DealStage) ||
-          (t.deal_stage as DealStage) ||
-          'NEW_REPLY';
-        if (res[stage] !== undefined) res[stage]++;
-      });
-    }
+    safeThreads.forEach((t) => {
+      const stage =
+        (dealStagesByLead[t.lead_id || t.thread_key] as DealStage) ||
+        (t.deal_stage as DealStage) ||
+        'NEW_REPLY';
+      if (res[stage] !== undefined) res[stage]++;
+    });
     return res;
-  }, [isPlaygroundActive, safeThreads, dealStagesByLead]);
+  }, [safeThreads, dealStagesByLead]);
 
   const safeMessages = useMemo<Message[]>(() => {
-    if (isPlaygroundActive) {
-      const msgs = scenarioMessages[activeScenarioId] || activeScenario.messages;
-      return msgs.map((m) => ({
-        id: m.id,
-        message_text: m.message_text,
-        direction: m.direction,
-        created_at: m.created_at,
-        type: undefined,
-      }));
-    }
     return Array.isArray(messages) ? messages : [];
-  }, [isPlaygroundActive, activeScenarioId, scenarioMessages, activeScenario, messages]);
+  }, [messages]);
 
-  const activeThreadOutcome = isPlaygroundActive
-    ? scenarioOutcomes[activeScenarioId] || null
-    : selectedThreadKey
+  const activeThreadOutcome = selectedThreadKey
     ? threadOutcomes[selectedThreadKey] || null
     : null;
 
   const handleToggleOutcome = (key: OutcomeType) => {
-    if (isPlaygroundActive) {
-      setScenarioOutcomes((prev) => {
-        const next = { ...prev };
-        if (next[activeScenarioId] === key) {
-          delete next[activeScenarioId];
-          toast.info('Outcome tag cleared');
-        } else {
-          next[activeScenarioId] = key;
-          toast.success(`Marked as ${OUTCOMES[key].label}`);
-        }
-        return next;
-      });
-      return;
-    }
     if (selectedThreadKey) {
       handleSetOutcome(selectedThreadKey, activeThreadOutcome === key ? null : key);
     }
   };
+
+  const selectedThreadObj = useMemo(() => {
+    return filteredThreads.find((t) => t.thread_key === selectedThreadKey) || null;
+  }, [filteredThreads, selectedThreadKey]);
 
   // Keyboard navigation shortcuts
   useInboxKeyboardShortcuts({
@@ -1170,10 +837,12 @@ export function EleInInbox() {
       setIsCommandPaletteOpen(true);
     },
     onSnoozeThread: () => {
-      if (activeScenario?.timingIntent) {
+      if (selectedThreadObj?.objection_data?.detected_timing) {
         handleUpdateDealStage('DISQUALIFIED');
-        setReplyText(activeScenario.timingIntent.suggestedCheckIn);
-        toast.success(`Follow-up scheduled for ${activeScenario.timingIntent.snoozeDateText}. Draft check-in prepared.`);
+        setReplyText('Following up per our previous conversation timing.');
+        toast.success(`Follow-up scheduled for ${selectedThreadObj.objection_data.detected_timing}. Draft check-in prepared.`);
+      } else {
+        toast.info('No timing objection detected on this thread to auto-snooze.');
       }
     },
     onArchiveThread: () => {
@@ -1182,11 +851,7 @@ export function EleInInbox() {
     },
   });
 
-  const selectedThreadObj = useMemo(() => {
-    return filteredThreads.find((t) => t.thread_key === selectedThreadKey) || null;
-  }, [filteredThreads, selectedThreadKey]);
-
-  if (threads !== undefined && safeThreads.length === 0 && emptyViewPreference === 'quiet') {
+  if (threads !== undefined && safeThreads.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-background text-foreground">
         <div className="flex flex-col items-center justify-center text-center p-10 max-w-md bg-card border border-border rounded-xl shadow-sm">
@@ -1200,20 +865,9 @@ export function EleInInbox() {
           <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
             <button 
               type="button"
-              onClick={() => {
-                setEmptyViewPreference('playground');
-                localStorage.setItem('elein_inbox_empty_preference', 'playground');
-              }}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-lg transition-all shadow-xs cursor-pointer"
-            >
-              <ElesiumLogo size={15} variant="white" />
-              <span>Launch AI Objection Simulator</span>
-            </button>
-            <button 
-              type="button"
               onClick={handleSync}
               disabled={isSyncing}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-muted/60 hover:bg-muted text-foreground text-xs font-semibold rounded-lg transition-colors border border-border cursor-pointer"
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-lg transition-colors border border-primary/20 cursor-pointer shadow-xs"
             >
               <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
               <span>Sync Inbox</span>
@@ -1288,11 +942,9 @@ export function EleInInbox() {
               onDealStageFilterChange={setDealStageFilter}
               counts={counts}
               dealStageCounts={dealStageCounts}
-              threadOutcomes={isPlaygroundActive ? scenarioOutcomes : threadOutcomes}
+              threadOutcomes={threadOutcomes}
               dealStagesByLead={dealStagesByLead}
               draftsByThread={draftsByThreadRef.current}
-              isPlaygroundActive={isPlaygroundActive}
-              onToggleSimulator={() => setIsManualPlaygroundActive(!isManualPlaygroundActive)}
               isSyncing={isSyncing}
               syncStage={syncStage}
               syncElapsed={syncElapsed}
@@ -1325,10 +977,6 @@ export function EleInInbox() {
               selectedLeadId={selectedLeadId}
               selectedThread={selectedThreadObj}
               messages={safeMessages}
-              isSimulatingProspectReply={isSimulatingProspectReply}
-              activeScenario={isPlaygroundActive ? activeScenario : null}
-              isPlaygroundActive={isPlaygroundActive}
-              onResetScenario={handleResetScenario}
               currentDealStage={currentDealStage}
               onUpdateDealStage={handleUpdateDealStage}
               isInspectorOpen={isInspectorOpen}
@@ -1382,8 +1030,6 @@ export function EleInInbox() {
                 isInsertingSlots={isInsertingSlots}
                 sendOnEnter={sendOnEnter}
                 onSendOnEnterChange={setSendOnEnter}
-                isPlaygroundActive={isPlaygroundActive}
-                isSimulatingProspectReply={isSimulatingProspectReply}
               />
             )}
           </div>
@@ -1405,7 +1051,6 @@ export function EleInInbox() {
                 setReplyText((prev) => (prev ? `${prev}\n\n${pivot}` : pivot));
                 toast.success('Inserted pivot angle into composer!');
               }}
-              isPlaygroundActive={isPlaygroundActive}
             />
           )}
         </div>
@@ -1420,7 +1065,6 @@ export function EleInInbox() {
         onInsertSlots={() => setIsSlotPickerOpen(true)}
         onTriggerGhostwriter={() => handleSparklesClick('unknown')}
         onSync={handleSync}
-        onToggleSimulator={() => setIsManualPlaygroundActive((prev) => !prev)}
         onToggleInspector={() => setIsInspectorOpen((prev) => !prev)}
       />
 

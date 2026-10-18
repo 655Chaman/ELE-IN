@@ -352,9 +352,9 @@ export function BayesianIcpView() {
     <div className="space-y-8 pb-12">
       {/* ── Growth Pro Lock Banner ── */}
       {!isPro && (
-        <div className="p-6 rounded-[28px] border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="p-6 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-primary/15 rounded-2xl text-primary mt-0.5 shrink-0 shadow-sm">
+            <div className="p-3 bg-primary/15 rounded-md text-primary mt-0.5 shrink-0 shadow-sm">
               <Cpu size={24} />
             </div>
             <div>
@@ -372,8 +372,9 @@ export function BayesianIcpView() {
             </div>
           </div>
           <button
+            type="button"
             onClick={() => openPaywall({ featureName: "Bayesian ICP Machine Learning" })}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all shadow-md shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all shadow-md shrink-0 whitespace-nowrap cursor-pointer"
           >
             <span>Unlock Calibration Studio</span>
             <ArrowUpRight size={14} />
@@ -382,7 +383,7 @@ export function BayesianIcpView() {
       )}
 
       {/* ── Studio Cockpit Header ── */}
-      <div className="p-8 rounded-[32px] bg-gradient-to-br from-indigo-950/40 via-background to-muted/20 border border-indigo-500/20 backdrop-blur-xl relative overflow-hidden shadow-2xl">
+      <div className="p-8 rounded-xl bg-gradient-to-br from-indigo-950/40 via-background to-muted/20 border border-indigo-500/20 backdrop-blur-xl relative overflow-hidden shadow-2xl">
         <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none" />
         
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -415,7 +416,7 @@ export function BayesianIcpView() {
           </div>
 
           {/* Quick Metrics & Controls */}
-          <div className="flex flex-wrap items-center gap-4 bg-background/50 border border-border/50 p-4 rounded-2xl backdrop-blur-md">
+          <div className="flex flex-wrap items-center gap-4 bg-background/50 border border-border/50 p-4 rounded-lg backdrop-blur-md">
             <div>
               <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Signals</p>
               <p className="text-2xl font-mono font-bold text-foreground">{signals.length || 8}</p>
@@ -433,6 +434,7 @@ export function BayesianIcpView() {
             <div className="h-8 w-px bg-border/60" />
             <div className="flex flex-col gap-1.5">
               <button
+                type="button"
                 onClick={() => setShowResetModal(true)}
                 className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                 title="1-Click Emergency Factory Reset"
@@ -441,6 +443,7 @@ export function BayesianIcpView() {
                 <span>Circuit Breaker</span>
               </button>
               <button 
+                type="button"
                 onClick={() => { mutateMatrix(); mutateEvents(); }}
                 className="text-[11px] text-muted-foreground hover:text-foreground flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg border border-border/50 hover:bg-muted/50 transition-all cursor-pointer"
               >
@@ -462,14 +465,14 @@ export function BayesianIcpView() {
             {driftWarnings.map((warn, idx) => (
               <div 
                 key={idx}
-                className={`p-4 rounded-2xl border backdrop-blur-md flex items-start justify-between gap-4 ${
+                className={`p-4 rounded-lg border backdrop-blur-md flex items-start justify-between gap-4 ${
                   warn.severity === "POSITIVE_ACCELERATION"
                     ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
                     : "bg-rose-950/20 border-rose-500/30 text-rose-300"
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-xl mt-0.5 ${
+                  <div className={`p-2 rounded-md mt-0.5 ${
                     warn.severity === "POSITIVE_ACCELERATION" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
                   }`}>
                     {warn.severity === "POSITIVE_ACCELERATION" ? <Flame size={18} /> : <AlertTriangle size={18} />}
@@ -495,7 +498,7 @@ export function BayesianIcpView() {
       )}
 
       {/* ── Adaptive Score Gate Gauge Section ── */}
-      <div className="p-6 rounded-[28px] border border-border/60 bg-muted/5 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-6">
+      <div className="p-6 rounded-xl border border-border/60 bg-muted/5 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="space-y-1 max-w-xl">
           <div className="flex items-center gap-2">
             <Gauge size={18} className="text-indigo-400" />
@@ -543,6 +546,7 @@ export function BayesianIcpView() {
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/20 border border-border/40">
             {["ALL", "FIRMOGRAPHIC", "BEHAVIORAL", "INTENT"].map((cat) => (
               <button
+                type="button"
                 key={cat}
                 onClick={() => setActiveCategoryFilter(cat)}
                 className={`text-[11px] font-bold px-3 py-1 rounded-lg transition-all cursor-pointer ${
@@ -569,7 +573,7 @@ export function BayesianIcpView() {
             return (
               <div 
                 key={signal.signal_name}
-                className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between backdrop-blur-sm relative overflow-hidden ${
+                className={`p-5 rounded-lg border transition-all duration-200 flex flex-col justify-between backdrop-blur-sm relative overflow-hidden ${
                   signal.is_frozen
                     ? "border-amber-500/30 bg-amber-950/[0.04]"
                     : "border-border/60 bg-muted/10 hover:border-indigo-500/40"
@@ -595,9 +599,10 @@ export function BayesianIcpView() {
 
                     {/* Freeze Lock Toggle Button */}
                     <button
+                      type="button"
                       onClick={() => handleToggleFreeze(signal)}
                       disabled={isBusy}
-                      className={`p-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold shrink-0 ${
+                      className={`p-1.5 rounded-md border transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold shrink-0 ${
                         signal.is_frozen
                           ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
                           : "bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/60"
@@ -678,10 +683,11 @@ export function BayesianIcpView() {
                     <div className="flex items-center gap-1">
                       {[0.5, 1.0, 1.5, 2.0].map((mult) => (
                         <button
+                          type="button"
                           key={mult}
                           onClick={() => handleMultiplierChange(signal, mult)}
                           disabled={isBusy}
-                          className={`px-2 py-0.5 rounded font-mono font-bold transition-all cursor-pointer ${
+                          className={`px-2 py-0.5 rounded-md font-mono font-bold transition-all cursor-pointer ${
                             Math.abs(signal.weight_multiplier - mult) < 0.05
                               ? "bg-indigo-600 text-white"
                               : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground"
@@ -691,9 +697,10 @@ export function BayesianIcpView() {
                         </button>
                       ))}
                       <button
+                        type="button"
                         onClick={() => handleResetSignalPrior(signal)}
                         disabled={isBusy}
-                        className="p-1 rounded bg-muted/30 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 transition-all cursor-pointer ml-1"
+                        className="p-1 rounded-md bg-muted/30 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 transition-all cursor-pointer ml-1"
                         title="Reset this signal to Beta(2,2)"
                       >
                         <RotateCcw size={10} />
@@ -708,7 +715,7 @@ export function BayesianIcpView() {
       </div>
 
       {/* ── Chronological Adaptive Feedback Ledger (Live Activity Log) ── */}
-      <div className="p-6 rounded-[28px] border border-border/60 bg-muted/5 backdrop-blur-xl space-y-4">
+      <div className="p-6 rounded-xl border border-border/60 bg-muted/5 backdrop-blur-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <History size={18} className="text-indigo-400" />
@@ -748,7 +755,7 @@ export function BayesianIcpView() {
       </div>
 
       {/* ── Interactive Prospect Score Simulator ── */}
-      <div className="p-8 rounded-[32px] border border-border/60 bg-muted/5 backdrop-blur-xl">
+      <div className="p-8 rounded-xl border border-border/60 bg-muted/5 backdrop-blur-xl">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -763,7 +770,7 @@ export function BayesianIcpView() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           {/* Form */}
-          <div className="space-y-4 bg-background/50 p-6 rounded-2xl border border-border/50">
+          <div className="space-y-4 bg-background/50 p-6 rounded-lg border border-border/50">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1 block">Job Title</label>
@@ -771,7 +778,7 @@ export function BayesianIcpView() {
                   type="text"
                   value={testProfile.title}
                   onChange={(e) => setTestProfile({ ...testProfile, title: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-xl bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -780,7 +787,7 @@ export function BayesianIcpView() {
                   type="text"
                   value={testProfile.company}
                   onChange={(e) => setTestProfile({ ...testProfile, company: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-xl bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
@@ -792,7 +799,7 @@ export function BayesianIcpView() {
                   type="number"
                   value={testProfile.headcount}
                   onChange={(e) => setTestProfile({ ...testProfile, headcount: parseInt(e.target.value) || 0 })}
-                  className="w-full text-xs px-3 py-2 rounded-xl bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
@@ -801,7 +808,7 @@ export function BayesianIcpView() {
                   type="text"
                   value={testProfile.industry}
                   onChange={(e) => setTestProfile({ ...testProfile, industry: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-xl bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
@@ -818,9 +825,10 @@ export function BayesianIcpView() {
               </label>
 
               <button
+                type="button"
                 onClick={handleSimulateScore}
                 disabled={simulating}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {simulating ? (
                   <RefreshCw size={14} className="animate-spin" />
@@ -840,12 +848,12 @@ export function BayesianIcpView() {
           </div>
 
           {/* Results Display */}
-          <div className="p-6 rounded-2xl border border-border/50 bg-background/50 h-full flex flex-col justify-between">
+          <div className="p-6 rounded-lg border border-border/50 bg-background/50 h-full flex flex-col justify-between">
             {simResult ? (
               <div>
                 <div className="flex items-center justify-between pb-4 border-b border-border/50 mb-4">
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Computed Fit Score</span>
-                  <span className={`text-2xl font-black font-mono px-3 py-1 rounded-xl ${
+                  <span className={`text-2xl font-black font-mono px-3 py-1 rounded-lg ${
                     simResult.score >= recommendedScoreGate
                       ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" 
                       : simResult.score >= 50
@@ -863,7 +871,7 @@ export function BayesianIcpView() {
                       Gate: {simResult.score >= recommendedScoreGate ? "PASS" : "BELOW GATE"}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/40 font-mono">
+                  <p className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-4 rounded-lg border border-border/40 font-mono">
                     {simResult.reasoning || "Evaluation converged across active prior distribution matrix."}
                   </p>
                 </div>
@@ -873,22 +881,25 @@ export function BayesianIcpView() {
                   <p className="text-[11px] font-semibold text-muted-foreground mb-2">Simulate Real-World Outcome Feedback:</p>
                   <div className="grid grid-cols-3 gap-2">
                     <button
+                      type="button"
                       onClick={() => handleSimulateOutcome("MEETING_BOOKED")}
-                      className="py-2 px-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="py-2 px-1 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <UserCheck size={12} />
                       <span>Booked (+3α)</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleSimulateOutcome("POSITIVE_REPLY")}
-                      className="py-2 px-1 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="py-2 px-1 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <MessageSquare size={12} />
                       <span>Reply (+2α)</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleSimulateOutcome("GHOSTED_OR_LOST")}
-                      className="py-2 px-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="py-2 px-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <XCircle size={12} />
                       <span>Lost (+1β)</span>
@@ -917,10 +928,10 @@ export function BayesianIcpView() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-card border border-rose-500/30 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4"
+              className="bg-card border border-rose-500/30 rounded-xl max-w-md w-full p-6 shadow-2xl relative space-y-4"
             >
               <div className="flex items-center gap-3 text-rose-400">
-                <div className="p-3 bg-rose-500/15 rounded-2xl">
+                <div className="p-3 bg-rose-500/15 rounded-md">
                   <ShieldAlert size={24} />
                 </div>
                 <div>
@@ -933,22 +944,24 @@ export function BayesianIcpView() {
                 This will reset all learned Bayesian probabilities and alpha/beta parameters across your entire workspace back to baseline neutral priors (50% win rate). All operator multipliers will be restored to 1.0x and freeze locks will be removed.
               </p>
 
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] leading-relaxed">
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] leading-relaxed">
                 <strong>Safety Notice:</strong> Historical deal logs in the Feedback Ledger will be retained for audit trails, but model scoring weights will immediately reset.
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setShowResetModal(false)}
                   disabled={isResettingAll}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleResetAllSignals}
                   disabled={isResettingAll}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isResettingAll ? <RefreshCw size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
                   <span>Confirm Full Reset</span>

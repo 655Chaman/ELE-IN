@@ -3,7 +3,7 @@ import useSWR from 'swr'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { NotificationBell } from "@/components/NotificationBell"
-import { Activity, Send, MessageSquare, X, Zap, RefreshCw, Check } from 'lucide-react'
+import { Activity, X, Check } from 'lucide-react'
 
 import { EleInAnalyticsView } from "@/components/dashboard/EleInAnalyticsView"
 import { StartOutreachMenu } from "@/components/elein/StartOutreachMenu"
@@ -12,11 +12,12 @@ import { useTheme } from "@/components/ThemeProvider"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 
 import { useWorkspace } from "@/contexts/WorkspaceContext"
-import { friendlyToast } from "@/components/FriendlyError"
+import { usePaywall } from "@/contexts/PaywallContext"
+import { toast } from 'sonner'
 import { NotificationPrePermissionTeaser } from "@/components/notifications/NotificationPrePermissionTeaser"
 
 // Layer 2: Dashboard Error Banner to consistently display errors across all SWR fetches
-function DashboardErrorBanner({ error, entityName, onRetry, onSeedDemo, onLoginRedirect }: { error: any, entityName: string, onRetry?: () => void, onSeedDemo?: () => void, onLoginRedirect?: () => void }) {
+function DashboardErrorBanner({ error, entityName, onRetry, onLoginRedirect }: { error: any, entityName: string, onRetry?: () => void, onLoginRedirect?: () => void }) {
   if (!error) return null;
 
   const isAuthError = error?.status === 401 || String(error?.message || '').includes('401');
@@ -25,17 +26,17 @@ function DashboardErrorBanner({ error, entityName, onRetry, onSeedDemo, onLoginR
     : error?.message || 'An unexpected error occurred.';
 
   return (
-    <div className="p-4 mb-6 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm flex items-center justify-between gap-4">
+    <div className="p-4 mb-6 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm flex items-center justify-between gap-4">
       <div className="flex items-center gap-2">
         <Activity className="w-4 h-4 shrink-0" />
         <span>Failed to load {entityName}. {isAuthError ? '' : 'Your campaigns are safe - please refresh or try again in a moment. '}{message}</span>
       </div>
       {isAuthError ? (
-        <button onClick={onLoginRedirect} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-xl whitespace-nowrap transition-colors">
+        <button type="button" onClick={onLoginRedirect} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-md whitespace-nowrap transition-colors">
           Go to Login
         </button>
       ) : onRetry ? (
-        <button onClick={onRetry} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-xl whitespace-nowrap transition-colors">
+        <button type="button" onClick={onRetry} className="px-3 py-1 bg-destructive/20 hover:bg-destructive/30 rounded-md whitespace-nowrap transition-colors">
           Retry
         </button>
       ) : null}
@@ -101,8 +102,6 @@ function useUrlState<T>(
   return [state, setState]
 }
 
-
-import { Sparkles, Shield, AlertTriangle } from 'lucide-react'
 
 
 export function EleInDashboard() {
@@ -244,34 +243,53 @@ export function EleInDashboard() {
     return (accountHealth?.accounts || []).filter((a: any) => a.throttled);
   }, [accountHealth]);
 
-  const isExtendedLocked = false;
-  const isPdfLocked = false;
-  const isFunnelCsvLocked = false;
+  // Paranoia Layer 1 & 2: Derive locked statuses directly from workspace billing entitlements
+  const { data: billing } = useSWR<{
+    tier?: string;
+    tier_limits?: {
+      can_extended_analytics?: boolean;
+      can_export_analytics_pdf?: boolean;
+      can_export_funnel_csv?: boolean;
+    };
+  }>(activeWorkspaceId ? '/api/elein/workspaces/billing' : null, fetcher);
 
-  // Temporarily forced to true while working on the dashboard to bypass empty-state flow view
-  const isSetup = true;
+  const { openPaywall } = usePaywall();
 
-  const today = stats?.today ?? {}
-  const funnel = stats?.funnel ?? {}
-  const summary = stats?.summary ?? {}
-  const timeSeries: any[] = stats?.time_series ?? []
+  const isExtendedLocked = Boolean(billing && !billing.tier_limits?.can_extended_analytics);
+  const isPdfLocked = Boolean(billing && !billing.tier_limits?.can_export_analytics_pdf);
+  const isFunnelCsvLocked = Boolean(billing && !billing.tier_limits?.can_export_funnel_csv);
+
+  const isSetup = (filtersData?.senders?.length ?? 0) > 0 || (filtersData?.campaigns?.length ?? 0) > 0;
+
+  const rawToday = stats?.today ?? {}
+  const rawFunnel = stats?.funnel ?? {}
+  const rawSummary = stats?.summary ?? {}
+  const rawTimeSeries: any[] = stats?.time_series ?? []
   const heatmapData: any[] = stats?.heatmap_data ?? []
   const timeOfDayData: any[] = stats?.time_of_day_data ?? []
   const hasAccounts = (filtersData?.senders?.length ?? 0) > 0;
   
-  let aiInsight = "Analyzing your pipeline data...";
+  let rawAiInsight = "Analyzing your pipeline data...";
   if (!statsLoading && stats) {
     if (!hasAccounts) {
-      aiInsight = "Connect your first LinkedIn account to get started.";
+      rawAiInsight = "Connect your first LinkedIn account to get started.";
     } else {
-      aiInsight = stats?.ai_insight ?? "Your pipeline is healthy. Keep adding fresh leads to maintain velocity.";
+      rawAiInsight = stats?.ai_insight ?? "Your pipeline is healthy. Keep adding fresh leads to maintain velocity.";
     }
   }
   
-  const leadSources = stats?.lead_sources ?? []
-  const radarStats = stats?.radar_stats ?? {}
-  const liveFeed = stats?.live_feed ?? []
+  const rawLeadSources = stats?.lead_sources ?? []
+  const rawRadarStats = stats?.radar_stats ?? {}
+  const rawLiveFeed = stats?.live_feed ?? []
   const errorFeed = stats?.error_feed ?? []
+
+  const today = rawToday;
+  const summary = rawSummary;
+  const timeSeries = rawTimeSeries;
+  const leadSources = rawLeadSources;
+  const radarStats = rawRadarStats;
+  const liveFeed = rawLiveFeed;
+  const aiInsight = rawAiInsight;
 
   const fetchFunnelLeadsCb = useCallback((step: string, signal?: AbortSignal) => {
     return postFetcher('/api/master-view/funnel-leads', {
@@ -283,13 +301,13 @@ export function EleInDashboard() {
   }, [selectedSenders, selectedCampaigns, timeRange])
   
   const funnelSteps = [
-    { label: "Extracted", value: funnel.extracted ?? 0, count: funnel.extracted ?? 0 },
-    { label: "Enrolled",  value: funnel.enrolled  ?? 0, count: funnel.enrolled  ?? 0 },
-    { label: "Connected", value: funnel.connected ?? 0, count: funnel.connected ?? 0 },
-    { label: "Replied",   value: funnel.replied   ?? 0, count: funnel.replied   ?? 0 },
-    { label: "Booked",    value: funnel.booked    ?? 0, count: funnel.booked    ?? 0 },
-    { label: "Failed/Bounced", value: funnel.failed ?? 0, count: funnel.failed ?? 0, color: "#ef4444" }
-  ]
+    { label: "Extracted", value: rawFunnel.extracted ?? 0, count: rawFunnel.extracted ?? 0 },
+    { label: "Enrolled",  value: rawFunnel.enrolled  ?? 0, count: rawFunnel.enrolled  ?? 0 },
+    { label: "Connected", value: rawFunnel.connected ?? 0, count: rawFunnel.connected ?? 0 },
+    { label: "Replied",   value: rawFunnel.replied   ?? 0, count: rawFunnel.replied   ?? 0 },
+    { label: "Booked",    value: rawFunnel.booked    ?? 0, count: rawFunnel.booked    ?? 0 },
+    { label: "Failed/Bounced", value: rawFunnel.failed ?? 0, count: rawFunnel.failed ?? 0, color: "#ef4444" }
+  ];
 
   const { theme } = useTheme()
   const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
@@ -332,31 +350,6 @@ export function EleInDashboard() {
     setForceShowOnboarding(false);
   }
 
-  const [isSeedingDemo, setIsSeedingDemo] = useState(false)
-  const handleSeedDemo = async () => {
-    setIsSeedingDemo(true)
-    try {
-      const res = await fetchWithAuth('/api/onboarding/seed-demo-data', {
-        method: 'POST'
-      })
-      const data = await res.json()
-      if (data?.workspace_id) {
-        localStorage.setItem('elein_active_workspace', data.workspace_id)
-      }
-      await Promise.all([mutateFilters(), mutateStats(), mutateAccountHealth()])
-      
-      // Dismiss the onboarding banner so it actually goes away
-      localStorage.setItem('onboarding_dismissed', 'true');
-      setShowOnboarding(false);
-      setForceShowOnboarding(false);
-      
-    } catch (err) {
-      console.error(err); alert("Failed to seed demo data. Please check backend logs or try again.");
-    } finally {
-      setIsSeedingDemo(false)
-    }
-  }
-
   const isShowingOnboarding = forceShowOnboarding || (isNewUser && showOnboarding);
 
   const showEscapeHatch = ((filtersError && String(filtersError?.message || '').includes('No workspace found')) ||
@@ -370,39 +363,76 @@ export function EleInDashboard() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const handleExportPdf = async () => {
+    // Paranoia Layer 2: Intercept click if locked before making doomed network call
+    if (isPdfLocked) {
+      toast.info("Executive PDF Performance Reports require Growth Pro or Enterprise.");
+      openPaywall({ campaignName: "Executive Analytics PDF Export" });
+      return;
+    }
+
+    if (isExportingPdf) return; // Prevent double-triggering
     setIsExportingPdf(true);
+
     try {
       const payload = {
         senders: sanitizeFilter(selectedSenders),
         campaigns: sanitizeFilter(selectedCampaigns),
         ...getDateRange(timeRange)
-      }
+      };
       
       const response = await fetchWithAuth('/api/master-view/stats/export/pdf', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });
       
       if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Export failed: ${response.status} ${errText}`);
+        let errorDetail = '';
+        try {
+          const errJson = await response.json();
+          errorDetail = errJson?.detail || '';
+        } catch {
+          errorDetail = await response.text().catch(() => '');
+        }
+
+        // Paranoia Layer 2: Gracefully handle 403 Forbidden upgrade rejection
+        if (response.status === 403) {
+          toast.error(errorDetail || "Executive PDF Performance Reports require Growth Pro or Enterprise.");
+          openPaywall({ campaignName: "Executive Analytics PDF Export" });
+          return;
+        }
+
+        throw new Error(errorDetail || `Export failed with status ${response.status}`);
       }
       
+      // Paranoia Layer 1: Extract sanitized filename from backend Content-Disposition header if available
+      let filename = `EleIn_Performance_Overview_${timeRange}.pdf`;
+      const disposition = response.headers.get('content-disposition');
+      if (disposition) {
+        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (match && match[1]) {
+          filename = match[1].replace(/['"]/g, '').trim();
+        }
+      }
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `EleIn_Performance_Overview_${timeRange}.pdf`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 150);
+      toast.success("Executive PDF report exported successfully.");
+    } catch (err: any) {
       console.error('Failed to export PDF:', err);
-      friendlyToast('Failed to export PDF performance overview - please try again.', err);
+      const msg = err?.message || 'Failed to export PDF performance overview. Please check connection and try again.';
+      toast.error(msg);
     } finally {
       setIsExportingPdf(false);
     }
@@ -416,13 +446,16 @@ export function EleInDashboard() {
       <header className="sticky top-0 z-50 w-full border-b border-border bg-card shadow-xs">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <img src="/logo-icon.png" alt="Ele-in Logo" className="w-8 h-8 rounded-xl object-cover" />
+            <div className="flex items-center justify-center p-1 rounded-md bg-card border border-border shadow-xs">
+              <img src="/logo-icon.png" alt="Ele-in" className="w-7 h-7 object-cover rounded-md" />
+            </div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {currentWorkspaceName}
               </h1>
               {myAgencies && myAgencies.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => navigate('/elein/agency')}
                   className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all cursor-pointer"
                   title="Switch to Agency Multi-Client Command Deck"
@@ -447,6 +480,7 @@ export function EleInDashboard() {
             <StartOutreachMenu onSelect={handleStartOutreach} />
             {!isShowingOnboarding && (
               <button
+                type="button"
                 onClick={() => {
                   localStorage.removeItem('onboarding_dismissed');
                   setShowOnboarding(true);
@@ -464,39 +498,27 @@ export function EleInDashboard() {
       {/* Layer 0: Guaranteed Escape Hatch */}
       {showEscapeHatch && (
         <div className="max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10 mb-[-2rem]">
-          <div className="p-8 bg-card border-2 border-destructive/50 rounded-xl shadow-lg flex flex-col items-center justify-center text-center">
+          <div className="p-8 bg-card border-2 border-destructive/50 rounded-lg shadow-lg flex flex-col items-center justify-center text-center">
             <h2 className="text-2xl font-bold text-foreground mb-4">Your account has no workspace yet.</h2>
             <p className="text-muted-foreground mb-8 max-w-lg">
               It looks like you haven't completed onboarding or your workspace was deleted. 
-              You can seed demo data to instantly explore the dashboard, or go to onboarding to set up your own account.
+              Go to onboarding to set up your own account.
             </p>
             <div className="flex gap-4 mb-8">
               <button
-                onClick={handleSeedDemo}
-                disabled={isSeedingDemo}
-                className="px-6 py-3 bg-primary text-primary-foreground font-medium rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2"
-              >
-                {isSeedingDemo ? (
-                  <>
-                    <div className="w-5 h-5 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                    Seeding Data...
-                  </>
-                ) : (
-                  "Seed Demo Data"
-                )}
-              </button>
-              <button
+                type="button"
                 onClick={() => {
                   localStorage.removeItem('onboarding_dismissed');
                   navigate('/elein/accounts');
                 }}
-                className="px-6 py-3 bg-secondary text-secondary-foreground font-medium rounded-xl hover:bg-secondary/80 transition-colors"
+                className="px-6 py-3 bg-secondary text-secondary-foreground font-medium rounded-lg hover:bg-secondary/80 transition-colors cursor-pointer"
               >
                 Go to Onboarding
               </button>
             </div>
             {/* Layer 2: Workspace Reset Button */}
             <button
+              type="button"
               onClick={() => {
                 localStorage.removeItem('elein_active_workspace');
                 localStorage.removeItem('onboarding_dismissed');
@@ -514,7 +536,7 @@ export function EleInDashboard() {
         
         {/* Minimal Setup Stepper */}
         {isShowingOnboarding && (
-          <div className="relative flex flex-col md:flex-row items-center justify-between gap-3 px-4 py-3 bg-card border border-primary/20 rounded-xl shadow-xs">
+          <div className="relative flex flex-col md:flex-row items-center justify-between gap-3 px-4 py-3 bg-card border border-primary/20 rounded-lg shadow-xs">
             <div className="flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               <span className="text-xs font-semibold text-foreground">Welcome to Ele-in - Quick Setup</span>
@@ -522,8 +544,9 @@ export function EleInDashboard() {
             
             <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto">
               <button 
+                type="button"
                 onClick={() => navigate('/elein/accounts')} 
-                className={`text-xs px-2.5 py-1 rounded-xl border font-medium flex items-center gap-1.5 transition-colors ${
+                className={`text-xs px-2.5 py-1 rounded-md border font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                   hasAccounts ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/50 hover:border-primary/50 text-muted-foreground'
                 }`}
               >
@@ -531,32 +554,26 @@ export function EleInDashboard() {
                 {hasAccounts && <Check size={12} className="text-primary" />}
               </button>
               <button 
+                type="button"
                 onClick={() => navigate('/elein/knowledge')} 
-                className="text-xs px-2.5 py-1 rounded-xl border border-border/50 hover:border-primary/50 text-muted-foreground font-medium flex items-center gap-1.5 transition-colors"
+                className="text-xs px-2.5 py-1 rounded-md border border-border/50 hover:border-primary/50 text-muted-foreground font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <ElesiumLogo size={13} />
                 <span>2. Train AI</span>
               </button>
               <button 
+                type="button"
                 onClick={() => navigate('/elein/campaigns')} 
-                className={`text-xs px-2.5 py-1 rounded-xl border font-medium flex items-center gap-1.5 transition-colors ${
+                className={`text-xs px-2.5 py-1 rounded-md border font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                   Number(summary?.total_campaigns ?? 0) > 0 ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/50 hover:border-primary/50 text-muted-foreground'
                 }`}
               >
                 <span>3. Launch Campaign</span>
                 {Number(summary?.total_campaigns ?? 0) > 0 && <Check size={12} className="text-primary" />}
               </button>
-              <button
-                onClick={handleSeedDemo}
-                disabled={isSeedingDemo}
-                className="text-xs px-2.5 py-1 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                {isSeedingDemo && <RefreshCw size={11} className="animate-spin" />}
-                <span>Demo Workspace</span>
-              </button>
             </div>
 
-            <button onClick={handleDismissOnboarding} className="p-1 text-muted-foreground hover:text-foreground rounded-xl transition-colors cursor-pointer" title="Dismiss onboarding">
+            <button type="button" onClick={handleDismissOnboarding} className="p-1 text-muted-foreground hover:text-foreground rounded-md transition-colors cursor-pointer" title="Dismiss onboarding">
               <X size={15} />
             </button>
           </div>
@@ -570,23 +587,24 @@ export function EleInDashboard() {
           />
         )}
 
-          {/* EleInFlowView temporarily bypassed while working on the dashboard */}
-          {false && !isSetup && !filtersLoading ? (
+          {/* EleInFlowView re-enabled for empty onboarding state */}
+          {!isSetup && !filtersLoading ? (
             <EleInFlowView key="flow" />
           ) : (
             <div key="analytics" className="space-y-4">
-              <DashboardErrorBanner error={filtersError} entityName="filters" onRetry={() => mutateFilters()} onSeedDemo={handleSeedDemo} onLoginRedirect={() => navigate('/login', { replace: true })} />
-              <DashboardErrorBanner error={statsError} entityName="stats" onRetry={() => mutateStats()} onSeedDemo={handleSeedDemo} onLoginRedirect={() => navigate('/login', { replace: true })} />
-              <DashboardErrorBanner error={accountHealthError} entityName="account health" onRetry={() => mutateAccountHealth()} onSeedDemo={handleSeedDemo} onLoginRedirect={() => navigate('/login', { replace: true })} />
+              <DashboardErrorBanner error={filtersError} entityName="filters" onRetry={() => mutateFilters()} onLoginRedirect={() => navigate('/login', { replace: true })} />
+              <DashboardErrorBanner error={statsError} entityName="stats" onRetry={() => mutateStats()} onLoginRedirect={() => navigate('/login', { replace: true })} />
+              <DashboardErrorBanner error={accountHealthError} entityName="account health" onRetry={() => mutateAccountHealth()} onLoginRedirect={() => navigate('/login', { replace: true })} />
 
               {/* Minimal Unified Triage Horizon */}
               {(expiredAccounts.length > 0 || throttledAccounts.length > 0 || pendingApprovalsCount > 0) && (
-                <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2 rounded-xl bg-card border border-border text-xs shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2 rounded-lg bg-card border border-border text-xs shadow-xs">
                   <div className="flex flex-wrap items-center gap-2">
                     {expiredAccounts.length > 0 && (
                       <button
+                        type="button"
                         onClick={() => navigate('/elein/accounts')}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 font-semibold hover:bg-destructive/20 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-destructive/10 text-destructive border border-destructive/20 font-semibold hover:bg-destructive/20 transition-all cursor-pointer"
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
                         <span>{expiredAccounts.length} Account{expiredAccounts.length > 1 ? 's' : ''} Need Reconnect</span>
@@ -595,8 +613,9 @@ export function EleInDashboard() {
                     )}
                     {throttledAccounts.length > 0 && (
                       <button
+                        type="button"
                         onClick={() => navigate('/elein/settings')}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-semibold hover:bg-amber-500/20 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-semibold hover:bg-amber-500/20 transition-all cursor-pointer"
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                         <span>{throttledAccounts.length} Senders Paced at &gt;90% Limit</span>
@@ -605,8 +624,9 @@ export function EleInDashboard() {
                     )}
                     {pendingApprovalsCount > 0 && (
                       <button
+                        type="button"
                         onClick={() => navigate('/elein/approvals')}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold hover:bg-emerald-500/20 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold hover:bg-emerald-500/20 transition-all cursor-pointer"
                       >
                         <ElesiumLogo size={14} />
                         <span>{pendingApprovalsCount} AI Draft{pendingApprovalsCount > 1 ? 's' : ''} Pending</span>
@@ -649,6 +669,7 @@ export function EleInDashboard() {
                 primaryColor={primaryColor}
                 secondaryColor={secondaryColor}
                 fetchFunnelLeads={fetchFunnelLeadsCb}
+                workspaceName={currentWorkspaceName}
               />
             </div>
           )}

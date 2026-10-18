@@ -291,7 +291,7 @@ export function EleInCampaignDetail() {
           <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
           <h2 className="text-lg font-bold text-foreground">Campaign not found</h2>
           <p className="text-xs text-muted-foreground">This campaign may have been deleted or moved to another workspace.</p>
-          <Link to="/elein/campaigns" className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:bg-primary/90 transition-all shadow-sm">
+          <Link to="/elein/campaigns" className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-all shadow-sm">
             <ArrowLeft size={14} /> Back to Campaigns
           </Link>
         </div>
@@ -303,13 +303,13 @@ export function EleInCampaignDetail() {
     return (
       <div className="min-h-full p-8 space-y-8 animate-pulse max-w-7xl mx-auto">
         <div className="flex gap-4 items-center">
-          <div className="w-8 h-8 rounded-xl bg-muted/40" />
-          <div className="h-8 w-64 rounded-xl bg-muted/40" />
+          <div className="w-8 h-8 rounded-lg bg-muted/40" />
+          <div className="h-8 w-64 rounded-lg bg-muted/40" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-2xl bg-muted/30" />)}
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-lg bg-muted/30" />)}
         </div>
-        <div className="h-64 rounded-2xl bg-muted/20" />
+        <div className="h-64 rounded-lg bg-muted/20" />
       </div>
     )
   }
@@ -413,6 +413,7 @@ export function EleInCampaignDetail() {
         <div className="flex items-center gap-2.5 flex-wrap">
           {/* 1. Primary Operational Action: Launch / Pause Campaign */}
           <button
+            type="button"
             onClick={() => {
               if (campaign.status === 'ACTIVE') {
                 toggleStatus()
@@ -422,7 +423,7 @@ export function EleInCampaignDetail() {
             }}
             disabled={toggling || campaign.status === 'DRAFT'}
             className={cn(
-              "flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-xl transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95",
+              "flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-lg transition-all disabled:opacity-50 cursor-pointer shadow-sm",
               campaign.status === 'ACTIVE'
                 ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30"
                 : "bg-emerald-600 hover:bg-emerald-500 text-white"
@@ -450,8 +451,9 @@ export function EleInCampaignDetail() {
 
           {/* 2. Secondary Action: Edit Sequence */}
           <button
+            type="button"
             onClick={() => navigate(`/elein/campaigns/new?edit=${campaign.id}`)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-muted/40 hover:bg-muted text-foreground font-semibold text-xs rounded-xl transition-colors border border-border/60 cursor-pointer shadow-xs active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-muted/40 hover:bg-muted text-foreground font-semibold text-xs rounded-lg transition-colors border border-border/60 cursor-pointer shadow-xs"
           >
             <LayoutDashboard size={14} />
             <span>Edit Sequence</span>
@@ -460,8 +462,11 @@ export function EleInCampaignDetail() {
           {/* 3. Elesium Growth Tools Dropdown Menu */}
           <div className="relative" ref={growthMenuRef}>
             <button
+              type="button"
+              aria-haspopup="true"
+              aria-expanded={showGrowthMenu}
               onClick={() => setShowGrowthMenu(prev => !prev)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600/10 via-cyan-500/10 to-blue-600/10 hover:from-blue-600/20 hover:to-cyan-500/20 text-foreground font-semibold text-xs rounded-xl border border-blue-500/30 transition-all cursor-pointer shadow-xs active:scale-95"
+              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600/10 via-cyan-500/10 to-blue-600/10 hover:from-blue-600/20 hover:to-cyan-500/20 text-foreground font-semibold text-xs rounded-lg border border-blue-500/30 transition-all cursor-pointer shadow-xs"
             >
               <ElesiumLogo size={16} className="shrink-0" />
               <span>Elesium Growth Tools</span>
@@ -469,7 +474,7 @@ export function EleInCampaignDetail() {
             </button>
 
             {showGrowthMenu && (
-              <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-border/80 bg-card/95 backdrop-blur-md shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border border-border/80 bg-card/95 backdrop-blur-md shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                 {/* Brand header */}
                 <div className="px-3 py-2 border-b border-border/60 mb-1 flex items-center justify-between">
                   <div>
@@ -489,13 +494,14 @@ export function EleInCampaignDetail() {
                 <div className="space-y-1 text-xs">
                   {/* Tool 1: Elesium Copy Intelligence */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowBanditModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform p-1.5">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5 p-1.5">
                       <ElesiumLogo size={20} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -511,13 +517,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 2: Pre-Flight Gate */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowPreflightModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Shield size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -530,13 +537,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 3: Social Pre-Warm */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowPreWarmModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Flame size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -549,13 +557,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 4: Event & Voice Studio */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowEventModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Mic size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -568,13 +577,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 5: ABM Multithreading */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowAbmModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Building2 size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -587,13 +597,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 6: Omnichannel Cascade */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowOmnichannelModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Layers size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -606,13 +617,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 7: Boomerang & Revival */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowBoomerangModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Repeat size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -625,13 +637,14 @@ export function EleInCampaignDetail() {
 
                   {/* Tool 8: ROI Certificate */}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowRoiCertModal(true);
                       setShowGrowthMenu(false);
                     }}
-                    className="w-full text-left p-2.5 rounded-xl hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                    className="w-full text-left p-2.5 rounded-lg hover:bg-muted/60 transition-colors flex items-start gap-2.5 group cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-500 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                    <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-500 flex items-center justify-center shrink-0 mt-0.5">
                       <Award size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -648,12 +661,14 @@ export function EleInCampaignDetail() {
 
           {/* 4. Share Icon Button */}
           <button
+            type="button"
             onClick={() => {
               navigator.clipboard.writeText(window.location.href);
               toast.success("Campaign link copied to clipboard");
             }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-muted/40 hover:bg-muted text-foreground font-semibold text-xs rounded-xl transition-colors border border-border/60 cursor-pointer shadow-xs active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 bg-muted/40 hover:bg-muted text-foreground font-semibold text-xs rounded-lg transition-colors border border-border/60 cursor-pointer shadow-xs"
             title="Share campaign link"
+            aria-label="Share campaign link"
           >
             <Share2 size={14} />
           </button>
@@ -662,14 +677,15 @@ export function EleInCampaignDetail() {
 
       {/* Zero Senders Environmental Alert Banner (Layer 1) */}
       {!hasSenders && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5 text-amber-300 font-semibold">
             <ShieldAlert size={18} className="shrink-0 text-amber-400" />
             <span>No LinkedIn sender accounts are attached to this campaign. Outreach cannot execute until senders are assigned.</span>
           </div>
           <button
+            type="button"
             onClick={() => navigate(`/elein/campaigns/new?edit=${campaign.id}`)}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold shrink-0 self-start sm:self-auto transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold shrink-0 self-start sm:self-auto transition-colors cursor-pointer"
           >
             Attach Senders Now →
           </button>
@@ -678,9 +694,9 @@ export function EleInCampaignDetail() {
 
       {/* Pro Preflight Pay Ramp Banner */}
       {!isPro && (
-        <div className="p-5 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="p-5 rounded-lg border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="p-2.5 bg-primary/15 rounded-xl text-primary mt-0.5 shrink-0">
+            <div className="p-2.5 bg-primary/15 rounded-lg text-primary mt-0.5 shrink-0">
               <Zap size={20} />
             </div>
             <div>
@@ -700,8 +716,9 @@ export function EleInCampaignDetail() {
             </div>
           </div>
           <button
+            type="button"
             onClick={() => openPaywall({ featureName: hasRestrictedNodes ? "Enrichment & Scraping Nodes" : "Active Campaigns Limit" })}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all shadow-sm shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
           >
             <span>{hasRestrictedNodes ? "Unlock Enrichment" : "Unlock 20 Campaigns"}</span>
             <ArrowRight size={14} />
@@ -717,8 +734,8 @@ export function EleInCampaignDetail() {
           { label: "Completed Sequences", rawValue: campaign.stats?.completed ?? 0, isPercent: false, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
           { label: "Funnel Conversion Rate", rawValue: Number(((campaign.stats?.conversion_rate ?? 0) * 100).toFixed(1)), isPercent: true, icon: RefreshCw, color: "text-indigo-500", bg: "bg-indigo-500/10", border: "border-indigo-500/20" }
         ].map((stat, i) => (
-          <div key={i} className="bg-card border border-border/80 p-5 rounded-2xl flex items-center gap-4 shadow-sm hover:border-border transition-all">
-            <div className={cn("p-3 rounded-xl border flex items-center justify-center shrink-0", stat.color, stat.bg, stat.border)}>
+          <div key={i} className="bg-card border border-border/80 p-5 rounded-lg flex items-center gap-4 shadow-sm hover:border-border transition-all">
+            <div className={cn("p-3 rounded-lg border flex items-center justify-center shrink-0", stat.color, stat.bg, stat.border)}>
               <stat.icon size={20} />
             </div>
             <div>
@@ -734,7 +751,7 @@ export function EleInCampaignDetail() {
 
       {/* Accounts & Workflow Topography */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-muted/10 border border-border/60 rounded-2xl p-6">
+        <div className="lg:col-span-2 bg-muted/10 border border-border/60 rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <LayoutDashboard size={14} className="text-primary" /> Active Sequence DAG Nodes
@@ -748,7 +765,7 @@ export function EleInCampaignDetail() {
             {campaign.nodes && campaign.nodes.length > 0 ? (
               campaign.nodes.map((node: any, idx: number) => (
                 <div key={node.id} className="flex items-center gap-2">
-                  <div className="px-3.5 py-2 rounded-xl border border-border/60 bg-background text-xs font-semibold text-foreground flex items-center gap-1.5 shadow-xs">
+                  <div className="px-3.5 py-2 rounded-lg border border-border/60 bg-background text-xs font-semibold text-foreground flex items-center gap-1.5 shadow-xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                     <span>{node.data?.label || node.type}</span>
                   </div>
@@ -764,7 +781,7 @@ export function EleInCampaignDetail() {
         </div>
 
         {/* Senders Station */}
-        <div className="bg-muted/10 border border-border/60 rounded-2xl p-6 space-y-3">
+        <div className="bg-muted/10 border border-border/60 rounded-lg p-6 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <Users size={14} className="text-emerald-400" /> Assigned Senders
@@ -777,7 +794,7 @@ export function EleInCampaignDetail() {
           <div className="space-y-2">
             {campaign.accounts && campaign.accounts.length > 0 ? (
               campaign.accounts.map((acc: any) => (
-                <div key={acc.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-border/40 bg-background/60 shadow-xs">
+                <div key={acc.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-border/40 bg-background/60 shadow-xs">
                   <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-xs uppercase shrink-0">
                     {acc.name ? acc.name.substring(0, 2) : "LK"}
                   </div>
@@ -791,7 +808,7 @@ export function EleInCampaignDetail() {
                 </div>
               ))
             ) : (
-              <div className="p-3 rounded-xl border border-dashed border-border/60 text-center text-xs text-muted-foreground">
+              <div className="p-3 rounded-lg border border-dashed border-border/60 text-center text-xs text-muted-foreground">
                 No accounts linked.
               </div>
             )}
@@ -800,9 +817,9 @@ export function EleInCampaignDetail() {
       </div>
 
       {/* Sequence Copy & Multi-Arm Routing Banner */}
-      <div className="p-4 rounded-2xl border border-border bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+      <div className="p-4 rounded-lg border border-border bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0 text-foreground border border-border">
+          <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0 text-foreground border border-border">
             <Layers size={16} />
           </div>
           <div>
@@ -815,8 +832,9 @@ export function EleInCampaignDetail() {
           </div>
         </div>
         <button
+          type="button"
           onClick={() => setShowBanditModal(true)}
-          className="px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium shrink-0 self-start sm:self-auto transition-all text-xs cursor-pointer flex items-center gap-1.5"
+          className="px-3.5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium shrink-0 self-start sm:self-auto transition-all text-xs cursor-pointer flex items-center gap-1.5"
         >
           <span>Open Copy Optimizer</span>
           <ArrowRight size={13} />
@@ -833,7 +851,7 @@ export function EleInCampaignDetail() {
             Read-only execution projection
           </span>
         </div>
-        <div className="border border-border/80 rounded-2xl overflow-hidden relative h-[460px] shadow-sm bg-card">
+        <div className="border border-border/80 rounded-lg overflow-hidden relative h-[460px] shadow-sm bg-card">
           <div className="absolute inset-0 pointer-events-auto">
             <EISequenceTree readOnly={true} nodeAnalytics={nodeAnalytics} />
           </div>
@@ -842,7 +860,7 @@ export function EleInCampaignDetail() {
 
       {/* Live Execution Telemetry Feed (AnimatedList) */}
       {telemetryEvents.length > 0 && (
-        <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="bg-card border border-border/80 rounded-lg p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -859,7 +877,7 @@ export function EleInCampaignDetail() {
             {telemetryEvents.map((evt: any) => (
               <div
                 key={evt.id}
-                className="w-full flex items-center justify-between p-3 rounded-xl border border-border/50 bg-background/80 hover:bg-muted/40 transition-colors text-xs"
+                className="w-full flex items-center justify-between p-3 rounded-lg border border-border/50 bg-background/80 hover:bg-muted/40 transition-colors text-xs"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-[10px] shrink-0 font-mono">
@@ -900,9 +918,10 @@ export function EleInCampaignDetail() {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleExportCsv}
               disabled={leads.length === 0}
-              className="px-3 py-1.5 rounded-xl bg-background hover:bg-muted border border-border/60 text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer shadow-xs"
+              className="px-3 py-1.5 rounded-lg bg-background hover:bg-muted border border-border/60 text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer shadow-xs"
             >
               <Download size={13} className="text-primary" />
               <span>Export CSV</span>
@@ -915,10 +934,12 @@ export function EleInCampaignDetail() {
                 placeholder="Search leads, companies..." 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-4 py-1.5 bg-background border border-border/60 rounded-xl text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50"
+                className="w-full pl-8 pr-4 py-1.5 bg-background border border-border/60 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50"
               />
               {search && (
                 <button
+                  type="button"
+                  aria-label="Clear search"
                   onClick={() => setSearch("")}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
                 >
@@ -939,10 +960,11 @@ export function EleInCampaignDetail() {
             { id: "error", label: "Attention Needed", count: statusCounts.error }
           ].map(f => (
             <button
+              type="button"
               key={f.id}
               onClick={() => setStatusFilter(f.id)}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
+                "px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5",
                 statusFilter === f.id
                   ? "bg-primary text-primary-foreground font-semibold shadow-xs"
                   : "bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-border/40"
@@ -960,7 +982,7 @@ export function EleInCampaignDetail() {
         </div>
 
         {/* Table Container */}
-        <div className="border border-border/60 rounded-2xl overflow-hidden bg-card shadow-sm">
+        <div className="border border-border/60 rounded-lg overflow-hidden bg-card shadow-sm">
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-muted/30 text-muted-foreground uppercase text-[10px] tracking-wider font-semibold border-b border-border/60">
               <tr>
@@ -984,6 +1006,7 @@ export function EleInCampaignDetail() {
                       </p>
                       {(search || statusFilter !== "all") && (
                         <button
+                          type="button"
                           onClick={() => {
                             setSearch("")
                             setStatusFilter("all")
@@ -1005,6 +1028,15 @@ export function EleInCampaignDetail() {
                       key={lead.id || lead.enrollment_id} 
                       className="hover:bg-muted/20 transition-colors group cursor-pointer"
                       onClick={() => setSelectedLeadForTrace(lead)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedLeadForTrace(lead);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View execution trace for ${leadName}`}
                     >
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
@@ -1053,42 +1085,48 @@ export function EleInCampaignDetail() {
                               href={lead.linkedin_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                               title="Open LinkedIn Profile"
+                              aria-label="Open LinkedIn Profile"
                             >
                               <ExternalLink size={13} />
                             </a>
                           )}
 
                           <button
+                            type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(lead.id || lead.enrollment_id || '');
                               setCopiedLeadId(lead.id || lead.enrollment_id);
                               toast.success("Lead ID copied");
                               setTimeout(() => setCopiedLeadId(null), 2000);
                             }}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                             title="Copy Lead ID"
+                            aria-label="Copy Lead ID"
                           >
                             {copiedLeadId === (lead.id || lead.enrollment_id) ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => {
                               setSelectedLeadForPrewarm({
                                 id: lead.id || lead.enrollment_id,
                                 name: `${lead.kdm_first || ''} ${lead.kdm_last || ''}`.trim() || lead.company_name || 'Prospect'
                               });
                             }}
-                            className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-md text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors cursor-pointer"
                             title="Autonomous Social Pre-Warm & Comment Generator"
+                            aria-label="Autonomous Social Pre-Warm & Comment Generator"
                           >
                             <Flame size={13} />
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => setSelectedLeadForTrace(lead)}
-                            className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-[11px] font-bold transition-colors cursor-pointer"
+                            className="px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 text-[11px] font-bold transition-colors cursor-pointer"
                           >
                             View Trace
                           </button>
@@ -1110,9 +1148,11 @@ export function EleInCampaignDetail() {
 
               <div className="flex items-center gap-1.5">
                 <button
+                  type="button"
+                  aria-label="Previous page"
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="p-1.5 rounded-lg border border-border/60 bg-background hover:bg-muted disabled:opacity-40 cursor-pointer"
+                  className="p-1.5 rounded-md border border-border/60 bg-background hover:bg-muted disabled:opacity-40 cursor-pointer"
                 >
                   <ChevronLeft size={14} />
                 </button>
@@ -1120,9 +1160,11 @@ export function EleInCampaignDetail() {
                   {currentPage} / {totalPages}
                 </span>
                 <button
+                  type="button"
+                  aria-label="Next page"
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="p-1.5 rounded-lg border border-border/60 bg-background hover:bg-muted disabled:opacity-40 cursor-pointer"
+                  className="p-1.5 rounded-md border border-border/60 bg-background hover:bg-muted disabled:opacity-40 cursor-pointer"
                 >
                   <ChevronRight size={14} />
                 </button>

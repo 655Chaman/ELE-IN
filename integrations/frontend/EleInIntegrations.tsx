@@ -17,6 +17,7 @@ import { useState, useMemo } from "react"
 import { LeadImportProvider } from "@/components/leads/LeadImportContext"
 import { HubSpotImport } from "@/components/leads/methods/HubSpotImport"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
+import { CustomSelect } from "@/components/ui/select"
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -1320,17 +1321,17 @@ export function EleInIntegrations() {
                       No campaigns found. Create a campaign first to route inbound webhooks.
                     </div>
                   ) : (
-                    <select
+                    <CustomSelect
                       value={webhookCampaignId}
-                      onChange={(e) => setWebhookCampaignId(e.target.value)}
-                      className="w-full bg-background border border-border/60 rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-emerald-500/50"
-                    >
-                      {campaigns.map((c: any) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.status})
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={setWebhookCampaignId}
+                      size="sm"
+                      placeholder="Select target campaign..."
+                      triggerClassName="bg-background border-border/60 rounded-xl px-3 py-2 text-xs text-foreground focus-visible:ring-emerald-500/50"
+                      options={campaigns.map((c: any) => ({
+                        value: c.id,
+                        label: `${c.name} (${c.status})`
+                      }))}
+                    />
                   )}
                 </div>
 
@@ -1627,15 +1628,18 @@ export function EleInIntegrations() {
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <select
+                  <CustomSelect
                     value={bookingPlatform}
-                    onChange={(e: any) => setBookingPlatform(e.target.value)}
-                    className="bg-background border border-border/60 rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none"
-                  >
-                    <option value="calendly">Calendly (invitee.created)</option>
-                    <option value="calcom">Cal.com (BOOKING_CREATED)</option>
-                    <option value="hubspot">HubSpot Meetings</option>
-                  </select>
+                    onValueChange={(val) => setBookingPlatform(val as any)}
+                    size="sm"
+                    className="w-full sm:w-64"
+                    triggerClassName="bg-background border-border/60 rounded-xl px-3 py-2 text-xs text-foreground"
+                    options={[
+                      { value: "calendly", label: "Calendly (invitee.created)" },
+                      { value: "calcom", label: "Cal.com (BOOKING_CREATED)" },
+                      { value: "hubspot", label: "HubSpot Meetings" },
+                    ]}
+                  />
 
                   <input
                     type="email"

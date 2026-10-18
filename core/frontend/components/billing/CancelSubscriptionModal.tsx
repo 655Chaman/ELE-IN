@@ -126,11 +126,13 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-lg rounded-3xl bg-card border border-destructive/20 shadow-[0_0_50px_rgba(239,68,68,0.15)] p-6 md:p-8 text-foreground overflow-hidden"
+        className="relative w-full max-w-lg rounded-xl bg-card border border-destructive/30 shadow-2xl p-6 md:p-8 text-foreground overflow-hidden"
       >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 text-muted-foreground hover:text-foreground p-1.5 rounded-full hover:bg-muted/50 transition z-10"
+          aria-label="Close modal"
+          className="absolute top-6 right-6 text-muted-foreground hover:text-foreground p-1.5 rounded-full hover:bg-muted/50 transition z-10 cursor-pointer"
         >
           <X size={18} />
         </button>
@@ -154,17 +156,18 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                 { id: 'technical', label: 'Missing features or technical friction', desc: 'Encountered platform bugs or blockers', icon: <Wrench size={16} /> },
                 { id: 'other', label: 'Other reasons', desc: 'No longer running LinkedIn automation', icon: <AlertCircle size={16} /> },
               ].map((opt) => (
-                <div
+                <button
+                  type="button"
                   key={opt.id}
                   onClick={() => setReason(opt.id)}
-                  className={`p-3.5 rounded-2xl border cursor-pointer transition flex items-center justify-between ${
+                  className={`w-full text-left p-3.5 rounded-lg border cursor-pointer transition flex items-center justify-between ${
                     reason === opt.id
                       ? 'border-primary bg-primary/5 ring-1 ring-primary'
                       : 'border-border/60 bg-muted/20 hover:border-foreground/20'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-background border border-border/50 text-foreground">
+                    <div className="p-2 rounded-md bg-background border border-border/50 text-foreground">
                       {opt.icon}
                     </div>
                     <div>
@@ -173,13 +176,14 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                     </div>
                   </div>
                   {reason === opt.id && <Check size={16} className="text-primary shrink-0" />}
-                </div>
+                </button>
               ))}
             </div>
 
             <button
+              type="button"
               onClick={() => setStep(2)}
-              className="w-full py-3.5 px-4 rounded-xl bg-foreground text-background font-bold hover:opacity-90 transition flex items-center justify-center gap-2 text-sm"
+              className="w-full py-3.5 px-4 rounded-lg bg-foreground text-background font-bold hover:opacity-90 transition flex items-center justify-center gap-2 text-sm cursor-pointer"
             >
               <span>Continue</span>
               <ArrowRight size={16} />
@@ -192,7 +196,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
           <div className="space-y-6 py-2">
             {reason === 'expensive' ? (
               <div className="space-y-5 text-center">
-                <div className="w-14 h-14 bg-emerald-500/10 text-emerald-400 rounded-2xl mx-auto flex items-center justify-center border border-emerald-500/20">
+                <div className="w-14 h-14 bg-emerald-500/10 text-emerald-400 rounded-md mx-auto flex items-center justify-center border border-emerald-500/20">
                   <Sparkles size={28} />
                 </div>
                 <div>
@@ -202,7 +206,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                   </p>
                 </div>
 
-                <div className="p-4 bg-muted/30 border border-border/60 rounded-2xl text-xs text-left space-y-2">
+                <div className="p-4 bg-muted/30 border border-border/60 rounded-lg text-xs text-left space-y-2">
                   <div className="flex items-center gap-2 text-foreground font-medium">
                     <Check size={14} className="text-primary" />
                     <span>₹2,499 / mo instead of ₹7,999 (Save ₹5,500/mo)</span>
@@ -219,24 +223,27 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
 
                 <div className="space-y-2">
                   <button
+                    type="button"
                     disabled={isSubmitting}
                     onClick={() => handleApplyOffer('starter_downsell')}
-                    className="w-full py-3.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 transition shadow-lg text-sm flex items-center justify-center gap-2"
+                    className="w-full py-3.5 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-500 transition shadow-lg text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : "Switch to Solo Starter Plan (₹2,499/mo)"}
                   </button>
 
                   <button
+                    type="button"
                     disabled={isSubmitting}
                     onClick={() => handleApplyOffer('discount')}
-                    className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-xl transition"
+                    className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-lg transition cursor-pointer disabled:opacity-50"
                   >
                     Or Take 50% Off Next Month (₹3,999)
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => setStep(3)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto"
+                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto cursor-pointer"
                   >
                     No thanks, review Free Tier downgrade
                   </button>
@@ -244,7 +251,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
               </div>
             ) : reason === 'paused' ? (
               <div className="space-y-5 text-center">
-                <div className="w-14 h-14 bg-indigo-500/10 text-indigo-400 rounded-2xl mx-auto flex items-center justify-center border border-indigo-500/20">
+                <div className="w-14 h-14 bg-indigo-500/10 text-indigo-400 rounded-md mx-auto flex items-center justify-center border border-indigo-500/20">
                   <Pause size={28} />
                 </div>
                 <div>
@@ -253,7 +260,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                     Keep all 20 workflows, prospect lead lists, and AI configurations 100% frozen with zero billing. Resume whenever you're ready with 1 click.
                   </p>
                 </div>
-                <div className="p-4 bg-muted/30 border border-border/60 rounded-2xl text-xs text-left space-y-2">
+                <div className="p-4 bg-muted/30 border border-border/60 rounded-lg text-xs text-left space-y-2">
                   <div className="flex items-center gap-2 text-foreground font-medium">
                     <Check size={14} className="text-primary" />
                     <span>$0 charged for the next 30 days</span>
@@ -265,15 +272,17 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                 </div>
                 <div className="space-y-2">
                   <button
+                    type="button"
                     disabled={isSubmitting}
                     onClick={() => handleApplyOffer('pause')}
-                    className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition shadow-lg text-sm"
+                    className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition shadow-lg text-sm cursor-pointer disabled:opacity-50"
                   >
                     {isSubmitting ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Pause Account for 30 Days (Keep My Setup)"}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setStep(3)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto"
+                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto cursor-pointer"
                   >
                     No thanks, review Free Tier downgrade
                   </button>
@@ -281,7 +290,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
               </div>
             ) : reason === 'low_replies' ? (
               <div className="space-y-5 text-center">
-                <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl mx-auto flex items-center justify-center border border-blue-500/20">
+                <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-md mx-auto flex items-center justify-center border border-blue-500/20">
                   <Rocket size={28} />
                 </div>
                 <div>
@@ -290,7 +299,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                     Cold outreach requires precision targeting. Claim 50% off next month plus free Bayesian ICP tuning to turn low replies into booked meetings.
                   </p>
                 </div>
-                <div className="p-4 bg-muted/30 border border-border/60 rounded-2xl text-xs text-left space-y-2">
+                <div className="p-4 bg-muted/30 border border-border/60 rounded-lg text-xs text-left space-y-2">
                   <div className="flex items-center gap-2 text-foreground font-medium">
                     <Check size={14} className="text-primary" />
                     <span>50% discount applied to your next billing cycle</span>
@@ -302,15 +311,17 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                 </div>
                 <div className="space-y-2">
                   <button
+                    type="button"
                     disabled={isSubmitting}
                     onClick={() => handleApplyOffer('discount')}
-                    className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 transition shadow-lg text-sm"
+                    className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-500 transition shadow-lg text-sm cursor-pointer disabled:opacity-50"
                   >
                     {isSubmitting ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Claim 50% Discount & Optimization"}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setStep(3)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto"
+                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto cursor-pointer"
                   >
                     No thanks, review Free Tier downgrade
                   </button>
@@ -318,7 +329,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
               </div>
             ) : (
               <div className="space-y-5 text-center">
-                <div className="w-14 h-14 bg-indigo-500/10 text-indigo-400 rounded-2xl mx-auto flex items-center justify-center border border-indigo-500/20">
+                <div className="w-14 h-14 bg-indigo-500/10 text-indigo-400 rounded-md mx-auto flex items-center justify-center border border-indigo-500/20">
                   <HeartHandshake size={28} />
                 </div>
                 <div>
@@ -330,13 +341,14 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                 <div className="space-y-2">
                   <a
                     href="mailto:krdeeksha@gmail.com?subject=Ele-in Technical Assistance"
-                    className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition shadow-lg text-sm block"
+                    className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary/90 transition shadow-lg text-sm block text-center"
                   >
                     Talk Directly to Engineering
                   </a>
                   <button
+                    type="button"
                     onClick={() => setStep(3)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto"
+                    className="text-xs text-muted-foreground hover:text-foreground transition underline pt-2 block mx-auto cursor-pointer"
                   >
                     Continue to downgrade audit
                   </button>
@@ -364,7 +376,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-muted/20 border border-border/60 space-y-2">
+                <div className="p-3.5 rounded-lg bg-muted/20 border border-border/60 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-foreground flex items-center gap-1.5">
                       <Layers size={14} className="text-indigo-500" /> Campaigns
@@ -378,7 +390,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-muted/20 border border-border/60 space-y-2">
+                <div className="p-3.5 rounded-lg bg-muted/20 border border-border/60 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-foreground flex items-center gap-1.5">
                       <Users size={14} className="text-blue-500" /> Senders
@@ -392,7 +404,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
                   </p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
                   <ShieldCheck size={16} className="text-emerald-500 shrink-0 mt-0.5" />
                   <p className="text-[11px] text-emerald-800 dark:text-emerald-300 leading-relaxed font-medium">
                     {auditData?.guarantee_message || "Zero data is ever deleted. Workflows and leads are safely preserved."}
@@ -405,14 +417,14 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="w-1/3 py-3 rounded-xl text-xs font-semibold border border-border hover:bg-muted transition"
+                className="w-1/3 py-3 rounded-lg text-xs font-semibold border border-border hover:bg-muted transition cursor-pointer"
               >
                 Back
               </button>
               <button
                 type="button"
                 onClick={() => setStep(4)}
-                className="w-2/3 py-3 rounded-xl text-xs font-bold bg-foreground text-background hover:opacity-90 transition flex items-center justify-center gap-1.5"
+                className="w-2/3 py-3 rounded-lg text-xs font-bold bg-foreground text-background hover:opacity-90 transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <span>Proceed to Confirm</span>
                 <ArrowRight size={14} />
@@ -424,7 +436,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
         {/* ─── STEP 4: Final Confirmation ─── */}
         {step === 4 && (
           <div className="space-y-6 py-2 text-center">
-            <div className="w-14 h-14 bg-destructive/10 text-destructive rounded-2xl mx-auto flex items-center justify-center border border-destructive/20">
+            <div className="w-14 h-14 bg-destructive/10 text-destructive rounded-md mx-auto flex items-center justify-center border border-destructive/20">
               <Shield size={28} />
             </div>
             <div>
@@ -434,7 +446,7 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
               </p>
             </div>
 
-            <div className="p-4 bg-muted/20 border border-border/50 rounded-2xl text-xs text-left space-y-2 text-muted-foreground">
+            <div className="p-4 bg-muted/20 border border-border/50 rounded-lg text-xs text-left space-y-2 text-muted-foreground">
               <div>• No immediate cutoff — access continues through period end</div>
               <div>• Excess campaigns archived safely to cold storage</div>
               <div>• 1-click reactivation available at any time before expiration</div>
@@ -442,15 +454,17 @@ export const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = (
 
             <div className="space-y-2">
               <button
+                type="button"
                 disabled={isSubmitting}
                 onClick={handleConfirmCancel}
-                className="w-full py-3.5 bg-destructive text-destructive-foreground font-bold rounded-xl hover:bg-destructive/90 disabled:opacity-50 transition shadow-lg text-sm"
+                className="w-full py-3.5 bg-destructive text-destructive-foreground font-bold rounded-lg hover:bg-destructive/90 disabled:opacity-50 transition shadow-lg text-sm cursor-pointer"
               >
                 {isSubmitting ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Confirm Downgrade to Free Tier"}
               </button>
               <button
+                type="button"
                 onClick={onClose}
-                className="text-xs text-foreground font-bold hover:underline pt-2 block mx-auto"
+                className="text-xs text-foreground font-bold hover:underline pt-2 block mx-auto cursor-pointer"
               >
                 Never mind, keep my Growth Plan
               </button>

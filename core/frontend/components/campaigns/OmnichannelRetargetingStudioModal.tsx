@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -102,7 +103,7 @@ export function OmnichannelRetargetingStudioModal({
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
-        className="w-full max-w-4xl bg-background border border-border rounded-2xl shadow-lg overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-4xl bg-background border border-border rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[92vh]"
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between shrink-0">
@@ -119,6 +120,7 @@ export function OmnichannelRetargetingStudioModal({
                   </span>
                 ) : (
                   <button 
+                    type="button"
                     onClick={() => openPaywall({ featureName: "Omnichannel Retargeting Studio", minTier: "PRO" })}
                     className="text-[10px] px-2 py-0.5 rounded-md font-medium uppercase tracking-wider bg-muted text-muted-foreground border border-border flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
                   >
@@ -134,6 +136,7 @@ export function OmnichannelRetargetingStudioModal({
 
           {onClose && (
             <button 
+              type="button"
               onClick={onClose}
               className="w-8 h-8 rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors cursor-pointer"
             >
@@ -159,6 +162,7 @@ export function OmnichannelRetargetingStudioModal({
               </div>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Omnichannel Retargeting Cascade" })}
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium text-xs transition-colors shrink-0 self-start sm:self-auto cursor-pointer"
             >
@@ -319,15 +323,19 @@ export function OmnichannelRetargetingStudioModal({
                   <label className="text-muted-foreground font-medium block mb-1">
                     Cascade Priority Order:
                   </label>
-                  <select
+                  <Select
                     value={cascadePriority}
-                    onChange={(e) => setCascadePriority(e.target.value)}
-                    className="w-full bg-background border border-border rounded-md px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                    onValueChange={(val) => setCascadePriority(val)}
                   >
-                    <option value="linkedin,email,inmail">Default (LinkedIn 1st -&gt; Email -&gt; InMail -&gt; Fallback)</option>
-                    <option value="email,linkedin,inmail">Email-First (Email -&gt; LinkedIn 1st -&gt; InMail -&gt; Fallback)</option>
-                    <option value="inmail,email,linkedin">InMail-First (InMail -&gt; Email -&gt; LinkedIn 1st -&gt; Fallback)</option>
-                  </select>
+                    <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="linkedin,email,inmail">Default (LinkedIn 1st -&gt; Email -&gt; InMail -&gt; Fallback)</SelectItem>
+                      <SelectItem value="email,linkedin,inmail">Email-First (Email -&gt; LinkedIn 1st -&gt; InMail -&gt; Fallback)</SelectItem>
+                      <SelectItem value="inmail,email,linkedin">InMail-First (InMail -&gt; Email -&gt; LinkedIn 1st -&gt; Fallback)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

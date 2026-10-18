@@ -45,6 +45,43 @@ def assert_fully_interpolated(message: str, lead_id: str = "", node_id: str = ""
         )
 
 
+def validate_outbound_url_for_ssrf(url: str) -> Tuple[bool, str]:
+    """
+    Security Hardening (VULN-11): Validates that an outbound URL does not resolve
+    to loopback, link-local, private RFC1918, or cloud metadata IPs to prevent SSRF.
+    """
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False, "Only HTTP and HTTPS protocols are allowed"
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False, "Missing destination hostname"
+
+        lower_host = hostname.lower()
+        if lower_host in ("localhost", "127.0.0.1", "::1", "metadata.google.internal") or lower_host.endswith(".internal"):
+            return False, "Access to localhost or internal domains is strictly prohibited"
+
+        try:
+            addr_info = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+        except Exception as dns_err:
+            return False, f"DNS resolution failed: {dns_err}"
+
+        for family, socktype, proto, canonname, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False, f"Access to private or internal IP ({ip_str}) is strictly prohibited (SSRF defense)"
+
+        return True, ""
+    except Exception as e:
+        return False, f"SSRF security validation error: {e}"
+
 
 ACTION_TYPE_MAP = {
     "connection_request":         "connection_request",
@@ -371,7 +408,10 @@ class EleInNodeExecutor:
         if self.supabase and (not clean_enrichment_value(lead.get("first_name")) or not clean_enrichment_value(lead.get("company"))):
             lead_id = data.get("_lead_id") or data.get("lead_id")
             try:
+                ws_id = str(data.get("_workspace_id") or data.get("workspace_id") or getattr(self, "workspace_id", "") or "").strip()
                 query = self.supabase.table("leads").select("first_name, last_name, company, company_name, title, job_title, industry, location, email, phone")
+                if ws_id and ws_id != "ws-default":
+                    query = query.eq("workspace_id", ws_id)
                 if lead_id:
                     res = query.eq("id", lead_id).limit(1).execute()
                 elif linkedin_url:
@@ -3493,9 +3533,18 @@ Reject: {reject_link}
                 
             synthesis_layer = "CORE VALUE PROP:\n" + synthesis.get('core_value_prop', '') + "\n\n"
             if isinstance(synthesis.get('key_differentiators'), list):
-                synthesis_layer += "KEY DIFFERENTIATORS:\n" + ", ".join(synthesis.get('key_differentiators', [])) + "\n\n"
+                diffs = [str(x).strip() for x in synthesis.get('key_differentiators', []) if x is not None and str(x).strip()]
+                if diffs:
+                    synthesis_layer += "KEY DIFFERENTIATORS:\n" + ", ".join(diffs) + "\n\n"
+            elif synthesis.get('key_differentiators'):
+                synthesis_layer += "KEY DIFFERENTIATORS:\n" + str(synthesis.get('key_differentiators')).strip() + "\n\n"
+
             if isinstance(synthesis.get('proof_points'), list):
-                synthesis_layer += "PROOF POINTS:\n" + ", ".join(synthesis.get('proof_points', [])) + "\n\n"
+                proofs = [str(x).strip() for x in synthesis.get('proof_points', []) if x is not None and str(x).strip()]
+                if proofs:
+                    synthesis_layer += "PROOF POINTS:\n" + ", ".join(proofs) + "\n\n"
+            elif synthesis.get('proof_points'):
+                synthesis_layer += "PROOF POINTS:\n" + str(synthesis.get('proof_points')).strip() + "\n\n"
                 
             rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + "\n".join(chunk_texts)
             context_str = synthesis_layer + rag_layer
@@ -4871,6 +4920,10 @@ Respond ONLY with valid JSON."""
         message = self._interpolate_template(raw_message, data, linkedin_url) if "{{" in raw_message else raw_message
 
         if webhook_url and str(webhook_url).startswith(("http://", "https://")):
+            is_safe, ssrf_err = validate_outbound_url_for_ssrf(str(webhook_url))
+            if not is_safe:
+                logger.warning(f"Slack webhook blocked by SSRF policy: {ssrf_err}")
+                return {"status": "error", "branch": Branch.FAILED.value, "error": f"Slack send error: {ssrf_err}"}
             try:
                 import urllib.request
                 req_data = json.dumps({"text": message}).encode("utf-8")
@@ -4895,10 +4948,20 @@ Respond ONLY with valid JSON."""
         Layer 0: Dispatches HTTP POST/PUT webhook to external automation (Zapier, Make, custom API).
         Layer 1: Supports custom JSON payload templates with dynamic variable interpolation; custom auth headers.
         Layer 2: Standardizes output branch to Branch.THEN.value ('then'). Validates URL format prior to dispatch.
+        Security Hardening (VULN-11): Strict SSRF validation against loopback, private RFC1918, and cloud metadata.
         """
         url = (data.get("url") or data.get("webhook_url") or "").strip()
         if not url or not url.startswith(("http://", "https://")):
             return {"status": "error", "branch": Branch.FAILED.value, "error": "Invalid or missing webhook URL"}
+
+        is_safe, ssrf_err = validate_outbound_url_for_ssrf(url)
+        if not is_safe:
+            logger.warning(f"Webhook destination blocked by SSRF policy: {ssrf_err} (URL: {url})")
+            return {
+                "status": "error",
+                "branch": Branch.FAILED.value,
+                "error": f"Webhook destination URL blocked by SSRF safety policy: {ssrf_err}"
+            }
         try:
             import urllib.request
             custom_payload_raw = data.get("payload_template") or data.get("payload")

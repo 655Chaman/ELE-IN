@@ -88,10 +88,10 @@ ${preset.objectionPlaybook}
   if (assets.length === 0) {
     return (
       <div className="space-y-4 mt-4 text-left">
-        <div className="p-6 rounded-3xl border border-slate-200 dark:border-border/50 bg-slate-50/70 dark:bg-muted/10 space-y-4">
+        <div className="p-6 rounded-xl border border-border/60 bg-muted/20 space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
                 <BrainCircuit size={20} />
               </div>
               <div>
@@ -111,12 +111,12 @@ ${preset.objectionPlaybook}
             {SYNTHESIS_STARTER_PRESETS.map((preset) => (
               <div
                 key={preset.id}
-                className="p-4 rounded-2xl border border-border/80 bg-background/80 hover:border-primary/40 transition-all flex flex-col justify-between shadow-xs"
+                className="p-4 rounded-lg border border-border/60 bg-card hover:border-primary/40 transition-all flex flex-col justify-between shadow-xs"
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-foreground">{preset.title}</span>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                       {preset.tag}
                     </span>
                   </div>
@@ -127,9 +127,10 @@ ${preset.objectionPlaybook}
 
                 <div className="pt-3">
                   <button
+                    type="button"
                     disabled={loadingPresetId !== null}
                     onClick={() => handleApplyPreset(preset)}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-all disabled:opacity-50 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-all disabled:opacity-50 cursor-pointer"
                   >
                     {loadingPresetId === preset.id ? (
                       <>
@@ -149,7 +150,7 @@ ${preset.objectionPlaybook}
           </div>
 
           {/* Pro-Tip Education Banner (Cake Equity Pattern) */}
-          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200">
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200">
             <Lightbulb size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="leading-relaxed text-[11px]">
               <strong>Pro-Tip:</strong> If your company website is protected by Cloudflare anti-bot firewalls, loading one of the presets above or pasting raw homepage text gives the AI instant memory without scraper timeouts.
@@ -166,10 +167,10 @@ ${preset.objectionPlaybook}
       {assets.map((asset) => (
         <div 
           key={asset.id || asset.name} 
-          className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 dark:border-border/50 bg-slate-50 dark:bg-muted/10 group hover:border-primary/30 transition-all shadow-xs"
+          className="flex items-center justify-between p-3.5 rounded-lg border border-border/60 bg-card group hover:border-primary/30 transition-all shadow-xs"
         >
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
               {asset.type === 'pdf' ? (
                 <FileText size={15} />
               ) : asset.type === 'text' ? (
@@ -227,18 +228,22 @@ ${preset.objectionPlaybook}
           <div className="flex items-center gap-1">
             {(asset.status === 'failed' || asset.status === 'error') && (
               <button 
+                type="button"
                 onClick={() => onRetry(asset.id)}
-                className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-1 transition-colors"
+                className="px-2 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-1 transition-colors"
                 title="Retry processing"
+                aria-label="Retry processing"
               >
                 <RefreshCw size={12} />
                 <span>Retry</span>
               </button>
             )}
             <button 
+              type="button"
               onClick={() => onDelete(asset.id)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               title="Delete asset"
+              aria-label="Delete asset"
             >
               <Trash2 size={13} />
             </button>

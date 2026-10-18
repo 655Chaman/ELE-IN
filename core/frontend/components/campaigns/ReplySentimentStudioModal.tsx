@@ -297,7 +297,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-card border border-border rounded-2xl shadow-lg flex flex-col overflow-hidden text-foreground">
+      <div className="relative w-full max-w-4xl max-h-[90vh] bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden text-foreground">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
@@ -319,6 +319,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
               <span>Export Audit CSV</span>
             </button>
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
@@ -330,6 +331,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
         {/* Tab Navigation */}
         <div className="flex items-center gap-1 px-6 pt-3 border-b border-border bg-background text-xs">
           <button
+            type="button"
             onClick={() => setActiveTab("classifier")}
             className={`flex items-center gap-2 px-4 py-2.5 font-medium border-b-2 transition-all cursor-pointer ${
               activeTab === "classifier"
@@ -340,6 +342,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
             <MessageSquare size={14} /> Zero-Shot Classifier Testbench
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("ooo_rules")}
             className={`flex items-center gap-2 px-4 py-2.5 font-medium border-b-2 transition-all cursor-pointer ${
               activeTab === "ooo_rules"
@@ -350,6 +353,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
             <Clock size={14} /> OOO Auto-Snooze Rules
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("actions")}
             className={`flex items-center gap-2 px-4 py-2.5 font-medium border-b-2 transition-all cursor-pointer ${
               activeTab === "actions"
@@ -370,30 +374,35 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                 <span className="text-xs font-semibold text-muted-foreground">Quick Test Presets:</span>
                 <div className="flex flex-wrap gap-2">
                   <button
+                    type="button"
                     onClick={() => loadSample("ooo")}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg bg-muted/30 border border-border hover:bg-muted transition-colors flex items-center gap-1.5 text-foreground cursor-pointer"
                   >
                     <Clock size={12} className="text-muted-foreground" /> Out of Office (With Date)
                   </button>
                   <button
+                    type="button"
                     onClick={() => loadSample("meeting")}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg bg-muted/30 border border-border hover:bg-muted transition-colors flex items-center gap-1.5 text-foreground cursor-pointer"
                   >
                     <Calendar size={12} className="text-muted-foreground" /> Meeting Requested
                   </button>
                   <button
+                    type="button"
                     onClick={() => loadSample("positive")}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg bg-muted/30 border border-border hover:bg-muted transition-colors flex items-center gap-1.5 text-foreground cursor-pointer"
                   >
                     <CheckCircle2 size={12} className="text-muted-foreground" /> Pricing / Deck Request
                   </button>
                   <button
+                    type="button"
                     onClick={() => loadSample("objection")}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg bg-muted/30 border border-border hover:bg-muted transition-colors flex items-center gap-1.5 text-foreground cursor-pointer"
                   >
                     <ShieldCheck size={12} className="text-muted-foreground" /> Competitor Objection
                   </button>
                   <button
+                    type="button"
                     onClick={() => loadSample("optout")}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg bg-muted/30 border border-border hover:bg-muted transition-colors flex items-center gap-1.5 text-foreground cursor-pointer"
                   >
@@ -432,6 +441,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                   Protected by prompt injection defense and tenant isolation guardrails.
                 </p>
                 <button
+                  type="button"
                   onClick={handleRunClassification}
                   disabled={isClassifying || !testText.trim()}
                   className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground flex items-center gap-2 transition-all cursor-pointer"
@@ -670,6 +680,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
         <div className="px-6 py-4 border-t border-border bg-background flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Autonomous Inbound Routing</span>
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-medium rounded-lg border border-border bg-card hover:bg-muted text-foreground transition-colors cursor-pointer"
           >

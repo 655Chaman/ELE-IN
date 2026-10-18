@@ -517,54 +517,9 @@ def generate_social_icebreaker(
 
 def get_mock_social_posts_for_lead(lead_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Generates realistic activity posts for a lead if Voyager / live scraper is in development/mock mode.
+    Returns empty list when no real posts exist, removing simulated activity fixtures.
     """
-    job_title = (lead_data.get("job_title") or "").lower()
-    company = lead_data.get("company_name") or "our company"
-    now = datetime.now(timezone.utc)
-
-    # Contextually tailored posts based on job role
-    if "eng" in job_title or "cto" in job_title or "tech" in job_title:
-        return [
-            {
-                "id": str(uuid.uuid4()),
-                "post_url": "https://linkedin.com/posts/activity-example-1",
-                "post_text": f"We're expanding our core backend infrastructure at {company}! We are hiring senior engineers to help us tackle database scaling bottlenecks and pipeline latency. Link in comments.",
-                "post_date": (now - timedelta(days=2)).isoformat(),
-                "engagement_count": {"likes": 34, "comments": 8, "reposts": 3},
-                "media_type": "text"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "post_url": "https://linkedin.com/posts/activity-example-2",
-                "post_text": "Evaluating alternatives to our current monitoring stack. What are you all using for distributed tracing across microservices?",
-                "post_date": (now - timedelta(days=6)).isoformat(),
-                "engagement_count": {"likes": 19, "comments": 14, "reposts": 1},
-                "media_type": "text"
-            }
-        ]
-    elif "sales" in job_title or "cro" in job_title or "growth" in job_title:
-        return [
-            {
-                "id": str(uuid.uuid4()),
-                "post_url": "https://linkedin.com/posts/activity-example-3",
-                "post_text": f"Thrilled to share that {company} just closed our Series A funding round! Huge gratitude to our team and partners. Now looking for talented SDRs and AEs to join the ride.",
-                "post_date": (now - timedelta(days=1)).isoformat(),
-                "engagement_count": {"likes": 88, "comments": 29, "reposts": 11},
-                "media_type": "image"
-            }
-        ]
-    else:
-        return [
-            {
-                "id": str(uuid.uuid4()),
-                "post_url": "https://linkedin.com/posts/activity-example-4",
-                "post_text": f"Excited to start my new position at {company}! Looking forward to building great things with an incredible team.",
-                "post_date": (now - timedelta(days=4)).isoformat(),
-                "engagement_count": {"likes": 45, "comments": 12, "reposts": 2},
-                "media_type": "text"
-            }
-        ]
+    return []
 
 
 def scan_lead_social_feed(
@@ -793,112 +748,6 @@ def batch_scan_list_social_signals(
     }
 
 
-DEMO_RADAR_FEED_ITEMS = [
-    {
-        "lead": {
-            "id": "demo-lead-1",
-            "first_name": "Elena",
-            "last_name": "Rostova",
-            "job_title": "VP of Engineering",
-            "company_name": "Veloce Cloud",
-            "linkedin_url": "https://linkedin.com/in/elena-rostova-demo",
-            "location": "San Francisco, CA",
-            "social_intent_score": 92,
-            "social_intent_tier": "HOT",
-            "last_social_scan_at": datetime.now(timezone.utc).isoformat(),
-            "best_outreach_angle": "Directly reference engineering expansion and distributed systems hiring",
-            "social_icebreaker": "Saw your point on growing the backend infra team at Veloce Cloud, Elena.",
-            "recommended_timing": "IMMEDIATE_ACTION"
-        },
-        "signals": [
-            {
-                "signal_type": "HIRING_EXPANSION",
-                "intent_strength": "HIGH",
-                "confidence_score": 0.94,
-                "signal_summary": "Detected Hiring Expansion matching: growing our team, hiring, open roles",
-                "quote_snippet": "We are aggressively growing our distributed systems team. Currently hiring 6 Senior Backend Engineers in SF & remote.",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-        ],
-        "top_post": {
-            "post_url": "https://linkedin.com/posts/elena-rostova-hiring",
-            "post_text": "We are aggressively growing our distributed systems team. Currently hiring 6 Senior Backend Engineers in SF & remote to help scale our real-time streaming pipeline.",
-            "post_date": (datetime.now(timezone.utc) - timedelta(hours=14)).isoformat(),
-            "engagement_count": {"likes": 48, "comments": 12, "reposts": 5},
-            "media_type": "text"
-        }
-    },
-    {
-        "lead": {
-            "id": "demo-lead-2",
-            "first_name": "Marcus",
-            "last_name": "Thorne",
-            "job_title": "Head of Revenue Operations",
-            "company_name": "MetricWave",
-            "linkedin_url": "https://linkedin.com/in/marcus-thorne-demo",
-            "location": "Austin, TX",
-            "social_intent_score": 86,
-            "social_intent_tier": "HOT",
-            "last_social_scan_at": datetime.now(timezone.utc).isoformat(),
-            "best_outreach_angle": "Address deliverability friction and disconnected mailboxes",
-            "social_icebreaker": "Your perspective on outbound deliverability bottlenecks really hit home, Marcus.",
-            "recommended_timing": "IMMEDIATE_ACTION"
-        },
-        "signals": [
-            {
-                "signal_type": "TECH_STACK_PAIN",
-                "intent_strength": "HIGH",
-                "confidence_score": 0.89,
-                "signal_summary": "Detected Tech Stack Pain matching: struggling with, evaluating alternatives",
-                "quote_snippet": "Honestly frustrated with current outbound tooling. Struggling with disconnected sender sessions and zero deliverability visibility.",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-        ],
-        "top_post": {
-            "post_url": "https://linkedin.com/posts/marcus-thorne-pain",
-            "post_text": "Honestly frustrated with current outbound tooling. Struggling with disconnected sender sessions and zero deliverability visibility. Evaluating alternatives that actually work.",
-            "post_date": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
-            "engagement_count": {"likes": 32, "comments": 19, "reposts": 2},
-            "media_type": "text"
-        }
-    },
-    {
-        "lead": {
-            "id": "demo-lead-3",
-            "first_name": "Sarah",
-            "last_name": "Lin",
-            "job_title": "Co-Founder & Chief Product Officer",
-            "company_name": "ApexScale AI",
-            "linkedin_url": "https://linkedin.com/in/sarah-lin-demo",
-            "location": "New York, NY",
-            "social_intent_score": 79,
-            "social_intent_tier": "WARM",
-            "last_social_scan_at": datetime.now(timezone.utc).isoformat(),
-            "best_outreach_angle": "Congratulate on Series A funding and scaleup velocity",
-            "social_icebreaker": "Huge congratulations on the $18M Series A milestone at ApexScale AI, Sarah!",
-            "recommended_timing": "WITHIN_24_HOURS"
-        },
-        "signals": [
-            {
-                "signal_type": "FUNDING_ANNOUNCEMENT",
-                "intent_strength": "HIGH",
-                "confidence_score": 0.95,
-                "signal_summary": "Detected Funding Announcement matching: series a, raised $, backed by",
-                "quote_snippet": "Thrilled to share that we closed our $18M Series A backed by Sequoia and Bessemer to accelerate our enterprise roadmap.",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-        ],
-        "top_post": {
-            "post_url": "https://linkedin.com/posts/sarah-lin-series-a",
-            "post_text": "Thrilled to share that we closed our $18M Series A backed by Sequoia and Bessemer to accelerate our enterprise roadmap. Huge thanks to our early customers and team!",
-            "post_date": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
-            "engagement_count": {"likes": 142, "comments": 38, "reposts": 14},
-            "media_type": "text"
-        }
-    }
-]
-
-
 def get_workspace_intent_feed(
     workspace_id: str,
     supabase: Any,
@@ -910,7 +759,7 @@ def get_workspace_intent_feed(
     """
     Layer 0 & 1: Retrieves real-time intent feed across workspace leads.
     Returns prospects ordered by intent score and recent activity.
-    Provides realistic demonstration prospects when workspace is in trial or has no scraped signals.
+    Returns empty feed when no signals exist in the database.
     """
     safe_limit = min(max(1, limit), 100)
     query = supabase.table("leads") \
@@ -969,21 +818,12 @@ def get_workspace_intent_feed(
             "top_post": top_post
         })
 
-    # Layer 1 Paranoia: Fallback demo data for sandbox / zero-lead trial states
-    if not feed_items and include_demo_fallback:
-        demo_filtered = DEMO_RADAR_FEED_ITEMS
-        if tier_filter and tier_filter.upper() in ["HOT", "WARM", "MILD", "COLD"]:
-            demo_filtered = [d for d in demo_filtered if d["lead"]["social_intent_tier"] == tier_filter.upper()]
-        if signal_type:
-            demo_filtered = [d for d in demo_filtered if any(s["signal_type"] == signal_type for s in d["signals"])]
-        feed_items = demo_filtered
-
     return {
         "status": "success",
         "workspace_id": workspace_id,
         "total_items": len(feed_items),
         "feed": feed_items,
-        "is_demo_preview": len(leads) == 0 and include_demo_fallback
+        "is_demo_preview": False
     }
 
 
@@ -1115,12 +955,7 @@ def generate_intent_retargeting_draft(
         lead = None
 
     if not lead:
-        # Check if demo lead
-        demo_match = next((d for d in DEMO_RADAR_FEED_ITEMS if d["lead"]["id"] == lead_id), None)
-        if demo_match:
-            lead = demo_match["lead"]
-        else:
-            lead = {"first_name": "Alex", "company_name": "CloudScale", "job_title": "VP Engineering"}
+        raise ValueError(f"Lead {lead_id} not found in workspace {workspace_id}")
 
     first_name = lead.get("first_name", "there")
     company_name = lead.get("company_name", "your team")
@@ -1143,11 +978,6 @@ def generate_intent_retargeting_draft(
                 signal = sig_res.data[0]
         except Exception:
             pass
-
-    if not signal and lead_id.startswith("demo-lead"):
-        demo_match = next((d for d in DEMO_RADAR_FEED_ITEMS if d["lead"]["id"] == lead_id), None)
-        if demo_match and demo_match.get("signals"):
-            signal = demo_match["signals"][0]
 
     signal_type = signal.get("signal_type", "GENERAL_THOUGHT_LEADERSHIP") if signal else "HIRING_EXPANSION"
     quote = signal.get("quote_snippet", "") if signal else ""
@@ -1270,7 +1100,7 @@ def export_social_radar_feed_csv(
     supabase: Any,
     tier_filter: Optional[str] = None,
     signal_type: Optional[str] = None,
-    include_demo_fallback: bool = True
+    include_demo_fallback: bool = False
 ) -> str:
     """
     Paranoia Layer 0 & 2: Exports social intent feed to formula-defended CSV stream.
@@ -1281,7 +1111,7 @@ def export_social_radar_feed_csv(
         tier_filter=tier_filter,
         signal_type=signal_type,
         limit=100,
-        include_demo_fallback=include_demo_fallback
+        include_demo_fallback=False
     )
     items = feed_data.get("feed", [])
 

@@ -211,9 +211,10 @@ export function TestDriveSimulator() {
     <>
       <StarBorder
         as="button"
+        type="button"
         onClick={() => setIsTestOpen(true)}
         className="group flex-shrink-0 cursor-pointer"
-        innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-[18px] bg-foreground hover:bg-foreground/90 text-background text-sm font-bold transition-all shadow-lg cursor-pointer"
+        innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-foreground hover:bg-foreground/90 text-background text-sm font-bold transition-all shadow-lg cursor-pointer"
         speed="3s"
       >
         <ElesiumLogo size={16} />
@@ -235,12 +236,12 @@ export function TestDriveSimulator() {
               initial={{ opacity: 0, scale: 0.96, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              className="relative w-full max-w-[660px] bg-white dark:bg-card border border-slate-200 dark:border-border/50 shadow-[0_16px_50px_rgb(0,0,0,0.2)] dark:shadow-2xl rounded-[32px] flex flex-col overflow-hidden h-[660px] max-h-[92vh]"
+              className="relative w-full max-w-[660px] bg-white dark:bg-card border border-slate-200 dark:border-border/50 shadow-[0_16px_50px_rgb(0,0,0,0.2)] dark:shadow-2xl rounded-xl flex flex-col overflow-hidden h-[660px] max-h-[92vh]"
             >
               {/* Header */}
               <div className="p-5 border-b border-slate-100 dark:border-border/40 flex justify-between items-center bg-slate-50 dark:bg-muted/10 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs">
+                  <div className="w-9 h-9 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs">
                     <ElesiumLogo size={20} />
                   </div>
                   <div>
@@ -267,14 +268,15 @@ export function TestDriveSimulator() {
                       type="button"
                       onClick={handleClearHistory}
                       title="Clear chat history"
-                      className="p-2 text-muted-foreground hover:text-foreground rounded-xl hover:bg-slate-200 dark:hover:bg-muted transition-colors cursor-pointer"
+                      className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-slate-200 dark:hover:bg-muted transition-colors cursor-pointer"
                     >
                       <RotateCcw size={15} />
                     </button>
                   )}
                   <button 
+                    type="button"
                     onClick={() => setIsTestOpen(false)} 
-                    className="text-muted-foreground hover:text-foreground p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-muted transition-colors cursor-pointer"
+                    className="text-muted-foreground hover:text-foreground p-2 rounded-md hover:bg-slate-200 dark:hover:bg-muted transition-colors cursor-pointer"
                   >
                     <X size={16} />
                   </button>
@@ -288,7 +290,7 @@ export function TestDriveSimulator() {
                   <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-muted border border-slate-200 dark:border-border/50 flex items-center justify-center shrink-0 mt-1">
                     <ElesiumLogo size={16} />
                   </div>
-                  <div className="bg-slate-50 dark:bg-muted/30 rounded-2xl rounded-tl-sm p-4 text-xs sm:text-sm text-foreground max-w-[88%] border border-slate-200 dark:border-border/40 shadow-xs leading-relaxed space-y-2">
+                  <div className="bg-slate-50 dark:bg-muted/30 rounded-lg rounded-tl-xs p-4 text-xs sm:text-sm text-foreground max-w-[88%] border border-slate-200 dark:border-border/40 shadow-xs leading-relaxed space-y-2">
                     <p className="font-semibold text-foreground flex items-center gap-1.5">
                       <ElesiumLogo size={14} />
                       <span>Welcome to the AI Battleground.</span>
@@ -314,7 +316,7 @@ export function TestDriveSimulator() {
                             type="button"
                             disabled={isTesting}
                             onClick={() => handleTestDrive(ch.objection)}
-                            className="p-3 text-left rounded-2xl border border-slate-200 dark:border-border/60 bg-slate-50/50 dark:bg-card/40 hover:bg-slate-100 dark:hover:bg-card hover:border-primary/40 transition-all group flex flex-col justify-between cursor-pointer shadow-2xs"
+                            className="p-3 text-left rounded-lg border border-slate-200 dark:border-border/60 bg-slate-50/50 dark:bg-card/40 hover:bg-slate-100 dark:hover:bg-card hover:border-primary/40 transition-all group flex flex-col justify-between cursor-pointer shadow-2xs"
                           >
                             <div className="flex items-center justify-between w-full mb-1">
                               <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
@@ -346,8 +348,8 @@ export function TestDriveSimulator() {
                     
                     <div className={`max-w-[85%] ${
                       msg.role === 'user'
-                        ? 'bg-primary text-white rounded-2xl rounded-tr-sm p-3.5 shadow-xs'
-                        : 'bg-slate-50 dark:bg-muted/30 text-foreground border border-slate-200 dark:border-border/40 rounded-2xl rounded-tl-sm p-4 shadow-xs'
+                        ? 'bg-primary text-white rounded-lg rounded-tr-xs p-3.5 shadow-xs'
+                        : 'bg-slate-50 dark:bg-muted/30 text-foreground border border-slate-200 dark:border-border/40 rounded-lg rounded-tl-xs p-4 shadow-xs'
                     }`}>
                       {msg.role === 'user' && (
                         <div className="text-[10px] text-white/70 uppercase tracking-wider font-bold mb-1">
@@ -405,7 +407,7 @@ export function TestDriveSimulator() {
                     <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-1">
                       <ElesiumLogo size={18} className="animate-pulse" />
                     </div>
-                    <div className="bg-slate-50 dark:bg-muted/30 rounded-2xl rounded-tl-sm p-4 text-xs text-muted-foreground border border-slate-200 dark:border-border/40 shadow-xs flex items-center gap-2">
+                    <div className="bg-slate-50 dark:bg-muted/30 rounded-lg rounded-tl-xs p-4 text-xs text-muted-foreground border border-slate-200 dark:border-border/40 shadow-xs flex items-center gap-2">
                       <Loader2 size={13} className="animate-spin text-primary" />
                       <span>Retrieving knowledge base differentiators & synthesizing rebuttal...</span>
                     </div>

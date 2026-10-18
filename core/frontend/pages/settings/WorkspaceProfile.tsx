@@ -252,11 +252,9 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
           boxShadow: savedSuccess ? "0 0 15px -3px rgba(16, 185, 129, 0.3)" : "0 0 0px 0px rgba(0,0,0,0)",
         }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="rounded-2xl"
+        className="rounded-xl"
       >
-        <div className="p-8 rounded-[24px] border border-border/60 bg-card relative overflow-hidden shadow-sm">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-primary/60 to-primary/10"></div>
-          
+        <div className="p-8 rounded-xl border border-border/60 bg-card relative overflow-hidden shadow-sm">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-8">
             <div className={`w-24 h-24 rounded-full shadow-lg flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br ${getGradient(name || serverName)} transition-all duration-500`}>
               {getInitials(name || serverName)}
@@ -293,6 +291,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => setName(serverName)}
                       className="px-3 py-1.5 text-xs font-semibold hover:bg-primary/20 text-primary rounded-md transition-colors"
                       disabled={saving}
@@ -300,6 +299,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
                       Discard
                     </button>
                     <button
+                      type="button"
                       onClick={handleSave}
                       className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-md hover:bg-primary/90 transition-colors shadow-sm"
                       disabled={saving || isEmpty || isTooLong}
@@ -374,9 +374,10 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
               
               <div className="w-full sm:w-auto relative group">
                 <button
+                  type="button"
                   onClick={handleSave}
                   disabled={!hasChanges || saving || isEmpty || isTooLong}
-                  className="w-full sm:w-auto relative overflow-hidden flex items-center justify-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed shadow-md active:scale-95 cursor-pointer"
+                  className="w-full sm:w-auto relative overflow-hidden flex items-center justify-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed shadow-md cursor-pointer"
                 >
                   <AnimatePresence mode="popLayout" initial={false}>
                     {saving ? (
@@ -426,7 +427,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
 
       {/* SECTION 2: In-Situ Pay Ramp Banner for Agency White-Label & Custom CNAME Domains */}
       {isWhiteLabelLocked && (
-        <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+        <div className="p-5 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3.5">
             <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
               <Lock className="w-5 h-5" />
@@ -444,6 +445,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
             </div>
           </div>
           <button
+            type="button"
             onClick={() => openPaywall({ featureName: "Agency White-Label Branding & Custom CNAME Domains" })}
             className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-sm hover:shadow shrink-0 cursor-pointer flex items-center gap-1.5"
           >
@@ -454,7 +456,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
       )}
 
       {/* SECTION 3: Agency White-Label & Custom Branding */}
-      <div className="p-8 rounded-[24px] border border-border/60 bg-card relative overflow-hidden shadow-sm space-y-8">
+      <div className="p-8 rounded-xl border border-border/60 bg-card relative overflow-hidden shadow-sm space-y-8">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-border/50">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
@@ -488,7 +490,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
         </div>
 
         {/* Live Client Portal & Deliverable Preview */}
-        <div className="p-5 rounded-2xl bg-muted/20 border border-border/50 space-y-3">
+        <div className="p-5 rounded-xl bg-muted/20 border border-border/50 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-primary" /> Live Deliverable Preview
@@ -774,7 +776,7 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
               type="button"
               onClick={handleSaveBranding}
               disabled={(!hasBrandingChanges && !isWhiteLabelLocked) || savingBranding}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold text-xs rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold text-xs rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
             >
               {savingBranding ? (
                 <>

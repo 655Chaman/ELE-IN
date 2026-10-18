@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { format } from "date-fns";
 import { SettingsLoadingSkeleton } from "@/components/SettingsLoadingSkeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { CustomSelect } from "@/components/ui/select";
 
 type Role = "owner" | "admin" | "member";
 
@@ -233,7 +234,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
 
   if (error) {
     return (
-      <div className="p-6 rounded-[24px] border border-destructive/20 bg-destructive/5 shadow-sm">
+      <div className="p-6 rounded-xl border border-destructive/20 bg-destructive/5 shadow-sm">
         <div className="flex items-center gap-3 text-destructive">
           <AlertTriangle className="w-5 h-5" />
           <p className="text-sm font-medium">Failed to load team members. Please check your connection.</p>
@@ -276,9 +277,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
 
   return (
     <div className="space-y-6">
-      <div className="p-6 md:p-8 rounded-[24px] border border-border bg-card relative overflow-hidden shadow-sm">
-        <div className="absolute top-0 left-0 w-1 h-full bg-primary/40 rounded-l-2xl"></div>
-        
+      <div className="p-6 md:p-8 rounded-xl border border-border bg-card relative overflow-hidden shadow-sm">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
@@ -292,8 +291,9 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
           </div>
           
           <button
+            type="button"
             onClick={handleInviteToggle}
-            className={`flex items-center gap-2 px-5 py-2.5 font-semibold text-sm rounded-lg transition-all shadow-md active:scale-95 ${
+            className={`flex items-center gap-2 px-5 py-2.5 font-semibold text-sm rounded-lg transition-all shadow-md ${
               !isPro && isSeatCapped
                 ? "bg-muted text-foreground hover:bg-muted/80 border border-border"
                 : "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground hover:opacity-90"
@@ -323,13 +323,14 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => {
                 navigator.clipboard.writeText(createdInviteLink);
                 setCopiedLink(true);
                 toast.success("Invite link copied to clipboard!");
                 setTimeout(() => setCopiedLink(false), 2000);
               }}
-              className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1.5 hover:bg-primary/90 transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+              className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1.5 hover:bg-primary/90 transition-all shrink-0 cursor-pointer shadow-sm"
             >
               {copiedLink ? <Check size={13} /> : <Copy size={13} />}
               {copiedLink ? "Copied" : "Copy Link"}
@@ -359,8 +360,9 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Team Members & Seats" })}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shadow-sm shrink-0 whitespace-nowrap active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shadow-sm shrink-0 whitespace-nowrap"
             >
               <span>Unlock 5 Seats</span>
               <ArrowRight size={14} />
@@ -406,31 +408,32 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                   <div className="w-full sm:w-48 space-y-2">
                     <label className="text-sm font-semibold text-gray-900/80">Role</label>
                     <div className="relative">
-                      <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                      <select
+                      <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 z-10 pointer-events-none" size={16} />
+                      <CustomSelect
                         value={inviteRole}
-                        onChange={(e) => {
-                          const val = e.target.value as Role;
-                          if (val !== "member" && !isPro) {
+                        onValueChange={(val) => {
+                          const roleVal = val as Role;
+                          if (roleVal !== "member" && !isPro) {
                             openPaywall({ featureName: "Role-Based Permissions & Delegation" });
                             return;
                           }
-                          setInviteRole(val);
+                          setInviteRole(roleVal);
                         }}
-                        className="w-full bg-background border border-gray-200/80 rounded-lg pl-10 pr-8 py-2.5 text-sm appearance-none focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
-                      >
-                        <option value="member">Member</option>
-                        <option value="admin">{isPro ? "Admin" : "Admin (Growth Pro)"}</option>
-                        <option value="owner">{isPro ? "Owner" : "Owner (Growth Pro)"}</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                        triggerClassName="bg-background border-gray-200/80 rounded-lg pl-9 pr-4 py-2.5 text-sm h-10"
+                        options={[
+                          { value: "member", label: "Member" },
+                          { value: "admin", label: isPro ? "Admin" : "Admin (Growth Pro)" },
+                          { value: "owner", label: isPro ? "Owner" : "Owner (Growth Pro)" },
+                        ]}
+                      />
                     </div>
                   </div>
                   
                   <button
+                    type="button"
                     onClick={handleInvite}
                     disabled={sending || !inviteEmail.trim()}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                   >
                     {sending ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
                     Send Invite
@@ -450,6 +453,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
               icon={Users}
             />
             <button
+              type="button"
               onClick={() => setShowInviteForm(true)}
               className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground font-medium rounded-lg hover:bg-secondary/80 transition-colors"
             >
@@ -516,6 +520,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                               ) : (
                                 <div ref={dropdownRef} className="relative inline-block">
                                   <button
+                                    type="button"
                                     disabled={!canChangeRole}
                                     onClick={() => setOpenRoleDropdown(openRoleDropdown === member.user_id ? null : member.user_id)}
                                     className={`flex items-center gap-1.5 hover:opacity-80 transition-opacity ${!canChangeRole ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
@@ -543,6 +548,7 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                                             };
                                             return (
                                             <button
+                                              type="button"
                                               key={r}
                                               onClick={() => {
                                                 if (r !== member.role && !isPro) {
@@ -586,12 +592,13 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                             <td className="px-5 py-4 text-right">
                               <div className="flex justify-end items-center relative h-8">
                                 <button
+                                  type="button"
                                   onClick={() => initiateRemoval(member.user_id)}
                                   disabled={isActing || isSelf}
                                   className="text-gray-500 hover:text-destructive p-2 rounded-md hover:bg-destructive/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed group/btn"
                                   title={isSelf ? "You cannot remove yourself" : "Remove member"}
                                 >
-                                  <Trash2 size={16} className="group-hover/btn:scale-110 transition-transform" />
+                                  <Trash2 size={16} />
                                 </button>
                               </div>
                             </td>
@@ -649,9 +656,10 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                           <td className="px-5 py-4 text-right">
                             <div className="flex items-center gap-2 justify-end">
                               <button
+                                type="button"
                                 onClick={() => handleRevokeInvite(invite.id, invite.email)}
                                 disabled={revokingId === invite.id}
-                                className="text-destructive hover:text-destructive/80 font-medium text-xs px-2.5 py-1.5 rounded-lg border border-destructive/20 hover:bg-destructive/10 transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+                                className="text-destructive hover:text-destructive/80 font-medium text-xs px-2.5 py-1.5 rounded-lg border border-destructive/20 hover:bg-destructive/10 transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                                 title="Revoke this pending invitation"
                               >
                                 {revokingId === invite.id ? (
@@ -690,17 +698,19 @@ export function TeamSettings({ workspaceId }: { workspaceId: string | null }) {
                     </p>
                     <div className="flex justify-end gap-3">
                       <button 
+                        type="button"
                         onClick={cancelRemoval}
-                        className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+                        className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button 
+                        type="button"
                         onClick={() => {
                           const member = members.find(m => m.user_id === confirmRemoveId);
                           if (member) handleRemove(member.user_id, member.display_name);
                         }}
-                        className="px-4 py-2 text-sm font-medium bg-destructive text-white rounded-lg hover:bg-destructive/90 transition-colors"
+                        className="px-4 py-2 text-sm font-medium bg-destructive text-white rounded-lg hover:bg-destructive/90 transition-colors cursor-pointer"
                       >
                         Remove
                       </button>

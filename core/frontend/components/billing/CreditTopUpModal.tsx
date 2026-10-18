@@ -74,13 +74,11 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-lg rounded-3xl bg-card border border-primary/20 shadow-[0_0_50px_rgba(var(--primary),0.2)] p-6 md:p-8 text-foreground overflow-hidden"
+        className="relative w-full max-w-lg rounded-xl bg-card border border-border/80 shadow-2xl p-6 md:p-8 text-foreground overflow-hidden"
       >
-        {/* Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-20 bg-primary/10 blur-3xl pointer-events-none" />
-
         {/* Close Button */}
         <button
+          type="button"
           disabled={isProcessing || isVerifying}
           onClick={onClose}
           className="absolute top-6 right-6 text-muted-foreground hover:text-foreground p-1.5 rounded-full hover:bg-muted/50 transition z-10 disabled:opacity-40"
@@ -91,7 +89,7 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
 
         {/* Header */}
         <div className="flex items-center gap-3.5 mb-6">
-          <div className="p-3 bg-primary/10 text-primary rounded-2xl border border-primary/20">
+          <div className="p-3 bg-primary/10 text-primary rounded-lg border border-primary/20">
             <Coins size={24} />
           </div>
           <div>
@@ -101,7 +99,7 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
         </div>
 
         {/* Current Balance Bar */}
-        <div className="p-4 rounded-2xl bg-muted/30 border border-border/60 flex items-center justify-between mb-6 text-xs">
+        <div className="p-4 rounded-lg bg-muted/30 border border-border/60 flex items-center justify-between mb-6 text-xs">
           <div>
             <span className="text-muted-foreground block text-[11px]">Current Balance</span>
             <span className="text-foreground font-mono font-bold text-base mt-0.5 block">
@@ -119,9 +117,11 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
         {/* Options */}
         <div className="space-y-3 mb-6">
           {/* Option A: Buy 1,000 Credits */}
-          <div
+          <button
+            type="button"
             onClick={() => setSelectedOption('credits')}
-            className={`p-4 rounded-2xl border cursor-pointer transition relative ${
+            aria-pressed={selectedOption === 'credits'}
+            className={`w-full text-left p-4 rounded-lg border transition relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               selectedOption === 'credits'
                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                 : 'border-border bg-card hover:border-foreground/20'
@@ -142,18 +142,20 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
                 <span className="block text-[10px] text-muted-foreground">one-time</span>
               </div>
             </div>
-          </div>
+          </button>
 
           {/* Option B: Upgrade to Growth Tier */}
-          <div
+          <button
+            type="button"
             onClick={() => setSelectedOption('growth')}
-            className={`p-4 rounded-2xl border cursor-pointer transition relative ${
+            aria-pressed={selectedOption === 'growth'}
+            className={`w-full text-left p-4 rounded-lg border transition relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               selectedOption === 'growth'
                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                 : 'border-border bg-card hover:border-foreground/20'
             }`}
           >
-            <span className="absolute -top-2.5 right-3 text-[9px] bg-primary text-primary-foreground font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+            <span className="absolute -top-2.5 right-4 text-[9px] bg-primary text-primary-foreground font-bold px-2 py-0.5 rounded-md uppercase tracking-wider shadow-sm z-10">
               Best Value
             </span>
             <div className="flex items-center justify-between">
@@ -171,15 +173,16 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
                 <span className="block text-[10px] text-muted-foreground">/ month</span>
               </div>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Action Button */}
         <div className="space-y-3">
           <button
+            type="button"
             disabled={isProcessing || isVerifying}
             onClick={handlePurchase}
-            className="w-full py-4 px-4 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition shadow-xl flex items-center justify-center gap-2 group text-sm"
+            className="w-full py-3.5 px-4 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition shadow-lg flex items-center justify-center gap-2 group text-sm"
           >
             {isProcessing ? (
               <>
@@ -207,6 +210,7 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
               <ShieldCheck size={12} className="text-primary" /> Encrypted Razorpay Checkout
             </span>
             <button
+              type="button"
               onClick={() => {
                 onClose();
                 navigate('/elein/billing');

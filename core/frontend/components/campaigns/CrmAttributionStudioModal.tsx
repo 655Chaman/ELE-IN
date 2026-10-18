@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -229,7 +230,7 @@ export function CrmAttributionStudioModal({ onClose }: CrmAttributionStudioProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-card border border-border/80 rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-foreground">
+      <div className="bg-card border border-border/80 rounded-xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-foreground">
         
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border/60 bg-muted/20">
@@ -401,16 +402,20 @@ export function CrmAttributionStudioModal({ onClose }: CrmAttributionStudioProps
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">CRM Provider</label>
-                      <select
+                      <Select
                         value={newProvider}
-                        onChange={e => setNewProvider(e.target.value)}
-                        className="w-full bg-background border border-border/80 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-cyan-500"
+                        onValueChange={val => setNewProvider(val)}
                       >
-                        <option value="hubspot">HubSpot CRM</option>
-                        <option value="salesforce">Salesforce</option>
-                        <option value="pipedrive">Pipedrive</option>
-                        <option value="zoho">Zoho CRM</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-background border-border/80 h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hubspot">HubSpot CRM</SelectItem>
+                          <SelectItem value="salesforce">Salesforce</SelectItem>
+                          <SelectItem value="pipedrive">Pipedrive</SelectItem>
+                          <SelectItem value="zoho">Zoho CRM</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div>
@@ -426,17 +431,21 @@ export function CrmAttributionStudioModal({ onClose }: CrmAttributionStudioProps
 
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Lifecycle Stage</label>
-                      <select
+                      <Select
                         value={newStage}
-                        onChange={e => setNewStage(e.target.value)}
-                        className="w-full bg-background border border-border/80 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-cyan-500"
+                        onValueChange={val => setNewStage(val)}
                       >
-                        <option value="lead">Lead</option>
-                        <option value="marketingqualifiedlead">MQL</option>
-                        <option value="salesqualifiedlead">SQL</option>
-                        <option value="opportunity">Opportunity</option>
-                        <option value="customer">Customer (Halt Outreach)</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-background border-border/80 h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="lead">Lead</SelectItem>
+                          <SelectItem value="marketingqualifiedlead">MQL</SelectItem>
+                          <SelectItem value="salesqualifiedlead">SQL</SelectItem>
+                          <SelectItem value="opportunity">Opportunity</SelectItem>
+                          <SelectItem value="customer">Customer (Halt Outreach)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
@@ -555,16 +564,20 @@ export function CrmAttributionStudioModal({ onClose }: CrmAttributionStudioProps
 
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Attribution Model</label>
-                    <select
+                    <Select
                       value={attributionModel}
-                      onChange={e => setAttributionModel(e.target.value as any)}
-                      className="w-full bg-background border border-border/80 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-emerald-500"
+                      onValueChange={val => setAttributionModel(val as any)}
                     >
-                      <option value="w_shaped">W-Shaped (40% First / 40% Meeting / 20% Nurture)</option>
-                      <option value="first_touch">First-Touch (100% Creation)</option>
-                      <option value="last_touch">Last-Touch (100% Closer)</option>
-                      <option value="linear">Linear (Equal Distribution)</option>
-                    </select>
+                      <SelectTrigger className="w-full bg-background border-border/80 h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="w_shaped">W-Shaped (40% First / 40% Meeting / 20% Nurture)</SelectItem>
+                        <SelectItem value="first_touch">First-Touch (100% Creation)</SelectItem>
+                        <SelectItem value="last_touch">Last-Touch (100% Closer)</SelectItem>
+                        <SelectItem value="linear">Linear (Equal Distribution)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

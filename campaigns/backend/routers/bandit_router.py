@@ -42,6 +42,9 @@ class RecordFeedbackPayload(BaseModel):
 class MutateVariantPayload(BaseModel):
     parent_variant_id: str
     mutation_theme: Optional[str] = "social_proof_metric"
+    channel: Optional[str] = "linkedin"
+    touchpoint_id: Optional[str] = None
+    retire_parent: Optional[bool] = False
 
 
 class EnrollTriggerPayload(BaseModel):
@@ -187,7 +190,7 @@ def mutate_variant_endpoint(
     supabase=Depends(get_service_client)
 ):
     """
-    Paranoia Layer 0 & 2: Spawns next-generation mutated challenger variant from degraded arm.
+    Paranoia Layer 0 & 2: Spawns next-generation mutated challenger variant from parent arm.
     """
     _check_workspace_tier_permission(workspace_id, "can_use_bandit_optimizer", supabase)
     try:
@@ -195,6 +198,9 @@ def mutate_variant_endpoint(
             parent_variant_id=payload.parent_variant_id,
             workspace_id=workspace_id,
             mutation_theme=payload.mutation_theme or "social_proof_metric",
+            channel=payload.channel or "linkedin",
+            touchpoint_id=payload.touchpoint_id,
+            retire_parent=bool(payload.retire_parent),
             supabase=supabase
         )
         return result

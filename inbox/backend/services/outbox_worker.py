@@ -318,12 +318,18 @@ def reap_stuck_outbox_events(svc, stuck_timeout_minutes: int = 15) -> int:
     try:
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stuck_timeout_minutes)).isoformat()
-        res = svc.table('outbox_events') \
-            .select('id, attempts') \
-            .eq('status', 'processing') \
-            .lt('updated_at', cutoff) \
-            .execute()
-        stuck_events = res.data or []
+        try:
+            res = svc.table('outbox_events') \
+                .select('id, attempts') \
+                .eq('status', 'processing') \
+                .lt('updated_at', cutoff) \
+                .execute()
+            stuck_events = res.data or []
+        except Exception as query_err:
+            if 'outbox_event_status' in str(query_err) and 'processing' in str(query_err):
+                # Paranoia Layer 1: Zero-migration fallback when DB enum lacks 'processing'
+                return 0
+            raise
         reaped_count = 0
         for ev in stuck_events:
             attempts = ev.get('attempts', 0)
@@ -366,11 +372,22 @@ def poll_outbox_once() -> int:
             attempts = event.get('attempts', 0) + 1
             success = False
 
-            claim_res = svc.table('outbox_events') \
-                .update({'status': 'processing', 'attempts': attempts}) \
-                .eq('id', event_id) \
-                .eq('status', 'pending') \
-                .execute()
+            try:
+                claim_res = svc.table('outbox_events') \
+                    .update({'status': 'processing', 'attempts': attempts}) \
+                    .eq('id', event_id) \
+                    .eq('status', 'pending') \
+                    .execute()
+            except Exception as claim_err:
+                if 'outbox_event_status' in str(claim_err) and 'processing' in str(claim_err):
+                    # Paranoia Layer 1: Zero-migration fallback when DB enum lacks 'processing'
+                    claim_res = svc.table('outbox_events') \
+                        .update({'attempts': attempts}) \
+                        .eq('id', event_id) \
+                        .eq('status', 'pending') \
+                        .execute()
+                else:
+                    raise
             if not getattr(claim_res, 'data', None):
                 continue
 

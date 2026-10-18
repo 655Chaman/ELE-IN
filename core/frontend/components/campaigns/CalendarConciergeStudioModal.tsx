@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -218,7 +219,7 @@ export function CalendarConciergeStudioModal({ onClose, campaignId }: CalendarCo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-background border border-border rounded-2xl shadow-lg text-foreground overflow-hidden">
+      <div className="relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-background border border-border rounded-xl shadow-lg text-foreground overflow-hidden">
         
         {/* Header Bar */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
@@ -321,15 +322,19 @@ export function CalendarConciergeStudioModal({ onClose, campaignId }: CalendarCo
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Status:</span>
-                  <select
+                  <Select
                     value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="bg-background border border-border text-foreground text-xs rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                    onValueChange={(val) => setStatusFilter(val)}
                   >
-                    <option value="all">All Bookings</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="slots_proposed">Slots Proposed</option>
-                  </select>
+                    <SelectTrigger size="sm" className="w-[140px] bg-background border-border text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Bookings</SelectItem>
+                      <SelectItem value="confirmed">Confirmed</SelectItem>
+                      <SelectItem value="slots_proposed">Slots Proposed</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -755,17 +760,21 @@ export function CalendarConciergeStudioModal({ onClose, campaignId }: CalendarCo
                   </div>
                   <div>
                     <label className="text-muted-foreground mb-1 block">Prospect Timezone</label>
-                    <select
+                    <Select
                       value={prospectTz}
-                      onChange={(e) => setProspectTz(e.target.value)}
-                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      onValueChange={(val) => setProspectTz(val)}
                     >
-                      <option value="America/New_York">Eastern Time (EST)</option>
-                      <option value="America/Chicago">Central Time (CST)</option>
-                      <option value="America/Denver">Mountain Time (MST)</option>
-                      <option value="America/Los_Angeles">Pacific Time (PST)</option>
-                      <option value="Europe/London">London (GMT/BST)</option>
-                    </select>
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="America/New_York">Eastern Time (EST)</SelectItem>
+                        <SelectItem value="America/Chicago">Central Time (CST)</SelectItem>
+                        <SelectItem value="America/Denver">Mountain Time (MST)</SelectItem>
+                        <SelectItem value="America/Los_Angeles">Pacific Time (PST)</SelectItem>
+                        <SelectItem value="Europe/London">London (GMT/BST)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

@@ -336,13 +336,13 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
   return (
     <div className="space-y-8">
       {/* ─── SECTION 1: HEADER & LIVE KPI METER ──────────────────────────────── */}
-      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-[32px] p-6 lg:p-8 relative overflow-hidden shadow-sm">
+      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-xl p-6 lg:p-8 relative overflow-hidden shadow-sm">
         <div className="absolute top-0 right-0 w-80 h-80 -mr-20 -mt-20 rounded-full bg-indigo-500/10 blur-[80px] pointer-events-none" />
 
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs">
+              <div className="w-12 h-12 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs">
                 <img src="/elesium-icon.png" alt="Elesium" className="w-7 h-7 object-contain" />
               </div>
               <div>
@@ -365,12 +365,13 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
               <button
+                type="button"
                 onClick={() => {
                   mutateSettings();
                   mutateTelemetry();
                   toast.success("Telemetry refreshed");
                 }}
-                className="p-2 rounded-xl border border-border/60 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all"
+                className="p-2 rounded-lg border border-border/60 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
                 title="Refresh Telemetry"
               >
                 <RefreshCw size={14} className={isTelemetryLoading ? "animate-spin" : ""} />
@@ -381,7 +382,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
           {/* ─── 4 KPI METERS ─── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {/* KPI 1: Tokens */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Tokens Consumed</span>
                 <Coins size={14} className="text-indigo-500" />
@@ -404,7 +405,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             </div>
 
             {/* KPI 2: Compute Cost */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Compute Cost</span>
                 <Activity size={14} className="text-emerald-500" />
@@ -418,7 +419,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             </div>
 
             {/* KPI 3: Invocations */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Invocations</span>
                 <Gauge size={14} className="text-orange-500" />
@@ -432,7 +433,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             </div>
 
             {/* KPI 4: Active Engine */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Active Engine</span>
                 <Server size={14} className="text-blue-500" />
@@ -452,9 +453,9 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
           {/* Locked Telemetry Banner for Free Tier */}
           {!canViewTelemetry && (
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                <div className="p-2 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
                   <Lock size={18} />
                 </div>
                 <div>
@@ -467,8 +468,9 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => openPaywall({ featureName: "AI Token Telemetry" })}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-sm shrink-0 flex items-center gap-1.5 transition-all"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-sm shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <span>Upgrade to Pro</span>
                 <ArrowUpRight size={14} />
@@ -507,8 +509,16 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             return (
               <div
                 key={m.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectModel(m)}
-                className={`p-5 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSelectModel(m);
+                  }
+                }}
+                className={`p-5 rounded-lg border transition-all cursor-pointer relative flex flex-col justify-between ${
                   isSelected
                     ? "bg-indigo-500/5 border-indigo-600 dark:border-indigo-500 ring-2 ring-indigo-500/20 shadow-md"
                     : "bg-white dark:bg-card/40 border-slate-200 dark:border-border/60 hover:border-slate-300 dark:hover:border-border hover:shadow-sm"
@@ -588,11 +598,11 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
       </div>
 
       {/* ─── SECTION 3: BYOK (BRING YOUR OWN KEY) VAULT ─────────────────────── */}
-      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-[32px] p-6 lg:p-8 relative overflow-hidden shadow-sm">
+      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-xl p-6 lg:p-8 relative overflow-hidden shadow-sm">
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/20 border border-blue-100 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <div className="w-10 h-10 rounded-md bg-blue-50 dark:bg-blue-500/20 border border-blue-100 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
                 <Key className="w-5 h-5" />
               </div>
               <div>
@@ -618,7 +628,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
           {!canByok ? (
             /* Free Tier Locked Overlay Card */
-            <div className="p-6 rounded-2xl bg-slate-50 dark:bg-muted/10 border border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="p-6 rounded-lg bg-slate-50 dark:bg-muted/10 border border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="space-y-1 text-center sm:text-left">
                 <h4 className="text-sm font-bold text-foreground">
                   Connect Direct LLM Provider Keys
@@ -628,8 +638,9 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => openPaywall({ featureName: "Bring Your Own Key (BYOK)" })}
-                className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shrink-0 flex items-center gap-2 transition-all"
+                className="px-5 py-2.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shrink-0 flex items-center gap-2 transition-all cursor-pointer"
               >
                 <span>Upgrade to Growth Pro</span>
                 <ArrowUpRight size={14} />
@@ -640,9 +651,9 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             <div className="space-y-6">
               {/* Connected Key Banner */}
               {settings?.has_byok && (
-                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                    <div className="p-2 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                       <ShieldCheck size={18} />
                     </div>
                     <div>
@@ -659,9 +670,10 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                   </div>
 
                   <button
+                    type="button"
                     onClick={handleDisconnectKey}
                     disabled={isSavingKey}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center gap-1.5"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <Trash2 size={13} />
                     <span>Disconnect Key</span>
@@ -680,7 +692,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                       key={p.id}
                       type="button"
                       onClick={() => setSelectedProvider(p.id)}
-                      className={`p-3 rounded-xl border text-left transition-all ${
+                      className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                         selectedProvider === p.id
                           ? "bg-blue-500/10 border-blue-500 text-blue-900 dark:text-blue-200 shadow-xs"
                           : "bg-slate-50 dark:bg-muted/20 border-border/50 hover:bg-slate-100 dark:hover:bg-muted/40 text-foreground"
@@ -706,12 +718,12 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                     value={apiKeyInput}
                     onChange={(e) => setApiKeyInput(e.target.value)}
                     placeholder={`Paste key (${byokProviders.find(p => p.id === selectedProvider)?.prefix})`}
-                    className="w-full rounded-xl bg-card border border-border px-3.5 py-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-600 pr-20"
+                    className="w-full rounded-lg bg-card border border-border px-3.5 py-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-600 pr-20"
                   />
                   <button
                     type="button"
                     onClick={() => setShowKeyText(!showKeyText)}
-                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground text-xs"
+                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
                   >
                     {showKeyText ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
@@ -722,7 +734,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                     type="button"
                     onClick={handleTestKey}
                     disabled={isTestingKey || !apiKeyInput.trim()}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                    className="px-3.5 py-2 rounded-lg text-xs font-semibold border border-border hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isTestingKey ? "Testing..." : "Test Format"}
                   </button>
@@ -731,7 +743,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                     type="button"
                     onClick={handleSaveKey}
                     disabled={isSavingKey || !apiKeyInput.trim()}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 shadow-sm"
+                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 shadow-sm cursor-pointer"
                   >
                     {isSavingKey ? "Saving..." : "Save Key to Vault"}
                   </button>
@@ -744,7 +756,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
       {/* ─── SECTION 4: RECENT GENERATION AUDIT LOG (Pro) ────────────────────── */}
       {canViewTelemetry && telemetry?.recent_generations && telemetry.recent_generations.length > 0 && (
-        <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-[32px] p-6 lg:p-8 shadow-sm">
+        <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-xl p-6 lg:p-8 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">

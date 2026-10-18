@@ -1,3 +1,4 @@
+import io
 import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,7 @@ from campaigns.backend.routers.master_view import (
     get_funnel_leads,
     FunnelLeadsRequest
 )
+import pypdf
 from campaigns.backend.utils.pdf_generator import generate_pdf_report, sanitize_pdf_text
 from knowledge.backend.services.bayesian_icp_service import (
     _extract_signals,
@@ -338,6 +340,42 @@ class TestHorizon9MasterViewAnalytics(unittest.TestCase):
         data = pdf_buf.getvalue()
         self.assertTrue(data.startswith(b"%PDF"))
 
+    def test_generate_pdf_report_paranoia_null_and_overflow(self):
+        """
+        Paranoia Layer 1 & 2: Verifies that generate_pdf_report never crashes on
+        None values, empty payload, NaN, Unicode emojis, or overflowing AI insight text.
+        """
+        poisoned_payload = {
+            "summary": {
+                "total_leads": None,
+                "active_campaigns": None,
+                "account_health": None,
+                "positive_sentiment": None,
+            },
+            "radar_stats": {
+                "Acceptance Rate": None,
+                "Reply Rate": None,
+                "Booking Rate": None,
+                "Deliverability": None,
+                "Bounces": None,
+            },
+            "funnel": {
+                "extracted": None,
+                "enrolled": None,
+                "failed": None,
+            },
+            "ai_insight": "🚀 Special emojis and symbols ✓ ✔ ✕ ✖ → \n" + ("Repeating long text to test boundary overflow. " * 50)
+        }
+        # Should not crash on poisoned payload with NoneType and emojis
+        pdf_buf = generate_pdf_report(
+            poisoned_payload, 
+            workspace_name="🚀 Rocket Workspace 💡", 
+            brand_name="Whitelabel Agency™"
+        )
+        self.assertIsNotNone(pdf_buf)
+        data = pdf_buf.getvalue()
+        self.assertTrue(data.startswith(b"%PDF"))
+
 
 class TestHorizon9BayesianICPSynthesis(unittest.TestCase):
     """
@@ -478,6 +516,153 @@ class TestHorizon9BayesianICPSynthesis(unittest.TestCase):
 
         record_outcome(mock_supabase, "ws_test", "lead_123", "lost", {})
         mock_supabase.rpc.assert_not_called()
+
+    def test_generate_pdf_report_two_pages_structure(self):
+        """
+        Layer 0 & 1: Verifies that generate_pdf_report returns an executive report
+        with exactly 2 pages containing Page 1 Brief/Funnel and Page 2 Fleet/Sender telemetry.
+        """
+        stats_data = {
+            "summary": {"total_sent": 120, "connected": 45, "replied": 18, "meetings": 6},
+            "funnel": [
+                {"stage": "Dispatched", "count": 120, "pct": 100.0},
+                {"stage": "Connected", "count": 45, "pct": 37.5},
+                {"stage": "Replied", "count": 18, "pct": 15.0},
+                {"stage": "Meeting", "count": 6, "pct": 5.0},
+            ],
+            "campaigns": [
+                {"id": "c1", "name": "Q4 Outbound", "sent": 60, "replied": 10, "status": "active"},
+                {"id": "c2", "name": "Enterprise ABM", "sent": 60, "replied": 8, "status": "active"},
+            ],
+            "sender_accounts": [
+                {"name": "Alice Smith", "email": "alice@company.com", "sent": 60, "health": "excellent"},
+                {"name": "Bob Jones", "email": "bob@company.com", "sent": 60, "health": "good"},
+            ],
+            "lead_sources": [
+                {"source": "Sales Navigator", "count": 80},
+                {"source": "Apollo", "count": 40},
+            ],
+            "radar_stats": {
+                "connection_rate": 37.5,
+                "reply_rate": 15.0,
+                "meeting_rate": 5.0,
+                "sentiment_positive": 72.0,
+            },
+        }
+        buf = generate_pdf_report(
+            stats_data,
+            date_range="Oct 09 - Oct 16, 2026",
+            workspace_name="Stark Growth Tech",
+            brand_name="Ele-in Enterprise",
+            filter_scope="All Senders · All Campaigns"
+        )
+        self.assertIsNotNone(buf)
+        raw_pdf = buf.getvalue()
+        self.assertTrue(raw_pdf.startswith(b"%PDF"))
+        
+        reader = pypdf.PdfReader(io.BytesIO(raw_pdf))
+        self.assertEqual(len(reader.pages), 2, "Executive PDF must contain exactly 2 pages.")
+        
+        page1_text = reader.pages[0].extract_text()
+        page2_text = reader.pages[1].extract_text()
+        
+        # Page 1 checks
+        self.assertIn("Executive Performance Overview", page1_text)
+        self.assertIn("KEY PERFORMANCE INDICATORS", page1_text)
+        self.assertIn("CONVERSION FUNNEL", page1_text)
+        self.assertIn("CAPTAIN'S STRATEGIC BRIEF", page1_text)
+        self.assertIn("Page 1 of 2", page1_text)
+        
+        # Page 2 checks
+        self.assertIn("Campaign Fleet & Sender Telemetry", page2_text)
+        self.assertIn("TOP ACTIVE CAMPAIGNS PERFORMANCE", page2_text)
+        self.assertIn("SENDER ACCOUNT HEALTH & SAFETY TELEMETRY", page2_text)
+        self.assertIn("CHANNEL LEAD SOURCE DISTRIBUTION", page2_text)
+        self.assertIn("ENTERPRISE SAFETY & DELIVERABILITY PROTOCOLS", page2_text)
+        self.assertIn("Page 2 of 2", page2_text)
+
+    def test_generate_pdf_report_paranoia_none_and_corrupt_data(self):
+        """
+        Layer 1 & 2 (Environmental & Human Paranoia):
+        Survives completely empty dict, None stats_data, None sub-fields, negative values,
+        and NaN/Inf values without throwing TypeError, ZeroDivisionError, or unhandled exceptions.
+        """
+        # Empty payload
+        buf_empty = generate_pdf_report({})
+        reader_empty = pypdf.PdfReader(buf_empty)
+        self.assertEqual(len(reader_empty.pages), 2)
+        
+        # Corrupt and None subfields
+        corrupted_data = {
+            "summary": None,
+            "funnel": {
+                "extracted": 0,
+                "enrolled": None,
+                "connected": -5,
+                "replied": "not_a_number",
+                "booked": None,
+                "failed": None
+            },
+            "radar_stats": {
+                "Acceptance Rate": None,
+                "Reply Rate": float("nan"),
+                "Booking Rate": float("inf"),
+                "Deliverability": None,
+                "Bounces": -10.0
+            },
+            "campaigns": [
+                None,
+                {"name": None, "status": None, "enrolled": None, "reply_rate": None, "booked": None},
+                {"name": "Ultra-Long Campaign Name " * 10, "status": "UNKNOWN", "enrolled": -100, "reply_rate": 999.9, "booked": 0}
+            ],
+            "sender_accounts": [
+                None,
+                {"name": None, "status": None, "health_pct": None, "activity_24h": None}
+            ],
+            "lead_sources": None,
+            "ai_insight": None
+        }
+        
+        buf_corrupt = generate_pdf_report(
+            corrupted_data,
+            date_range=None,
+            workspace_name=None,
+            brand_name=None,
+            filter_scope=None
+        )
+        reader_corrupt = pypdf.PdfReader(buf_corrupt)
+        self.assertEqual(len(reader_corrupt.pages), 2)
+
+    def test_master_view_request_production_schema(self):
+        """
+        Layer 0 & 2: Verifies that MasterViewRequest accepts date slicing and filters,
+        and operates in pure production mode.
+        """
+        req = MasterViewRequest(date_start="2026-10-01", date_end="2026-10-15")
+        self.assertEqual(req.date_start, "2026-10-01")
+        self.assertEqual(req.date_end, "2026-10-15")
+        self.assertFalse(hasattr(req, "demo_mode"))
+
+    def test_export_pdf_passes_filter_scope(self):
+        """
+        Layer 0 & 1: Verifies that export_master_view_stats_pdf constructs filter scope
+        correctly and passes it to generate_pdf_report.
+        """
+        mock_req = MagicMock()
+        mock_supabase = MagicMock()
+        mock_ws_res = MagicMock()
+        mock_ws_res.data = [{"tier": "PRO", "name": "Growth Co"}]
+        mock_supabase.table().select().eq().execute.return_value = mock_ws_res
+
+        with patch("campaigns.backend.routers.master_view.generate_pdf_report") as mock_gen:
+            mock_gen.return_value = io.BytesIO(b"%PDF-1.4 dummy")
+            payload = MasterViewRequest()
+            res = export_master_view_stats_pdf(mock_req, payload, mock_supabase, "ws_test")
+            self.assertEqual(res.status_code, 200)
+            mock_gen.assert_called_once()
+            _, kwargs = mock_gen.call_args
+            self.assertIn("filter_scope", kwargs)
+            self.assertIn("All Senders", kwargs["filter_scope"])
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { fetchWithAuth as apiFetch } from "@/lib/apiClient";
 import { usePaywall } from "../../contexts/PaywallContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export interface StoWindowResult {
   best_hour: number;
@@ -305,7 +306,7 @@ export const SendTimeOptimizationStudioModal: React.FC<
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl rounded-2xl bg-card border border-border shadow-lg overflow-hidden text-foreground my-8"
+        className="relative w-full max-w-4xl rounded-xl bg-card border border-border shadow-lg overflow-hidden text-foreground my-8"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -368,12 +369,11 @@ export const SendTimeOptimizationStudioModal: React.FC<
                 <UserCheck className="w-3.5 h-3.5 text-muted-foreground" />
                 Prospect Profile / Cohort
               </label>
-              <select
+              <Select
                 value={
                   SAMPLE_PROSPECTS.some((p) => p.id === leadId) ? leadId : "custom"
                 }
-                onChange={(e) => {
-                  const val = e.target.value;
+                onValueChange={(val) => {
                   if (val === "custom") return;
                   const preset = SAMPLE_PROSPECTS.find((p) => p.id === val);
                   setLeadId(val);
@@ -384,14 +384,18 @@ export const SendTimeOptimizationStudioModal: React.FC<
                     }
                   }
                 }}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:border-primary"
               >
-                {SAMPLE_PROSPECTS.map((p) => (
-                  <option key={p.id || "baseline"} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full bg-background border-border text-xs h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SAMPLE_PROSPECTS.map((p) => (
+                    <SelectItem key={p.id || "baseline"} value={p.id}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <input
                 type="text"
                 value={leadId}
@@ -407,23 +411,26 @@ export const SendTimeOptimizationStudioModal: React.FC<
                 <Globe className="w-3.5 h-3.5 text-muted-foreground" />
                 Prospect Local IANA Timezone
               </label>
-              <select
+              <Select
                 value={timezone}
-                onChange={(e) => {
-                  const nextTz = e.target.value;
-                  setTimezone(nextTz);
+                onValueChange={(val) => {
+                  setTimezone(val);
                   if (canAiSto) {
-                    runStoEvaluation(nextTz, leadId, startHour, endHour, weekendSending);
+                    runStoEvaluation(val, leadId, startHour, endHour, weekendSending);
                   }
                 }}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:border-primary"
               >
-                {GLOBAL_TIMEZONES.map((tz) => (
-                  <option key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full bg-background border-border text-xs h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GLOBAL_TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="text-xs text-muted-foreground leading-relaxed">
                 Invalid or missing prospect timezones automatically fall back to{" "}
                 <code className="text-foreground">UTC</code> with zero crash risk.

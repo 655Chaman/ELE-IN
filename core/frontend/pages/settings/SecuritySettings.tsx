@@ -145,7 +145,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Hero Section: Security Command Center */}
-      <div className="p-6 md:p-8 rounded-[24px] border border-border bg-card relative overflow-hidden shadow-sm">
+      <div className="p-6 md:p-8 rounded-xl border border-border bg-card relative overflow-hidden shadow-sm">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-border to-transparent opacity-20" />
         
         <div className="flex flex-col items-center text-center">
@@ -241,10 +241,10 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
       </div>
 
       {/* Main Action Card */}
-      <div className="p-0 rounded-[24px] border border-border bg-card shadow-sm relative overflow-hidden">
+      <div className="p-0 rounded-xl border border-border bg-card shadow-sm relative overflow-hidden">
         {/* In-Situ Pay Ramp Banner */}
         {is2faLocked && (
-          <div className="m-6 sm:m-8 mb-0 p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-primary/10 to-amber-500/5 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="m-6 sm:m-8 mb-0 p-5 rounded-xl bg-gradient-to-r from-amber-500/10 via-primary/10 to-amber-500/5 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
               <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
                 <Lock size={20} />
@@ -264,8 +264,9 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
               </div>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Mandatory Workspace 2FA Enforcement" })}
-              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-amber-500/25 shrink-0 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-amber-500/25 shrink-0 flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Zap size={13} className="fill-current" />
               Upgrade to Growth Pro
@@ -322,7 +323,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                 When enabled, every member of this workspace will be forced to configure and use a TOTP authenticator app (like Google Authenticator or Authy) on their next login.
               </p>
 
-              <div className="text-sm text-muted-foreground/80 italic border-l-2 border-border pl-3">
+              <div className="text-sm text-muted-foreground/80 italic border border-border/60 bg-muted/20 p-3 rounded-lg">
                 "LinkedIn recommends 2FA for all automation platforms to prevent account takeovers."
               </div>
 
@@ -348,6 +349,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
             {/* Oversized Toggle */}
             <div className="shrink-0 pt-2 flex flex-col items-center">
               <button
+                type="button"
                 onClick={handleToggleClick}
                 disabled={saving || showConfirm}
                 className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -391,10 +393,10 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="bg-card border-l border-border shadow-2xl w-full max-w-md h-full p-8 flex flex-col rounded-l-2xl text-foreground"
+                className="bg-card border-l border-border shadow-2xl w-full max-w-md h-full p-8 flex flex-col rounded-l-xl text-foreground"
               >
                 <div className="flex items-center gap-3 mb-8 mt-4">
-                  <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                  <div className="p-3 bg-primary/10 rounded-xl text-primary">
                     <Shield className="w-8 h-8" />
                   </div>
                   <h2 className="text-2xl font-bold tracking-tight text-foreground">Enforce Security</h2>
@@ -406,9 +408,10 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                 
                 <div className="flex flex-col gap-3 pb-8">
                   <button
+                    type="button"
                     onClick={() => save2faPreference(true)}
                     disabled={confirmCountdown > 0 || saving}
-                    className="w-full py-4 bg-primary text-primary-foreground text-base font-semibold rounded-xl hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
+                    className="w-full py-4 bg-primary text-primary-foreground text-base font-semibold rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {saving ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -419,6 +422,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
                     )}
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowConfirm(false);
                       setConfirmCountdown(0);
@@ -436,7 +440,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
       </div>
 
       {/* Enterprise Security & Compliance Suite Preview */}
-      <div className="p-8 rounded-[24px] border border-border bg-card shadow-sm relative overflow-hidden">
+      <div className="p-8 rounded-xl border border-border bg-card shadow-sm relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-2">
@@ -453,6 +457,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
           </div>
           {is2faLocked && (
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Enterprise Security & Compliance Pack" })}
               className="px-3.5 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1.5 transition-all self-start sm:self-auto cursor-pointer border border-border"
             >
@@ -463,7 +468,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-5 rounded-2xl border border-border bg-muted/40 flex flex-col justify-between">
+          <div className="p-5 rounded-xl border border-border bg-muted/40 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-foreground">Session Inactivity Timeout</span>
@@ -479,7 +484,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl border border-border bg-muted/40 flex flex-col justify-between">
+          <div className="p-5 rounded-xl border border-border bg-muted/40 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-foreground">IP & Geo Allowlisting</span>
@@ -495,7 +500,7 @@ export function SecuritySettings({ workspaceId }: { workspaceId: string | null }
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl border border-border bg-muted/40 flex flex-col justify-between">
+          <div className="p-5 rounded-xl border border-border bg-muted/40 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-foreground">SOC 2 / HIPAA Data Retention</span>

@@ -45,10 +45,13 @@ export function AppLayout() {
         e.preventDefault();
         setIsSidebarOpen(prev => !prev);
       }
+      if (e.key === 'Escape' && isWorkspaceDropdownOpen) {
+        setIsWorkspaceDropdownOpen(false);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isWorkspaceDropdownOpen]);
 
   const navCategories = [
     {
@@ -110,16 +113,23 @@ export function AppLayout() {
                 ELE-IN
               </div>
             ) : (
-              <div className="w-full flex justify-center cursor-pointer" onClick={() => setIsSidebarOpen(true)}>
+              <button 
+                type="button" 
+                aria-label="Expand sidebar" 
+                className="w-full flex justify-center cursor-pointer" 
+                onClick={() => setIsSidebarOpen(true)}
+              >
                 <img src="/logo-icon.png" alt="Ele-in" className="w-6 h-6 object-cover rounded-md" />
-              </div>
+              </button>
             )}
             
             {isSidebarOpen && (
               <button 
+                type="button"
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="p-1 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
                 title="Toggle Sidebar (Cmd+X)"
+                aria-label="Collapse sidebar"
               >
                 <ChevronLeft size={16} />
               </button>
@@ -135,6 +145,7 @@ export function AppLayout() {
                 </p>
                 {myAgencies && myAgencies.some(a => a.role === 'owner' || a.role === 'admin') && (
                   <button 
+                    type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       navigate('/elein/agency');
@@ -151,19 +162,28 @@ export function AppLayout() {
               <div className="relative w-full" id="workspace-dropdown-container">
                 {/* Invisible backdrop for closing when clicking outside */}
                 {isWorkspaceDropdownOpen && (
-                  <div className="fixed inset-0 z-40" onClick={() => setIsWorkspaceDropdownOpen(false)}></div>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setIsWorkspaceDropdownOpen(false)}
+                    role="presentation"
+                    aria-hidden="true"
+                  />
                 )}
                 
                 <button 
+                  type="button"
                   onClick={() => setIsWorkspaceDropdownOpen(!isWorkspaceDropdownOpen)}
-                  className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-sidebar-accent/40 transition-colors border border-transparent hover:border-sidebar-border/50 group relative z-50"
+                  aria-expanded={isWorkspaceDropdownOpen}
+                  aria-haspopup="listbox"
+                  aria-label="Switch workspace"
+                  className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-sidebar-accent/40 transition-colors border border-transparent hover:border-sidebar-border/50 group relative z-50"
                 >
                   <div className="flex items-center gap-3 overflow-hidden">
                     {(() => {
                       const activeWs = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
                       return (
                         <>
-                          <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
+                          <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
                             {activeWs?.name?.substring(0, 2).toUpperCase() || "WS"}
                           </div>
                           <div className="flex flex-col items-start truncate">
@@ -180,13 +200,14 @@ export function AppLayout() {
                 </button>
                 
                 {isWorkspaceDropdownOpen && (
-                  <div className="absolute z-50 w-[260px] left-0 mt-2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute z-50 w-[260px] left-0 mt-2 bg-popover border border-border rounded-lg shadow-xl overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
                     <div className="px-3 py-2 border-b border-border/50">
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Switch Workspace</span>
                     </div>
                     <div className="max-h-[300px] overflow-y-auto custom-scrollbar p-1.5 space-y-0.5">
                       {workspaces.map(ws => (
                         <button
+                          type="button"
                           key={ws.id}
                           onClick={() => { 
                             if (ws.id !== activeWorkspaceId) {
@@ -195,9 +216,9 @@ export function AppLayout() {
                             }
                             setIsWorkspaceDropdownOpen(false);
                           }}
-                          className={`w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${ws.id === activeWorkspaceId ? 'bg-primary/10' : 'hover:bg-muted'}`}
+                          className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all ${ws.id === activeWorkspaceId ? 'bg-primary/10' : 'hover:bg-muted'}`}
                         >
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 ${ws.id === activeWorkspaceId ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted-foreground/10 text-muted-foreground'}`}>
+                          <div className={`w-8 h-8 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${ws.id === activeWorkspaceId ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted-foreground/10 text-muted-foreground'}`}>
                             {ws.name.substring(0, 2).toUpperCase()}
                           </div>
                           <div className="flex flex-col truncate">
@@ -217,16 +238,18 @@ export function AppLayout() {
               </div>
             </div>
           ) : (
-            <div className="px-2 pt-4 pb-2 flex justify-center">
+            <div className="px-3 pt-4 pb-2 flex justify-center">
               {(() => {
                 const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
                 const name = activeWs?.name || "WS";
                 const initials = name.substring(0, 2).toUpperCase();
                 return (
                   <button
+                    type="button"
                     onClick={() => setIsSidebarOpen(true)}
-                    className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider hover:bg-primary/20 transition-colors cursor-pointer shrink-0"
+                    className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider hover:bg-primary/20 transition-colors cursor-pointer shrink-0"
                     title={name}
+                    aria-label={`Current workspace: ${name}. Click to expand sidebar.`}
                   >
                     {initials}
                   </button>
@@ -249,7 +272,7 @@ export function AppLayout() {
                     const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
                 const isActive = item.href ? ((item.href === '/' || item.href === '/elein') ? normalizedPath === item.href : normalizedPath.startsWith(item.href)) : false;
                     
-                    const className = `w-full flex items-center gap-3 px-3 py-1.5 group relative rounded-xl ${
+                    const className = `w-full flex items-center gap-3 px-3 py-1.5 group relative rounded-lg ${
                       isActive 
                         ? 'text-sidebar-foreground'
                         : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
@@ -260,7 +283,7 @@ export function AppLayout() {
                         {isActive && (
                           <motion.div
                             layoutId="sidebar-active-pill"
-                            className="absolute inset-0 rounded-xl bg-sidebar-accent border border-sidebar-border/60"
+                            className="absolute inset-0 rounded-lg bg-sidebar-accent border border-sidebar-border/60"
                             transition={{ type: "spring", bounce: 0.2, duration: 0.45 }}
                           />
                         )}
@@ -273,6 +296,7 @@ export function AppLayout() {
 
                     return item.onClick ? (
                       <button
+                        type="button"
                         key={item.label}
                         onClick={item.onClick}
                         className={className}
@@ -301,6 +325,7 @@ export function AppLayout() {
           {/* User Profile */}
           <div className="p-3 border-t border-sidebar-border shrink-0 space-y-2">
             <button 
+              type="button"
               onClick={async () => {
                 if (!window.confirm("PANIC PAUSE: Are you sure you want to pause ALL active campaigns immediately? This will stop all outgoing connections and messages.")) return;
                 try {
@@ -313,20 +338,20 @@ export function AppLayout() {
                   toast.error("Failed to pause campaigns.");
                 }
               }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-xl transition-colors font-bold shadow-sm"
+              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-lg transition-colors font-bold shadow-sm"
               title={!isSidebarOpen ? "Panic Pause All" : undefined}
             >
               <div className="shrink-0"><PauseOctagon size={14} strokeWidth={2.5} /></div>
               {isSidebarOpen && <span className="text-[12px]">Panic Pause All</span>}
             </button>
-            <div className="w-full flex items-center justify-between px-2">
+            <div className={`w-full flex items-center ${isSidebarOpen ? 'justify-between px-3' : 'justify-center'}`}>
                {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-sidebar-foreground/60 tracking-widest">Theme</span>}
                <AnimatedThemeToggler variant="circle" theme={resolvedTheme} onThemeChange={setTheme} />
             </div>
             
             <Link 
               to="/mfa-setup"
-              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
               title={!isSidebarOpen ? "Personal Security (2FA)" : undefined}
             >
               <div className="shrink-0"><Shield size={14} strokeWidth={1.5} /></div>
@@ -334,8 +359,9 @@ export function AppLayout() {
             </Link>
 
             <button 
+              type="button"
               onClick={() => signOut()}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
               title={!isSidebarOpen ? "Sign Out" : undefined}
             >
               <div className="shrink-0"><User size={14} strokeWidth={1.5} /></div>

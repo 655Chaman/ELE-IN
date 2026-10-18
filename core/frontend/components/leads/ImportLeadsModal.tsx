@@ -165,11 +165,11 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
   }
 
   const METHODS = [
-    { id: "search", label: "Build a Search", desc: "Use our native LinkedIn URL generator for pinpoint accuracy.", icon: Search, color: "text-primary", bg: "bg-primary/10", border: "border-l-2 border-primary/0 group-hover:border-primary/50", active: true },
-    { id: "csv", label: "Upload CSV", desc: "Map your spreadsheet columns directly to our database.", icon: FileSpreadsheet, color: "text-success", bg: "bg-success/10", border: "border-l-2 border-success/0 group-hover:border-success/50", active: true },
-    { id: "sales_nav", label: "Sales Navigator", desc: "Paste an existing Sales Nav query to scrape instantly.", icon: Compass, color: "text-primary", bg: "bg-primary/10", border: "border-l-2 border-primary/0 group-hover:border-primary/50", active: true, proOnly: true },
-    { id: "linkedin_url", label: "Raw Profiles", desc: "Paste a raw list of LinkedIn profile URLs.", icon: Link2, color: "text-primary", bg: "bg-primary/10", border: "border-l-2 border-primary/0 group-hover:border-primary/50", active: true },
-    { id: "hubspot", label: "HubSpot Sync", desc: "Pull directly from your CRM.", icon: () => <img src="https://cdn.simpleicons.org/hubspot/ff7a59" className="w-[18px] h-[18px]" alt="HubSpot" />, color: "text-primary", bg: "bg-primary/10", border: "border-l-2 border-primary/0 group-hover:border-primary/50", active: true, proOnly: true },
+    { id: "search", label: "Build a Search", desc: "Use our native LinkedIn URL generator for pinpoint accuracy.", icon: Search, color: "text-primary", bg: "bg-primary/10", active: true },
+    { id: "csv", label: "Upload CSV", desc: "Map your spreadsheet columns directly to our database.", icon: FileSpreadsheet, color: "text-success", bg: "bg-success/10", active: true },
+    { id: "sales_nav", label: "Sales Navigator", desc: "Paste an existing Sales Nav query to scrape instantly.", icon: Compass, color: "text-primary", bg: "bg-primary/10", active: true, proOnly: true },
+    { id: "linkedin_url", label: "Raw Profiles", desc: "Paste a raw list of LinkedIn profile URLs.", icon: Link2, color: "text-primary", bg: "bg-primary/10", active: true },
+    { id: "hubspot", label: "HubSpot Sync", desc: "Pull directly from your CRM.", icon: () => <img src="https://cdn.simpleicons.org/hubspot/ff7a59" className="w-[18px] h-[18px]" alt="HubSpot" />, color: "text-primary", bg: "bg-primary/10", active: true, proOnly: true },
   ];
 
   const currentMethod = METHODS.find(m => m.id === method);
@@ -180,9 +180,14 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         initial={{ opacity: 0, scale: 0.97, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0, transition: { type: "spring", damping: 25, stiffness: 300 } }}
         exit={{ opacity: 0, scale: 0.97, y: 10, transition: { duration: 0.15, ease: "easeIn" } }}
-        className={`w-full ${method ? 'max-w-[1100px]' : 'max-w-[550px]'} bg-card rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.4)] border flex flex-col relative my-8`}
+        className={`w-full ${method ? 'max-w-[1100px]' : 'max-w-[550px]'} bg-card rounded-xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.4)] border border-border/60 flex flex-col relative my-8`}
       >
-        <button onClick={onClose} className="absolute right-5 top-5 text-muted-foreground hover:text-foreground transition-all duration-100 z-50 p-2 rounded-full hover:bg-muted active:scale-90 active:bg-muted/80">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close modal"
+          className="absolute right-5 top-5 text-muted-foreground hover:text-foreground transition-all duration-100 z-50 p-2 rounded-full hover:bg-muted active:bg-muted/80"
+        >
           <X size={18} />
         </button>
 
@@ -199,6 +204,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                 const isLocked = (m as any).proOnly && !isPro;
                 return (
                   <button
+                    type="button"
                     key={m.id}
                     onClick={() => {
                       if (isLocked) {
@@ -208,13 +214,13 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                       if (m.active) setMethod(m.id as any);
                     }}
                     disabled={!m.active && !isLocked}
-                    className={`group relative flex items-center gap-5 p-4 rounded-xl border transition-all duration-150 text-left overflow-hidden ${
+                    className={`group relative flex items-center gap-5 p-4 rounded-lg border transition-all duration-150 text-left overflow-hidden ${
                       m.active || isLocked
-                      ? `hover:border-foreground/30 hover:shadow-sm bg-gradient-to-br from-background to-muted/30 active:scale-[0.99] active:bg-muted/50 cursor-pointer ${m.border}` 
+                      ? "border-border/60 hover:border-foreground/30 hover:shadow-xs bg-gradient-to-br from-background to-muted/30 active:scale-[0.99] active:bg-muted/50 cursor-pointer" 
                       : "opacity-60 cursor-not-allowed bg-muted/20 border-transparent"
                     }`}
                   >
-                    <div className={`p-3.5 rounded-xl ${m.bg} ${m.color} group-hover:scale-105 transition-transform shrink-0`}>
+                    <div className={`p-3.5 rounded-lg ${m.bg} ${m.color} shrink-0`}>
                       <m.icon size={22} strokeWidth={2} />
                     </div>
                     <div className="flex-1">
@@ -250,7 +256,9 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
           <div className="flex flex-col h-full max-h-[85vh]">
             <div className="p-6 border-b flex items-center gap-4 bg-muted/5 sticky top-0 z-10">
               <button 
+                type="button"
                 onClick={() => { setMethod(null); setStep(1); }}
+                aria-label="Back to methods list"
                 className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft size={18} />
@@ -303,13 +311,18 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
             {method !== "hubspot" && (
               <div className="p-6 border-t bg-muted/5 flex items-center justify-between shrink-0">
                 {method === 'csv' && step === 2 ? (
-                  <button onClick={() => setStep(1)} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-4 py-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-4 py-2 flex items-center gap-2"
+                  >
                     <ArrowLeft size={16} /> Back
                   </button>
                 ) : (
                   <div />
                 )}
                 <button 
+                  type="button"
                   onClick={handleSubmit} 
                   disabled={!name.trim() || isUploading || (method === 'search' && !liveUrl) || (method === 'sales_nav' && !salesNavUrl.trim()) || (method === 'linkedin_url' && !urlList.trim()) || (method === 'csv' && step === 1 && !file) || (method === 'csv' && step === 2 && !mappings.linkedin_url)} 
                   className="px-8 py-2.5 text-sm font-bold bg-foreground hover:bg-foreground/90 rounded-lg text-background transition-all disabled:opacity-50 flex justify-center items-center gap-2 shadow-sm"

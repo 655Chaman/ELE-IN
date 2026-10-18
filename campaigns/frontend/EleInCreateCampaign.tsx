@@ -26,14 +26,13 @@ import { ElesiumLogo } from "@/components/ElesiumLogo"
 
 import { toast } from "sonner"
 import { mutate } from "swr"
-import { BackgroundBeams } from "@/components/ui/background-beams"
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler"
 import { useTheme } from "@/components/ThemeProvider"
-import { Meteors } from "@/components/ui/meteors"
 import { WarmupWizard } from "./WarmupWizard"
 import { EleInPaywallModal } from "./EleInPaywallModal"
 import { CampaignPreflightModal } from "./CampaignPreflightModal"
 import { SendTimeOptimizationStudioModal } from "@/components/campaigns/SendTimeOptimizationStudioModal"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 
 function FadeContent({ children, blur = false, duration = 0.5, className = "" }: { children: React.ReactNode, blur?: boolean, duration?: number, className?: string }) {
@@ -65,8 +64,9 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
     <div className="relative flex items-center justify-center gap-0 py-5 border-b border-border/50 bg-background/50 z-10 shrink-0">
       {/* Top Left Back Button */}
       <button
+        type="button"
         onClick={onBack}
-        className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border/40 hover:border-border/80 text-xs font-semibold text-muted-foreground transition-all hover:bg-muted/30 hover:text-foreground shadow-sm"
+        className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border/40 hover:border-border/80 text-xs font-semibold text-muted-foreground transition-all hover:bg-muted/30 hover:text-foreground shadow-sm"
       >
         <ChevronLeft size={14} /> Back
       </button>
@@ -82,6 +82,7 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
         return (
           <div key={step.id} className="flex items-center">
             <button
+              type="button"
               onClick={() => { if (done && onStepClick) onStepClick(i) }}
               disabled={!done}
               className={cn(
@@ -127,7 +128,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-4xl mx-auto py-8 px-6">
       {/* Left */}
-      <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50">
+      <SpotlightCard className="p-6 rounded-xl bg-card/30 border border-border/50">
         <div className="space-y-5">
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -167,6 +168,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
               <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 text-center space-y-3">
                 <p className="text-xs text-destructive font-medium">Could not load your lead lists. Check your connection and try again.</p>
                 <button
+                  type="button"
                   onClick={() => {
                     mutate();
                   }}
@@ -177,30 +179,29 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
               </div>
             ) : (
             <>
-            <div className="relative">
-              <select
-                value={state.leadListId || ""}
-                onChange={e => onChange("leadListId", e.target.value)}
-                disabled={isLoading || lists.length === 0}
-                className="w-full appearance-none rounded-lg bg-background/50 border border-border/50 px-3 py-2.5 text-sm
- text-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-50"
-              >
-                {isLoading ? (
-                  <option value="">Loading your lists...</option>
-                ) : lists.length === 0 ? (
-                  <option value="">No lists found in this workspace</option>
-                ) : (
-                  <option value="">Choose a lead list (or add later)...</option>
-                )}
-                
+            <Select
+              value={state.leadListId || ""}
+              onValueChange={val => onChange("leadListId", val)}
+              disabled={isLoading || lists.length === 0}
+            >
+              <SelectTrigger className="w-full bg-background/50 border-border/50 py-2.5 text-sm h-10">
+                <SelectValue placeholder={
+                  isLoading
+                    ? "Loading your lists..."
+                    : lists.length === 0
+                    ? "No lists found in this workspace"
+                    : "Choose a lead list (or add later)..."
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Choose a lead list (or add later)...</SelectItem>
                 {lists.map((list: any) => (
-                  <option key={list.id} value={list.id} disabled={list.row_count === 0}>
+                  <SelectItem key={list.id} value={list.id} disabled={list.row_count === 0}>
                     {list.name} ({list.row_count} leads{list.row_count === 0 ? " - Empty" : ""})
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-              <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 rotate-90 pointer-events-none" />
-            </div>
+              </SelectContent>
+            </Select>
             {state.leadListId && lists.find((l: any) => l.id === state.leadListId)?.row_count === 0 && (
               <p className="mt-2 text-xs text-amber-500 font-medium">This lead list is empty. You cannot launch a campaign with 0 leads.</p>
             )}
@@ -217,7 +218,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
                   <Link to="/elein/leads" target="_blank" className="text-xs font-semibold text-primary hover:underline">
                     Create a Lead List &rarr;
                   </Link>
-                  <button onClick={() => mutate()} className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:underline">
+                  <button type="button" onClick={() => mutate()} className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline">
                     Refresh Lists &orarr;
                   </button>
                 </div>
@@ -225,40 +226,40 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
             )}
 
       {/* Right */}
-      <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50">
+      <SpotlightCard className="p-6 rounded-xl bg-card/30 border border-border/50">
         <div className="space-y-5">
         <div>
           <label className="block text-xs font-semibold text-foreground mb-1">Exclude list</label>
           <p className="text-[10px] text-muted-foreground mb-2">Block contacts who've already heard from you (optional).</p>
-          <div className="relative">
-            <select
-              value={state.excludeListId || ""}
-              onChange={e => onChange("excludeListId", e.target.value)}
-              disabled={isLoading || hasError || lists.length === 0}
-              className="w-full appearance-none rounded-lg bg-muted/30 border border-border px-3 py-2.5 text-sm
- text-foreground focus:outline-none focus:border-foreground/30 transition-colors disabled:opacity-50"
-            >
-                {isLoading ? (
-                  <option value="">Loading your lists...</option>
-                ) : hasError ? (
-                  <option value="">Error loading lists</option>
-                ) : lists.length === 0 ? (
-                  <option value="">No lists found in this workspace</option>
-                ) : (
-                  <option value="">Select an exclusion list (optional)</option>
-                )}
+          <Select
+            value={state.excludeListId || ""}
+            onValueChange={val => onChange("excludeListId", val)}
+            disabled={isLoading || hasError || lists.length === 0}
+          >
+            <SelectTrigger className="w-full bg-muted/30 border-border py-2.5 text-sm h-10">
+              <SelectValue placeholder={
+                isLoading
+                  ? "Loading your lists..."
+                  : hasError
+                  ? "Error loading lists"
+                  : lists.length === 0
+                  ? "No lists found in this workspace"
+                  : "Select an exclusion list (optional)"
+              } />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Select an exclusion list (optional)</SelectItem>
               {lists.map((list: any) => (
-                <option key={list.id} value={list.id}>
+                <SelectItem key={list.id} value={list.id}>
                   {list.name} ({list.row_count} leads)
-                </option>
+                </SelectItem>
               ))}
-            </select>
-            <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 rotate-90 pointer-events-none" />
-          </div>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <AdvancedSettingsPanel label="Advanced: Global Deduplication">
-            <div className="space-y-3 bg-primary/5 p-4 rounded-2xl border border-primary/20">
+            <div className="space-y-3 bg-primary/5 p-4 rounded-lg border border-primary/20">
               <div className="flex items-start gap-3 opacity-80">
                 <div className="mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 bg-primary border-primary">
                   <Check size={10} className="text-white" strokeWidth={3} />
@@ -284,7 +285,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
                 </label>
               </div>
             </div>
-            <div className="space-y-3 bg-primary/5 p-4 rounded-2xl border border-primary/20 mt-4">
+            <div className="space-y-3 bg-primary/5 p-4 rounded-lg border border-primary/20 mt-4">
               <div className="flex items-start gap-3">
                 <label className="flex items-start gap-3 cursor-pointer group w-full">
                   <div
@@ -314,7 +315,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
 
       {/* Inbound Intent Ingest Trigger (Blue Ocean) */}
       <div className="md:col-span-2">
-        <SpotlightCard className="p-6 rounded-2xl bg-card/30 border border-border/50">
+        <SpotlightCard className="p-6 rounded-xl bg-card/30 border border-border/50">
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
@@ -373,7 +374,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
                 </div>
               </div>
             ) : (
-              <div className="p-3.5 rounded-xl border border-dashed border-border/80 bg-muted/20 flex items-center justify-between gap-4">
+              <div className="p-3.5 rounded-lg border border-dashed border-border/80 bg-muted/20 flex items-center justify-between gap-4">
                 <div className="text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Draft not yet assigned an ID:</span> Save this campaign draft to unlock the live webhook endpoint URL for this specific campaign.
                 </div>
@@ -430,7 +431,7 @@ function TemplateBrowser({ onClose, onImport }: {
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        className="w-full max-w-5xl h-[88vh] rounded-2xl bg-background border border-border/50 shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-5xl h-[88vh] rounded-xl bg-background border border-border/50 shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0">
@@ -438,7 +439,7 @@ function TemplateBrowser({ onClose, onImport }: {
             <h2 className="text-base font-bold text-foreground">Browse templates</h2>
             <p className="text-[10px] text-muted-foreground mt-0.5">Ready-to-use sequences with sticky notes to guide you through each step</p>
           </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-foreground transition-colors">
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -447,13 +448,13 @@ function TemplateBrowser({ onClose, onImport }: {
           {/* Left list */}
           <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-border/50 flex flex-col shrink-0 h-[40%] md:h-auto">
             {/* Search */}
-            <div className="flex items-center gap-2 mx-4 mt-4 mb-2 rounded-lg bg-black/40 border border-border/50 px-3 py-2">
-              <Search size={12} className="text-gray-600 shrink-0" />
+            <div className="flex items-center gap-2 mx-4 mt-4 mb-2 rounded-lg bg-muted/20 border border-border/50 px-3 py-2">
+              <Search size={12} className="text-muted-foreground shrink-0" />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search templates…"
-                className="flex-1 bg-transparent text-xs text-gray-200 placeholder-gray-500 focus:outline-none"
+                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
             </div>
 
@@ -461,13 +462,14 @@ function TemplateBrowser({ onClose, onImport }: {
             <div className="px-4 pb-3 flex flex-wrap gap-1">
               {TEMPLATE_TAGS.map(tag => (
                 <button
+                  type="button"
                   key={tag}
                   onClick={() => setActiveTag(tag)}
                   className={cn(
                     "flex items-center gap-1 text-[9px] px-2 py-1 rounded-md font-semibold transition-all",
                     activeTag === tag
                       ? "bg-primary/20 text-primary/80 border border-primary/30"
-                      : "text-muted-foreground border border-transparent hover:text-zinc-300 hover:bg-muted/30"
+                      : "text-muted-foreground border border-transparent hover:text-foreground hover:bg-muted/30"
                   )}
                 >
                   {tag !== "all" && <Tag size={7} />}
@@ -482,10 +484,11 @@ function TemplateBrowser({ onClose, onImport }: {
                 <div className="text-center py-8 text-xs text-muted-foreground">No templates match your filter</div>
               ) : filtered.map(t => (
                 <button
+                  type="button"
                   key={t.id}
                   onClick={() => setSelected(t.id)}
                   className={cn(
-                    "w-full text-left p-4 rounded-xl border transition-all mt-2",
+                    "w-full text-left p-3.5 rounded-lg border transition-all mt-2",
                     selected === t.id
                       ? "border-border bg-muted/30"
                       : "border-transparent hover:border-border/50 hover:bg-muted/20"
@@ -505,7 +508,7 @@ function TemplateBrowser({ onClose, onImport }: {
                     )}
                   </div>
                   <p className="text-xs font-bold text-foreground mb-1 leading-tight">{t.name}</p>
-                  <p className="text-[10px] text-gray-500 mb-2 line-clamp-2">{t.description}</p>
+                  <p className="text-[10px] text-muted-foreground mb-2 line-clamp-2">{t.description}</p>
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1 text-[10px] text-success bg-success/10 px-1.5 py-0.5 rounded">
                       <Users size={9} /> {t.connectionRate}%
@@ -513,7 +516,7 @@ function TemplateBrowser({ onClose, onImport }: {
                     <span className="flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                       <MessageSquare size={9} /> {t.replyRate}%
                     </span>
-                    <span className="ml-auto flex items-center gap-1 text-[10px] text-gray-600">
+                    <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
                       <Copy size={9} /> {t.uses.toLocaleString()}
                     </span>
                   </div>
@@ -542,13 +545,14 @@ function TemplateBrowser({ onClose, onImport }: {
             Yellow sticky notes on each step explain what to do and why it works.
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border/50 hover:border-border/50 text-xs text-gray-400 hover:text-gray-200 transition-all">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border/50 hover:border-border text-xs text-muted-foreground hover:text-foreground transition-all">
               Close
             </button>
             {selectedTemplate && (
               <button
+                type="button"
                 onClick={() => { onImport(selected); onClose() }}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary/90 hover:bg-primary text-xs font-bold text-foreground transition-all"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-xs font-bold text-primary-foreground transition-all"
               >
                 Use this template <ArrowUpRight size={12} />
               </button>
@@ -643,7 +647,7 @@ function LivePreviewSidebar() {
         <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
           <Eye size={16} /> Prospect POV
         </div>
-        <button onClick={() => selectNode(null)} className="text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-muted/50 transition-colors">
+        <button type="button" onClick={() => selectNode(null)} className="text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-muted/50 transition-colors">
           <X size={16} />
         </button>
       </div>
@@ -748,11 +752,11 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Option A */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setSelectedTemplateId('get_customers');
               setMode("template_choice");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <Users size={24} className="text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Get customers</h3>
@@ -760,11 +764,11 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
             </SpotlightCard>
 
             {/* Option B */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setSelectedTemplateId('hire_people');
               setMode("template_choice");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <Briefcase size={24} className="text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Hire people</h3>
@@ -772,20 +776,20 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
             </SpotlightCard>
 
             {/* Option C */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setSelectedTemplateId('get_intros');
               setMode("template_choice");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <LinkIcon size={24} className="text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Get intros</h3>
               <p className="text-xs text-muted-foreground">Message people who can open a door  -  investor, partner, or their network.</p>
             </SpotlightCard>
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setMode("wizard");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <Shield size={24} className="text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Warm-up Only</h3>
@@ -824,19 +828,19 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               loadTree([]);
               setMode("build");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <Plus size={24} className="text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Start from Blank</h3>
               <p className="text-xs text-muted-foreground">Start with an empty canvas and design your own sequence.</p>
             </SpotlightCard>
 
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-2xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
                 <FileText size={24} className="text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground mb-2">Use a Template</h3>
@@ -927,7 +931,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
 
 
         <div className="max-w-3xl mx-auto space-y-4 mb-10">
-          <div className="bg-destructive/10 border border-destructive/20 rounded-2xl p-4 flex gap-4 text-left shadow-sm">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex gap-4 text-left shadow-sm">
             <div className="mt-0.5 shrink-0">
                <AlertTriangle size={20} className="text-destructive" />
             </div>
@@ -938,7 +942,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
               </p>
             </div>
           </div>
-          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-4 text-left shadow-sm">
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex gap-4 text-left shadow-sm">
             <div className="mt-0.5 shrink-0">
                <Zap size={20} className="text-primary fill-primary/20" />
             </div>
@@ -949,7 +953,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
               </p>
             </div>
           </div>
-          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 flex gap-4 text-left shadow-sm">
+          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-4 flex gap-4 text-left shadow-sm">
             <div className="mt-0.5 shrink-0">
                <ShieldCheck size={20} className="text-emerald-400" />
             </div>
@@ -968,7 +972,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
         </div>
 
         {error ? (
-          <div className="bg-destructive/10 border border-destructive/50 rounded-2xl p-12 text-center shadow-sm">
+          <div className="bg-destructive/10 border border-destructive/50 rounded-xl p-12 text-center shadow-sm">
             <h3 className="text-lg font-bold text-destructive mb-2">Error loading accounts</h3>
             <p className="text-sm text-destructive mb-6">{error.message || "Failed to fetch accounts from the server."}</p>
           </div>
@@ -977,8 +981,8 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
             <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           </div>
         ) : accounts.length === 0 ? (
-          <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
-            <div className="w-16 h-16 rounded-2xl bg-muted/50 border border-border mx-auto flex items-center justify-center mb-6">
+          <div className="bg-card border border-border rounded-xl p-12 text-center shadow-sm">
+            <div className="w-16 h-16 rounded-lg bg-muted/50 border border-border mx-auto flex items-center justify-center mb-6">
               <Linkedin size={24} className="text-muted-foreground" />
             </div>
             <h3 className="text-lg font-bold text-foreground mb-2">No LinkedIn accounts connected</h3>
@@ -986,7 +990,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
             <Link 
               to="/elein/accounts"
               target="_blank"
-              className="inline-flex items-center justify-center px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors shadow-sm">
+              className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors shadow-sm">
               Connect Account
             </Link>
             <p className="text-[10px] text-muted-foreground/60 mt-3">After connecting, return here and refresh.</p>
@@ -998,8 +1002,11 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
               return (
                 <div 
                   key={acc.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => toggleSender(acc.id)}
-                  className={`relative p-5 rounded-2xl border transition-all cursor-pointer ${
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSender(acc.id); } }}
+                  className={`relative p-5 rounded-lg border transition-all cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40 ${
                     isSelected 
                       ? "bg-primary/5 border-primary shadow-[0_0_15px_rgba(99,102,241,0.1)]" 
                       : "bg-card border-border hover:border-muted-foreground/30 hover:bg-muted/10 shadow-sm"
@@ -1014,7 +1021,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
                   </div>
                   
                   <div className="flex items-center gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center text-lg font-bold text-foreground border border-border">
+                    <div className="w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center text-lg font-bold text-foreground border border-border">
                       {acc.name.substring(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1">
@@ -1144,7 +1151,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
       <div className="w-full max-w-3xl mx-auto text-center">
         <h2 className="text-3xl font-light mb-4">Campaign Schedule</h2>
         <p className="text-muted-foreground mb-8">Ensure your campaign runs during the correct business hours and respects prospect timezones.</p>
-        <div className="bg-card/30 border border-border/50 rounded-2xl p-8 space-y-6 text-left">
+        <div className="bg-card/30 border border-border/50 rounded-xl p-8 space-y-6 text-left">
           
           {/* Dispatch Mode Selector */}
           <div className="space-y-3">
@@ -1165,9 +1172,12 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Option 1: Static Campaign Base Timezone */}
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectMode("campaign_timezone")}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectMode("campaign_timezone"); } }}
                 className={cn(
-                  "p-4 rounded-2xl border transition-all cursor-pointer",
+                  "p-4 rounded-lg border transition-all cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40",
                   currentMode === "campaign_timezone"
                     ? "border-primary bg-primary/10 shadow-xs"
                     : "border-border/60 bg-background/50 hover:border-primary/40"
@@ -1189,9 +1199,12 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
 
               {/* Option 2: Dynamic Prospect Local Timezone */}
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectMode("lead_local_time")}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectMode("lead_local_time"); } }}
                 className={cn(
-                  "p-4 rounded-2xl border transition-all cursor-pointer relative",
+                  "p-4 rounded-lg border transition-all cursor-pointer relative focus:outline-none focus:ring-1 focus:ring-primary/40",
                   currentMode === "lead_local_time"
                     ? "border-primary bg-primary/10 shadow-xs"
                     : "border-border/60 bg-background/50 hover:border-primary/40",
@@ -1218,9 +1231,12 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
 
               {/* Option 3: AI Send-Time Optimization (Predictive STO) */}
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectMode("ai_sto")}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectMode("ai_sto"); } }}
                 className={cn(
-                  "p-4 rounded-2xl border transition-all cursor-pointer relative",
+                  "p-4 rounded-lg border transition-all cursor-pointer relative focus:outline-none focus:ring-1 focus:ring-primary/40",
                   currentMode === "ai_sto"
                     ? "border-indigo-500 bg-indigo-500/10 shadow-xs"
                     : "border-border/60 bg-background/50 hover:border-indigo-500/40",
@@ -1247,7 +1263,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
             </div>
 
             {currentMode === "ai_sto" && (
-              <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex flex-wrap items-center justify-between gap-3">
+              <div className="p-3.5 rounded-lg bg-indigo-500/10 border border-indigo-500/25 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-indigo-200">
                   <strong className="text-indigo-300">Predictive STO Active:</strong> Outreach steps will automatically fire at each prospect's highest-probability local active slot with deterministic MD5 jitter (+5m to +25m).
                 </div>
@@ -1271,18 +1287,22 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
               )}
             </label>
             <p className="text-xs text-muted-foreground mb-2">When scheduling window actions, which baseline timezone should we reference?</p>
-            <select 
+            <Select 
               value={state.timezone || localTz || "America/New_York"}
-              onChange={(e) => onChange("timezone", e.target.value)}
-              className="w-full bg-background border border-border rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              onValueChange={(val) => onChange("timezone", val)}
             >
-              {localTz && !COMMON_TIMEZONES.includes(localTz) && (
-                <option value={localTz}>{formatTimezone(localTz)} (Auto-detected)</option>
-              )}
-              {COMMON_TIMEZONES.map(tz => (
-                <option key={tz} value={tz}>{formatTimezone(tz)}{tz === localTz ? " (Auto-detected)" : ""}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full bg-background border-border h-11 text-sm">
+                <SelectValue placeholder="Select baseline timezone..." />
+              </SelectTrigger>
+              <SelectContent>
+                {localTz && !COMMON_TIMEZONES.includes(localTz) && (
+                  <SelectItem value={localTz}>{formatTimezone(localTz)} (Auto-detected)</SelectItem>
+                )}
+                {COMMON_TIMEZONES.map(tz => (
+                  <SelectItem key={tz} value={tz}>{formatTimezone(tz)}{tz === localTz ? " (Auto-detected)" : ""}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Sending Hours Curfew */}
@@ -1336,7 +1356,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
                 onChange={(e) => handleToggleWeekend(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
 
@@ -1465,14 +1485,14 @@ function StepPreview({
 
         {/* System Health / Clearance Status Banner */}
         <div className={cn(
-          "p-5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 transition-all shadow-sm",
+          "p-5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4 transition-all shadow-sm",
           allPassed 
             ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" 
             : "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
         )}>
           <div className="flex items-center gap-3.5">
             <div className={cn(
-              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
+              "w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border",
               allPassed 
                 ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-600 dark:text-emerald-300" 
                 : "bg-amber-500/20 border-amber-500/40 text-amber-600 dark:text-amber-300"
@@ -1495,7 +1515,7 @@ function StepPreview({
               <button
                 type="button"
                 onClick={onOpenPreflightModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-semibold text-primary transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-semibold text-primary transition-colors cursor-pointer"
               >
                 <Eye size={13} />
                 <span>Open Flight Cockpit</span>
@@ -1516,7 +1536,7 @@ function StepPreview({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           
           {/* Pillar 1: Sequence Architecture */}
-          <div className="bg-card/40 border border-border/60 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
+          <div className="bg-card/40 border border-border/60 rounded-lg p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -1524,6 +1544,7 @@ function StepPreview({
                 </span>
                 {onJumpToStep && (
                   <button 
+                    type="button"
                     onClick={() => onJumpToStep(0)} 
                     className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5"
                   >
@@ -1547,7 +1568,7 @@ function StepPreview({
           </div>
 
           {/* Pillar 2: Audience & Deduplication */}
-          <div className="bg-card/40 border border-border/60 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
+          <div className="bg-card/40 border border-border/60 rounded-lg p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -1555,6 +1576,7 @@ function StepPreview({
                 </span>
                 {onJumpToStep && (
                   <button 
+                    type="button"
                     onClick={() => onJumpToStep(1)} 
                     className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5"
                   >
@@ -1579,7 +1601,7 @@ function StepPreview({
           </div>
 
           {/* Pillar 3: Senders & Smart Load Balancing */}
-          <div className="bg-card/40 border border-border/60 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
+          <div className="bg-card/40 border border-border/60 rounded-lg p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -1587,6 +1609,7 @@ function StepPreview({
                 </span>
                 {onJumpToStep && (
                   <button 
+                    type="button"
                     onClick={() => onJumpToStep(2)} 
                     className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5"
                   >
@@ -1611,7 +1634,7 @@ function StepPreview({
           </div>
 
           {/* Pillar 4: Sending Window & Timezone */}
-          <div className="bg-card/40 border border-border/60 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
+          <div className="bg-card/40 border border-border/60 rounded-lg p-5 flex flex-col justify-between shadow-sm hover:border-border transition-colors">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -1619,6 +1642,7 @@ function StepPreview({
                 </span>
                 {onJumpToStep && (
                   <button 
+                    type="button"
                     onClick={() => onJumpToStep(3)} 
                     className="text-xs font-semibold text-primary hover:underline flex items-center gap-0.5"
                   >
@@ -1645,14 +1669,14 @@ function StepPreview({
         </div>
 
         {/* Campaign Name Editing Card */}
-        <div className="bg-card/30 border border-border/50 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="bg-card/30 border border-border/50 rounded-lg p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="space-y-1 w-full sm:w-auto">
             <label className="text-xs font-semibold text-foreground">Campaign Identifier</label>
             <input
               value={state.campaignName || ""}
               onChange={e => onChange("campaignName", e.target.value)}
               placeholder="e.g. Q4 Executive Outreach"
-              className="w-full sm:w-80 rounded-xl bg-background border border-border/60 px-3.5 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full sm:w-80 rounded-lg bg-background border border-border/60 px-3.5 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <p className="text-xs text-muted-foreground sm:text-right max-w-xs leading-relaxed">
@@ -1680,11 +1704,11 @@ class CampaignErrorBoundary extends React.Component<{children: React.ReactNode},
     if (this.state.hasError) {
       return (
         <div className="h-[100dvh] bg-background text-foreground flex flex-col items-center justify-center">
-          <div className="bg-destructive/10 border border-destructive/50 p-8 rounded-2xl text-center max-w-md">
+          <div className="bg-destructive/10 border border-destructive/50 p-8 rounded-xl text-center max-w-md">
             <h2 className="text-xl font-bold text-destructive mb-2">Something went wrong</h2>
             <p className="text-sm text-destructive mb-6">Something went wrong loading this campaign. Click here to go back.</p>
             {/* Kept as window.location.href because CampaignErrorBoundary is a class component without hook access */}
-            <button onClick={() => window.location.href = '/elein/campaigns'} className="px-6 py-2 bg-destructive hover:bg-destructive text-white rounded-xl font-medium transition-colors">
+            <button type="button" onClick={() => window.location.href = '/elein/campaigns'} className="px-6 py-2 bg-destructive hover:bg-destructive/90 text-white rounded-lg font-medium transition-colors">
               Go Back
             </button>
           </div>
@@ -1970,7 +1994,9 @@ function EleInCreateCampaignInner() {
           status,
           schedule: state.schedule,
           limit: state.limit,
+          lead_list_id: state.leadListId || null,
           metadata: { 
+            lead_list_id: state.leadListId || null,
             stop_on_reply: state.stopOnReply ?? true,
             scheduling_mode: state.scheduling_mode || "campaign_timezone",
             ai_sto_enabled: (state.scheduling_mode === "ai_sto"),
@@ -1993,6 +2019,7 @@ function EleInCreateCampaignInner() {
             body: JSON.stringify({
               list_id: state.leadListId,
               exclude_list_id: state.excludeListId || null,
+              excludeListId: state.excludeListId || null,
               excludeOtherCampaigns: state.excludeOtherCampaigns || false,
               excludeOtherSenders: state.excludeOtherSenders || false,
               excludeSameSender: state.excludeSameSender || false
@@ -2142,9 +2169,7 @@ function EleInCreateCampaignInner() {
 
   return (
     <div className="h-[100dvh] bg-background text-foreground flex flex-col overflow-hidden relative">
-      <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen">
-        <BackgroundBeams />
-      </div>
+
 
       {draftErrors.length > 0 && (
         <div className="bg-warning/10 border-b border-warning/50 p-3 z-50">
@@ -2167,7 +2192,7 @@ function EleInCreateCampaignInner() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="w-full max-w-lg rounded-2xl bg-background border border-destructive/50 shadow-2xl overflow-hidden p-6"
+              className="w-full max-w-lg rounded-xl bg-background border border-destructive/50 shadow-2xl overflow-hidden p-6"
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
@@ -2194,7 +2219,7 @@ function EleInCreateCampaignInner() {
                   }
 
                   return (
-                    <li key={i} className="text-xs text-destructive flex items-center justify-between gap-3 bg-destructive/10 p-3 rounded-xl border border-destructive/20">
+                    <li key={i} className="text-xs text-destructive flex items-center justify-between gap-3 bg-destructive/10 p-3 rounded-lg border border-destructive/20">
                       <div className="flex items-start gap-2 flex-1">
                         <span className="shrink-0 font-bold">•</span>
                         <span className="leading-relaxed font-medium">{err}</span>
@@ -2220,7 +2245,7 @@ function EleInCreateCampaignInner() {
                 <button
                   type="button"
                   onClick={() => setActivationErrors([])}
-                  className="px-5 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-lg transition-all cursor-pointer"
                 >
                   Dismiss
                 </button>
@@ -2350,7 +2375,7 @@ function EleInCreateCampaignInner() {
             onClick={step === STEPS.length - 1 ? () => setShowPreflightModal(true) : handleNext}
             disabled={isSaving}
             className={cn(
-              "flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50 whitespace-nowrap cursor-pointer",
+              "flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-xl transition-all shadow-md disabled:opacity-50 whitespace-nowrap cursor-pointer",
               step === STEPS.length - 1
                 ? isPreflightClear
                   ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20"

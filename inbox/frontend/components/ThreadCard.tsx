@@ -1,6 +1,5 @@
 import { UserCheck } from 'lucide-react';
 import { DEAL_STAGES, OUTCOMES, type DealStage, type OutcomeType, type ThreadSummary } from '../types';
-import type { SimulatedScenario } from '../inboxPlaygroundData';
 
 interface ThreadCardProps {
   thread: ThreadSummary;
@@ -9,7 +8,6 @@ interface ThreadCardProps {
   outcome?: OutcomeType | null;
   dealStage?: DealStage;
   hasDraft?: boolean;
-  simulatedScenario?: SimulatedScenario | null;
 }
 
 export function ThreadCard({
@@ -19,7 +17,6 @@ export function ThreadCard({
   outcome,
   dealStage,
   hasDraft,
-  simulatedScenario,
 }: ThreadCardProps) {
   const outcomeConfig = outcome ? OUTCOMES[outcome] : null;
   const stageConfig = dealStage && dealStage !== 'NEW_REPLY' ? DEAL_STAGES[dealStage] : null;
@@ -35,16 +32,8 @@ export function ThreadCard({
     >
       <div className="flex items-start gap-3">
         {/* Avatar */}
-        <div
-          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 ${
-            simulatedScenario
-              ? simulatedScenario.avatarColor
-              : 'bg-muted text-foreground border border-border'
-          }`}
-        >
-          {simulatedScenario
-            ? simulatedScenario.avatarInitials
-            : thread.sender_name
+        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 bg-muted text-foreground border border-border">
+          {thread.sender_name
             ? thread.sender_name.slice(0, 2).toUpperCase()
             : 'LE'}
         </div>
@@ -67,11 +56,7 @@ export function ThreadCard({
 
           {/* Line 2: Campaign (or company fallback) */}
           <div className="text-xs text-muted-foreground truncate mb-1">
-            {simulatedScenario?.campaignName ||
-              thread.campaign_name ||
-              (simulatedScenario
-                ? `${simulatedScenario.title} · ${simulatedScenario.company}`
-                : thread.company)}
+            {thread.campaign_name || thread.company || 'Active Campaign'}
           </div>
 
           {/* Line 3: Message Preview */}

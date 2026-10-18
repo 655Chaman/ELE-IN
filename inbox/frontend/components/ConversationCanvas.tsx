@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, CalendarClock, Check, ChevronDown, Clock,
-  MessageSquare, RotateCcw, Target,
+  MessageSquare, Target,
   UserCheck, X
 } from 'lucide-react';
 import { ElesiumLogo } from '@/components/ElesiumLogo';
 import { DEAL_STAGES, type DealStage, type Message, type ThreadSummary } from '../types';
-import type { SimulatedScenario } from '../inboxPlaygroundData';
 
 interface ConversationCanvasProps {
   selectedSender: string | null;
   selectedLeadId: string | null;
   selectedThread: ThreadSummary | null;
   messages: Message[];
-  isSimulatingProspectReply: boolean;
-  activeScenario?: SimulatedScenario | null;
-  isPlaygroundActive: boolean;
-  onResetScenario?: (scenarioId: string) => void;
   currentDealStage: DealStage;
   onUpdateDealStage: (stage: DealStage) => void;
   isInspectorOpen: boolean;
@@ -30,10 +25,6 @@ export function ConversationCanvas({
   selectedLeadId: _selectedLeadId,
   selectedThread,
   messages,
-  isSimulatingProspectReply,
-  activeScenario,
-  isPlaygroundActive,
-  onResetScenario,
   currentDealStage,
   onUpdateDealStage,
   isInspectorOpen,
@@ -54,7 +45,7 @@ export function ConversationCanvas({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isSimulatingProspectReply]);
+  }, [messages]);
 
   if (!selectedSender) {
     return (
@@ -90,16 +81,8 @@ export function ConversationCanvas({
             </button>
           )}
 
-          <div
-            className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-              activeScenario
-                ? activeScenario.avatarColor
-                : 'bg-muted text-foreground border border-border'
-            }`}
-          >
-            {activeScenario
-              ? activeScenario.avatarInitials
-              : selectedSender.slice(0, 2).toUpperCase()}
+          <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 bg-muted text-foreground border border-border">
+            {selectedSender ? selectedSender.slice(0, 2).toUpperCase() : 'LE'}
           </div>
 
           <div className="min-w-0 flex-1">
@@ -112,9 +95,7 @@ export function ConversationCanvas({
               <span>
                 Campaign:{' '}
                 <strong className="font-medium text-foreground">
-                  {activeScenario?.campaignName ||
-                    selectedThread?.campaign_name ||
-                    'Q4 SaaS SDR Outbound'}
+                  {selectedThread?.campaign_name || 'Active Campaign'}
                 </strong>
               </span>
             </div>
@@ -172,18 +153,6 @@ export function ConversationCanvas({
             )}
           </div>
 
-          {isPlaygroundActive && activeScenario && onResetScenario && (
-            <button
-              type="button"
-              onClick={() => onResetScenario(activeScenario.id)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md bg-muted hover:bg-muted/80 border border-border text-muted-foreground hover:text-foreground transition-all cursor-pointer whitespace-nowrap"
-              title="Reset sample conversation"
-            >
-              <RotateCcw size={12} />
-              <span>Reset</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={onToggleInspector}
@@ -201,7 +170,7 @@ export function ConversationCanvas({
       </div>
 
       {/* ── Smart Auto-Snooze & Follow-Up Banner ── */}
-      {!isSnoozeDismissed && activeScenario?.timingIntent && (
+      {!isSnoozeDismissed && selectedThread?.objection_data?.detected_timing && (
         <div className="mx-5 mt-3 px-3.5 py-2.5 rounded-xl bg-card border border-border shadow-xs flex items-center justify-between gap-3 text-xs shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 rounded-md bg-muted border border-border flex items-center justify-center shrink-0 text-muted-foreground">
@@ -209,11 +178,13 @@ export function ConversationCanvas({
             </div>
             <div className="min-w-0">
               <div className="font-semibold text-foreground truncate">
-                Follow-up requested for {activeScenario.timingIntent.snoozeDateText}
+                Follow-up requested for {selectedThread.objection_data.detected_timing}
               </div>
-              <div className="text-muted-foreground text-xs truncate">
-                {activeScenario.timingIntent.reason}
-              </div>
+              {selectedThread.objection_data.summary && (
+                <div className="text-muted-foreground text-xs truncate">
+                  {selectedThread.objection_data.summary}
+                </div>
+              )}
             </div>
           </div>
 
@@ -221,19 +192,17 @@ export function ConversationCanvas({
             <button
               type="button"
               onClick={() => {
-                if (activeScenario.timingIntent) {
-                  onSnoozeToDate?.(
-                    activeScenario.timingIntent.snoozeDateText,
-                    activeScenario.timingIntent.suggestedCheckIn
-                  );
-                  setIsSnoozeDismissed(true);
-                }
+                onSnoozeToDate?.(
+                  selectedThread.objection_data!.detected_timing!,
+                  'Following up per previous conversation timing'
+                );
+                setIsSnoozeDismissed(true);
               }}
               className="px-2.5 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground border border-border font-medium transition-colors cursor-pointer text-xs flex items-center gap-1.5"
-              title={`Snooze thread to ${activeScenario.timingIntent.snoozeDateText} and prepare check-in`}
+              title={`Snooze thread to ${selectedThread.objection_data.detected_timing} and prepare check-in`}
             >
               <Clock size={12} className="text-muted-foreground" />
-              <span>Snooze to {activeScenario.timingIntent.snoozeDateText}</span>
+              <span>Snooze to {selectedThread.objection_data.detected_timing}</span>
             </button>
             <button
               type="button"
@@ -304,26 +273,6 @@ export function ConversationCanvas({
             </div>
           );
         })}
-
-        {/* Typing simulator indicator */}
-        {isSimulatingProspectReply && (
-          <div className="flex justify-start">
-            <div className="max-w-[75%] rounded-xl p-3 bg-muted border border-border flex items-center gap-2.5 text-foreground text-xs shadow-2xs">
-              <div
-                className={`w-6 h-6 rounded-full ${
-                  activeScenario
-                    ? activeScenario.avatarColor
-                    : 'bg-muted text-foreground border border-border'
-                } flex items-center justify-center text-xs font-semibold shrink-0`}
-              >
-                {activeScenario ? activeScenario.avatarInitials : 'P'}
-              </div>
-              <span className="font-medium text-foreground">
-                {activeScenario ? activeScenario.senderName : 'Prospect'} is drafting a reply...
-              </span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

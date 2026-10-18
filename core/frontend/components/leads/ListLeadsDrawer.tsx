@@ -212,6 +212,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={exportSelectedCsv}
               disabled={leadList.length === 0}
               className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
@@ -220,7 +221,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               {!isPro ? <Lock size={12} className="text-amber-500" /> : <Download size={13} />}
               <span>{!isPro ? "Export CSV (25 Free)" : "Export CSV"}</span>
             </button>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer">
+            <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer">
               <X size={18} />
             </button>
           </div>
@@ -234,6 +235,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               <span>Free tier limits CSV exports to <strong>25 sample leads</strong> with masked emails.</span>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Unlimited Lead Export & Unmasked Contact Data" })}
               className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 shrink-0 cursor-pointer"
             >
@@ -256,13 +258,14 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                 className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-border/80 bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
               {search && (
-                <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   <X size={12} />
                 </button>
               )}
             </div>
 
             <button
+              type="button"
               onClick={toggleSelectAll}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 cursor-pointer"
             >
@@ -312,8 +315,11 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                   return (
                     <div 
                       key={lead.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleLead(lead.id)}
-                      className={`flex items-center gap-3.5 p-3.5 mb-2.5 mx-1 rounded-xl border transition-all group relative cursor-pointer ${
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLead(lead.id); } }}
+                      className={`flex items-center gap-3.5 p-3.5 mb-2.5 mx-1 rounded-lg border transition-all group relative cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40 ${
                         isSelected 
                           ? "border-primary/50 bg-primary/5 shadow-sm" 
                           : "border-border/60 bg-background hover:bg-muted/40 hover:border-border"
@@ -377,6 +383,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
 
                       {/* Single Delete */}
                       <button 
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); handleRemoveLead(lead.id); }}
                         className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
                         title="Remove from list"
@@ -398,7 +405,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="absolute bottom-4 left-6 right-6 z-20 p-3 bg-card/95 backdrop-blur-md border border-border shadow-2xl rounded-2xl flex items-center justify-between gap-3"
+              className="absolute bottom-4 left-6 right-6 z-20 p-3 bg-card/95 backdrop-blur-md border border-border shadow-2xl rounded-xl flex items-center justify-between gap-3"
             >
               <div className="flex items-center gap-2 pl-2">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -409,20 +416,23 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={exportSelectedCsv}
-                  className="px-3 py-1.5 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 cursor-pointer"
                   title={!isPro && selectedIds.size > 25 ? "Free tier allows 25 export sample" : "Export Selected"}
                 >
                   {!isPro && selectedIds.size > 25 ? <Lock size={12} className="text-amber-500" /> : <Download size={13} />}
                   <span>Export Selected {!isPro && selectedIds.size > 25 ? "(Pro Lock)" : ""}</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setShowConfirmDelete(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-destructive hover:bg-destructive/90 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-destructive hover:bg-destructive/90 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Trash2 size={13} /> Remove ({selectedIds.size})
                 </button>
                 <button
+                  type="button"
                   onClick={() => setSelectedIds(new Set())}
                   className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
@@ -441,7 +451,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-card border border-border shadow-2xl rounded-2xl p-6 max-w-md w-full mx-4"
+                className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full mx-4"
               >
                 <div className="flex items-center gap-3 text-destructive mb-3">
                   <AlertTriangle size={24} />
@@ -452,16 +462,18 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                 </p>
                 <div className="flex items-center justify-end gap-3">
                   <button
+                    type="button"
                     onClick={() => setShowConfirmDelete(false)}
                     disabled={isBatchRemoving}
-                    className="px-4 py-2 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleBatchRemove}
                     disabled={isBatchRemoving}
-                    className="px-4 py-2 rounded-xl bg-destructive hover:bg-destructive/90 text-sm font-bold text-white transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg bg-destructive hover:bg-destructive/90 text-sm font-bold text-white transition-colors shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {isBatchRemoving ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                     <span>{isBatchRemoving ? "Removing..." : "Remove Leads"}</span>

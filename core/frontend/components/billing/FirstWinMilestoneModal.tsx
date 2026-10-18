@@ -141,16 +141,14 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-full max-w-2xl rounded-3xl bg-[#0D0E12] border border-amber-500/30 shadow-[0_0_80px_rgba(245,158,11,0.2)] p-6 md:p-8 text-white overflow-hidden my-8"
+          className="relative w-full max-w-2xl rounded-xl bg-card border border-border/80 shadow-2xl p-6 md:p-8 text-foreground overflow-hidden my-8"
         >
-          {/* Ambient Glow */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-4/5 h-28 bg-gradient-to-b from-amber-500/20 via-primary/10 to-transparent blur-3xl pointer-events-none" />
-
           {/* Dismiss button */}
           <button
+            type="button"
             disabled={isProcessing || isVerifying}
             onClick={handleDismiss}
-            className="absolute top-5 right-5 text-zinc-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition z-10 disabled:opacity-40"
+            className="absolute top-5 right-5 text-muted-foreground hover:text-foreground p-1.5 rounded-full hover:bg-muted/50 transition z-10 disabled:opacity-40"
             aria-label="Close"
           >
             <X size={18} />
@@ -158,45 +156,45 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
 
           {/* Milestone Badge & Header */}
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold mb-3">
-              <Trophy size={14} className="text-amber-400 animate-bounce" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold mb-3">
+              <Trophy size={14} className="text-amber-600 dark:text-amber-400" />
               <span>FIRST-WIN MILESTONE ACHIEVED</span>
             </div>
 
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">
+            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-foreground mb-2">
               Your Campaign Just Booked Its First Reply!
             </h2>
-            <p className="text-sm text-zinc-300 max-w-lg leading-relaxed">
-              <span className="text-white font-medium">{prospectName}</span> responded to{' '}
-              <span className="text-white font-medium">{campaignName}</span>. You've officially proven that your messaging resonates with high-value prospects.
+            <p className="text-sm text-muted-foreground max-w-lg leading-relaxed">
+              <span className="text-foreground font-medium">{prospectName}</span> responded to{' '}
+              <span className="text-foreground font-medium">{campaignName}</span>. You've officially proven that your messaging resonates with high-value prospects.
             </p>
           </div>
 
           {/* 48-Hour OTO Banner with Live Countdown */}
-          <div className="rounded-2xl bg-gradient-to-r from-amber-500/15 via-primary/10 to-amber-500/15 border border-amber-500/30 p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="rounded-lg bg-muted/30 border border-border/60 p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
                 <Flame size={20} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
                     48-Hour Momentum Grant
                   </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                     30% OFF
                   </span>
                 </div>
-                <p className="text-xs text-zinc-300 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Exclusive expansion discount for users who achieve their first prospect reply.
                 </p>
               </div>
             </div>
 
             {/* Live Countdown Clock */}
-            <div className="flex items-center gap-1.5 bg-black/60 border border-amber-500/30 px-3 py-1.5 rounded-xl shrink-0">
-              <Clock size={14} className="text-amber-400 animate-pulse" />
-              <span className="font-mono text-xs font-bold text-amber-300">
+            <div className="flex items-center gap-1.5 bg-background border border-border/60 px-3 py-1.5 rounded-md shrink-0">
+              <Clock size={14} className="text-amber-600 dark:text-amber-400" />
+              <span className="font-mono text-xs font-bold text-foreground">
                 {isExpired ? (
                   'OFFER EXPIRED'
                 ) : (
@@ -209,33 +207,33 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
           {/* Free vs Growth Scale Comparison */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             {/* Free Limits */}
-            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/5 flex flex-col justify-between">
+            <div className="p-4 rounded-lg bg-muted/30 border border-border/60 flex flex-col justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
                   Current Free Tier
                 </span>
-                <span className="text-lg font-bold text-zinc-300">1 Campaign Limit</span>
-                <ul className="mt-3 space-y-2 text-xs text-zinc-400">
+                <span className="text-lg font-bold text-foreground">1 Campaign Limit</span>
+                <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
                   <li className="flex items-center gap-2">
-                    <span className="text-zinc-600">•</span> 500 total monthly credits
+                    <span className="text-muted-foreground/60">•</span> 500 total monthly credits
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-zinc-600">•</span> ~25 prospects enriched/mo
+                    <span className="text-muted-foreground/60">•</span> ~25 prospects enriched/mo
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-zinc-600">•</span> 1 LinkedIn account connected
+                    <span className="text-muted-foreground/60">•</span> 1 LinkedIn account connected
                   </li>
                 </ul>
               </div>
-              <div className="mt-4 pt-3 border-t border-white/5 text-[11px] text-zinc-500 italic">
+              <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground italic">
                 Cap reached quickly once multiple leads reply.
               </div>
             </div>
 
             {/* Growth Tier Unlocked */}
-            <div className="p-4 rounded-2xl bg-gradient-to-b from-primary/15 to-primary/5 border border-primary/30 flex flex-col justify-between relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-card border border-border/60 flex flex-col justify-between relative overflow-hidden">
               <div className="absolute top-2 right-2">
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 uppercase tracking-wider">
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 uppercase tracking-wider">
                   Recommended
                 </span>
               </div>
@@ -243,29 +241,29 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-primary block mb-1">
                   Growth Pro Scale
                 </span>
-                <span className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="text-lg font-bold text-foreground flex items-center gap-2">
                   <span>20 Active Campaigns</span>
                   <Zap size={16} className="text-primary fill-primary" />
                 </span>
-                <ul className="mt-3 space-y-2 text-xs text-zinc-200">
+                <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
                   <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
-                    <span><strong>5,000 credits/mo</strong> (60,000/yr)</span>
+                    <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                    <span><strong className="text-foreground">5,000 credits/mo</strong> (60,000/yr)</span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                    <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
                     <span className="flex items-center gap-1.5">
                       <ElesiumLogo size={12} />
-                      <span><strong>Unlimited AI Ghostwriter</strong> streaming</span>
+                      <span><strong className="text-foreground">Unlimited AI Ghostwriter</strong> streaming</span>
                     </span>
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
-                    <span><strong>Up to 5 accounts</strong> & multi-inbox</span>
+                    <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                    <span><strong className="text-foreground">Up to 5 accounts</strong> & multi-inbox</span>
                   </li>
                 </ul>
               </div>
-              <div className="mt-4 pt-3 border-t border-primary/20 text-[11px] text-primary/90 font-medium">
+              <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-primary font-medium">
                 Proven ~35–50 booked meetings/month potential
               </div>
             </div>
@@ -276,36 +274,36 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
             <button
               type="button"
               onClick={() => setBillingCycle('monthly')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all border ${
                 billingCycle === 'monthly'
-                  ? 'bg-white/10 text-white border-white/20 shadow-sm'
-                  : 'text-zinc-400 hover:text-white border-transparent'
+                  ? 'bg-muted text-foreground border-border shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground border-transparent'
               }`}
             >
-              Monthly: <span className="text-emerald-400 font-bold">$69/mo</span>{' '}
-              <span className="line-through text-zinc-500 text-[11px]">$99</span>
+              Monthly: <span className="text-emerald-600 dark:text-emerald-400 font-bold">$69/mo</span>{' '}
+              <span className="line-through text-muted-foreground text-[11px]">$99</span>
             </button>
             <button
               type="button"
               onClick={() => setBillingCycle('annual')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border relative ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all border relative ${
                 billingCycle === 'annual'
-                  ? 'bg-primary/20 text-white border-primary/40 shadow-sm'
-                  : 'text-zinc-400 hover:text-white border-transparent'
+                  ? 'bg-primary/10 text-foreground border-primary/30 shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground border-transparent'
               }`}
             >
               Annual:{' '}
-              <span className="text-emerald-400 font-bold">$55/mo</span>{' '}
-              <span className="line-through text-zinc-500 text-[11px]">$79</span>
-              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">$55/mo</span>{' '}
+              <span className="line-through text-muted-foreground text-[11px]">$79</span>
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
                 SAVE 44%
               </span>
             </button>
           </div>
 
           {/* Price Guarantee Badge */}
-          <div className="flex items-center justify-center gap-2 text-xs text-zinc-400 mb-6">
-            <Lock size={12} className="text-amber-400" />
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
+            <Lock size={12} className="text-amber-500 dark:text-amber-400" />
             <span>Grandfathered Rate: This 30% discount stays locked for the life of your account.</span>
           </div>
 
@@ -315,7 +313,7 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
               type="button"
               disabled={isProcessing || isVerifying || isExpired}
               onClick={handleClaimOffer}
-              className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-amber-500 to-primary hover:opacity-95 text-white font-bold text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full sm:flex-1 py-3 px-6 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isProcessing || isVerifying ? (
                 <>
@@ -324,7 +322,7 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
                 </>
               ) : isExpired ? (
                 <>
-                  <Lock size={16} className="text-zinc-400" />
+                  <Lock size={16} className="text-primary-foreground/60" />
                   <span>Offer Expired</span>
                 </>
               ) : (
@@ -339,16 +337,16 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
               type="button"
               disabled={isProcessing || isVerifying}
               onClick={handleDismiss}
-              className="w-full sm:w-auto py-3 px-5 rounded-2xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white text-xs font-semibold transition-all border border-white/5"
+              className="w-full sm:w-auto py-3 px-5 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground text-xs font-semibold transition-all border border-border/60"
             >
               Keep Free Plan for Now
             </button>
           </div>
 
           {/* Reassurance */}
-          <div className="mt-4 flex items-center justify-center gap-4 text-[11px] text-zinc-500">
+          <div className="mt-4 flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
-              <ShieldCheck size={13} className="text-emerald-400" /> 14-day money-back guarantee
+              <ShieldCheck size={13} className="text-emerald-500 dark:text-emerald-400" /> 14-day money-back guarantee
             </span>
             <span>•</span>
             <span>1-click instant cancellation</span>

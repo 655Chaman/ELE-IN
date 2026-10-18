@@ -100,7 +100,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       whileHover={{ scale: isDragging ? 1.05 : 1.01 }}
-      className={`absolute rounded-2xl border  transition-colors group ${activeStyle} ${isDragging ? 'cursor-grabbing z-[100] ring-2 ring-white/20' : 'cursor-grab z-40'}`}
+      className={`absolute rounded-lg border  transition-colors group ${activeStyle} ${isDragging ? 'cursor-grabbing z-[100] ring-2 ring-white/20' : 'cursor-grab z-40'}`}
       style={{ left: note.x, top: note.y, minWidth: 240, maxWidth: 320 }}
       onMouseDown={handleMouseDown}
       onClick={(e) => e.stopPropagation()}
@@ -118,19 +118,25 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
           >
             {Object.keys(colorMap).map(c => (
               <button
+                type="button"
                 key={c}
+                aria-label={`Change color to ${c}`}
                 onClick={(e) => { e.stopPropagation(); changeStickyNoteColor(note.id, c) }}
                 className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${c === 'yellow' ? 'bg-primary/80' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-cyan-400'} ${baseColorKey === c ? 'ring-2 ring-white ring-offset-1 ring-offset-background' : ''}`}
               />
             ))}
             <div className="w-px h-4 bg-border mx-1" />
             <button
+              type="button"
+              aria-label="Edit note"
               onClick={(e) => { e.stopPropagation(); setIsEditing(true) }}
               className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             >
               <Edit2 size={14} />
             </button>
             <button
+              type="button"
+              aria-label="Delete note"
               onClick={(e) => { e.stopPropagation(); removeStickyNote(note.id) }}
               className="p-1 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
             >

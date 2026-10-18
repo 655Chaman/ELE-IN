@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
+import { CustomSelect } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -222,12 +223,12 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-card border border-border/80 rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-foreground">
+      <div className="bg-card border border-border/80 rounded-xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-foreground">
         
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border/60 bg-muted/20">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400">
               <Flame className="w-6 h-6 animate-pulse" />
             </div>
             <div>
@@ -247,12 +248,13 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
               type="button"
               onClick={handleExportCSV}
               disabled={isExportingCsv}
-              className="px-3 py-1.5 rounded-xl border border-border/80 bg-background hover:bg-muted/60 text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-3 py-1.5 rounded-md border border-border/80 bg-background hover:bg-muted/60 text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5 text-amber-400" />
               <span>{isExportingCsv ? 'Exporting...' : 'Export Fleet CSV'}</span>
             </button>
             <button
+              type="button"
               onClick={onClose}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-lg transition-colors cursor-pointer"
             >
@@ -263,7 +265,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
 
         {/* Telemetry Bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-muted/20 border-b border-border/60">
-          <div className="bg-card border border-border/60 rounded-xl p-3">
+          <div className="bg-card border border-border/60 rounded-lg p-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
               <span>Warmup Fleet</span>
               <Mail className="w-4 h-4 text-amber-400" />
@@ -273,7 +275,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
             </div>
           </div>
 
-          <div className="bg-card border border-border/60 rounded-xl p-3">
+          <div className="bg-card border border-border/60 rounded-lg p-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
               <span>Inbox Placement</span>
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -283,7 +285,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
             </div>
           </div>
 
-          <div className="bg-card border border-border/60 rounded-xl p-3">
+          <div className="bg-card border border-border/60 rounded-lg p-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
               <span>Reputation Health</span>
               <ShieldCheck className="w-4 h-4 text-cyan-400" />
@@ -293,7 +295,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
             </div>
           </div>
 
-          <div className="bg-card border border-border/60 rounded-xl p-3">
+          <div className="bg-card border border-border/60 rounded-lg p-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
               <span>Daily Swarm Vol</span>
               <Activity className="w-4 h-4 text-sky-400" />
@@ -307,6 +309,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
         {/* Navigation Tabs */}
         <div className="flex border-b border-border/60 px-6 bg-muted/10">
           <button
+            type="button"
             onClick={() => setActiveTab('mailboxes')}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'mailboxes'
@@ -318,6 +321,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
             Mailbox Fleet ({mailboxes.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('dns')}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'dns'
@@ -329,6 +333,7 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
             DNS Reputation Inspector
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('swarm')}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'swarm'
@@ -394,28 +399,32 @@ export function WarmupStudioModal({ onClose }: WarmupStudioProps) {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Mail Provider</label>
-                      <select
+                      <CustomSelect
                         value={newProvider}
-                        onChange={e => setNewProvider(e.target.value)}
-                        className="w-full bg-background border border-border/80 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-amber-500"
-                      >
-                        <option value="google_workspace">Google Workspace</option>
-                        <option value="microsoft_365">Microsoft 365</option>
-                        <option value="smtp_imap">Custom SMTP/IMAP</option>
-                      </select>
+                        onValueChange={setNewProvider}
+                        size="sm"
+                        triggerClassName="bg-background border-border/80 text-xs focus-visible:ring-amber-500/60 focus-visible:border-amber-500/60"
+                        options={[
+                          { value: "google_workspace", label: "Google Workspace" },
+                          { value: "microsoft_365", label: "Microsoft 365" },
+                          { value: "smtp_imap", label: "Custom SMTP/IMAP" },
+                        ]}
+                      />
                     </div>
 
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Ramp Strategy</label>
-                      <select
+                      <CustomSelect
                         value={newStrategy}
-                        onChange={e => setNewStrategy(e.target.value)}
-                        className="w-full bg-background border border-border/80 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-amber-500"
-                      >
-                        <option value="gentle">Gentle (+1 every 2 days)</option>
-                        <option value="balanced">Balanced (+2 every day)</option>
-                        <option value="aggressive">Aggressive (+3 every day)</option>
-                      </select>
+                        onValueChange={setNewStrategy}
+                        size="sm"
+                        triggerClassName="bg-background border-border/80 text-xs focus-visible:ring-amber-500/60 focus-visible:border-amber-500/60"
+                        options={[
+                          { value: "gentle", label: "Gentle (+1 every 2 days)" },
+                          { value: "balanced", label: "Balanced (+2 every day)" },
+                          { value: "aggressive", label: "Aggressive (+3 every day)" },
+                        ]}
+                      />
                     </div>
 
                     <div>

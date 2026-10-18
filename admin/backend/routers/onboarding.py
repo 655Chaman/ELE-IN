@@ -341,43 +341,8 @@ async def seed_demo_data(request: Request) -> Dict[str, Any]:
             "status": "extracted"
         })
     else:
-        # 3 Tailored Demo Leads
         list_name = f"Target Prospects - {target_title}s"
-        leads_to_insert = [
-            {
-                "id": str(uuid.uuid4()),
-                "workspace_id": workspace_id,
-                "first_name": "Alex",
-                "last_name": "Rivera",
-                "linkedin_url": "https://linkedin.com/in/demo-lead-alexrivera",
-                "company_name": "Acme Corp",
-                "job_title": target_title,
-                "industry": target_industry,
-                "status": "extracted"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "workspace_id": workspace_id,
-                "first_name": "Sarah",
-                "last_name": "Chen",
-                "linkedin_url": "https://linkedin.com/in/demo-lead-sarahchen",
-                "company_name": "Stellar Dynamics",
-                "job_title": target_title,
-                "industry": target_industry,
-                "status": "extracted"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "workspace_id": workspace_id,
-                "first_name": "Marcus",
-                "last_name": "Vance",
-                "linkedin_url": "https://linkedin.com/in/demo-lead-marcusvance",
-                "company_name": "Apex Global",
-                "job_title": target_title,
-                "industry": target_industry,
-                "status": "extracted"
-            }
-        ]
+        leads_to_insert = []
 
     try:
         supabase.table("lead_lists").insert({

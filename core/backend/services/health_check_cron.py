@@ -6,7 +6,6 @@ from datetime import datetime
 from supabase import Client
 from typing import List
 
-from core.backend.core.config import config
 from core.backend.api.auth_dep import get_service_client
 from integrations.backend.services.linkedin_worker import LinkedInWorker
 from core.backend.services.telemetry import capture_error, emit_heartbeat

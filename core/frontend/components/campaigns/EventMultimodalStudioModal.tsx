@@ -495,7 +495,7 @@ export function EventMultimodalStudioModal({ onClose, campaignId }: EventMultimo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-5xl rounded-2xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden my-6">
+      <div className="relative w-full max-w-5xl rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden my-6">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">

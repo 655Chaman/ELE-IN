@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Background
 from fastapi.responses import StreamingResponse
 import os
 from integrations.backend.services.voyager_scraper import VoyagerScraper, DailyLimitExceeded, VoyagerThrottled, SessionExpired
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from supabase import Client, AsyncClient
 
 from core.backend.api.auth_dep import get_supabase_client, verify_token_and_get_user_id, get_async_supabase_client, get_service_client
@@ -1490,15 +1490,6 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
 
     li_at_val = str(li_at_cookie.get("value", ""))
 
-    # Layer 1: Detect sandbox / mock tokens (safe offline test)
-    if any(m in li_at_val.lower() for m in ["mock", "demo", "test", "dummy"]):
-        return {
-            "valid": True,
-            "profile_url": "https://www.linkedin.com/in/demo-growth-lead/",
-            "name": "Alex Vance (Sandbox)",
-            "is_mock": True
-        }
-
     if proxy_id and not proxy_url:
         try:
             from supabase import create_client
@@ -1925,29 +1916,49 @@ def get_account_tags(account_id: str, supabase: Client = Depends(get_supabase_cl
 def get_accounts(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
         res = supabase.table("accounts").select("*").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
-        # Schema v2: decode session_cookies_encrypted (BYTEA) back to string
-        # and re-expose as session_cookies_json for frontend compatibility
+        # Security Hardening (VULN-13): Never decrypt or expose plaintext session cookies over REST API.
+        # Decryption must happen exclusively inside isolated backend worker threads during browser launch.
         rows = []
         for row in res.data:
             raw = row.get("session_cookies_encrypted")
-            row["session_cookies_json"] = (
-                crypto.decrypt_bytes(raw).decode("utf-8") if isinstance(raw, (bytes, bytearray)) else (raw or "")
-            )
+            row["has_valid_session"] = bool(raw)
+            row["session_cookies_json"] = None
+            if "session_cookies_encrypted" in row:
+                del row["session_cookies_encrypted"]
             rows.append(row)
         return rows
     except Exception as e:
-        logger.error(f"Error: {e}", exc_info=True)
+        logger.error(f"Error fetching accounts: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 @router.get("/accounts/usage", response_model=List[dict])
 def get_account_usage(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
-    """Today's action counts per account for rate limit display."""
+    """Today's action counts per account for rate limit display strictly scoped to caller's workspace (VULN-04)."""
     try:
         today = date.today().isoformat()
-        res = supabase.table("account_daily_action_counts").select("account_id, action_type, count").eq("usage_date", today).execute()
-        return res.data or [] or []
-    except Exception:
+        # Security Hardening (VULN-04): First resolve account IDs owned by this workspace
+        acc_res = supabase.table("accounts").select("id").eq("workspace_id", workspace_id).execute()
+        acc_ids = [r["id"] for r in (acc_res.data or []) if r.get("id")]
+        if not acc_ids:
+            return []
+        
+        # Environmental Paranoia (Layer 1): Chunk queries to avoid HTTP 414 URI limits
+        usage_data = []
+        chunk_size = 200
+        for i in range(0, len(acc_ids), chunk_size):
+            chunk = acc_ids[i:i + chunk_size]
+            res = (
+                supabase.table("account_daily_action_counts")
+                .select("account_id, action_type, count")
+                .in_("account_id", chunk)
+                .eq("usage_date", today)
+                .execute()
+            )
+            usage_data.extend(res.data or [])
+        return usage_data
+    except Exception as e:
+        logger.error(f"Error fetching account usage: {e}", exc_info=True)
         return []
 
 
@@ -1956,10 +1967,14 @@ from typing import Optional
 
 class EnrollListRequest(BaseModel):
     list_id: str
-    excludeListId: Optional[str] = None
+    excludeListId: Optional[str] = Field(None, alias="exclude_list_id")
     excludeOtherCampaigns: Optional[bool] = False
     excludeOtherSenders: Optional[bool] = False
     excludeSameSender: Optional[bool] = False
+
+    class Config:
+        populate_by_name = True
+        allow_population_by_field_name = True
 
 
 
@@ -1994,18 +2009,61 @@ def get_opportunities(supabase: Client = Depends(get_supabase_client), workspace
         logger.error(f"Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
+ALLOWED_LEAD_STATUSES = {
+    "pending", "in_progress", "completed", "contacted", "qualified",
+    "unqualified", "suppressed", "bounced", "extracted", "open", "won", "lost"
+}
+
 class BulkStatusRequest(BaseModel):
     opportunity_ids: List[str]
     status: str
 
 @router.post("/opportunities/bulk-status", response_model=dict)
-def update_opportunities_bulk_status(body: BulkStatusRequest, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def update_opportunities_bulk_status(
+    body: BulkStatusRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
     try:
-        supabase.table("leads").update({"status": body.status}).in_("id", body.opportunity_ids).execute()
-        return {"status": "success", "updated": len(body.opportunity_ids)}
+        # Layer 2: Human paranoia validation & status sanitization
+        normalized_status = (body.status or "").strip().lower()
+        if normalized_status not in ALLOWED_LEAD_STATUSES:
+            import re
+            if not re.match(r"^[a-z0-9_-]{1,50}$", normalized_status):
+                raise HTTPException(status_code=400, detail=f"Invalid lead status: {body.status}")
+
+        # Clean and deduplicate IDs
+        clean_ids = list(dict.fromkeys(oid.strip() for oid in body.opportunity_ids if oid and oid.strip()))
+        if not clean_ids:
+            return {"status": "success", "updated": 0, "message": "No valid opportunity IDs provided"}
+
+        if len(clean_ids) > 5000:
+            raise HTTPException(status_code=400, detail="Batch size exceeds maximum limit of 5,000 leads.")
+
+        # Layer 1: Environmental Failure Analysis - Chunk queries in batches of 100 to prevent PostgREST URI overflow
+        chunk_size = 100
+        total_updated = 0
+        for i in range(0, len(clean_ids), chunk_size):
+            chunk = clean_ids[i:i + chunk_size]
+            # Layer 0: Hard multi-tenant workspace isolation
+            res = supabase.table("leads") \
+                .update({"status": normalized_status}) \
+                .eq("workspace_id", workspace_id) \
+                .in_("id", chunk) \
+                .execute()
+            if res.data:
+                total_updated += len(res.data)
+
+        return {
+            "status": "success",
+            "updated": total_updated,
+            "requested": len(clean_ids)
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+        logger.error(f"Error in update_opportunities_bulk_status for workspace {workspace_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update opportunity statuses.")
 
 @router.get("/dashboard/stats", response_model=dict)
 def get_dashboard_stats(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
@@ -3756,6 +3814,8 @@ def create_campaign(
 
         meta = campaign.metadata or {}
         meta.update({"timezone": campaign.timezone, "schedule": campaign.schedule, "limit": campaign.limit, "version": 1})
+        if campaign.lead_list_id:
+            meta["lead_list_id"] = campaign.lead_list_id
         campaign_data = {
             "id": campaign_id,
             "name": name,
@@ -4009,6 +4069,8 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
             meta["schedule"] = payload.schedule
         if payload.limit is not None:
             meta["limit"] = payload.limit
+        if payload.lead_list_id:
+            meta["lead_list_id"] = payload.lead_list_id
             
         update_data["metadata"] = meta
         
@@ -5030,20 +5092,21 @@ def enroll_leads(campaign_id: str, body: EnrollLeadsRequest, supabase: Client = 
         logger.error(f"Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
-def _fetch_all_enrollments(supabase: Client, campaign_id: str) -> List[dict]:
+def _fetch_all_enrollments(supabase: Client, campaign_id: str, workspace_id: Optional[str] = None) -> List[dict]:
     """Paginates through campaign_enrollments to fetch all records without hitting REST limits."""
     all_enrollments = []
     page_size = 1000
     offset = 0
     while True:
         try:
-            res = (
+            query = (
                 supabase.table("campaign_enrollments")
                 .select("id, lead_id, campaign_id")
                 .eq("campaign_id", campaign_id)
-                .range(offset, offset + page_size - 1)
-                .execute()
             )
+            if workspace_id:
+                query = query.eq("workspace_id", workspace_id)
+            res = query.range(offset, offset + page_size - 1).execute()
             data = res.data or []
             all_enrollments.extend(data)
             if len(data) < page_size:
@@ -5083,22 +5146,48 @@ def _fetch_all_list_members(supabase: Client, list_id: str) -> List[str]:
 @router.get("/campaigns/{campaign_id}/leads", response_model=List[dict])
 def get_campaign_leads(campaign_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
-        # We fetch enrollments first
-        enrolls = _fetch_all_enrollments(supabase, campaign_id)
+        # Layer 0 & Layer 1: Strict workspace ownership verification (VULN-01)
+        camp_chk = supabase.table("campaigns").select("id").eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+        if not camp_chk.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        # Fetch enrollments strictly scoped to this campaign and workspace
+        enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id)
         
         if not enrolls:
             return []
             
-        enr_ids = [e["id"] for e in enrolls]
-        enr_map = {e["id"]: e["lead_id"] for e in enrolls}
-        opp_ids = [e["lead_id"] for e in enrolls]
+        enr_ids = [e["id"] for e in enrolls if e.get("id")]
+        enr_map = {e["id"]: e["lead_id"] for e in enrolls if e.get("id")}
+        opp_ids = [e["lead_id"] for e in enrolls if e.get("lead_id")]
         
-        # Then fetch states
-        st_res = supabase.table("campaign_execution_states").select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, created_at").in_("enrollment_id", enr_ids).order("created_at", desc=True).execute()
-        states = st_res.data
+        # Layer 1: Chunk queries in batches of 200 to prevent HTTP 414 PostgREST URI overflow
+        states = []
+        chunk_size = 200
+        for i in range(0, len(enr_ids), chunk_size):
+            chunk = enr_ids[i:i + chunk_size]
+            st_res = (
+                supabase.table("campaign_execution_states")
+                .select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, created_at")
+                .in_("enrollment_id", chunk)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            states.extend(st_res.data or [])
         
-        leads_res = supabase.table("leads").select("id, first_name, last_name, company_name, linkedin_url, job_title").in_("id", opp_ids).execute()
-        leads_map = {l["id"]: l for l in leads_res.data}
+        # Layer 0 & Layer 1: Scope leads lookup strictly to current workspace and chunk
+        leads_map = {}
+        for i in range(0, len(opp_ids), chunk_size):
+            chunk = opp_ids[i:i + chunk_size]
+            leads_res = (
+                supabase.table("leads")
+                .select("id, first_name, last_name, company_name, linkedin_url, job_title")
+                .eq("workspace_id", workspace_id)
+                .in_("id", chunk)
+                .execute()
+            )
+            for l in (leads_res.data or []):
+                leads_map[l["id"]] = l
         
         result = []
         for s in states:
@@ -5108,10 +5197,10 @@ def get_campaign_leads(campaign_id: str, supabase: Client = Depends(get_supabase
                 "id": s["id"],
                 "enrollment_id": s["enrollment_id"],
                 "opportunity_id": opp_id,
-                "current_node_id": s["current_node_id"],
-                "status": s["status"],
-                "next_run_at": s["next_run_at"],
-                "updated_at": s["updated_at"],
+                "current_node_id": s.get("current_node_id"),
+                "status": s.get("status"),
+                "next_run_at": s.get("next_run_at"),
+                "updated_at": s.get("updated_at"),
                 "kdm_first": lead.get("first_name", ""),
                 "kdm_last": lead.get("last_name", ""),
                 "company_name": lead.get("company_name", ""),
@@ -5120,8 +5209,10 @@ def get_campaign_leads(campaign_id: str, supabase: Client = Depends(get_supabase
             })
             
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error: {e}", exc_info=True)
+        logger.error(f"Error fetching campaign leads: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @router.get("/campaigns/{campaign_id}/detail", response_model=dict)
@@ -5413,29 +5504,50 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
 
 @router.get("/campaigns/{campaign_id}/lead-scores", response_model=list)
 def get_lead_scores(campaign_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
-    """Return heat scores for all leads in a campaign."""
+    """Return heat scores for all leads in a campaign, strictly isolated to the caller's workspace (VULN-02)."""
     from knowledge.backend.services.elein_ai_service import compute_heat_score
     try:
-        enr_res = supabase.table("campaign_enrollments").select("id, lead_id").eq("campaign_id", campaign_id).execute()
-        enrolls = enr_res.data or []
+        # Layer 0 & Layer 1: Strict workspace verification
+        camp_chk = supabase.table("campaigns").select("id").eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+        if not camp_chk.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id)
         if not enrolls:
             return []
             
-        enr_ids = [e["id"] for e in enrolls]
-        enr_map = {e["id"]: e["lead_id"] for e in enrolls}
-        opp_ids = [e["lead_id"] for e in enrolls]
+        enr_ids = [e["id"] for e in enrolls if e.get("id")]
+        enr_map = {e["id"]: e["lead_id"] for e in enrolls if e.get("id")}
+        opp_ids = [e["lead_id"] for e in enrolls if e.get("lead_id")]
         
-        st_res = supabase.table("campaign_execution_states").select("enrollment_id, status").in_("enrollment_id", enr_ids).execute()
+        # Layer 1: Chunk query to prevent HTTP 414 PostgREST URI overflow
+        states = []
+        chunk_size = 200
+        for i in range(0, len(enr_ids), chunk_size):
+            chunk = enr_ids[i:i + chunk_size]
+            st_res = supabase.table("campaign_execution_states").select("enrollment_id, status").in_("enrollment_id", chunk).execute()
+            states.extend(st_res.data or [])
         
         ls_data = []
-        for s in (st_res.data or []):
+        for s in states:
             ls_data.append({
                 "opportunity_id": enr_map.get(s["enrollment_id"]),
-                "status": s["status"]
+                "status": s.get("status")
             })
             
-        opps_res = supabase.table("leads").select("id, first_name, last_name, company_name, linkedin_url, job_title").in_("id", opp_ids).execute()
-        opps_map = {r["id"]: r for r in opps_res.data}
+        # Scope leads lookup strictly to current workspace and chunk
+        opps_map = {}
+        for i in range(0, len(opp_ids), chunk_size):
+            chunk = opp_ids[i:i + chunk_size]
+            opps_res = (
+                supabase.table("leads")
+                .select("id, first_name, last_name, company_name, linkedin_url, job_title")
+                .eq("workspace_id", workspace_id)
+                .in_("id", chunk)
+                .execute()
+            )
+            for r in (opps_res.data or []):
+                opps_map[r["id"]] = r
         
         result = []
         for r in ls_data:
@@ -5467,25 +5579,38 @@ def get_lead_scores(campaign_id: str, supabase: Client = Depends(get_supabase_cl
             
         result.sort(key=lambda x: x["heat_score"], reverse=True)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @router.get("/campaigns/{campaign_id}/attribution", response_model=dict)
 def get_message_attribution(campaign_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
-    """Return which sequence nodes drove replies."""
+    """Return which sequence nodes drove replies strictly scoped to caller's workspace (VULN-02)."""
     try:
-        enr_res = supabase.table("campaign_enrollments").select("id, lead_id").eq("campaign_id", campaign_id).execute()
-        enr_data = enr_res.data or []
-        if not enr_data:
+        # Layer 0 & Layer 1: Strict workspace verification
+        camp_chk = supabase.table("campaigns").select("id").eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+        if not camp_chk.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id)
+        if not enrolls:
             return {"nodes": [], "heatmap": []}
             
-        enr_ids = [r["id"] for r in enr_data]
-        enr_map = {r["id"]: r["lead_id"] for r in enr_data}
+        enr_ids = [r["id"] for r in enrolls if r.get("id")]
+        enr_map = {r["id"]: r["lead_id"] for r in enrolls if r.get("id")}
         
-        st_res = supabase.table("campaign_execution_states").select("id, enrollment_id").in_("enrollment_id", enr_ids).execute()
+        # Layer 1: Chunk execution states query
+        chunk_size = 200
+        states = []
+        for i in range(0, len(enr_ids), chunk_size):
+            chunk = enr_ids[i:i + chunk_size]
+            st_res = supabase.table("campaign_execution_states").select("id, enrollment_id").in_("enrollment_id", chunk).execute()
+            states.extend(st_res.data or [])
+
         ls_data = []
-        for s in (st_res.data or []):
+        for s in states:
             ls_data.append({
                 "id": s["id"], 
                 "opportunity_id": enr_map.get(s["enrollment_id"])
@@ -5497,24 +5622,48 @@ def get_message_attribution(campaign_id: str, supabase: Client = Depends(get_sup
         ls_map = {r["id"]: r for r in ls_data}
         
         opp_ids = [r["opportunity_id"] for r in ls_data if r.get("opportunity_id")]
-        opps_res = supabase.table("leads").select("id, linkedin_url").in_("id", opp_ids).execute()
-        opps_map = {r["id"]: r for r in opps_res.data}
+        opps_map = {}
+        for i in range(0, len(opp_ids), chunk_size):
+            chunk = opp_ids[i:i + chunk_size]
+            opps_res = supabase.table("leads").select("id, linkedin_url").eq("workspace_id", workspace_id).in_("id", chunk).execute()
+            for r in (opps_res.data or []):
+                opps_map[r["id"]] = r
         
-        al_res = supabase.table("action_log").select("action_type, metadata, executed_at, result, execution_state_id").in_("execution_state_id", lead_state_ids).execute()
+        al_res_data = []
+        for i in range(0, len(lead_state_ids), chunk_size):
+            chunk = lead_state_ids[i:i + chunk_size]
+            al_res = supabase.table("action_log").select("action_type, metadata, executed_at, result, execution_state_id").in_("execution_state_id", chunk).execute()
+            al_res_data.extend(al_res.data or [])
+
         msgs_res = supabase.table("messages").select("sender_name, created_at").eq("workspace_id", workspace_id).eq("direction", "inbound").execute()
         
         inbound_times = {}
-        for m in msgs_res.data:
+        for m in (msgs_res.data or []):
             sn = m.get("sender_name")
             if sn:
                 if sn not in inbound_times:
                     inbound_times[sn] = []
                 inbound_times[sn].append(m["created_at"])
                 
+        # Build relational node_id -> UI node_id mapping for frontend analytics alignment
+        ui_node_map = {}
+        try:
+            cv_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).execute()
+            version_ids = [v["id"] for v in (cv_res.data or []) if v.get("id")]
+            if version_ids:
+                cn_res = supabase.table("campaign_nodes").select("id, config").in_("campaign_version_id", version_ids).execute()
+                for cn in (cn_res.data or []):
+                    cfg = cn.get("config") or {}
+                    ui_id = cfg.get("_ui_node_id") or cfg.get("id") or cfg.get("node_id")
+                    if ui_id and cn.get("id"):
+                        ui_node_map[str(cn["id"])] = str(ui_id)
+        except Exception as map_err:
+            logger.debug(f"[Attribution] Error building ui_node_map: {map_err}")
+
         node_stats = {}
         heatmap_stats = {}
         
-        for al in al_res.data:
+        for al in al_res_data:
             meta = al.get("metadata") or {}
             if isinstance(meta, str):
                 import json
@@ -5522,7 +5671,8 @@ def get_message_attribution(campaign_id: str, supabase: Client = Depends(get_sup
                     meta = json.loads(meta)
                 except:
                     meta = {}
-            node_id = meta.get("node_id")
+            raw_node_id = meta.get("node_id")
+            node_id = ui_node_map.get(str(raw_node_id), raw_node_id)
             action_type = al.get("action_type")
             created_at = al.get("executed_at")
             if not created_at:
@@ -5532,7 +5682,7 @@ def get_message_attribution(campaign_id: str, supabase: Client = Depends(get_sup
             opp = opps_map.get(ls.get("opportunity_id")) or {}
             profile_url = opp.get("linkedin_url")
             
-            # Node stats
+            # Node stats (keyed by UI node id so EISequenceTree can render it directly)
             key = (action_type, node_id)
             if key not in node_stats:
                 node_stats[key] = {"sent": 0, "replied": 0}
@@ -5584,6 +5734,8 @@ def get_message_attribution(campaign_id: str, supabase: Client = Depends(get_sup
             })
             
         return {"nodes": nodes, "heatmap": heatmap}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"[get_message_attribution] Telemetry fallback on database exception: {e}")
         return {"nodes": [], "heatmap": []}
@@ -5829,7 +5981,6 @@ class VerifyDomainDeliverabilityRequest(BaseModel):
     tracking_subdomain: Optional[str] = "track"
     expected_cname_target: Optional[str] = "track.elein.ai"
     dkim_selector: Optional[str] = "elein"
-    mock_records: Optional[Dict[str, Any]] = None
 
 
 class EvaluateDeliverabilityPoolRequest(BaseModel):
@@ -5859,7 +6010,6 @@ def verify_domain_deliverability_endpoint(
         tracking_subdomain=req.tracking_subdomain or "track",
         expected_cname_target=req.expected_cname_target or "track.elein.ai",
         dkim_selector=req.dkim_selector or "elein",
-        mock_records=req.mock_records,
     )
     if not result.get("valid"):
         raise HTTPException(

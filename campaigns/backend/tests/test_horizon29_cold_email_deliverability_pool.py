@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
@@ -35,21 +35,27 @@ class TestHorizon29ColdEmailDeliverabilityPool(unittest.TestCase):
     # LAYER 0: FOUNDATIONAL LAYER TESTS
     # =========================================================================
 
-    def test_layer0_verify_domain_dns_healthy(self):
+    @patch("core.backend.services.deliverability_guard._lookup_cname_record")
+    @patch("core.backend.services.deliverability_guard._lookup_txt_records")
+    def test_layer0_verify_domain_dns_healthy(self, mock_txt, mock_cname):
         """Layer 0: Full SPF, DKIM, DMARC (p=reject), and CNAME verification yields 100/100 HEALTHY."""
-        mock_dns = {
-            "spf": ["v=spf1 include:_spf.google.com include:sendgrid.net ~all"],
-            "dkim": ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"],
-            "dmarc": ["v=DMARC1; p=reject; rua=mailto:dmarc@acmecorp.com"],
-            "cname": "track.elein.ai",
-            "ssl_verified": True,
-        }
+        def txt_side_effect(qname, timeout=2.5):
+            if qname == "acmecorp.com":
+                return ["v=spf1 include:_spf.google.com include:sendgrid.net ~all"]
+            elif qname == "elein._domainkey.acmecorp.com":
+                return ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"]
+            elif qname == "_dmarc.acmecorp.com":
+                return ["v=DMARC1; p=reject; rua=mailto:dmarc@acmecorp.com"]
+            return []
+
+        mock_txt.side_effect = txt_side_effect
+        mock_cname.return_value = "track.elein.ai"
+
         res = verify_domain_dns_health(
             domain="acmecorp.com",
             tracking_subdomain="track",
             expected_cname_target="track.elein.ai",
             dkim_selector="elein",
-            mock_records=mock_dns,
         )
         self.assertTrue(res["valid"])
         self.assertEqual(res["health_status"], "HEALTHY")
@@ -292,30 +298,45 @@ class TestHorizon29ColdEmailDeliverabilityPool(unittest.TestCase):
         self.assertIsNone(sanitize_domain_input("127.0.0.1"))
         self.assertIsNone(sanitize_domain_input("redis.internal"))
 
-    def test_layer2_multiple_spf_collision_and_permissive_all(self):
+    @patch("core.backend.services.deliverability_guard._lookup_cname_record")
+    @patch("core.backend.services.deliverability_guard._lookup_txt_records")
+    def test_layer2_multiple_spf_collision_and_permissive_all(self, mock_txt, mock_cname):
         """Layer 2: Detects RFC 7208 multiple-SPF collision, '+all' spoofing risk, and DMARC p=none warning."""
-        collision_dns = {
-            "spf": [
-                "v=spf1 include:_spf.google.com ~all",
-                "v=spf1 include:sendgrid.net ~all",
-            ],
-            "dkim": ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"],
-            "dmarc": ["v=DMARC1; p=none;"],
-            "cname": "wrong.target.com",
-        }
-        res = verify_domain_dns_health("acmecorp.com", mock_records=collision_dns)
+        def collision_txt(qname, timeout=2.5):
+            if qname == "acmecorp.com":
+                return [
+                    "v=spf1 include:_spf.google.com ~all",
+                    "v=spf1 include:sendgrid.net ~all",
+                ]
+            elif qname == "elein._domainkey.acmecorp.com":
+                return ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"]
+            elif qname == "_dmarc.acmecorp.com":
+                return ["v=DMARC1; p=none;"]
+            return []
+
+        mock_txt.side_effect = collision_txt
+        mock_cname.return_value = "wrong.target.com"
+
+        res = verify_domain_dns_health("acmecorp.com")
         self.assertFalse(res["can_send_safely"])
         self.assertEqual(res["health_status"], "CRITICAL")
         self.assertTrue(any("Multiple SPF records" in e for e in res["errors"]))
         self.assertTrue(any("p=none" in w for w in res["warnings"]))
 
         # Check permissive +all
-        permissive_dns = {
-            "spf": ["v=spf1 +all"],
-            "dkim": ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"],
-            "dmarc": ["v=DMARC1; p=reject;"],
-        }
-        res_perm = verify_domain_dns_health("acmecorp.com", mock_records=permissive_dns)
+        def perm_txt(qname, timeout=2.5):
+            if qname == "acmecorp.com":
+                return ["v=spf1 +all"]
+            elif qname == "elein._domainkey.acmecorp.com":
+                return ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"]
+            elif qname == "_dmarc.acmecorp.com":
+                return ["v=DMARC1; p=reject;"]
+            return []
+
+        mock_txt.side_effect = perm_txt
+        mock_cname.return_value = "track.elein.ai"
+
+        res_perm = verify_domain_dns_health("acmecorp.com")
         self.assertFalse(res_perm["can_send_safely"])
         self.assertTrue(any("+all" in e for e in res_perm["errors"]))
 
@@ -412,16 +433,7 @@ class TestHorizon29ColdEmailDeliverabilityPool(unittest.TestCase):
             client = TestClient(app)
             resp_pro_dns = client.post(
                 "/api/elein/deliverability/verify-domain",
-                json={
-                    "domain": "acmecorp.com",
-                    "mock_records": {
-                        "spf": ["v=spf1 include:_spf.google.com ~all"],
-                        "dkim": ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"],
-                        "dmarc": ["v=DMARC1; p=reject;"],
-                        "cname": "track.elein.ai",
-                        "ssl_verified": True,
-                    },
-                },
+                json={"domain": "acmecorp.com"},
             )
             self.assertEqual(resp_pro_dns.status_code, 200)
 

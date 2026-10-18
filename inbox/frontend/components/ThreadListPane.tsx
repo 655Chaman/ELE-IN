@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import {
-  Check, ChevronDown, Filter, Gamepad2, RefreshCw, Search, X
+  Check, ChevronDown, Filter, RefreshCw, Search, X
 } from 'lucide-react';
 import { ThreadCard } from './ThreadCard';
 import { DEAL_STAGES, OUTCOMES, type DealStage, type OutcomeType, type ThreadSummary } from '../types';
-import { SIMULATED_SCENARIOS } from '../inboxPlaygroundData';
 
 interface ThreadListPaneProps {
   threads: ThreadSummary[];
@@ -21,8 +20,6 @@ interface ThreadListPaneProps {
   threadOutcomes: Record<string, OutcomeType>;
   dealStagesByLead: Record<string, DealStage>;
   draftsByThread: Record<string, string>;
-  isPlaygroundActive: boolean;
-  onToggleSimulator: () => void;
   isSyncing: boolean;
   syncStage: 1 | 2 | 3;
   syncElapsed: number;
@@ -49,8 +46,6 @@ export function ThreadListPane({
   threadOutcomes,
   dealStagesByLead,
   draftsByThread,
-  isPlaygroundActive,
-  onToggleSimulator,
   isSyncing,
   syncStage,
   syncElapsed,
@@ -74,7 +69,7 @@ export function ThreadListPane({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-sm font-semibold text-foreground truncate">
-              {isPlaygroundActive ? 'Sample Inbox' : 'Inbox'}
+              Inbox
             </h2>
             <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border shrink-0">
               {threads.length}
@@ -129,7 +124,7 @@ export function ThreadListPane({
                   </>
                 )}
               </div>
-            ) : accounts.length === 0 && !isPlaygroundActive ? (
+            ) : accounts.length === 0 ? (
               <button
                 type="button"
                 onClick={onConnectAccount}
@@ -139,22 +134,6 @@ export function ThreadListPane({
                 <span>Connect</span>
               </button>
             ) : null}
-
-            {accounts.length > 0 && (
-              <button
-                type="button"
-                onClick={onToggleSimulator}
-                className={`px-2 py-1 rounded-md border text-xs font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                  isPlaygroundActive
-                    ? 'bg-primary text-primary-foreground border-primary font-semibold'
-                    : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground border-border'
-                }`}
-                title={isPlaygroundActive ? 'Switch back to live inbox' : 'Practice with sample leads'}
-              >
-                <Gamepad2 size={12} />
-                <span>{isPlaygroundActive ? 'Demo On' : 'Demo'}</span>
-              </button>
-            )}
 
             <button
               type="button"
@@ -410,15 +389,9 @@ export function ThreadListPane({
           </div>
         ) : (
           threads.map((thread) => {
-            const sc = isPlaygroundActive
-              ? SIMULATED_SCENARIOS.find((s) => s.threadKey === thread.thread_key)
-              : null;
-            const outcome = isPlaygroundActive && sc
-              ? threadOutcomes[sc.id]
-              : threadOutcomes[thread.thread_key];
-            const dealStage = isPlaygroundActive && sc
-              ? dealStagesByLead[sc.id]
-              : dealStagesByLead[thread.lead_id || thread.thread_key] || thread.deal_stage;
+            const outcome = threadOutcomes[thread.thread_key];
+            const dealStage =
+              dealStagesByLead[thread.lead_id || thread.thread_key] || thread.deal_stage;
             const hasDraft = Boolean(draftsByThread[thread.thread_key]);
 
             return (
@@ -430,7 +403,6 @@ export function ThreadListPane({
                 outcome={outcome}
                 dealStage={dealStage}
                 hasDraft={hasDraft}
-                simulatedScenario={sc}
               />
             );
           })

@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import ShinyText from "@/components/ShinyText"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface PodAccount {
   account_id: string
@@ -96,6 +97,22 @@ export function SenderPodStudioModal({
 
   // Emergency pause toggle state
   const [pausingCampaignId, setPausingCampaignId] = useState<string | null>(null)
+
+  // Layer 2 Paranoia: Close sub-modal or main modal on Escape
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (testingDispatchPod) {
+          setTestingDispatchPod(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, testingDispatchPod, onClose]);
 
   const pods = useMemo(() => podResponse?.data?.pods || [], [podResponse])
   const summary = useMemo(() => podResponse?.data?.summary, [podResponse])
@@ -243,22 +260,29 @@ export function SenderPodStudioModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sender-pod-title"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        className="w-full max-w-5xl bg-card border border-border shadow-2xl rounded-2xl flex flex-col max-h-[90vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-5xl bg-card border border-border shadow-2xl rounded-xl flex flex-col max-h-[90vh] overflow-hidden text-foreground"
       >
         {/* Header */}
-        <div className="p-5 border-b border-border/70 flex items-center justify-between bg-card/60 backdrop-blur-md">
+        <div className="p-5 border-b border-border flex items-center justify-between bg-muted/20 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
               <Layers size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-foreground">
+                <h2 id="sender-pod-title" className="text-base font-bold text-foreground">
                   <ShinyText text="Sender Pod Studio & Dynamic Fleet Balancer" speed={3} />
                 </h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold uppercase tracking-wider">
@@ -271,8 +295,10 @@ export function SenderPodStudioModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
+            aria-label="Close modal"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer shrink-0"
           >
             <X size={18} />
           </button>
@@ -283,7 +309,7 @@ export function SenderPodStudioModal({
           {/* Top Fleet Summary Metrics */}
           {summary && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-3.5 rounded-xl bg-card border border-border/60 shadow-2xs">
+              <div className="p-3.5 rounded-lg bg-card border border-border shadow-xs">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
                   Active Senders in Pods
                 </span>
@@ -293,7 +319,7 @@ export function SenderPodStudioModal({
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-card border border-border/60 shadow-2xs">
+              <div className="p-3.5 rounded-lg bg-card border border-border shadow-xs">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
                   Daily Pod Capacity
                 </span>
@@ -303,19 +329,19 @@ export function SenderPodStudioModal({
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-card border border-border/60 shadow-2xs">
+              <div className="p-3.5 rounded-lg bg-card border border-border shadow-xs">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
                   Consumed Today
                 </span>
                 <div className="flex items-baseline gap-1.5 mt-1">
-                  <span className="text-2xl font-bold text-emerald-400">{summary.total_consumed_today}</span>
+                  <span className="text-2xl font-bold text-emerald-500 dark:text-emerald-400">{summary.total_consumed_today}</span>
                   <span className="text-xs text-muted-foreground">
                     ({summary.total_remaining_capacity} headroom left)
                   </span>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-card border border-border/60 shadow-2xs">
+              <div className="p-3.5 rounded-lg bg-card border border-border shadow-xs">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
                   Fleet Utilization
                 </span>
@@ -336,8 +362,8 @@ export function SenderPodStudioModal({
               <span>Scanning campaign sender pods and calculating capacity headroom...</span>
             </div>
           ) : pods.length === 0 ? (
-            <div className="p-12 rounded-2xl border border-dashed border-border/70 text-center space-y-3 bg-card/20">
-              <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto">
+            <div className="p-12 rounded-lg border border-dashed border-border text-center space-y-3 bg-muted/20">
+              <div className="w-12 h-12 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto">
                 <Layers size={24} />
               </div>
               <h3 className="text-sm font-bold text-foreground">No Campaign Pods Configured</h3>
@@ -378,7 +404,7 @@ export function SenderPodStudioModal({
                     <motion.div
                       key={pod.pod_id}
                       layout
-                      className="p-5 rounded-2xl bg-card border border-border/70 shadow-xs space-y-4"
+                      className="p-5 rounded-lg bg-card border border-border shadow-xs space-y-4"
                     >
                       {/* Pod Top Bar */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/50 pb-3">
@@ -400,26 +426,31 @@ export function SenderPodStudioModal({
                         {/* Controls Strip */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* Strategy Dropdown */}
-                          <div className="flex items-center gap-1 bg-background border border-border/60 rounded-xl px-2 py-1">
-                            <Sliders size={12} className="text-muted-foreground" />
-                            <select
+                          <div className="flex items-center gap-1">
+                            <Select
                               value={pod.dispatch_strategy}
-                              onChange={(e) => handleStrategyChange(pod.campaign_id, e.target.value)}
-                              className="text-xs bg-transparent border-none text-foreground focus:outline-none cursor-pointer pr-1"
+                              onValueChange={(val) => handleStrategyChange(pod.campaign_id, val)}
                             >
-                              <option value="CAPACITY_WEIGHTED">Capacity Weighted (Waterfill)</option>
-                              <option value="ROUND_ROBIN">Round Robin</option>
-                              <option value="WARMUP_CONSTRAINED">Warmup Constrained</option>
-                            </select>
+                              <SelectTrigger size="sm" className="h-7 px-2 bg-background border-border text-xs gap-1.5 w-[200px]">
+                                <Sliders size={12} className="text-muted-foreground shrink-0" />
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="CAPACITY_WEIGHTED">Capacity Weighted (Waterfill)</SelectItem>
+                                <SelectItem value="ROUND_ROBIN">Round Robin</SelectItem>
+                                <SelectItem value="WARMUP_CONSTRAINED">Warmup Constrained</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
 
                           {/* Test Dispatch Button */}
                           <button
+                            type="button"
                             onClick={() => {
                               setTestingDispatchPod(pod)
                               setTestDispatchResult(null)
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-background border border-border/60 hover:border-primary/40 text-foreground transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-secondary hover:bg-secondary/80 border border-border text-foreground transition-all cursor-pointer"
                             title="Simulate which sender the load balancer will choose"
                           >
                             <Sparkles size={12} className="text-primary" />
@@ -428,9 +459,10 @@ export function SenderPodStudioModal({
 
                           {/* Emergency Freeze Toggle */}
                           <button
+                            type="button"
                             disabled={pausingCampaignId === pod.campaign_id}
                             onClick={() => handleToggleEmergencyPause(pod)}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                               isPaused
                                 ? "bg-emerald-600 hover:bg-emerald-500 text-white"
                                 : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30"
@@ -451,7 +483,7 @@ export function SenderPodStudioModal({
                           return (
                             <div
                               key={acc.account_id}
-                              className={`p-3 rounded-xl border transition-all text-xs space-y-2 ${
+                              className={`p-3 rounded-lg border transition-all text-xs space-y-2 ${
                                 isAccQuarantined
                                   ? "bg-amber-500/5 border-amber-500/30"
                                   : isAccHealthy
@@ -461,7 +493,7 @@ export function SenderPodStudioModal({
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center font-bold text-[10px] uppercase">
+                                  <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center font-bold text-[10px] uppercase text-foreground">
                                     {acc.name[0] || "A"}
                                   </div>
                                   <div>
@@ -510,13 +542,15 @@ export function SenderPodStudioModal({
                               <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[10px]">
                                 {isAccQuarantined ? (
                                   <button
+                                    type="button"
                                     onClick={() => handleReleaseQuarantine(acc.account_id)}
                                     className="text-primary hover:underline font-semibold cursor-pointer"
                                   >
                                     Release Quarantine
                                   </button>
                                 ) : (
-                                    <button
+                                  <button
+                                    type="button"
                                     onClick={() => handleQuarantineAccount(acc.account_id, 24)}
                                     className="text-amber-600 dark:text-amber-400 hover:underline font-semibold cursor-pointer"
                                     title="Quarantine sender for 24h to cool down"
@@ -526,6 +560,7 @@ export function SenderPodStudioModal({
                                 )}
 
                                 <button
+                                  type="button"
                                   disabled={isFailingOver && failingAccountId === acc.account_id}
                                   onClick={() => handleTriggerFailover(pod.campaign_id, acc.account_id)}
                                   className="text-rose-600 dark:text-rose-400 hover:underline font-semibold cursor-pointer disabled:opacity-50"
@@ -549,23 +584,32 @@ export function SenderPodStudioModal({
         {/* Dispatch Simulator Sub-Modal */}
         <AnimatePresence>
           {testingDispatchPod && (
-            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dispatch-sim-title"
+              onClick={() => setTestingDispatchPod(null)}
+              className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-md p-5 rounded-2xl bg-card border border-border shadow-xl space-y-4"
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md p-5 rounded-xl bg-card border border-border shadow-2xl space-y-4 text-foreground"
               >
                 <div className="flex items-center justify-between border-b border-border/60 pb-3">
                   <div className="flex items-center gap-2">
                     <Sparkles size={16} className="text-primary" />
-                    <h3 className="text-sm font-bold text-foreground">
+                    <h3 id="dispatch-sim-title" className="text-sm font-bold text-foreground">
                       Test Pod Balancer Dispatch — {testingDispatchPod.campaign_name}
                     </h3>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setTestingDispatchPod(null)}
-                    className="text-muted-foreground hover:text-foreground text-xs cursor-pointer p-1"
+                    aria-label="Close test dialog"
+                    className="text-muted-foreground hover:text-foreground text-xs cursor-pointer p-1 rounded-md hover:bg-muted transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -576,18 +620,22 @@ export function SenderPodStudioModal({
                     <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                       Action Type
                     </label>
-                    <select
+                    <Select
                       value={testActionType}
-                      onChange={(e) => setTestActionType(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-background border border-border/80 text-foreground focus:outline-none focus:border-primary transition-all cursor-pointer"
+                      onValueChange={(val) => setTestActionType(val)}
                     >
-                      <option value="connection_request">Connection Request</option>
-                      <option value="message">LinkedIn Message</option>
-                      <option value="inmail">Sales Nav InMail</option>
-                    </select>
+                      <SelectTrigger className="w-full h-9 px-3 py-2 text-xs bg-background border-border text-foreground">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="connection_request">Connection Request</SelectItem>
+                        <SelectItem value="message">LinkedIn Message</SelectItem>
+                        <SelectItem value="inmail">Sales Nav InMail</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-muted/30 border border-border/40 text-xs text-muted-foreground space-y-1">
+                  <div className="p-3 rounded-lg bg-muted/30 border border-border text-xs text-muted-foreground space-y-1">
                     <p>
                       Active Strategy: <strong className="text-foreground">{testingDispatchPod.dispatch_strategy}</strong>
                     </p>
@@ -597,7 +645,7 @@ export function SenderPodStudioModal({
                   </div>
 
                   {testDispatchResult && (
-                    <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/20 space-y-2">
+                    <div className="p-3.5 rounded-lg bg-primary/10 border border-primary/20 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-primary">Selected Optimal Sender</span>
                         <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-primary/20 text-primary">
@@ -619,7 +667,7 @@ export function SenderPodStudioModal({
                   <button
                     type="button"
                     onClick={() => setTestingDispatchPod(null)}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-md text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-all cursor-pointer"
                   >
                     Close
                   </button>
@@ -627,7 +675,7 @@ export function SenderPodStudioModal({
                     type="button"
                     disabled={isTestingDispatch}
                     onClick={handleSimulateDispatch}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground transition-all cursor-pointer disabled:opacity-50 shadow-xs"
                   >
                     {isTestingDispatch ? (
                       <>
@@ -648,14 +696,15 @@ export function SenderPodStudioModal({
         </AnimatePresence>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-border/70 flex items-center justify-between bg-card/60">
+        <div className="p-4 border-t border-border flex items-center justify-between bg-muted/20 shrink-0">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <ShieldCheck size={14} className="text-emerald-400" />
+            <ShieldCheck size={14} className="text-emerald-500 dark:text-emerald-400" />
             <span>Autonomous Failover & Thread Affinity Protection active</span>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer shadow-xs"
+            className="px-4 py-2 rounded-md text-xs font-semibold bg-secondary hover:bg-secondary/80 border border-border text-foreground transition-all cursor-pointer shadow-xs"
           >
             Done
           </button>

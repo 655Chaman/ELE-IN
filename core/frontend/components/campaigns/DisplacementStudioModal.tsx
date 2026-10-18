@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -219,7 +220,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-card border border-border rounded-2xl shadow-2xl text-card-foreground overflow-hidden">
+      <div className="relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-card border border-border rounded-xl shadow-2xl text-card-foreground overflow-hidden">
         
         {/* Header Bar */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
@@ -317,19 +318,23 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Filter Vendor:</span>
-                  <select
+                  <Select
                     value={vendorFilter}
-                    onChange={(e) => setVendorFilter(e.target.value)}
-                    className="bg-background border border-border text-foreground text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-foreground"
+                    onValueChange={(val) => setVendorFilter(val)}
                   >
-                    <option value="all">All Vendors</option>
-                    <option value="apollo">Apollo.io</option>
-                    <option value="outreach">Outreach.io</option>
-                    <option value="salesloft">Salesloft</option>
-                    <option value="lemlist">Lemlist</option>
-                    <option value="expandi">Expandi</option>
-                    <option value="heyreach">HeyReach</option>
-                  </select>
+                    <SelectTrigger size="sm" className="w-[150px] bg-background border-border text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Vendors</SelectItem>
+                      <SelectItem value="apollo">Apollo.io</SelectItem>
+                      <SelectItem value="outreach">Outreach.io</SelectItem>
+                      <SelectItem value="salesloft">Salesloft</SelectItem>
+                      <SelectItem value="lemlist">Lemlist</SelectItem>
+                      <SelectItem value="expandi">Expandi</SelectItem>
+                      <SelectItem value="heyreach">HeyReach</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -705,18 +710,22 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                   </div>
                   <div>
                     <label className="text-muted-foreground mb-1 block">Incumbent Vendor</label>
-                    <select
+                    <Select
                       value={pitchVendor}
-                      onChange={(e) => setPitchVendor(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      onValueChange={(val) => setPitchVendor(val)}
                     >
-                      <option value="apollo">Apollo.io</option>
-                      <option value="outreach">Outreach.io</option>
-                      <option value="salesloft">Salesloft</option>
-                      <option value="lemlist">Lemlist</option>
-                      <option value="expandi">Expandi</option>
-                      <option value="heyreach">HeyReach</option>
-                    </select>
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="apollo">Apollo.io</SelectItem>
+                        <SelectItem value="outreach">Outreach.io</SelectItem>
+                        <SelectItem value="salesloft">Salesloft</SelectItem>
+                        <SelectItem value="lemlist">Lemlist</SelectItem>
+                        <SelectItem value="expandi">Expandi</SelectItem>
+                        <SelectItem value="heyreach">HeyReach</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="text-muted-foreground mb-1 block">Seat Count</label>
@@ -864,19 +873,23 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-muted-foreground mb-1 block">Incumbent Vendor</label>
-                    <select
+                    <Select
                       value={incumbentVendor}
-                      onChange={(e) => setIncumbentVendor(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      onValueChange={(val) => setIncumbentVendor(val)}
                     >
-                      <option value="apollo">Apollo.io</option>
-                      <option value="outreach">Outreach.io</option>
-                      <option value="salesloft">Salesloft</option>
-                      <option value="lemlist">Lemlist</option>
-                      <option value="expandi">Expandi</option>
-                      <option value="heyreach">HeyReach</option>
-                      <option value="other">Other</option>
-                    </select>
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="apollo">Apollo.io</SelectItem>
+                        <SelectItem value="outreach">Outreach.io</SelectItem>
+                        <SelectItem value="salesloft">Salesloft</SelectItem>
+                        <SelectItem value="lemlist">Lemlist</SelectItem>
+                        <SelectItem value="expandi">Expandi</SelectItem>
+                        <SelectItem value="heyreach">HeyReach</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="text-muted-foreground mb-1 block">Domain</label>

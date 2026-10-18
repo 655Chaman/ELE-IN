@@ -214,10 +214,18 @@ class TestSocialSignalRadar(unittest.TestCase):
         self.supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": "res_1"}])
         self.supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[mock_lead])
 
+        sample_posts = [{
+            "id": "post-1",
+            "post_text": "We are aggressively expanding our engineering team at CloudScale! Hiring senior engineers.",
+            "post_date": datetime.now(timezone.utc).isoformat(),
+            "engagement_count": {"likes": 25, "comments": 8}
+        }]
+
         result = scan_lead_social_feed(
             lead_id=self.lead_id,
             workspace_id=self.workspace_id,
             supabase=self.supabase,
+            raw_posts=sample_posts,
             force_refresh=True
         )
 
@@ -510,22 +518,18 @@ class TestSocialSignalRadar(unittest.TestCase):
         self.assertIn("Hiring 6 Senior Backend Engineers", draft["follow_up_message"])
         self.assertLessEqual(len(draft["connection_note"]), 280)
 
-    def test_get_workspace_intent_feed_demo_fallback_when_empty(self):
-        """Layer 1: When workspace has 0 leads, include_demo_fallback returns realistic demo prospects."""
+    def test_get_workspace_intent_feed_empty_when_no_leads(self):
+        """Layer 1: When workspace has 0 leads, get_workspace_intent_feed returns authentic empty list."""
         self.supabase.table().select().eq().gt().order().order().limit().execute.return_value = MagicMock(data=[])
 
         feed_data = get_workspace_intent_feed(
             workspace_id=self.workspace_id,
-            supabase=self.supabase,
-            include_demo_fallback=True
+            supabase=self.supabase
         )
         self.assertEqual(feed_data["status"], "success")
-        self.assertTrue(feed_data.get("is_demo_preview"))
-        self.assertGreater(feed_data["total_items"], 0)
-        first_item = feed_data["feed"][0]
-        self.assertIn("lead", first_item)
-        self.assertIn("signals", first_item)
-        self.assertIn("top_post", first_item)
+        self.assertFalse(feed_data.get("is_demo_preview"))
+        self.assertEqual(feed_data["total_items"], 0)
+        self.assertEqual(feed_data["feed"], [])
 
     def test_dismiss_social_signal_removes_signal_and_resets_tier(self):
         """Layer 0 & 2: Dismissing signal removes it and resets tier if no signals remain."""
@@ -547,15 +551,28 @@ class TestSocialSignalRadar(unittest.TestCase):
 
     def test_export_social_radar_feed_csv(self):
         """Layer 0 & 2: Exports sanitized CSV for social intent feed."""
-        self.supabase.table().select().eq().gt().order().order().limit().execute.return_value = MagicMock(data=[])
+        mock_leads = [{
+            "id": self.lead_id,
+            "first_name": "Elena",
+            "last_name": "Rostova",
+            "company_name": "Veloce Cloud",
+            "job_title": "VP Eng",
+            "linkedin_url": "https://linkedin.com/in/elena",
+            "social_intent_score": 90,
+            "social_intent_tier": "HOT",
+            "last_social_scan_at": datetime.now(timezone.utc).isoformat(),
+            "best_outreach_angle": "Reference scale",
+            "social_icebreaker": "Saw your post Elena",
+            "recommended_timing": "IMMEDIATE_ACTION"
+        }]
+        self.supabase.table().select().eq().gt().order().order().limit().execute.return_value = MagicMock(data=mock_leads)
         csv_data = export_social_radar_feed_csv(
             workspace_id=self.workspace_id,
-            supabase=self.supabase,
-            include_demo_fallback=True
+            supabase=self.supabase
         )
         self.assertIn("Lead ID,Prospect Name,Company Name,Job Title", csv_data)
         self.assertIn("Generated Icebreaker", csv_data)
-        lines = csv_data.split("\n")
+        lines = [line for line in csv_data.strip().split("\n") if line.strip()]
         self.assertGreaterEqual(len(lines), 2)
 
     def test_export_social_radar_csv_endpoint(self):

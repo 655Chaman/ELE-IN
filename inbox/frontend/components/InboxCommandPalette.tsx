@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Calendar, CheckCircle2, Compass, CornerDownLeft, Gamepad2,
+  Calendar, CheckCircle2, Compass, CornerDownLeft,
   RefreshCw, Search, ShieldCheck, Swords, UserCheck, X, Zap
 } from 'lucide-react';
 import { ElesiumLogo } from './ElesiumLogo';
@@ -23,7 +23,6 @@ interface InboxCommandPaletteProps {
   onInsertSlots: () => void;
   onTriggerGhostwriter: () => void;
   onSync: () => void;
-  onToggleSimulator: () => void;
   onToggleInspector: () => void;
 }
 
@@ -35,7 +34,6 @@ export function InboxCommandPalette({
   onInsertSlots,
   onTriggerGhostwriter,
   onSync,
-  onToggleSimulator,
   onToggleInspector,
 }: InboxCommandPaletteProps) {
   const [query, setQuery] = useState('');
@@ -116,14 +114,6 @@ export function InboxCommandPalette({
       category: 'General',
       icon: RefreshCw,
       action: () => { onSync(); onClose(); },
-    },
-    {
-      id: 'simulator',
-      title: 'Toggle Objection Simulator Sandbox',
-      subtitle: 'Practice handling objections without contacting real prospects',
-      category: 'General',
-      icon: Gamepad2,
-      action: () => { onToggleSimulator(); onClose(); },
     },
   ];
 

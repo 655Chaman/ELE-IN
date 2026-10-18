@@ -9,6 +9,7 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { ElesiumLogo } from '@/components/ElesiumLogo';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -177,12 +178,12 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-card border border-border w-full max-w-6xl rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-card border border-border w-full max-w-6xl rounded-xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="p-6 border-b border-border/80 flex items-center justify-between bg-card/60">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-xs">
+            <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-xs">
               <Rocket size={20} />
             </div>
             <div>
@@ -198,7 +199,9 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
             </div>
           </div>
           <button 
+            type="button"
             onClick={onClose}
+            aria-label="Close dialog"
             className="w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 flex items-center justify-center transition-colors"
           >
             <X size={18} />
@@ -207,7 +210,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
 
         {/* Live Telemetry Ribbon */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-muted/20 border-b border-border/60 text-xs">
-          <div className="p-3 rounded-xl bg-card border border-border/60 flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-card border border-border/60 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
               <TrendingUp size={16} />
             </div>
@@ -217,7 +220,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card border border-border/60 flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-card border border-border/60 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
               <Clock size={16} />
             </div>
@@ -227,7 +230,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card border border-border/60 flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-card border border-border/60 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0">
               <ShieldCheck size={16} />
             </div>
@@ -240,7 +243,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-card border border-border/60 flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-card border border-border/60 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
               <ThumbsUp size={16} />
             </div>
@@ -254,6 +257,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
         {/* Tab Navigation */}
         <div className="flex border-b border-border px-6 gap-6 text-xs font-medium">
           <button
+            type="button"
             onClick={() => setActiveTab('launcher')}
             className={`py-3 flex items-center gap-2 border-b-2 transition-all ${
               activeTab === 'launcher' 
@@ -265,6 +269,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
             Post Booster Launchpad
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('members')}
             className={`py-3 flex items-center gap-2 border-b-2 transition-all ${
               activeTab === 'members' 
@@ -276,6 +281,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
             Pod Fleet & Quotas ({members.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('feed')}
             className={`py-3 flex items-center gap-2 border-b-2 transition-all ${
               activeTab === 'feed' 
@@ -297,7 +303,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
               
               {/* Form Column */}
               <div className="lg:col-span-2 space-y-4">
-                <div className="p-5 rounded-xl bg-card border border-border/80 space-y-4">
+                <div className="p-5 rounded-lg bg-card border border-border/80 space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                       <Sparkles size={16} className="text-blue-400" />
@@ -313,7 +319,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                       value={postUrl}
                       onChange={(e) => setPostUrl(e.target.value)}
                       placeholder="https://www.linkedin.com/posts/username_post-title-activity-..."
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-xs focus:outline-none focus:border-blue-500 font-mono"
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-background border border-border text-xs focus:outline-none focus:border-blue-500 font-mono"
                     />
                   </div>
 
@@ -324,22 +330,26 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                       value={postContent}
                       onChange={(e) => setPostContent(e.target.value)}
                       placeholder="Paste post copy or key topics so the AI generates tailored, authentic comments..."
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-xs focus:outline-none focus:border-blue-500"
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-background border border-border text-xs focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-muted-foreground">Post Author Account</label>
-                      <select 
+                      <Select 
                         value={authorAccountId}
-                        onChange={(e) => setAuthorAccountId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-background border border-border text-xs focus:outline-none focus:border-blue-500"
+                        onValueChange={(val) => setAuthorAccountId(val)}
                       >
-                        <option value="acc-founder-01">Sarah Chen (Founder) - Auto Excluded</option>
-                        <option value="acc-sdr-02">Marcus Vance (Senior SDR)</option>
-                        <option value="acc-ae-03">Elena Rostova (Account Exec)</option>
-                      </select>
+                        <SelectTrigger className="w-full bg-background border-border text-xs h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="acc-founder-01">Sarah Chen (Founder) - Auto Excluded</SelectItem>
+                          <SelectItem value="acc-sdr-02">Marcus Vance (Senior SDR)</SelectItem>
+                          <SelectItem value="acc-ae-03">Elena Rostova (Account Exec)</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
                         <CheckCircle2 size={10} /> Author is excluded from self-liking/commenting
                       </p>
@@ -353,7 +363,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                             key={mins}
                             type="button"
                             onClick={() => setWindowMinutes(mins)}
-                            className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                            className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-all ${
                               windowMinutes === mins
                                 ? 'bg-blue-500/10 border-blue-500/40 text-blue-300'
                                 : 'bg-background border-border text-muted-foreground hover:text-foreground'
@@ -367,7 +377,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                    <div className="p-3.5 rounded-xl bg-background border border-border/80 space-y-2">
+                    <div className="p-3.5 rounded-lg bg-background border border-border/80 space-y-2">
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <ThumbsUp size={12} className="text-cyan-400" />
@@ -385,7 +395,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                       />
                     </div>
 
-                    <div className="p-3.5 rounded-xl bg-background border border-border/80 space-y-2">
+                    <div className="p-3.5 rounded-lg bg-background border border-border/80 space-y-2">
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-semibold text-foreground flex items-center gap-1.5">
                           <ElesiumLogo size={13} />
@@ -405,9 +415,10 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                   </div>
 
                   <button
+                    type="button"
                     onClick={handleLaunchBoost}
                     disabled={isLaunchingBoost}
-                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isLaunchingBoost ? (
                       <RefreshCw size={14} className="animate-spin" />
@@ -421,7 +432,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
 
               {/* Explainer & Safety Sidebar */}
               <div className="space-y-4">
-                <div className="p-5 rounded-xl bg-card border border-border/80 space-y-3">
+                <div className="p-5 rounded-lg bg-card border border-border/80 space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                     <ShieldCheck size={14} className="text-emerald-400" />
                     Algorithmic Velocity Rules
@@ -442,7 +453,7 @@ export function AdvocacyPodStudioModal({ onClose }: AdvocacyPodStudioProps) {
                   </ul>
                 </div>
 
-                <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
+                <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-2">
                   <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
                     <ElesiumLogo size={13} />
                     Live AI Comment Preview

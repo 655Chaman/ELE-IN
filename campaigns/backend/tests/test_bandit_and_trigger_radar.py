@@ -9,13 +9,18 @@ from campaigns.backend.services.bandit_service import (
     get_or_create_experiment,
     select_variant_thompson_sampling,
     record_variant_feedback,
-    mutate_self_healing_variant
+    mutate_self_healing_variant,
+    clamp_linkedin_note,
+    resolve_bandit_arm_for_execution,
+    validate_and_canonicalize_template
 )
 from campaigns.backend.services.trigger_radar_service import (
     generate_trigger_icebreaker,
     get_trigger_radar_events,
     enroll_lead_from_trigger,
-    dismiss_trigger_event
+    dismiss_trigger_event,
+    register_in_memory_suppression,
+    clear_in_memory_suppressions
 )
 
 
@@ -109,6 +114,88 @@ class TestBanditOptimizerService(unittest.TestCase):
         self.assertEqual(challenger["parent_variant_id"], "var-direct-3")
         self.assertIn("Challenger", challenger["name"])
 
+    def test_validate_and_canonicalize_template_single_brackets(self):
+        """Paranoia Layer 0: Auto-fixes single brackets and aliases to canonical {{token}}."""
+        raw = "Hi {first_name}, how is {company_name} solving pipeline? Talk to {title}."
+        canon = validate_and_canonicalize_template(raw)
+        self.assertEqual(canon, "Hi {{first_name}}, how is {{company}} solving pipeline? Talk to {{job_title}}.")
+
+        # Test other aliases
+        raw2 = "Hey {firstname} at {company name} - saw you are {role}."
+        canon2 = validate_and_canonicalize_template(raw2)
+        self.assertEqual(canon2, "Hey {{first_name}} at {{company}} - saw you are {{job_title}}.")
+
+    def test_validate_and_canonicalize_template_formula_injection(self):
+        """Paranoia Layer 2: Neutralizes leading spreadsheet formula injection characters."""
+        malicious = "=HYPERLINK('http://evil.com') Hey {first_name}."
+        canon = validate_and_canonicalize_template(malicious)
+        self.assertFalse(canon.startswith("="))
+        self.assertIn("{{first_name}}", canon)
+
+    def test_mutate_self_healing_variant_themes(self):
+        """Paranoia Layer 1: Supports all 4 framework themes for mutation."""
+        themes = ["social_proof_metric", "provocative_question", "low_friction_benchmark", "brevity_direct"]
+        for theme in themes:
+            res = mutate_self_healing_variant(
+                parent_variant_id="var-challenger-1",
+                workspace_id="ws-test-bandit",
+                mutation_theme=theme,
+                retire_parent=False
+            )
+            self.assertEqual(res["status"], "success")
+            self.assertEqual(res["theme"], theme)
+            self.assertIn("Challenger", res["challenger_variant"]["name"])
+
+    def test_mutate_self_healing_variant_email_channel(self):
+        """Paranoia Layer 0: Generates both subject and body for email channel steps."""
+        res = mutate_self_healing_variant(
+            parent_variant_id="var-challenger-1",
+            workspace_id="ws-test-bandit",
+            mutation_theme="social_proof_metric",
+            channel="email",
+            retire_parent=False
+        )
+        self.assertEqual(res["status"], "success")
+        variant = res["challenger_variant"]
+        self.assertEqual(variant["channel"], "email")
+        self.assertTrue(len(variant["subject"]) > 5)
+        self.assertIn("{{company}}", variant["subject"])
+        self.assertTrue(len(variant["template_text"]) > 20)
+
+    def test_mutate_self_healing_variant_non_destructive(self):
+        """Paranoia Layer 2: retire_parent=False keeps the parent active while staging challenger."""
+        res = mutate_self_healing_variant(
+            parent_variant_id="var-consultative-2",
+            workspace_id="ws-test-bandit",
+            mutation_theme="low_friction_benchmark",
+            retire_parent=False
+        )
+        self.assertEqual(res["status"], "success")
+        self.assertIsNone(res["retired_parent_id"])
+        parent = res["parent_variant"]
+        self.assertEqual(parent["status"], "active")
+
+    def test_mutate_self_healing_variant_generation_cap(self):
+        """Paranoia Layer 1: Generational depth is bounded at 10 to prevent unbounded drift."""
+        from campaigns.backend.services.bandit_service import _IN_MEMORY_VARIANTS
+        # Seed an arm with generation 10
+        _IN_MEMORY_VARIANTS["exp-capped"] = [{
+            "id": "var-gen-10",
+            "experiment_id": "exp-capped",
+            "name": "Gen 10 Arm",
+            "generation": 10,
+            "status": "active",
+            "template_text": "Old text",
+            "workspace_id": "ws-test-cap"
+        }]
+        res = mutate_self_healing_variant(
+            parent_variant_id="var-gen-10",
+            workspace_id="ws-test-cap",
+            retire_parent=False
+        )
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["challenger_variant"]["generation"], 10)
+
     def test_zero_migration_db_fallback_resilience(self):
         """Paranoia Layer 1: Database failure falls back gracefully to in-memory state."""
         mock_broken_supabase = MagicMock()
@@ -119,11 +206,79 @@ class TestBanditOptimizerService(unittest.TestCase):
         self.assertEqual(res["status"], "success")
         self.assertIsNotNone(res["selected_variant_id"])
 
+    def test_clamp_linkedin_note_hard_boundary(self):
+        """Paranoia Layer 0 & 2: Clamp notes exceeding 295 chars at word boundary."""
+        short_text = "Hey John, loved your post on B2B pipeline growth."
+        self.assertEqual(clamp_linkedin_note(short_text), short_text)
+
+        long_text = "Hey John " + ("very long title and detailed pitch " * 15)
+        clamped = clamp_linkedin_note(long_text, max_chars=295)
+        self.assertLessEqual(len(clamped), 295)
+        self.assertTrue(clamped.endswith("..."))
+
+    def test_min_burnin_floor_exploration(self):
+        """Paranoia Layer 0: Arms under MIN_BURNIN_IMPRESSIONS (15) maintain exploration probability."""
+        variants = [
+            # Champion has 1/1 early fluke (100% CVR)
+            {"id": "arm-fluke", "alpha_param": 2.0, "beta_param": 1.0, "impressions": 1, "is_winner": True},
+            # Challenger has 0 impressions (underexplored)
+            {"id": "arm-untested", "alpha_param": 1.0, "beta_param": 1.0, "impressions": 0, "is_winner": False}
+        ]
+        # Over multiple draws, untested arm must get selected due to burn-in exploration floor
+        selections = []
+        for _ in range(30):
+            res = select_variant_thompson_sampling(workspace_id="ws-burnin-test")
+            selections.append(res["selected_variant_id"])
+        self.assertIn("var-challenger-1", selections)
+
+    def test_record_variant_feedback_toxic_sentiment(self):
+        """Paranoia Layer 0 & 2: Toxic feedback types trigger immediate penalty and auto-degradation."""
+        # Test spam complaint
+        res_spam = record_variant_feedback(
+            variant_id="var-challenger-1",
+            outcome="spam_complaint",
+            workspace_id="ws-toxic-test"
+        )
+        self.assertEqual(res_spam["status"], "success")
+        self.assertEqual(res_spam["arm_status"], "degraded")
+
+        # Test angry DNC
+        res_dnc = record_variant_feedback(
+            variant_id="var-consultative-2",
+            outcome="angry_dnc",
+            workspace_id="ws-toxic-test"
+        )
+        self.assertEqual(res_dnc["status"], "success")
+        self.assertEqual(res_dnc["arm_status"], "degraded")
+
+    def test_resolve_bandit_arm_deleted_fallback(self):
+        """Paranoia Layer 2: Deleted arm id falls back gracefully to champion arm."""
+        arm = resolve_bandit_arm_for_execution(
+            variant_id="var-non-existent-or-deleted-arm",
+            workspace_id="ws-fallback-test"
+        )
+        self.assertEqual(arm["status"], "success")
+        self.assertIsNotNone(arm.get("selected_variant"))
+        self.assertEqual(arm["selected_variant"].get("status"), "active")
+        self.assertIn("template_text", arm)
+        self.assertTrue(len(arm["template_text"]) > 0)
+
+
 
 class TestTriggerRadarService(unittest.TestCase):
     """
     Tests for Career Move & Funding Trigger Radar.
     """
+
+    def setUp(self):
+        from campaigns.backend.services.trigger_radar_service import (
+            _IN_MEMORY_TRIGGERS,
+            _SEED_TRIGGER_EVENTS,
+            _IN_MEMORY_SUPPRESSIONS
+        )
+        _IN_MEMORY_TRIGGERS.clear()
+        _IN_MEMORY_TRIGGERS.extend([dict(t) for t in _SEED_TRIGGER_EVENTS])
+        _IN_MEMORY_SUPPRESSIONS.clear()
 
     def test_generate_trigger_icebreaker_new_role(self):
         """Paranoia Layer 0: Personalized hook for new job title."""
@@ -192,6 +347,122 @@ class TestTriggerRadarService(unittest.TestCase):
         res = dismiss_trigger_event(trigger_event_id="trig-104", workspace_id="ws-test")
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["message"], "Trigger event dismissed.")
+
+    def test_generate_trigger_icebreaker_null_safe_handling(self):
+        """Paranoia Layer 0 & 1: Defend against None / null string interpolations."""
+        # 1. Null prospect and null company
+        hook_nulls = generate_trigger_icebreaker(
+            event_type="NEW_ROLE",
+            prospect_name=None,
+            company_name="None",
+            event_data={"new_title": "None"}
+        )
+        self.assertNotIn("None", hook_nulls)
+        self.assertIn("there", hook_nulls)
+        self.assertIn("your company", hook_nulls)
+        self.assertIn("your new role", hook_nulls)
+
+        # 2. Funding round with undisclosed or None amount
+        hook_funding = generate_trigger_icebreaker(
+            event_type="FUNDING_ROUND",
+            prospect_name="Marcus Vance",
+            company_name="Apex Cloud",
+            event_data={"round_type": "Series B", "amount_raised": "None"}
+        )
+        self.assertNotIn("None Series B", hook_funding)
+        self.assertIn("congrats on the Series B for Apex Cloud", hook_funding)
+
+        hook_undisclosed = generate_trigger_icebreaker(
+            event_type="FUNDING_ROUND",
+            prospect_name="Marcus Vance",
+            company_name="Apex Cloud",
+            event_data={"round_type": "Series B", "amount_raised": "undisclosed"}
+        )
+        self.assertNotIn("undisclosed Series B", hook_undisclosed)
+        self.assertIn("congrats on the Series B for Apex Cloud", hook_undisclosed)
+
+    def test_generate_trigger_icebreaker_stale_trigger_defense(self):
+        """Paranoia Layer 1: If tenure > 90 days, adapt copy away from 'first 90 days' ramp."""
+        # Fresh trigger: 14 days
+        hook_fresh = generate_trigger_icebreaker(
+            event_type="NEW_ROLE",
+            prospect_name="Elena Rostova",
+            company_name="Veloce Systems",
+            event_data={"new_title": "VP of Revenue Operations", "tenure_days": 14}
+        )
+        self.assertIn("initial ramp", hook_fresh)
+        self.assertIn("congrats on taking the VP of Revenue Operations seat", hook_fresh)
+
+        # Stale trigger: 180 days (6 months ago)
+        hook_stale = generate_trigger_icebreaker(
+            event_type="NEW_ROLE",
+            prospect_name="Elena Rostova",
+            company_name="Veloce Systems",
+            event_data={"new_title": "VP of Revenue Operations", "tenure_days": 180}
+        )
+        self.assertNotIn("first 90 days", hook_stale)
+        self.assertNotIn("initial ramp", hook_stale)
+        self.assertIn("congrats on leading the VP of Revenue Operations team", hook_stale)
+
+    def test_generate_trigger_icebreaker_word_boundary_length_clamping(self):
+        """Paranoia Layer 2: Long copy is bounded to <= 280 characters without truncating mid-word."""
+        long_title = "Executive Vice President of Global Enterprise Revenue Operations & Strategic Channel Partnerships"
+        long_company = "International Consolidated Distributed Technologies & Cloud Infrastructure Solutions Inc"
+        hook = generate_trigger_icebreaker(
+            event_type="NEW_ROLE",
+            prospect_name="Alexander Montgomery",
+            company_name=long_company,
+            event_data={"new_title": long_title}
+        )
+        self.assertLessEqual(len(hook), 280)
+        self.assertTrue(hook.endswith("..."))
+        # Must not end in trailing comma or punctuation right before ellipsis
+        self.assertFalse(hook.endswith(",..."))
+
+    def test_enroll_lead_from_trigger_suppression_list_blocks(self):
+        """Paranoia Layer 2: Lead enrollment is strictly blocked if email is on the suppression list."""
+        clear_in_memory_suppressions()
+        # Suppress Elena Rostova's email
+        register_in_memory_suppression(
+            workspace_id="ws-suppress-test",
+            email="elena@velocesystems.com",
+            reason="GDPR DNC opt-out"
+        )
+
+        res = enroll_lead_from_trigger(
+            trigger_event_id="trig-101",
+            campaign_id="camp-test",
+            workspace_id="ws-suppress-test"
+        )
+        self.assertEqual(res["status"], "blocked_suppressed")
+        self.assertEqual(res["reason"], "SUPPRESSION_LIST_MATCH")
+        self.assertEqual(res["matched_by"], "email")
+        self.assertIn("prospect is on workspace suppression list", res["message"])
+
+        clear_in_memory_suppressions()
+
+    @patch("leads.backend.services.suppression_service.check_lead_suppression")
+    def test_enroll_lead_from_trigger_supabase_suppression_blocks(self, mock_check_sup):
+        """Paranoia Layer 1 & 2: Supabase suppression check triggers block on DNC match."""
+        mock_check_sup.return_value = {
+            "suppressed": True,
+            "matched_by": "linkedin_url",
+            "matched_value": "https://linkedin.com/in/marcusvance",
+            "reason": "Competitor domain"
+        }
+        mock_supabase = MagicMock()
+        mock_supabase.table().select().eq().limit().execute.return_value.data = []
+
+        res = enroll_lead_from_trigger(
+            trigger_event_id="trig-102",
+            campaign_id="camp-test",
+            workspace_id="ws-sup-mock",
+            supabase=mock_supabase
+        )
+        self.assertEqual(res["status"], "blocked_suppressed")
+        self.assertEqual(res["reason"], "SUPPRESSION_LIST_MATCH")
+        self.assertEqual(res["matched_by"], "linkedin_url")
+
 
 
 class TestBanditRouterEndpoints(unittest.TestCase):
@@ -321,5 +592,35 @@ class TestBanditRouterEndpoints(unittest.TestCase):
         self.assertIn("attachment; filename=trigger_radar_", trigger_res.headers["content-disposition"])
 
 
+    def test_mutate_variant_endpoint_with_channel_and_preview(self):
+        """Paranoia Layer 0 & 2: Endpoint supports channel selection and non-destructive preview."""
+        from campaigns.backend.routers.bandit_router import mutate_variant_endpoint, MutateVariantPayload
+        payload = MutateVariantPayload(
+            parent_variant_id="var-challenger-1",
+            mutation_theme="social_proof_metric",
+            channel="email",
+            touchpoint_id="step_4_email",
+            retire_parent=False
+        )
+        mock_supabase = MagicMock()
+        mock_parent = {
+            "id": "var-challenger-1",
+            "workspace_id": "ws-test",
+            "experiment_id": "exp-test",
+            "name": "Challenger Arm",
+            "generation": 1,
+            "template_text": "Existing template"
+        }
+        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = [mock_parent]
+        mock_supabase.table.return_value.insert.return_value.execute.return_value.data = []
+        res = mutate_variant_endpoint(payload, workspace_id="ws-test", supabase=mock_supabase)
+        self.assertEqual(res["status"], "success")
+        self.assertIn("challenger_variant", res)
+        challenger = res["challenger_variant"]
+        self.assertEqual(challenger["channel"], "email")
+        self.assertIsNone(res["retired_parent_id"])
+
+
 if __name__ == "__main__":
     unittest.main()
+

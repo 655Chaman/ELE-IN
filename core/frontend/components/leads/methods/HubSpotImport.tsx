@@ -4,6 +4,7 @@ import { fetchWithAuth, fetcher } from "@/lib/apiClient"
 import { usePaywall } from "@/contexts/PaywallContext"
 import useSWR from "swr"
 import { useLeadImport } from "../LeadImportContext"
+import { CustomSelect } from "@/components/ui/select"
 
 export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => void, mode?: "import" | "connect" }) {
   const { 
@@ -139,16 +140,20 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
             {hubspotLists.length === 0 ? (
               <div className="text-sm text-muted-foreground p-3 bg-background border rounded-md mb-4">No contact lists found in this HubSpot account.</div>
             ) : (
-              <select 
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mb-4"
+              <CustomSelect 
+                className="mb-4 text-left"
                 value={selectedHubspotList}
-                onChange={(e) => setSelectedHubspotList(e.target.value)}
-              >
-                <option value="">-- Choose a List --</option>
-                {hubspotLists.map((l: any) => (
-                  <option key={l.id} value={l.id}>{l.name} ({l.count} contacts)</option>
-                ))}
-              </select>
+                onValueChange={setSelectedHubspotList}
+                placeholder="-- Choose a List --"
+                triggerClassName="h-10 text-sm bg-background border-input"
+                options={[
+                  { value: "", label: "-- Choose a List --" },
+                  ...hubspotLists.map((l: any) => ({
+                    value: l.id,
+                    label: `${l.name} (${l.count} contacts)`
+                  }))
+                ]}
+              />
             )}
             
             <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg text-primary dark:text-primary">

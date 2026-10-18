@@ -161,20 +161,12 @@ def verify_domain_dns_health(
     clean_selector = re.sub(r"[^a-z0-9._-]", "", str(dkim_selector or "elein").lower().strip()) or "elein"
     clean_cname_target = (expected_cname_target or "track.elein.ai").strip().rstrip(".").lower()
 
-    if mock_records is not None and isinstance(mock_records, dict):
-        root_txt = list(mock_records.get("spf", mock_records.get("root_txt", [])))
-        dkim_txt = list(mock_records.get("dkim", []))
-        dmarc_txt = list(mock_records.get("dmarc", []))
-        cname_val = mock_records.get("cname")
-        if isinstance(cname_val, str):
-            cname_val = cname_val.strip().rstrip(".").lower()
-        ssl_verified = bool(mock_records.get("ssl_verified", bool(cname_val == clean_cname_target)))
-    else:
-        root_txt = _lookup_txt_records(clean_domain)
-        dkim_txt = _lookup_txt_records(f"{clean_selector}._domainkey.{clean_domain}")
-        dmarc_txt = _lookup_txt_records(f"_dmarc.{clean_domain}")
-        cname_val = _lookup_cname_record(f"{clean_sub}.{clean_domain}")
-        ssl_verified = bool(cname_val == clean_cname_target)
+    # Authentic DNS resolution via dnspython
+    root_txt = _lookup_txt_records(clean_domain)
+    dkim_txt = _lookup_txt_records(f"{clean_selector}._domainkey.{clean_domain}")
+    dmarc_txt = _lookup_txt_records(f"_dmarc.{clean_domain}")
+    cname_val = _lookup_cname_record(f"{clean_sub}.{clean_domain}")
+    ssl_verified = bool(cname_val == clean_cname_target)
 
     errors: List[str] = []
     warnings: List[str] = []

@@ -1,5 +1,6 @@
 import React from 'react';
 import { TARGET_REGIONS } from '../../../shared/constants/regions';
+import { CustomSelect } from '@/components/ui/select';
 
 interface TargetRegionSelectorProps {
   value: string;
@@ -16,18 +17,16 @@ export const TargetRegionSelector: React.FC<TargetRegionSelectorProps> = ({ valu
       <p className="text-xs text-muted-foreground mb-1">
         Select the timezone where these leads are located. This replaces location-guessing and ensures accurate outreach scheduling.
       </p>
-      <select
+      <CustomSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`flex h-9 w-full rounded-md border ${error ? 'border-destructive' : 'border-input'} bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50`}
-      >
-        <option value="" disabled>Select a region...</option>
-        {TARGET_REGIONS.map((region) => (
-          <option key={region.timezone} value={region.timezone}>
-            {region.label} | {region.timezone}
-          </option>
-        ))}
-      </select>
+        onValueChange={onChange}
+        placeholder="Select a region..."
+        triggerClassName={`h-9 ${error ? 'border-destructive focus-visible:ring-destructive' : 'border-input'}`}
+        options={TARGET_REGIONS.map((region) => ({
+          value: region.timezone,
+          label: `${region.label} | ${region.timezone}`,
+        }))}
+      />
       {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   );

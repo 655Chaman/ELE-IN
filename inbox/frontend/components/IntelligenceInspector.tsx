@@ -19,7 +19,6 @@ interface IntelligenceInspectorProps {
   activeThreadOutcome: OutcomeType | null;
   onToggleOutcome: (key: OutcomeType) => void;
   onInsertPivotAngle?: (pivot: string) => void;
-  isPlaygroundActive?: boolean;
 }
 
 export function IntelligenceInspector({
@@ -34,7 +33,6 @@ export function IntelligenceInspector({
   activeThreadOutcome,
   onToggleOutcome,
   onInsertPivotAngle,
-  isPlaygroundActive: _isPlaygroundActive,
 }: IntelligenceInspectorProps) {
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
 

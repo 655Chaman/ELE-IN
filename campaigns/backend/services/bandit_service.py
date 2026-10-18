@@ -4,6 +4,7 @@ import logging
 import uuid
 import csv
 import io
+import re
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 
@@ -33,6 +34,73 @@ def sanitize_text(val: Optional[str]) -> str:
     while cleaned and cleaned[0] in ('=', '+', '-', '@', '\t', '\r'):
         cleaned = cleaned[1:].strip()
     return cleaned
+
+
+ALIAS_MAP = {
+    "firstname": "first_name",
+    "first name": "first_name",
+    "name": "first_name",
+    "prospect_name": "first_name",
+    "prospect name": "first_name",
+    "lead_name": "first_name",
+    "company_name": "company",
+    "companyname": "company",
+    "company name": "company",
+    "organization": "company",
+    "org": "company",
+    "title": "job_title",
+    "jobtitle": "job_title",
+    "job title": "job_title",
+    "role": "job_title",
+    "position": "job_title",
+    "location": "city",
+    "city_name": "city",
+}
+
+
+def validate_and_canonicalize_template(text: Optional[str]) -> str:
+    """
+    Paranoia Layer 0 & 2:
+    1. Neutralizes spreadsheet formula injection (=, +, -, @, \t, \r).
+    2. Auto-fixes single-bracket typos: {first_name} -> {{first_name}}
+    3. Normalizes common variable aliases: {{company_name}} -> {{company}}, {firstname} -> {{first_name}}
+    4. Guarantees safe token format {{token}} with no broken syntax.
+    """
+    if not text:
+        return ""
+    cleaned = sanitize_text(text)
+    
+    # Replace single or double curly bracket placeholders with canonical form
+    pattern = re.compile(r'\{{1,2}\s*([a-zA-Z0-9_\s]+?)\s*\}{1,2}')
+    
+    def _canonicalize_token(match: re.Match) -> str:
+        raw_key = match.group(1).strip()
+        lower_key = raw_key.lower()
+        canon = ALIAS_MAP.get(lower_key, lower_key)
+        canon = re.sub(r'\s+', '_', canon)
+        return f"{{{{{canon}}}}}"
+        
+    canonicalized = pattern.sub(_canonicalize_token, cleaned)
+    return canonicalized
+
+
+def clamp_linkedin_note(text: Optional[str], max_chars: int = 295) -> str:
+    """
+    Paranoia Layer 0 & 2:
+    Guarantees LinkedIn connection notes never exceed max_chars (default 295, within LinkedIn's 300 limit).
+    Truncates gracefully at the nearest word boundary and appends '...' if truncated.
+    """
+    if not text:
+        return ""
+    cleaned = sanitize_text(text)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    
+    truncated = cleaned[:max_chars - 3]
+    last_space = truncated.rfind(' ')
+    if last_space > max_chars // 2:
+        truncated = truncated[:last_space]
+    return (truncated.rstrip(' ,;:-') + "...").strip()
 
 
 # Paranoia Layer 1: In-memory store for zero-migration resilience & sticky lead-to-arm locks
@@ -223,13 +291,24 @@ def select_variant_thompson_sampling(
         # Paranoia Layer 2: Safety guard - never leave arms empty
         active_variants = variants or DEFAULT_SEED_VARIANTS
 
-    # Draw from Beta posteriors
+    # Draw from Beta posteriors with Paranoia Layer 1 & 2 burn-in exploration floor
+    MIN_BURNIN_IMPRESSIONS = 15
+    under_explored = [
+        v for v in active_variants 
+        if (int(v.get("impressions", 0)) + float(v.get("alpha_param", 1.0)) + float(v.get("beta_param", 1.0)) - 2.0) < MIN_BURNIN_IMPRESSIONS 
+        and v.get("status") == "active"
+    ]
+    
     sampled_scores = {}
     for v in active_variants:
         sampled_scores[v["id"]] = beta_sample(v.get("alpha_param", 1.0), v.get("beta_param", 1.0))
+
+    if under_explored and random.random() < 0.35:
+        selected_id = random.choice(under_explored)["id"]
+    else:
+        selected_id = max(sampled_scores, key=sampled_scores.get)
         
-    selected_id = max(sampled_scores, key=sampled_scores.get)
-    selected_variant = next(v for v in active_variants if v["id"] == selected_id)
+    selected_variant = next((v for v in active_variants if v["id"] == selected_id), active_variants[0])
     
     # Monte Carlo winning probabilities
     win_probs = compute_monte_carlo_win_probabilities(active_variants)
@@ -268,6 +347,7 @@ def resolve_bandit_arm_for_execution(
     inline_variants: Optional[List[Dict[str, Any]]] = None,
     sticky: bool = True,
     supabase: Optional[Any] = None,
+    variant_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Horizon 31 (Layer 0, 1, 2):
@@ -275,6 +355,7 @@ def resolve_bandit_arm_for_execution(
     - Supports inline node-configured `bandit_variants` (with formula-injection sanitization).
     - Enforces sticky lead-to-arm idempotency (`_LEAD_ARM_LOCKS`) so retries for the same lead
       on the same node never flip copy angles mid-flight or double-count impressions.
+    - Paranoia Layer 2: Gracefully handles deleted/missing variant_id by falling back to active champion.
     """
     safe_ws = str(workspace_id or "ws-default").strip()
     norm_ws = _normalize_uuid(safe_ws, "workspace")
@@ -300,8 +381,8 @@ def resolve_bandit_arm_for_execution(
                 sanitized_inline.append(existing_by_id[v_id])
                 continue
             clean_name = sanitize_text(raw_v.get("name") or f"Variant {chr(65 + (idx % 26))}")
-            clean_text = sanitize_text(raw_v.get("template_text") or raw_v.get("body") or raw_v.get("note") or "")
-            clean_subj = sanitize_text(raw_v.get("subject") or "")
+            clean_text = validate_and_canonicalize_template(raw_v.get("template_text") or raw_v.get("body") or raw_v.get("note") or "")
+            clean_subj = validate_and_canonicalize_template(raw_v.get("subject") or "")
             if not clean_text and not clean_subj:
                 continue
             arm_entry = {
@@ -333,8 +414,30 @@ def resolve_bandit_arm_for_execution(
             _IN_MEMORY_VARIANTS[exp_id] = sanitized_inline + existing_challengers
 
     selection = select_variant_thompson_sampling(safe_ws, campaign_id, supabase=supabase, node_id=node_id)
-    selected_variant = selection["selected_variant"]
-    selected_id = selection["selected_variant_id"]
+    selected_variant = None
+    selected_id = None
+
+    # Paranoia Layer 2: If a specific variant_id is requested (e.g. queued task), check if still active
+    if variant_id:
+        all_exp_arms = _IN_MEMORY_VARIANTS.get(exp_id, []) + selection.get("all_arms", [])
+        matched_requested = next((v for v in all_exp_arms if v.get("id") == variant_id and v.get("status") == "active"), None)
+        if matched_requested and matched_requested.get("template_text"):
+            selected_variant = matched_requested
+            selected_id = matched_requested["id"]
+
+    if not selected_variant:
+        selected_variant = selection.get("selected_variant")
+        selected_id = selection.get("selected_variant_id")
+
+    # Paranoia Layer 1 & 2: Deleted/missing variant fallback guard
+    if not selected_variant or not selected_variant.get("template_text"):
+        valid_arms = [v for v in selection.get("all_arms", []) if v.get("template_text")]
+        if valid_arms:
+            selected_variant = valid_arms[0]
+            selected_id = valid_arms[0]["id"]
+        else:
+            selected_variant = dict(DEFAULT_SEED_VARIANTS[0])
+            selected_id = selected_variant["id"]
 
     # Record impression on in-memory variant
     for v in _IN_MEMORY_VARIANTS.get(exp_id, []):
@@ -376,7 +479,10 @@ def record_variant_feedback(
     Objections/unsubscribes/no_reply -> beta increment.
     When an arm degrades and `auto_heal=True`, automatically spawns a self-healing challenger arm.
     """
-    valid_outcomes = {'positive_reply', 'meeting_booked', 'closed_won', 'closed_lost', 'objection', 'unsubscribe', 'no_reply'}
+    valid_outcomes = {
+        'positive_reply', 'meeting_booked', 'closed_won', 'closed_lost', 
+        'objection', 'unsubscribe', 'unsubscribed', 'spam_complaint', 'angry_dnc', 'no_reply'
+    }
     if outcome not in valid_outcomes:
         outcome = 'no_reply'
 
@@ -385,8 +491,10 @@ def record_variant_feedback(
     
     if outcome in ('positive_reply', 'meeting_booked', 'closed_won'):
         alpha_delta = 3.0 if outcome == 'closed_won' else (2.0 if outcome == 'meeting_booked' else 1.0)
-    elif outcome in ('objection', 'unsubscribe'):
-        beta_delta = 1.5 if outcome == 'unsubscribe' else 1.0
+    elif outcome in ('spam_complaint', 'angry_dnc', 'unsubscribe', 'unsubscribed'):
+        beta_delta = 3.0 if outcome in ('spam_complaint', 'angry_dnc') else 1.5
+    elif outcome == 'objection':
+        beta_delta = 1.0
     else:  # no_reply or closed_lost
         beta_delta = 0.5
 
@@ -411,11 +519,16 @@ def record_variant_feedback(
                 new_impressions = cur.get("impressions", 0) + 1
                 pos_replies = cur.get("positive_replies", 0) + (1 if alpha_delta > 0 else 0)
                 objs = cur.get("objections", 0) + (1 if outcome == 'objection' else 0)
-                unsubs = cur.get("unsubscribes", 0) + (1 if outcome == 'unsubscribe' else 0)
+                is_unsub = outcome in ('unsubscribe', 'unsubscribed', 'spam_complaint', 'angry_dnc')
+                unsubs = cur.get("unsubscribes", 0) + (1 if is_unsub else 0)
                 
-                # Check degradation
+                # Check degradation & toxic penalty
                 status = cur.get("status", "active")
-                if new_impressions >= 10 and (pos_replies / new_impressions < 0.08 or objs / new_impressions > 0.25):
+                if outcome in ('spam_complaint', 'angry_dnc'):
+                    status = "degraded"
+                elif new_impressions >= 5 and (unsubs / new_impressions > 0.05 or (objs + unsubs) / new_impressions > 0.25):
+                    status = "degraded"
+                elif new_impressions >= 10 and (pos_replies / new_impressions < 0.08):
                     status = "degraded"
 
                 up_res = supabase.table("copy_variants").update({
@@ -453,9 +566,14 @@ def record_variant_feedback(
                         v["positive_replies"] = v.get("positive_replies", 0) + 1
                     if outcome == 'objection':
                         v["objections"] = v.get("objections", 0) + 1
-                    if outcome == 'unsubscribe':
+                    is_unsub = outcome in ('unsubscribe', 'unsubscribed', 'spam_complaint', 'angry_dnc')
+                    if is_unsub:
                         v["unsubscribes"] = v.get("unsubscribes", 0) + 1
-                    if v["impressions"] >= 10 and (v["positive_replies"] / v["impressions"] < 0.08 or v["objections"] / v["impressions"] > 0.25):
+                    if outcome in ('spam_complaint', 'angry_dnc'):
+                        v["status"] = "degraded"
+                    elif v["impressions"] >= 5 and (v.get("unsubscribes", 0) / v["impressions"] > 0.05 or (v.get("objections", 0) + v.get("unsubscribes", 0)) / v["impressions"] > 0.25):
+                        v["status"] = "degraded"
+                    elif v["impressions"] >= 10 and (v["positive_replies"] / v["impressions"] < 0.08):
                         v["status"] = "degraded"
                     updated_variant = dict(v)
                     break
@@ -503,23 +621,111 @@ def record_variant_feedback(
     return response_payload
 
 
+MUTATION_TEMPLATES: Dict[str, Dict[str, List[Any]]] = {
+    "linkedin": {
+        "social_proof_metric": [
+            "Hi {{first_name}}, rather than a generic pitch: we recently helped {{company}}'s peers reduce outreach bounce rates by 42% in 14 days. Thought this 2-page case summary might be relevant. Worth a brief look?",
+            "{{first_name}} — saw your team's focus on revenue efficiency. We built a framework that pre-warms key accounts before sending email, driving a 3.4x reply lift. Would you be open to the teardown?",
+            "Quick note {{first_name}}: peers in your space saw a 38% increase in booked demos simply by pre-warming prospects 48h before the first cold touch. Open to a 3-min walkthrough?",
+        ],
+        "provocative_question": [
+            "{{first_name}}, curious how {{company}} is handling LinkedIn connection saturation this quarter? Most teams see a 60% drop in acceptance rates without pre-warming. Open to a fresh benchmark?",
+            "Quick diagnostic {{first_name}}: when your team reaches out to enterprise accounts, are you finding traditional email or social touches yield higher reply rates right now?",
+            "{{first_name}} — are your outbound reps spending more time researching prospects or actually booking meetings? We benchmarked 500+ teams and found 70% of rep time is lost to manual prep.",
+        ],
+        "low_friction_benchmark": [
+            "Hi {{first_name}}, we compiled an anonymized Q4 benchmark report on outbound conversion rates across high-growth B2B teams. Thought it might be useful for {{company}}. Open to me sending over the PDF?",
+            "{{first_name}} — put together a 3-minute executive teardown on modern multi-channel touchpoint sequencing. Zero pitch, just the framework. Would it be okay to share the link?",
+            "Quick note {{first_name}}: our team benchmarked 1,000+ outreach sequences in your space and found 80% stall after step 2. We put together the exact fix. Want the free breakdown?",
+        ],
+        "brevity_direct": [
+            "{{first_name}} — quick question: are you open to a 2-minute breakdown on how teams cut SDR ramp times in half with automated pre-warming?",
+            "Hi {{first_name}}, sent you a brief note earlier. Curious if {{company}} is exploring automated multi-channel sequencing this quarter?",
+            "{{first_name}} — 2 sentences: we help outbound teams double their pipeline without hiring more SDRs. Worth a brief 5-min look?",
+        ],
+    },
+    "email": {
+        "social_proof_metric": [
+            {
+                "subject": "{{company}}'s outbound reply rate (+42% case study)",
+                "body": "Hi {{first_name}},\n\nRather than a generic cold outreach pitch: we recently helped high-growth sales teams in your space achieve a 42% lift in booked demos across Tier-1 accounts.\n\nWe put together a concise 2-page teardown analyzing why traditional multi-step cadences stall and the exact fix that unblocks replies.\n\nWould you be open to reviewing the teardown this week?\n\nBest,\n[Your Name]"
+            },
+            {
+                "subject": "3.4x reply lift framework for {{company}}",
+                "body": "{{first_name}} — saw your team's focus on sales efficiency this quarter.\n\nWe built a lightweight framework that pre-warms key enterprise accounts on LinkedIn before sending the first email, driving a 3.4x lift in meeting conversions.\n\nWould you be open to a 3-minute executive breakdown?\n\nBest,\n[Your Name]"
+            }
+        ],
+        "provocative_question": [
+            {
+                "subject": "quick question re: {{company}} outbound efficiency",
+                "body": "Hi {{first_name}},\n\nCurious how {{company}} is handling LinkedIn connection saturation and email deliverability shifts this quarter?\n\nMost sales leaders we speak with report that traditional cold email reply rates have dropped by over 50% year-over-year because accounts aren't pre-warmed.\n\nAre your reps seeing this pattern on their enterprise lists?\n\nBest,\n[Your Name]"
+            },
+            {
+                "subject": "LinkedIn vs Email reply rates at {{company}}?",
+                "body": "{{first_name}} — quick diagnostic:\n\nWhen your outbound team reaches out to Tier-1 accounts, are you finding traditional cold email or multi-touch social sequences produce higher conversion rates right now?\n\nWe analyzed 1,000+ enterprise sequences and found a simple sequencing tweak that unblocks stalled pipeline. Open to comparing notes?\n\nBest,\n[Your Name]"
+            }
+        ],
+        "low_friction_benchmark": [
+            {
+                "subject": "anonymized outbound benchmark report (for {{company}})",
+                "body": "Hi {{first_name}},\n\nWe recently compiled an anonymized benchmark report analyzing outbound conversion and connection acceptance rates across 1,200+ B2B teams.\n\nIt highlights the 3 critical adjustments high-performing SDRs made this quarter to maintain 30%+ reply rates.\n\nZero sales pitch—would you be open to me sending over the PDF breakdown?\n\nBest,\n[Your Name]"
+            },
+            {
+                "subject": "free 2-page teardown for {{first_name}}",
+                "body": "{{first_name}} — put together a 3-minute executive teardown on modern multi-channel touchpoint sequencing for high-growth tech teams.\n\nZero pitch, just the framework and data points.\n\nWould it be okay to share the link with you?\n\nBest,\n[Your Name]"
+            }
+        ],
+        "brevity_direct": [
+            {
+                "subject": "2-minute question for {{first_name}}",
+                "body": "Hi {{first_name}},\n\nSent you a brief note on LinkedIn yesterday.\n\nAre you open to a 2-minute breakdown on how revenue teams are doubling booked meetings without increasing SDR headcount?\n\nBest,\n[Your Name]"
+            },
+            {
+                "subject": "pipeline efficiency at {{company}}",
+                "body": "{{first_name}} — 2 sentences:\n\nWe help outbound sales teams pre-warm enterprise accounts automatically, cutting SDR ramp times in half.\n\nWould you be open to reviewing a 2-minute overview?\n\nBest,\n[Your Name]"
+            }
+        ]
+    }
+}
+
+
 def mutate_self_healing_variant(
     parent_variant_id: str,
     workspace_id: str,
     mutation_theme: Optional[str] = "social_proof_metric",
     supabase: Optional[Any] = None,
     retire_parent: bool = True,
+    channel: Optional[str] = "linkedin",
+    touchpoint_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Paranoia Layer 0, 1 & 2: Autonomous genetic copy mutation.
     Tenant-isolated by workspace_id.
-    Retires degraded variant and synthesizes next-generation challenger arm.
+    - Layer 0: Merge tag canonicalization, channel-aware length clamping (295 chars for LinkedIn).
+    - Layer 1: Multi-theme generation matrix, duplicate variant detection, generation capping (<= 10).
+    - Layer 2: Formula injection protection, optional non-destructive staging (retire_parent=False).
     """
+    # Guard against channel passed as 4th positional argument
+    if isinstance(supabase, str) and supabase.lower() in ("linkedin", "email", "cold_email"):
+        channel = supabase
+        supabase = None
+
     parent = None
     exp_id = None
     norm_ws = _normalize_uuid(workspace_id, "workspace")
     norm_parent = _normalize_uuid(parent_variant_id, "variant")
     safe_theme = sanitize_text(mutation_theme) or "social_proof_metric"
+    if safe_theme not in ("social_proof_metric", "provocative_question", "low_friction_benchmark", "brevity_direct"):
+        safe_theme = "social_proof_metric"
+
+    # Channel resolution
+    is_email = False
+    if channel and str(channel).lower() in ("email", "cold_email", "email_step"):
+        is_email = True
+    if touchpoint_id and ("email" in str(touchpoint_id).lower() or "step_4" in str(touchpoint_id).lower()):
+        is_email = True
+
+    channel_key = "email" if is_email else "linkedin"
 
     if supabase:
         try:
@@ -571,18 +777,48 @@ def mutate_self_healing_variant(
         parent = DEFAULT_SEED_VARIANTS[0]
         exp_id = "exp-default"
 
-    new_gen = parent.get("generation", 1) + 1
+    new_gen = int(parent.get("generation", 1)) + 1
     # Prevent unbound generation count
     if new_gen > 10:
         new_gen = 10
 
-    # Mutate copy
-    challenger_templates = [
-        "Hi {{first_name}}, rather than a generic pitch: we recently helped {{company}}'s peers reduce outreach bounce rates by 42% in 14 days. Thought this 2-page case summary might be relevant. Worth a brief look?",
-        "{{first_name}} — saw your team's focus on revenue efficiency. We built a framework that pre-warms key accounts before sending email, driving a 3.4x reply lift. Would you be open to the teardown?",
-        "Quick note {{first_name}}: we analyzed 1,000+ outreach sequences in your space and found 80% stall after step 2. We put together the exact fix that unblocks pipeline. Want the free breakdown?"
-    ]
-    mutated_text = challenger_templates[new_gen % len(challenger_templates)]
+    # Collect existing copy in this experiment to prevent duplicate arms
+    existing_texts = {
+        sanitize_text(v.get("template_text", "")).strip().lower()
+        for v in _IN_MEMORY_VARIANTS.get(exp_id, [])
+        if v.get("template_text")
+    }
+
+    # Synthesize copy from matrix
+    theme_candidates = MUTATION_TEMPLATES[channel_key].get(safe_theme) or MUTATION_TEMPLATES[channel_key]["social_proof_metric"]
+    chosen_subject = ""
+    mutated_text = ""
+
+    if is_email:
+        # Email candidate with subject + body
+        selected_cand = None
+        for cand in theme_candidates:
+            if isinstance(cand, dict) and cand.get("body", "").strip().lower() not in existing_texts:
+                selected_cand = cand
+                break
+        if not selected_cand:
+            selected_cand = theme_candidates[new_gen % len(theme_candidates)]
+
+        chosen_subject = validate_and_canonicalize_template(selected_cand.get("subject", "outbound benchmark"))
+        mutated_text = validate_and_canonicalize_template(selected_cand.get("body", ""))
+    else:
+        # LinkedIn candidate: validate canonical tokens and clamp to max 295 chars
+        selected_cand = None
+        for cand in theme_candidates:
+            if isinstance(cand, str) and cand.strip().lower() not in existing_texts:
+                selected_cand = cand
+                break
+        if not selected_cand:
+            selected_cand = theme_candidates[new_gen % len(theme_candidates)]
+
+        canon_text = validate_and_canonicalize_template(selected_cand)
+        mutated_text = clamp_linkedin_note(canon_text, max_chars=295)
+
     challenger_name = f"Gen {new_gen} Challenger ({parent.get('name', 'Arm').split('(')[0].strip()})"
     new_variant_uuid = str(uuid.uuid4())
 
@@ -593,6 +829,8 @@ def mutate_self_healing_variant(
         "name": challenger_name,
         "arm_type": parent.get("arm_type", "full_message"),
         "template_text": mutated_text,
+        "subject": chosen_subject,
+        "channel": channel_key,
         "alpha_param": 2.0,  # Warm exploratory prior
         "beta_param": 2.0,
         "impressions": 0,
@@ -602,7 +840,8 @@ def mutate_self_healing_variant(
         "status": "active",
         "parent_variant_id": parent.get("id"),
         "generation": new_gen,
-        "mutation_notes": f"Mutated from {parent.get('name')} due to performance degradation. Angle pivoted toward {safe_theme}."
+        "theme": safe_theme,
+        "mutation_notes": f"Mutated from {parent.get('name')} (Gen {parent.get('generation', 1)}). Strategy: {safe_theme} on {channel_key.title()}."
     }
 
     if supabase:
@@ -627,7 +866,11 @@ def mutate_self_healing_variant(
     return {
         "status": "success",
         "challenger_variant": challenger_arm,
-        "retired_parent_id": parent_variant_id,
+        "retired_parent_id": parent_variant_id if retire_parent else None,
+        "parent_variant": parent,
+        "generation": new_gen,
+        "theme": safe_theme,
+        "channel": channel_key,
         "message": f"Successfully spawned Generation {new_gen} challenger variant!"
     }
 
@@ -645,7 +888,7 @@ def add_custom_variant(
     Guarantees sanitized inputs, exploratory priors, and persistent storage with in-memory fallback.
     """
     clean_name = sanitize_text(name) or "Custom Challenger Arm"
-    clean_text = sanitize_text(template_text)
+    clean_text = validate_and_canonicalize_template(template_text)
     if not clean_text:
         clean_text = "Hi {{first_name}}, following up on our discussion—would you be open to reviewing our efficiency benchmark?"
     

@@ -312,7 +312,7 @@ async def reap_zombie_jobs(async_supabase):
             zombie_ids = [job['id'] for job in zombie_jobs]
             await async_supabase.table("processing_jobs").update({
                 "status": "failed",
-                "error_message": "Job timed out (zombie reaper)",
+                "error_msg": "Job timed out (zombie reaper)",
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }).in_("id", zombie_ids).execute()
             

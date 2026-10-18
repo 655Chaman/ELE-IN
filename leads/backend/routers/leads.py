@@ -321,7 +321,7 @@ def get_social_radar_feed_endpoint(
     tier: Optional[str] = Query(default=None),
     signal_type: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
-    include_demo_fallback: bool = Query(default=False),
+    include_demo_fallback: bool = False,
     workspace_id: str = Depends(get_current_workspace),
     supabase: Client = Depends(get_supabase_client)
 ):
@@ -336,7 +336,7 @@ def get_social_radar_feed_endpoint(
             tier_filter=tier,
             signal_type=signal_type,
             limit=limit,
-            include_demo_fallback=include_demo_fallback
+            include_demo_fallback=False
         )
         return result
     except Exception as e:
@@ -349,7 +349,7 @@ def get_social_radar_feed_endpoint(
 def export_social_radar_csv_endpoint(
     tier: Optional[str] = Query(default=None),
     signal_type: Optional[str] = Query(default=None),
-    include_demo_fallback: bool = Query(default=True),
+    include_demo_fallback: bool = False,
     workspace_id: str = Depends(get_current_workspace),
     supabase: Client = Depends(get_supabase_client)
 ):
@@ -366,7 +366,7 @@ def export_social_radar_csv_endpoint(
             supabase=supabase,
             tier_filter=tier,
             signal_type=signal_type,
-            include_demo_fallback=include_demo_fallback
+            include_demo_fallback=False
         )
         return Response(
             content=csv_data,

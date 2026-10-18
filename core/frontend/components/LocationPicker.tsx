@@ -86,7 +86,7 @@ function SearchableDropdown({
         type="button"
         onClick={handleOpen}
         disabled={disabled}
-        className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/5 hover:border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-50 min-w-[160px] justify-between shadow-sm"
+        className="flex items-center gap-2 px-3 py-1.5 bg-muted/40 border border-border hover:border-border/80 rounded-lg text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 min-w-[160px] justify-between shadow-xs"
       >
         <span>{placeholder}</span>
         <ChevronDown size={14} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -94,10 +94,10 @@ function SearchableDropdown({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-[#0f0f0f] border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 w-72 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
           {/* Search */}
           <div className="p-2 border-b border-border flex items-center gap-2">
-            <Search size={14} className="text-gray-500 shrink-0" />
+            <Search size={14} className="text-muted-foreground shrink-0" />
             <input
               ref={inputRef}
               type="text"
@@ -110,10 +110,10 @@ function SearchableDropdown({
                 }
               }}
               placeholder="Search or type custom..."
-              className="w-full bg-transparent text-sm text-gray-300 placeholder-gray-600 outline-none"
+              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
             />
             {query && (
-              <button onClick={() => setQuery("")} className="text-gray-600 hover:text-gray-400">
+              <button type="button" onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground">
                 <X size={12} />
               </button>
             )}
@@ -122,7 +122,7 @@ function SearchableDropdown({
           {/* Options list */}
           <div className="max-h-56 overflow-y-auto py-1">
             {!hasOptions && !query ? (
-              <div className="px-4 py-3 text-sm text-gray-600 italic text-center">
+              <div className="px-4 py-3 text-sm text-muted-foreground italic text-center">
                 {options.length === 0 && (!groups || groups.length === 0) ? emptyMessage : "All options already selected"}
               </div>
             ) : (
@@ -130,7 +130,7 @@ function SearchableDropdown({
                 {groups ? (
                   processedGroups.map(group => (
                     <div key={group.name} className="mb-2 last:mb-0">
-                      <div className="px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-[#1a1a1a]">
+                      <div className="px-4 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40">
                         {group.name}
                       </div>
                       {group.options.map(opt => (
@@ -138,7 +138,7 @@ function SearchableDropdown({
                           key={opt}
                           type="button"
                           onClick={() => handleSelect(opt)}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-zinc-600 hover:text-white transition-colors"
+                          className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors"
                         >
                           {opt}
                         </button>
@@ -151,7 +151,7 @@ function SearchableDropdown({
                       key={opt}
                       type="button"
                       onClick={() => handleSelect(opt)}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-zinc-600 hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors"
                     >
                       {opt}
                     </button>
@@ -161,7 +161,7 @@ function SearchableDropdown({
                   <button
                     type="button"
                     onClick={() => handleSelect(query.trim())}
-                    className="w-full text-left px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors font-medium border-t border-border mt-1 pt-2"
+                    className="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium border-t border-border mt-1 pt-2"
                   >
                     + Add custom "{query.trim()}"
                   </button>
@@ -170,7 +170,7 @@ function SearchableDropdown({
             )}
           </div>
 
-          <div className="p-2 border-t border-border text-xs text-gray-600 text-center">
+          <div className="p-2 border-t border-border text-xs text-muted-foreground text-center">
             Click to select • Click outside to close
           </div>
         </div>
@@ -214,7 +214,7 @@ export function LocationPicker({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
           Target Locations
         </label>
         <SearchableDropdown
@@ -229,7 +229,7 @@ export function LocationPicker({
 
       <div className="space-y-3">
         {selectedCountries.length === 0 && (
-          <div className="p-4 border border-dashed border-white/10 rounded-xl text-center text-sm text-gray-500">
+          <div className="p-4 border border-dashed border-border rounded-lg text-center text-sm text-muted-foreground">
             No countries selected. Add a country to start selecting cities.
           </div>
         )}
@@ -239,18 +239,18 @@ export function LocationPicker({
           const selectedForCountry = selectedCities.filter(city => availableForCountry.includes(city))
 
           return (
-            <div key={country} className="bg-black/20 border border-white/5 rounded-xl p-4 flex flex-col gap-3 relative group transition-colors hover:border-white/10">
+            <div key={country} className="bg-card border border-border/60 rounded-lg p-4 flex flex-col gap-3 relative group transition-colors hover:border-border">
               {/* Country Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-zinc-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
-                  <h4 className="font-medium text-zinc-100">{country}</h4>
+                  <div className="w-2 h-2 rounded-full bg-primary shadow-xs"></div>
+                  <h4 className="font-medium text-foreground">{country}</h4>
                 </div>
                 <button
                   type="button"
                   onClick={() => removeCountry(country)}
                   disabled={disabled}
-                  className="text-gray-500 hover:text-zinc-400 transition-colors disabled:opacity-50"
+                  className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                   title={`Remove ${country}`}
                 >
                   <X size={16} />
@@ -258,11 +258,11 @@ export function LocationPicker({
               </div>
 
               {/* Cities for this country */}
-              <div className="pl-4 border-l border-white/5">
+              <div className="pl-4 border-l border-border/60">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Cities</span>
+                  <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Cities</span>
                   {selectedForCountry.length > 0 && (
-                    <span className="text-xs text-gray-600">{selectedForCountry.length} selected</span>
+                    <span className="text-xs text-muted-foreground">{selectedForCountry.length} selected</span>
                   )}
                 </div>
                 
@@ -270,14 +270,14 @@ export function LocationPicker({
                   {selectedForCountry.map(city => (
                     <div
                       key={city}
-                      className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.02] border border-white/5 rounded-md text-xs text-gray-400 hover:border-white/10 hover:text-gray-300 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1 bg-muted/40 border border-border/60 rounded-md text-xs text-foreground hover:border-border transition-colors"
                     >
                       <span>{city}</span>
                       <button
                         type="button"
                         onClick={() => removeCity(city)}
                         disabled={disabled}
-                        className="text-gray-500 hover:text-white transition-colors disabled:opacity-50"
+                        className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                       >
                         <X size={12} />
                       </button>

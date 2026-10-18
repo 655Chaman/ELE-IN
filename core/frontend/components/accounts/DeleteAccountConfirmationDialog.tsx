@@ -60,24 +60,24 @@ export default function DeleteAccountConfirmationDialog({
                 transition={{ duration: 0.2 }}
                 className="fixed left-[50%] top-[50%] z-[101] w-full max-w-md translate-x-[-50%] translate-y-[-50%] p-4"
               >
-                <div className="rounded-[20px] bg-white shadow-2xl border border-gray-100 p-6">
+                <div className="rounded-xl bg-card shadow-2xl border border-border text-card-foreground p-6">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                         <AlertTriangle size={20} />
                       </div>
                       <div>
-                        <Dialog.Title className="text-[18px] font-bold text-gray-900">
+                        <Dialog.Title className="text-[18px] font-bold text-foreground">
                           Disconnect {accountName}?
                         </Dialog.Title>
-                        <Dialog.Description className="mt-1 text-[14px] text-gray-500 leading-relaxed">
-                          This will disconnect <span className="font-semibold text-gray-900">{accountName}</span> from Ele-in. Any campaigns using this account will be paused.
+                        <Dialog.Description className="mt-1 text-[14px] text-muted-foreground leading-relaxed">
+                          This will disconnect <span className="font-semibold text-foreground">{accountName}</span> from Ele-in. Any campaigns using this account will be paused.
                         </Dialog.Description>
                         {deleteError && <p className='text-destructive text-xs mt-2'>{deleteError}</p>}
                       </div>
                     </div>
                     <Dialog.Close asChild>
-                      <button className="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                      <button type="button" aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                         <X size={16} />
                       </button>
                     </Dialog.Close>
@@ -86,6 +86,7 @@ export default function DeleteAccountConfirmationDialog({
                   <div className="mt-8 flex justify-end gap-3">
                     <Dialog.Close asChild>
                       <button
+                        type="button"
                         autoFocus
                         disabled={isDeleting}
                         className="rounded-lg bg-muted px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted/80 disabled:opacity-50"
@@ -94,6 +95,7 @@ export default function DeleteAccountConfirmationDialog({
                       </button>
                     </Dialog.Close>
                     <button
+                      type="button"
                       onClick={handleDelete}
                       disabled={isDeleting}
                       className="flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-bold text-destructive-foreground shadow-sm transition-all hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed"

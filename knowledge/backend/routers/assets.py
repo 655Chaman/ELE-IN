@@ -716,9 +716,18 @@ async def test_objection(
         
     synthesis_layer = f"CORE VALUE PROP:\n{synthesis.get('core_value_prop', '')}\n\n"
     if isinstance(synthesis.get('key_differentiators'), list):
-        synthesis_layer += f"KEY DIFFERENTIATORS:\n{', '.join(synthesis.get('key_differentiators', []))}\n\n"
+        diffs = [str(x).strip() for x in synthesis.get('key_differentiators', []) if x is not None and str(x).strip()]
+        if diffs:
+            synthesis_layer += f"KEY DIFFERENTIATORS:\n{', '.join(diffs)}\n\n"
+    elif synthesis.get('key_differentiators'):
+        synthesis_layer += f"KEY DIFFERENTIATORS:\n{str(synthesis.get('key_differentiators')).strip()}\n\n"
+
     if isinstance(synthesis.get('proof_points'), list):
-        synthesis_layer += f"PROOF POINTS:\n{', '.join(synthesis.get('proof_points', []))}\n\n"
+        proofs = [str(x).strip() for x in synthesis.get('proof_points', []) if x is not None and str(x).strip()]
+        if proofs:
+            synthesis_layer += f"PROOF POINTS:\n{', '.join(proofs)}\n\n"
+    elif synthesis.get('proof_points'):
+        synthesis_layer += f"PROOF POINTS:\n{str(synthesis.get('proof_points')).strip()}\n\n"
         
     system_prompt = f"""You are an elite Sales Development Representative handling objections.
 

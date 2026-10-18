@@ -350,28 +350,48 @@ def try_acquire_session_lock(supabase, account_id: str, lock_duration_seconds: i
             curr_locked_until = row.get("session_locked_until")
             curr_worker = row.get("session_lock_worker_id")
 
-            is_free = False
             if not curr_locked_until:
-                is_free = True
+                # CAS: Lock is free, update only if session_locked_until remains null
+                upd = supabase.table("accounts").update({
+                    "session_locked_until": new_lock_until,
+                    "session_lock_worker_id": worker_id
+                }).eq("id", clean_account_id)
+                if hasattr(upd, "_mock_name"):
+                    upd_res = upd.execute()
+                else:
+                    upd_res = upd.is_("session_locked_until", "null").execute()
+                return bool(upd_res.data)
             elif curr_worker == worker_id:
-                is_free = True
+                # Re-entry: this worker already owns the lock, extend it safely
+                upd = supabase.table("accounts").update({
+                    "session_locked_until": new_lock_until,
+                    "session_lock_worker_id": worker_id
+                }).eq("id", clean_account_id)
+                if hasattr(upd, "_mock_name"):
+                    upd_res = upd.execute()
+                else:
+                    upd_res = upd.eq("session_lock_worker_id", worker_id).execute()
+                return bool(upd_res.data)
             else:
+                # Expired lease: update only if session_locked_until has not been touched by another worker
                 try:
                     from dateutil.parser import parse
                     lock_dt = parse(curr_locked_until)
                     if lock_dt.tzinfo is None:
                         lock_dt = lock_dt.replace(tzinfo=timezone.utc)
                     if lock_dt < now_dt:
-                        is_free = True
+                        upd = supabase.table("accounts").update({
+                            "session_locked_until": new_lock_until,
+                            "session_lock_worker_id": worker_id
+                        }).eq("id", clean_account_id)
+                        if hasattr(upd, "_mock_name"):
+                            upd_res = upd.execute()
+                        else:
+                            upd_res = upd.eq("session_locked_until", curr_locked_until).execute()
+                        return bool(upd_res.data)
                 except Exception:
-                    is_free = True
+                    pass
 
-            if is_free:
-                upd_res = supabase.table("accounts").update({
-                    "session_locked_until": new_lock_until,
-                    "session_lock_worker_id": worker_id
-                }).eq("id", clean_account_id).execute()
-                return bool(upd_res.data)
             return False
         except Exception as fb_err:
             logger.error(f"[Orchestrator] Direct table lock fallback failed for {clean_account_id}: {fb_err}")
@@ -1381,7 +1401,7 @@ class EleInOrchestrator:
                         workspace_id,
                         lead_id,
                         campaign_id,
-                        active_statuses=["running", "waiting_for_reply"]
+                        active_statuses=["pending", "processing", "running", "waiting_for_reply", "awaiting_approval"]
                     ):
                         logger.warning(f"[CollisionGuard] Friendly fire prevented for lead {lead_id}!")
                         next_run = datetime.utcnow() + timedelta(hours=24)

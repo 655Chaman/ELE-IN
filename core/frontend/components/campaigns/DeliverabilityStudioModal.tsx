@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { fetchWithAuth as apiFetch } from "../../lib/apiClient";
 import { usePaywall } from "../../contexts/PaywallContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export interface DnsCheckResult {
   valid: boolean;
@@ -91,105 +92,19 @@ interface DeliverabilityStudioModalProps {
   canDeliverabilityPool?: boolean;
 }
 
-const DEMO_PRESETS = [
-  {
-    label: "Google Workspace + SendGrid (Healthy 100%)",
-    domain: "acmecorp.com",
-    selector: "elein",
-    subdomain: "track",
-    mock: {
-      spf: ["v=spf1 include:_spf.google.com include:sendgrid.net ~all"],
-      dkim: ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"],
-      dmarc: ["v=DMARC1; p=reject; rua=mailto:dmarc@acmecorp.com"],
-      cname: "track.elein.ai",
-      ssl_verified: true,
-    },
-  },
-  {
-    label: "Permissive DMARC + Missing SSL Warning (72%)",
-    domain: "tryhypergrowth.io",
-    selector: "default",
-    subdomain: "track",
-    mock: {
-      spf: ["v=spf1 include:sendgrid.net ~all"],
-      dkim: ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890abcdef"],
-      dmarc: ["v=DMARC1; p=none; rua=mailto:admin@tryhypergrowth.io"],
-      cname: "track.elein.ai",
-      ssl_verified: false,
-    },
-  },
-  {
-    label: "RFC 7208 Multiple SPF Collision (Critical 28%)",
-    domain: "vulnerable-sales.com",
-    selector: "elein",
-    subdomain: "track",
-    mock: {
-      spf: [
-        "v=spf1 include:_spf.google.com ~all",
-        "v=spf1 include:mailgun.org +all",
-      ],
-      dkim: [],
-      dmarc: ["v=DMARC1; p=none;"],
-      cname: "unconfigured.dns.provider",
-      ssl_verified: false,
-    },
-  },
-];
-
-const SAMPLE_INBOX_POOL = [
-  {
-    id: "inb-alpha",
-    email: "sarah@outreach.acmecorp.com",
-    provider: "google_workspace",
-    status: "ACTIVE",
-    daily_limit: 60,
-    warmup_days_active: 8,
-    warmup_start_limit: 15,
-    sent_today: 18,
-    deliverability_score: 98,
-    bounce_rate: 0.8,
-  },
-  {
-    id: "inb-beta",
-    email: "alex@outreach2.acmecorp.com",
-    provider: "sendgrid",
-    status: "ACTIVE",
-    daily_limit: 60,
-    warmup_days_active: 14,
-    warmup_start_limit: 15,
-    sent_today: 34,
-    deliverability_score: 94,
-    bounce_rate: 1.2,
-  },
-  {
-    id: "inb-gamma",
-    email: "jordan@mail.acmecorp.com",
-    provider: "ses",
-    status: "QUARANTINED",
-    daily_limit: 50,
-    warmup_days_active: 3,
-    warmup_start_limit: 15,
-    sent_today: 12,
-    deliverability_score: 62,
-    bounce_rate: 3.1, // Crossed 2.5% tripwire!
-    quarantine_reason: "BOUNCE_RATE_EXCEEDED (3.1% >= 2.5%)",
-  },
-];
-
 export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps> = ({
   isOpen,
   onClose,
-  initialDomain = "acmecorp.com",
+  initialDomain = "",
   canDeliverabilityPool = true,
 }) => {
   const { openPaywall } = usePaywall();
   const [activeTab, setActiveTab] = useState<"dns" | "pool" | "rewriter">("dns");
 
   // DNS Inspector State
-  const [domain, setDomain] = useState<string>(initialDomain || "acmecorp.com");
+  const [domain, setDomain] = useState<string>(initialDomain || "");
   const [selector, setSelector] = useState<string>("elein");
   const [trackingSubdomain, setTrackingSubdomain] = useState<string>("track");
-  const [activeMock, setActiveMock] = useState<any>(DEMO_PRESETS[0].mock);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [dnsResult, setDnsResult] = useState<DnsCheckResult | null>(null);
   const [dnsError, setDnsError] = useState<string | null>(null);
@@ -221,7 +136,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
     return d;
   };
 
-  const handleVerifyDns = async (targetDomain?: string, mockOverride?: any) => {
+  const handleVerifyDns = async (targetDomain?: string) => {
     if (isVerifying) return;
     const sanitized = cleanDomain(targetDomain || domain);
     if (!sanitized) {
@@ -253,7 +168,6 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
           dkim_selector: selector.trim() || "elein",
           tracking_subdomain: trackingSubdomain.trim() || "track",
           expected_cname_target: "track.elein.ai",
-          mock_records: mockOverride !== undefined ? mockOverride : activeMock,
         }),
       });
 
@@ -297,7 +211,6 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           strategy: rotationStrategy,
-          candidate_inboxes: SAMPLE_INBOX_POOL,
         }),
       });
 
@@ -328,7 +241,9 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
 
   useEffect(() => {
     if (isOpen) {
-      handleVerifyDns(domain, DEMO_PRESETS[0].mock);
+      if (domain) {
+        handleVerifyDns(domain);
+      }
       handleEvaluatePool();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,7 +257,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
   const rewrittenPreview = sampleEmailBody.replace(
     /https?:\/\/[^\s]+/g,
     (match) =>
-      `https://${trackingSubdomain || "track"}.${cleanDomain(domain) || "acmecorp.com"}/t/c/${btoa(
+      `https://${trackingSubdomain || "track"}.${cleanDomain(domain) || "yourdomain.com"}/t/c/${btoa(
         match
       ).substring(0, 16)}`
   );
@@ -353,7 +268,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl rounded-2xl bg-background border border-border shadow-lg overflow-hidden text-foreground my-8"
+        className="relative w-full max-w-4xl rounded-xl bg-background border border-border shadow-lg overflow-hidden text-foreground my-8"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Strip */}
@@ -463,25 +378,6 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
                     <Globe className="w-3.5 h-3.5 text-muted-foreground" />
                     Target Sending Domain &amp; Selectors
                   </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted-foreground">Presets:</span>
-                    {DEMO_PRESETS.map((p, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setDomain(p.domain);
-                          setSelector(p.selector);
-                          setTrackingSubdomain(p.subdomain);
-                          setActiveMock(p.mock);
-                          handleVerifyDns(p.domain, p.mock);
-                        }}
-                        className="text-[10px] px-2 py-0.5 rounded-md bg-muted/40 hover:bg-muted text-foreground border border-border transition-colors"
-                      >
-                        {p.label.split(" ")[0]}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -490,7 +386,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
                       type="text"
                       value={domain}
                       onChange={(e) => setDomain(e.target.value)}
-                      placeholder="e.g. acmecorp.com"
+                      placeholder="e.g. yourcompany.com"
                       className="w-full px-3 py-2 rounded-md bg-background border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
@@ -513,7 +409,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
                     />
                     <button
                       type="button"
-                      onClick={() => handleVerifyDns(domain, activeMock)}
+                      onClick={() => handleVerifyDns(domain)}
                       disabled={isVerifying}
                       className="px-3.5 py-2 rounded-md bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium text-xs flex items-center gap-1.5 transition-colors shrink-0"
                     >
@@ -728,15 +624,19 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select
+                  <Select
                     value={rotationStrategy}
-                    onChange={(e: any) => setRotationStrategy(e.target.value)}
-                    className="px-3 py-1.5 rounded-md bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    onValueChange={(val: any) => setRotationStrategy(val)}
                   >
-                    <option value="HEALTH_WEIGHTED">HEALTH_WEIGHTED (Deliverability Score Weighted)</option>
-                    <option value="ROUND_ROBIN">ROUND_ROBIN (Equal Volume Distribution)</option>
-                    <option value="CAPACITY_FIRST">CAPACITY_FIRST (Fill Largest Remaining Headroom)</option>
-                  </select>
+                    <SelectTrigger size="sm" className="w-[320px] bg-background border-border text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="HEALTH_WEIGHTED">HEALTH_WEIGHTED (Deliverability Score Weighted)</SelectItem>
+                      <SelectItem value="ROUND_ROBIN">ROUND_ROBIN (Equal Volume Distribution)</SelectItem>
+                      <SelectItem value="CAPACITY_FIRST">CAPACITY_FIRST (Fill Largest Remaining Headroom)</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <button
                     type="button"
                     onClick={handleEvaluatePool}
@@ -752,17 +652,26 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
               {/* Pool Inboxes Roster */}
               <div className="space-y-3">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Active Sender Inboxes in Pool ({SAMPLE_INBOX_POOL.length})
+                  Active Sender Inboxes in Pool ({poolResult?.pool_summary?.healthy_candidates ?? (poolResult?.selected ? 1 : 0)})
                 </div>
-                <div className="space-y-2.5">
-                  {SAMPLE_INBOX_POOL.map((inbox) => {
-                    const rampCap = inbox.warmup_start_limit + inbox.warmup_days_active * 5;
-                    const effectiveCap = Math.min(inbox.daily_limit, rampCap);
-                    const isQuarantined = inbox.status === "QUARANTINED";
 
-                    return (
+                {(!poolResult || (poolResult.pool_summary.total_candidates === 0 && !poolResult.selected)) ? (
+                  <div className="p-8 rounded-lg border border-border bg-card text-center space-y-3">
+                    <div className="w-10 h-10 rounded-full bg-muted/40 border border-border flex items-center justify-center mx-auto text-muted-foreground">
+                      <Mail className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold text-foreground">No Sending Inboxes Configured</div>
+                      <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+                        Connect your sender inboxes (Google Workspace, SendGrid, AWS SES) in workspace settings to enable deliverability pool rotation, linear warmup ramping, and automated tripwire protection.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {poolResult.selected && (
                       <div
-                        key={inbox.id}
+                        key={poolResult.selected.id}
                         className="p-4 rounded-lg border border-border bg-card transition-colors"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -772,62 +681,59 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
                             </div>
                             <div>
                               <div className="text-xs font-semibold text-foreground flex items-center gap-2">
-                                {inbox.email}
-                                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono uppercase bg-muted text-muted-foreground border border-border">
-                                  {inbox.provider}
-                                </span>
-                                {isQuarantined ? (
-                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground border border-border">
-                                    Quarantined (Tripwire Tripped)
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-primary/10 text-foreground border border-border">
-                                    Active (Day {inbox.warmup_days_active} Warmup)
+                                {poolResult.selected.email}
+                                {poolResult.selected.provider && (
+                                  <span className="px-1.5 py-0.5 rounded-md text-[9px] font-mono uppercase bg-muted text-muted-foreground border border-border">
+                                    {poolResult.selected.provider}
                                   </span>
                                 )}
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-primary/10 text-foreground border border-border">
+                                  Active (Optimal)
+                                </span>
                               </div>
                               <div className="text-[10px] text-muted-foreground mt-0.5">
-                                Health: <strong className="text-foreground">{inbox.deliverability_score}%</strong> - Bounce Rate:{" "}
-                                <strong className="text-foreground">
-                                  {inbox.bounce_rate}%
-                                </strong>{" "}
-                                (Tripwire: 2.5%)
+                                Health: <strong className="text-foreground">{poolResult.selected.deliverability_score}%</strong>
                               </div>
                             </div>
                           </div>
 
                           <div className="text-right">
                             <div className="text-xs font-semibold text-foreground">
-                              {inbox.sent_today} / {effectiveCap} sent today
+                              {poolResult.selected.sent_today} / {poolResult.selected.effective_daily_cap || poolResult.selected.daily_limit} sent today
                             </div>
                             <div className="text-[10px] text-muted-foreground">
-                              Warmup Cap: {effectiveCap} (Max {inbox.daily_limit}/day)
+                              Daily Cap: {poolResult.selected.effective_daily_cap || poolResult.selected.daily_limit} (Max {poolResult.selected.daily_limit}/day)
                             </div>
                           </div>
                         </div>
 
-                        {/* Progress Bar */}
                         <div className="mt-3 w-full bg-muted rounded-full h-1.5 overflow-hidden">
                           <div
-                            style={{ width: `${Math.min(100, (inbox.sent_today / effectiveCap) * 100)}%` }}
-                            className={`h-full rounded-full transition-all ${
-                              isQuarantined ? "bg-muted-foreground" : "bg-primary"
-                            }`}
+                            style={{ width: `${Math.min(100, (poolResult.selected.sent_today / Math.max(1, poolResult.selected.effective_daily_cap || poolResult.selected.daily_limit)) * 100)}%` }}
+                            className="h-full rounded-full transition-all bg-primary"
                           />
                         </div>
-
-                        {isQuarantined && inbox.quarantine_reason && (
-                          <div className="mt-2.5 p-2 rounded-md bg-muted/30 border border-border text-[10px] text-muted-foreground flex items-center gap-1.5">
-                            <AlertTriangle className="w-3 h-3 shrink-0" />
-                            <span>
-                              <strong className="text-foreground">Automated Tripwire:</strong> {inbox.quarantine_reason}. Cooldown active for 24h to protect IP reputation.
-                            </span>
-                          </div>
-                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+
+                    {poolResult.pool_summary.rejected && poolResult.pool_summary.rejected.map((rej) => (
+                      <div
+                        key={rej.id}
+                        className="p-4 rounded-lg border border-border bg-card/60 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-xs font-mono text-muted-foreground">{rej.email || rej.id}</span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                            {rej.reason}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Pool Simulation Test Outcome */}

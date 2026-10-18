@@ -263,7 +263,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
 
   return (
     <div className="space-y-6 max-w-4xl text-foreground">
-      <div className="p-6 rounded-2xl border border-border bg-card shadow-xs">
+      <div className="p-6 rounded-xl border border-border bg-card shadow-xs">
         <div className="flex items-center gap-3.5 mb-6">
           <div className="p-2.5 bg-primary/10 rounded-xl text-primary border border-primary/20">
             <Bell size={20} />
@@ -308,6 +308,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
               </div>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Custom Notification Routing & Daily Digest" })}
               className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium shrink-0 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
@@ -367,7 +368,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
       </div>
 
       {/* Real-time Multi-Channel Webhook & Slack Routing Cards */}
-      <div className="p-6 rounded-2xl border border-border bg-card shadow-xs">
+      <div className="p-6 rounded-xl border border-border bg-card shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div>
             <div className="flex items-center gap-2">
@@ -384,6 +385,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
           </div>
           {isNotificationLocked && (
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Multi-Channel Alert Dispatcher" })}
               className="px-3 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-medium shrink-0 flex items-center gap-1.5 transition-colors self-start sm:self-auto cursor-pointer border border-border"
             >

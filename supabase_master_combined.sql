@@ -429,20 +429,25 @@ CREATE TABLE IF NOT EXISTS public.campaign_enrollments (
     campaign_id         UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
     campaign_version_id UUID NOT NULL,
     lead_id             UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
-    account_id          UUID NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
+    account_id          UUID REFERENCES public.accounts(id) ON DELETE SET NULL,
     workspace_id        UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
     status              TEXT NOT NULL DEFAULT 'active',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_campaign_enrollments_id_ws UNIQUE (id, workspace_id),
-    CONSTRAINT fk_enrollment_version_integrity FOREIGN KEY (campaign_version_id, campaign_id) REFERENCES public.campaign_versions (id, campaign_id)
+    CONSTRAINT uq_campaign_lead_enrollment UNIQUE (campaign_id, lead_id),
+    CONSTRAINT fk_enrollment_version_integrity FOREIGN KEY (campaign_version_id, campaign_id) REFERENCES public.campaign_versions (id, campaign_id) ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_campaign_enrollments_id_ws_idx ON public.campaign_enrollments (id, workspace_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_enrollments_campaign_status ON public.campaign_enrollments (campaign_id, status);
+CREATE INDEX IF NOT EXISTS idx_campaign_enrollments_lead_id ON public.campaign_enrollments (lead_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_enrollments_account_id ON public.campaign_enrollments (account_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_enrollments_workspace_id ON public.campaign_enrollments (workspace_id);
 
 CREATE TABLE IF NOT EXISTS public.campaign_execution_states (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    enrollment_id    UUID NOT NULL REFERENCES public.campaign_enrollments(id) ON DELETE CASCADE,
+    enrollment_id    UUID NOT NULL UNIQUE REFERENCES public.campaign_enrollments(id) ON DELETE CASCADE,
     workspace_id     UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
     current_node_id  TEXT,
     status           TEXT NOT NULL DEFAULT 'pending',
@@ -456,14 +461,16 @@ CREATE TABLE IF NOT EXISTS public.campaign_execution_states (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_ces_enrollment_id ON public.campaign_execution_states (enrollment_id);
+
 CREATE TABLE IF NOT EXISTS public.campaign_node_executions (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     idempotency_key     TEXT UNIQUE NOT NULL,
     status              TEXT NOT NULL DEFAULT 'running',
     node_id             TEXT NOT NULL,
-    workspace_id        UUID,
-    enrollment_id       UUID,
-    campaign_version_id UUID,
+    workspace_id        UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+    enrollment_id       UUID NOT NULL REFERENCES public.campaign_enrollments(id) ON DELETE CASCADE,
+    campaign_version_id UUID NOT NULL REFERENCES public.campaign_versions(id) ON DELETE CASCADE,
     node_type           TEXT,
     attempt             INT,
     error_code          TEXT,
@@ -629,6 +636,48 @@ CREATE TABLE IF NOT EXISTS public.proxies (
 CREATE INDEX IF NOT EXISTS idx_proxies_workspace ON public.proxies(workspace_id);
 ALTER TABLE IF EXISTS public.proxies ADD COLUMN IF NOT EXISTS password TEXT, ADD COLUMN IF NOT EXISTS country TEXT, ADD COLUMN IF NOT EXISTS exit_ip TEXT, ADD COLUMN IF NOT EXISTS latency_ms INTEGER DEFAULT 0, ADD COLUMN IF NOT EXISTS quarantined_until TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS failure_count INTEGER DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_proxies_active ON public.proxies(workspace_id, status);
+
+-- ==============================================================================
+-- Core Campaign & CRM Tables Row Level Security (RLS)
+-- ==============================================================================
+ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_enrollments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_execution_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_node_executions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lead_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campaigns' AND policyname = 'campaigns_ws_policy') THEN
+        CREATE POLICY campaigns_ws_policy ON public.campaigns FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campaign_versions' AND policyname = 'campaign_versions_ws_policy') THEN
+        CREATE POLICY campaign_versions_ws_policy ON public.campaign_versions FOR ALL USING (
+            campaign_id IN (SELECT id FROM public.campaigns WHERE workspace_id IN (SELECT public.my_workspace_ids()))
+        );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campaign_enrollments' AND policyname = 'campaign_enrollments_ws_policy') THEN
+        CREATE POLICY campaign_enrollments_ws_policy ON public.campaign_enrollments FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campaign_execution_states' AND policyname = 'campaign_execution_states_ws_policy') THEN
+        CREATE POLICY campaign_execution_states_ws_policy ON public.campaign_execution_states FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'campaign_node_executions' AND policyname = 'campaign_node_executions_ws_policy') THEN
+        CREATE POLICY campaign_node_executions_ws_policy ON public.campaign_node_executions FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'leads' AND policyname = 'leads_ws_policy') THEN
+        CREATE POLICY leads_ws_policy ON public.leads FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'lead_lists' AND policyname = 'lead_lists_ws_policy') THEN
+        CREATE POLICY lead_lists_ws_policy ON public.lead_lists FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'accounts' AND policyname = 'accounts_ws_policy') THEN
+        CREATE POLICY accounts_ws_policy ON public.accounts FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()));
+    END IF;
+END $$;
 
 ALTER TABLE public.proxies ENABLE ROW LEVEL SECURITY;
 

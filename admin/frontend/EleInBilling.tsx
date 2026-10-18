@@ -11,6 +11,7 @@ import { fetchWithAuth } from "@/lib/apiClient"
 import { CancelSubscriptionModal } from "@/components/billing/CancelSubscriptionModal"
 import { CreditTopUpModal } from "@/components/billing/CreditTopUpModal"
 import { EleInPaywallModal } from "@campaigns/EleInPaywallModal"
+import { CustomSelect } from "@/components/ui/select"
 
 function sanitizeCsvCell(value: any): string {
   const str = String(value ?? "");
@@ -762,20 +763,22 @@ export function EleInBilling() {
                                 <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
                                   Trigger Balance
                                 </label>
-                                <select
-                                  value={thresholdCredits}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setThresholdCredits(val);
-                                    handleSaveAutoRecharge({ threshold_credits: val });
+                                <CustomSelect
+                                  value={String(thresholdCredits)}
+                                  onValueChange={(val) => {
+                                    const numVal = Number(val);
+                                    setThresholdCredits(numVal);
+                                    handleSaveAutoRecharge({ threshold_credits: numVal });
                                   }}
-                                  className="w-full text-xs font-medium rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-foreground focus:outline-none focus:border-primary"
-                                >
-                                  <option value={50}>When balance drops &lt; 50</option>
-                                  <option value={100}>When balance drops &lt; 100 (Default)</option>
-                                  <option value={250}>When balance drops &lt; 250 (High Volume)</option>
-                                  <option value={500}>When balance drops &lt; 500 (Enterprise)</option>
-                                </select>
+                                  size="sm"
+                                  triggerClassName="w-full text-xs font-medium rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-foreground focus-visible:ring-primary focus-visible:border-primary"
+                                  options={[
+                                    { value: "50", label: "When balance drops < 50" },
+                                    { value: "100", label: "When balance drops < 100 (Default)" },
+                                    { value: "250", label: "When balance drops < 250 (High Volume)" },
+                                    { value: "500", label: "When balance drops < 500 (Enterprise)" },
+                                  ]}
+                                />
                               </div>
 
                               {/* Recharge Package Selector */}
@@ -783,18 +786,19 @@ export function EleInBilling() {
                                 <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
                                   Top-Up Amount
                                 </label>
-                                <select
+                                <CustomSelect
                                   value={rechargePackageId}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
+                                  onValueChange={(val) => {
                                     setRechargePackageId(val);
                                     handleSaveAutoRecharge({ recharge_package_id: val });
                                   }}
-                                  className="w-full text-xs font-medium rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-foreground focus:outline-none focus:border-primary"
-                                >
-                                  <option value="credits_1000">1,000 Credits ({provider === 'razorpay' ? '₹999' : '$12'})</option>
-                                  <option value="credits_5000">5,000 Credits ({provider === 'razorpay' ? '₹4,499' : '$55'}) — 10% Off</option>
-                                </select>
+                                  size="sm"
+                                  triggerClassName="w-full text-xs font-medium rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-foreground focus-visible:ring-primary focus-visible:border-primary"
+                                  options={[
+                                    { value: "credits_1000", label: `1,000 Credits (${provider === 'razorpay' ? '₹999' : '$12'})` },
+                                    { value: "credits_5000", label: `5,000 Credits (${provider === 'razorpay' ? '₹4,499' : '$55'}) — 10% Off` },
+                                  ]}
+                                />
                               </div>
 
                               {/* Safety Circuit Breaker Selector */}
@@ -802,20 +806,22 @@ export function EleInBilling() {
                                 <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
                                   Monthly Safety Cap
                                 </label>
-                                <select
-                                  value={maxMonthlyRecharges}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setMaxMonthlyRecharges(val);
-                                    handleSaveAutoRecharge({ max_monthly_recharges: val });
+                                <CustomSelect
+                                  value={String(maxMonthlyRecharges)}
+                                  onValueChange={(val) => {
+                                    const numVal = Number(val);
+                                    setMaxMonthlyRecharges(numVal);
+                                    handleSaveAutoRecharge({ max_monthly_recharges: numVal });
                                   }}
-                                  className="w-full text-xs font-medium rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-foreground focus:outline-none focus:border-primary"
-                                >
-                                  <option value={2}>Max 2 charges / mo</option>
-                                  <option value={5}>Max 5 charges / mo (Recommended)</option>
-                                  <option value={10}>Max 10 charges / mo</option>
-                                  <option value={20}>Max 20 charges / mo (High Velocity)</option>
-                                </select>
+                                  size="sm"
+                                  triggerClassName="w-full text-xs font-medium rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-foreground focus-visible:ring-primary focus-visible:border-primary"
+                                  options={[
+                                    { value: "2", label: "Max 2 charges / mo" },
+                                    { value: "5", label: "Max 5 charges / mo (Recommended)" },
+                                    { value: "10", label: "Max 10 charges / mo" },
+                                    { value: "20", label: "Max 20 charges / mo (High Velocity)" },
+                                  ]}
+                                />
                               </div>
                             </div>
 

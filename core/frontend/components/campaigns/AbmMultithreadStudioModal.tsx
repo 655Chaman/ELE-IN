@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -467,7 +468,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl h-[90vh] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
+      <div className="relative w-full max-w-6xl h-[90vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
         
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
@@ -480,6 +481,7 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => {
                 mutateAccounts();
                 mutateCommittee();
@@ -487,13 +489,16 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
               }}
               className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors"
               title="Refresh Account Data"
+              aria-label="Refresh Account Data"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
             {onClose && (
               <button
+                type="button"
                 onClick={onClose}
                 className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors"
+                aria-label="Close dialog"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -605,16 +610,20 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                     />
                   </div>
 
-                  <select
+                  <Select
                     value={tierFilter}
-                    onChange={(e) => setTierFilter(e.target.value)}
-                    className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground"
+                    onValueChange={(val) => setTierFilter(val)}
                   >
-                    <option value="all">All Tiers</option>
-                    <option value="tier_1">Tier 1 Strategic</option>
-                    <option value="tier_2">Tier 2 Mid-Market</option>
-                    <option value="tier_3">Tier 3 Growth</option>
-                  </select>
+                    <SelectTrigger size="sm" className="w-[140px] bg-background border-border text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Tiers</SelectItem>
+                      <SelectItem value="tier_1">Tier 1 Strategic</SelectItem>
+                      <SelectItem value="tier_2">Tier 2 Mid-Market</SelectItem>
+                      <SelectItem value="tier_3">Tier 3 Growth</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -742,19 +751,23 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
               <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/40 p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">Viewing Account:</span>
-                  <select
+                  <Select
                     value={selectedAccountId}
-                    onChange={(e) => {
-                      setSelectedAccountId(e.target.value);
-                      const acc = displayAccounts.find(a => a.id === e.target.value);
+                    onValueChange={(val) => {
+                      setSelectedAccountId(val);
+                      const acc = displayAccounts.find(a => a.id === val);
                       if (acc) setCopyCompany(acc.company_name);
                     }}
-                    className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground font-medium focus:outline-none focus:border-foreground"
                   >
-                    {displayAccounts.map(a => (
-                      <option key={a.id} value={a.id}>{a.company_name} ({a.domain})</option>
-                    ))}
-                  </select>
+                    <SelectTrigger size="sm" className="w-[240px] bg-background border-border text-xs font-medium">
+                      <SelectValue placeholder="Select account..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {displayAccounts.map(a => (
+                        <SelectItem key={a.id} value={a.id}>{a.company_name} ({a.domain})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -869,17 +882,21 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                         </td>
 
                         <td className="py-3.5 px-3">
-                          <select
+                          <Select
                             value={m.status}
                             disabled={updatingMemberId === m.id}
-                            onChange={(e) => handleUpdateMemberStatus(m.id, e.target.value as CommitteeMember['status'])}
-                            className="bg-background border border-border rounded-lg px-2.5 py-1 text-[11px] font-medium text-foreground focus:outline-none focus:border-foreground disabled:opacity-50"
+                            onValueChange={(val) => handleUpdateMemberStatus(m.id, val as CommitteeMember['status'])}
                           >
-                            <option value="uncontacted">Uncontacted (+0 pts)</option>
-                            <option value="engaged">Engaged (+10 pts)</option>
-                            <option value="replied">Replied (+25 pts)</option>
-                            <option value="meeting_booked">Meeting Booked (+40 pts)</option>
-                          </select>
+                            <SelectTrigger size="sm" className="w-[170px] bg-background border-border text-[11px] font-medium h-7">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="uncontacted">Uncontacted (+0 pts)</SelectItem>
+                              <SelectItem value="engaged">Engaged (+10 pts)</SelectItem>
+                              <SelectItem value="replied">Replied (+25 pts)</SelectItem>
+                              <SelectItem value="meeting_booked">Meeting Booked (+40 pts)</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </td>
 
                         <td className="py-3.5 px-4 text-right">
@@ -1054,13 +1071,13 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         {/* Launch Staggered Sequence Modal */}
         {launchModalOpen && targetLaunchAccount && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-            <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-5 text-card-foreground">
+            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-5 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Rocket className="w-4 h-4 text-muted-foreground" />
                   <h3 className="font-semibold text-foreground text-base">Launch Multithreaded Cascade</h3>
                 </div>
-                <button onClick={() => setLaunchModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setLaunchModalOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -1073,18 +1090,22 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
                 <div className="space-y-1.5">
                   <label className="font-medium text-muted-foreground">Staggered Delay Interval (Hours):</label>
-                  <select
-                    value={staggerInterval}
-                    onChange={(e) => setStaggerInterval(parseInt(e.target.value, 10))}
-                    className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:outline-none focus:border-foreground"
+                  <Select
+                    value={String(staggerInterval)}
+                    onValueChange={(val) => setStaggerInterval(parseInt(val, 10))}
                   >
-                    <option value={1}>1 Hour (Fast-Paced)</option>
-                    <option value={2}>2 Hours</option>
-                    <option value={4}>4 Hours (Recommended - Optimal Enterprise Spacing)</option>
-                    <option value={8}>8 Hours</option>
-                    <option value={12}>12 Hours</option>
-                    <option value={24}>24 Hours (Conservative 1 touch per day)</option>
-                  </select>
+                    <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 Hour (Fast-Paced)</SelectItem>
+                      <SelectItem value="2">2 Hours</SelectItem>
+                      <SelectItem value="4">4 Hours (Recommended - Optimal Enterprise Spacing)</SelectItem>
+                      <SelectItem value="8">8 Hours</SelectItem>
+                      <SelectItem value="12">12 Hours</SelectItem>
+                      <SelectItem value="24">24 Hours (Conservative 1 touch per day)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="p-3 bg-muted/40 border border-border rounded-lg space-y-1">
@@ -1120,13 +1141,13 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         {/* Add Enterprise Account Modal */}
         {addAccountOpen && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-            <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 text-card-foreground">
+            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-muted-foreground" />
                   <h3 className="font-semibold text-foreground text-base">Add Enterprise Target Account</h3>
                 </div>
-                <button onClick={() => setAddAccountOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setAddAccountOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -1157,15 +1178,19 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="font-medium text-muted-foreground">Account Tier</label>
-                    <select
+                    <Select
                       value={newTier}
-                      onChange={(e) => setNewTier(e.target.value as any)}
-                      className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:outline-none focus:border-foreground"
+                      onValueChange={(val) => setNewTier(val as any)}
                     >
-                      <option value="tier_1">Tier 1 Strategic</option>
-                      <option value="tier_2">Tier 2 Mid-Market</option>
-                      <option value="tier_3">Tier 3 Growth</option>
-                    </select>
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tier_1">Tier 1 Strategic</SelectItem>
+                        <SelectItem value="tier_2">Tier 2 Mid-Market</SelectItem>
+                        <SelectItem value="tier_3">Tier 3 Growth</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-1">
@@ -1186,12 +1211,14 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setAddAccountOpen(false)}
                   className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleCreateAccount}
                   disabled={isSubmittingAccount}
                   className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2"
@@ -1207,13 +1234,13 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
         {/* Add Buying Committee Stakeholder Modal */}
         {addMemberOpen && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-            <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 text-card-foreground">
+            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <UserPlus className="w-4 h-4 text-muted-foreground" />
                   <h3 className="font-semibold text-foreground text-base">Add Buying Committee Stakeholder</h3>
                 </div>
-                <button onClick={() => setAddMemberOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setAddMemberOpen(false)} aria-label="Close dialog" className="text-muted-foreground hover:text-foreground">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -1255,17 +1282,21 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                   </div>
                   <div className="space-y-1">
                     <label className="font-medium text-muted-foreground">Role Archetype</label>
-                    <select
+                    <Select
                       value={newMemberRole}
-                      onChange={(e) => setNewMemberRole(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:outline-none focus:border-foreground"
+                      onValueChange={(val) => setNewMemberRole(val)}
                     >
-                      <option value="auto">Auto-Detect from Title</option>
-                      <option value="economic_buyer">Economic Buyer</option>
-                      <option value="champion">Champion</option>
-                      <option value="technical_evaluator">Technical Evaluator</option>
-                      <option value="end_user">End User Operator</option>
-                    </select>
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto-Detect from Title</SelectItem>
+                        <SelectItem value="economic_buyer">Economic Buyer</SelectItem>
+                        <SelectItem value="champion">Champion</SelectItem>
+                        <SelectItem value="technical_evaluator">Technical Evaluator</SelectItem>
+                        <SelectItem value="end_user">End User Operator</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -1283,12 +1314,14 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setAddMemberOpen(false)}
                   className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground text-xs font-medium"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleAddMember}
                   disabled={isSubmittingMember}
                   className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-2"

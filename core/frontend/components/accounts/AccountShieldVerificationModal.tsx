@@ -174,6 +174,16 @@ export function AccountShieldVerificationModal({
     }
   }, [isOpen, accountId]);
 
+  // Layer 2 Paranoia: Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   // ── Natural Typing Simulator Demo ──
   const handleStartTypingSimulation = async () => {
     if (isTypingSim) return;
@@ -245,27 +255,34 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shield-modal-title"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
-        className="relative w-full max-w-3xl max-h-[92vh] bg-[#0C0D11] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-foreground"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-3xl max-h-[92vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-foreground"
       >
         {/* Cockpit Top Header */}
-        <div className="p-6 border-b border-white/5 bg-gradient-to-r from-primary/10 via-surface/30 to-black/40 flex items-center justify-between shrink-0">
+        <div className="p-6 border-b border-border bg-muted/20 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shadow-md shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shadow-xs shrink-0">
               <ShieldCheck size={22} />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-bold text-lg text-white tracking-tight">Account Shield &amp; Pre-Flight Verification</h3>
+                <h3 id="shield-modal-title" className="font-bold text-lg text-foreground tracking-tight">Account Shield &amp; Pre-Flight Verification</h3>
                 <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   {isScanning ? "Scanning Vitals..." : "100% Vault Sealed"}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Bank-grade multi-pillar verification before dispatching live LinkedIn outreach.
               </p>
             </div>
@@ -274,7 +291,8 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full text-zinc-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer shrink-0"
+            aria-label="Close modal"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer shrink-0"
           >
             <X size={18} />
           </button>
@@ -284,18 +302,18 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Certificate Banner */}
           {verificationData && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-primary/5 to-transparent border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center gap-3">
                 <Award size={20} className="text-emerald-400 shrink-0" />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-white">Clearance Certificate:</span>
-                    <code className="text-xs font-mono font-bold text-emerald-300 bg-black/40 px-2 py-0.5 rounded border border-white/5">
+                    <span className="text-xs font-bold text-foreground">Clearance Certificate:</span>
+                    <code className="text-xs font-mono font-bold text-emerald-500 dark:text-emerald-300 bg-muted/50 px-2 py-0.5 rounded-md border border-border">
                       {verificationData.certificate_id}
                     </code>
                   </div>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">
-                    Account: <strong className="text-zinc-200">{verificationData.account_name}</strong> • Timestamp: {new Date(verificationData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Account: <strong className="text-foreground">{verificationData.account_name}</strong> • Timestamp: {new Date(verificationData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
@@ -304,7 +322,7 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
                 <button
                   type="button"
                   onClick={handleCopyCertificate}
-                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-medium border border-white/10 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 text-xs font-medium border border-border transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   {copiedCert ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                   <span>{copiedCert ? "Copied" : "Copy Receipt"}</span>
@@ -313,7 +331,7 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
                   type="button"
                   onClick={runSecurityScan}
                   disabled={isScanning}
-                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  className="p-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors cursor-pointer"
                   title="Re-run verification scan"
                 >
                   <RefreshCw size={13} className={isScanning ? "animate-spin text-primary" : ""} />
@@ -324,7 +342,7 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
 
           {/* ── THE 5 VAULT PILLARS CHECKLIST (FOCUS FLIGHT PATTERN) ── */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <Shield size={13} className="text-primary" />
               <span>5-Pillar Vault Shield Inspection</span>
             </h4>
@@ -334,25 +352,25 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
               return (
                 <div
                   key={check.id}
-                  className={`p-4 rounded-2xl border transition-all ${
+                  className={`p-4 rounded-lg border transition-all ${
                     isChecked 
-                      ? 'bg-surface/20 border-white/10 hover:border-white/20' 
-                      : 'bg-black/40 border-white/5 opacity-50'
+                      ? 'bg-card border-border hover:border-border/80' 
+                      : 'bg-muted/20 border-border/40 opacity-50'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                        {isChecked ? <CheckCircle2 size={16} /> : <RefreshCw size={14} className="animate-spin text-zinc-500" />}
+                      <div className="w-8 h-8 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                        {isChecked ? <CheckCircle2 size={16} /> : <RefreshCw size={14} className="animate-spin text-muted-foreground" />}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h5 className="font-bold text-sm text-white">{check.name}</h5>
+                          <h5 className="font-bold text-sm text-foreground">{check.name}</h5>
                           <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                             {isChecked ? "VERIFIED PASS" : "SCANNING..."}
                           </span>
                         </div>
-                        <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                           {check.summary}
                         </p>
                       </div>
@@ -361,11 +379,11 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
 
                   {/* Metrics Badges */}
                   {isChecked && check.metrics && (
-                    <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center gap-2 flex-wrap font-mono text-[11px] text-zinc-300">
+                    <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center gap-2 flex-wrap font-mono text-[11px] text-foreground">
                       {Object.entries(check.metrics).map(([k, v]) => (
-                        <span key={k} className="bg-black/40 px-2 py-0.5 rounded border border-white/5">
-                          <strong className="text-zinc-500 font-normal mr-1">{k.replace(/_/g, ' ')}:</strong>
-                          <span className="text-emerald-300 font-semibold">{String(v)}</span>
+                        <span key={k} className="bg-muted/40 px-2 py-0.5 rounded-md border border-border text-muted-foreground">
+                          <strong className="text-muted-foreground font-normal mr-1">{k.replace(/_/g, ' ')}:</strong>
+                          <span className="text-emerald-500 dark:text-emerald-300 font-semibold">{String(v)}</span>
                         </span>
                       ))}
                     </div>
@@ -376,14 +394,14 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
           </div>
 
           {/* ── INTERACTIVE LIVE KEYSTROKE & JITTER SIMULATOR (THE HUMAN PROOF) ── */}
-          <div className="p-5 rounded-2xl bg-black/50 border border-white/10 space-y-3">
+          <div className="p-5 rounded-lg bg-card border border-border space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
                   <Terminal size={13} />
                   <span>Interactive Proof: Natural Keystroke Simulator</span>
                 </h4>
-                <p className="text-[11px] text-zinc-400 mt-0.5">
+                <p className="text-[11px] text-muted-foreground mt-0.5">
                   Witness how Ele-in types messages with human micro-pauses rather than raw copy-paste payloads.
                 </p>
               </div>
@@ -392,7 +410,7 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
                 type="button"
                 onClick={handleStartTypingSimulation}
                 disabled={isTypingSim}
-                className="px-3 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                className="px-3 py-1.5 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
               >
                 <Play size={11} className="fill-current" />
                 <span>{isTypingSim ? "Typing..." : "Simulate Human Typing"}</span>
@@ -400,14 +418,14 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
             </div>
 
             {/* Simulated Message Field */}
-            <div className="p-3.5 rounded-xl bg-black/70 border border-white/10 font-mono text-xs text-zinc-200 min-h-[64px] relative">
+            <div className="p-3.5 rounded-lg bg-muted/30 border border-border font-mono text-xs text-foreground min-h-[64px] relative">
               {simText ? (
                 <span>
                   {simText}
                   {isTypingSim && <span className="inline-block w-2 h-3.5 bg-primary ml-0.5 animate-pulse" />}
                 </span>
               ) : (
-                <span className="text-zinc-600 italic">Click &quot;Simulate Human Typing&quot; above to watch real-time Gaussian jitter in action...</span>
+                <span className="text-muted-foreground italic">Click &quot;Simulate Human Typing&quot; above to watch real-time Gaussian jitter in action...</span>
               )}
 
               {typingCpm > 0 && (
@@ -421,8 +439,8 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
         </div>
 
         {/* Cockpit Footer */}
-        <div className="p-4 border-t border-white/5 bg-surface/30 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <div className="p-4 border-t border-border bg-muted/20 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck size={14} className="text-emerald-400" />
             <span>Vault Protection Core v2.4 Active</span>
           </div>
@@ -430,7 +448,7 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold transition-colors cursor-pointer shadow-md shadow-primary/20"
+            className="px-5 py-2 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-colors cursor-pointer shadow-xs"
           >
             Acknowledge &amp; Proceed
           </button>

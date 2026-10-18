@@ -24,6 +24,7 @@ import { useHRTreeStore, type SeqTreeNode, dagToTree } from "@campaigns/eiTreeSt
 import { HR_TEMPLATES } from "@/lib/eiTemplates"
 import { validateTree } from "@/lib/treeValidator"
 import { EITreeNodeConfigPanel, hasAutoWithdrawConnection } from "./EINodeConfigPanel"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 import { create } from "zustand"
 
@@ -259,7 +260,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
 
           </div>
           <div className="flex items-center gap-2 pointer-events-auto">
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors z-50">
+            <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors z-50">
               <X size={20} />
             </button>
           </div>
@@ -290,6 +291,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                   return (
                     <div key={type} className="relative group h-full">
                       <button
+                        type="button"
                         onClick={() => {
                           if (isLocked) {
                             if (isIcpNode) {
@@ -323,7 +325,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                         {!(def as any).comingSoon && <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: `radial-gradient(circle at center, ${color}15 0%, transparent 70%)` }} />}
                         
                         <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mb-3 border z-10 transition-transform group-hover:scale-105"
+                          className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mb-3 border z-10 transition-colors"
                           style={{ borderColor: `${color}33`, color, background: `${color}10` }}
                         >
                           <Icon size={18} strokeWidth={1.5} />
@@ -353,8 +355,9 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                         )}
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); setInfoNode(type as EINodeType) }}
-                        className="absolute right-2 top-2 p-2 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-all z-20"
+                        className="absolute right-2 top-2 p-2 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-all z-20 cursor-pointer"
                         title="More info"
                       >
                         <Info size={14} />
@@ -368,7 +371,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
         </div>
 
         <div className="flex-none border-t border-border/40 px-6 py-4 bg-background/80">
-          <button onClick={onClose} className="px-5 py-2 rounded-lg border border-border/50 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border bg-muted/20 hover:bg-muted/40 transition-all">
+          <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg border border-border/50 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border bg-muted/20 hover:bg-muted/40 transition-all cursor-pointer">
             Dismiss
           </button>
         </div>
@@ -384,7 +387,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
               onClick={() => setInfoNode(null)}
             >
               <div 
-                className="w-full max-w-sm bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden"
+                className="w-full max-w-sm bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
                 onClick={e => e.stopPropagation()}
               >
                 <div className="p-6 border-b border-border/40 bg-card">
@@ -402,7 +405,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                         return <Icon size={24} />
                       })()}
                     </div>
-                    <button onClick={() => setInfoNode(null)} className="p-2 text-muted-foreground hover:text-foreground bg-muted/50 rounded-lg transition-colors">
+                    <button type="button" onClick={() => setInfoNode(null)} className="p-2 text-muted-foreground hover:text-foreground bg-muted/50 rounded-lg transition-colors cursor-pointer">
                       <X size={16} />
                     </button>
                   </div>
@@ -431,8 +434,9 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                     </div>
                   </div>
                   <button 
+                    type="button"
                     onClick={() => { onPick(infoNode); setInfoNode(null) }}
-                    className="w-full py-2.5 bg-foreground text-background font-bold rounded-lg hover:opacity-90 transition-opacity mt-2"
+                    className="w-full py-2.5 bg-foreground text-background font-bold rounded-lg hover:opacity-90 transition-opacity mt-2 cursor-pointer"
                   >
                     Add to Sequence
                   </button>
@@ -464,8 +468,9 @@ function AddEndPair({ isFirstStep, parentId, branchLabel, onEnd }: AddEndPairPro
   return (
     <div className="flex items-center gap-2">
       <button
+        type="button"
         onClick={() => openPicker(parentId, branchLabel, isFirstStep)}
-        className="w-10 h-10 rounded-xl border border-border/60 bg-card/80 hover:bg-card hover:border-indigo-500/50 hover:shadow-md flex items-center justify-center text-muted-foreground hover:text-indigo-500 dark:hover:text-indigo-400 transition-all shadow-sm relative z-20 active:scale-95 cursor-pointer"
+        className="w-10 h-10 rounded-lg border border-border/60 bg-card/80 hover:bg-card hover:border-primary/50 hover:shadow-md flex items-center justify-center text-muted-foreground hover:text-primary transition-all shadow-sm relative z-20 cursor-pointer"
         title="Add step"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPicker(parentId, branchLabel, isFirstStep); } }}
       >
@@ -473,10 +478,11 @@ function AddEndPair({ isFirstStep, parentId, branchLabel, onEnd }: AddEndPairPro
       </button>
       <div className="relative">
         <button
+          type="button"
           onClick={onEnd}
           onMouseEnter={() => setShowEndTip(true)}
           onMouseLeave={() => setShowEndTip(false)}
-          className="w-10 h-10 rounded-xl border border-border/60 bg-card/80 hover:bg-card hover:border-border hover:shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-all shadow-sm"
+          className="w-10 h-10 rounded-lg border border-border/60 bg-card/80 hover:bg-card hover:border-border hover:shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-all shadow-sm cursor-pointer"
           title="End sequence"
         >
           <Check size={18} />
@@ -525,14 +531,15 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
 
   if (isEnd) {
     return (
-      <div className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border/50 text-muted-foreground text-sm font-medium shadow-sm hover:border-red-500/50 transition-colors cursor-pointer pr-10" onClick={onDelete}>
+      <div className="group relative flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border/50 text-muted-foreground text-sm font-medium shadow-sm hover:border-destructive/50 transition-colors cursor-pointer pr-10" onClick={onDelete}>
         <StopCircle size={14} /> End sequence
         
         {/* Delete Button (visible on hover) */}
         {onDelete && (
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+            className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all cursor-pointer"
             title="Remove End Node to continue sequence"
           >
             <Trash2 size={13} />
@@ -550,7 +557,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       onClick={onSelect}
-      className={`!p-0 group w-[320px] !rounded-2xl !bg-card border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[2px] ${
+      className={`!p-0 group w-[320px] !rounded-lg !bg-card border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[2px] ${
         isSelected ? "!border-indigo-600 ring-2 ring-indigo-500/20 shadow-md z-10" : "hover:!border-indigo-500/50"
       } ${isDragging ? "opacity-30 scale-95" : ""} ${isDragOver ? "border-dashed !border-indigo-500 !bg-indigo-50/50" : ""}`}
      
@@ -558,7 +565,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
     >
       {/* Delay Configurator */}
       {delay !== undefined && !hideDelay && (
-        <div className="border-b border-border/40 bg-muted/10 rounded-t-2xl overflow-hidden">
+        <div className="border-b border-border/40 bg-muted/10 rounded-t-lg overflow-hidden">
           <div 
             className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
             onClick={(e) => {
@@ -573,7 +580,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
               </span>
             </div>
             {!isEditingDelay && (
-              <button className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+              <button type="button" className="text-muted-foreground hover:text-foreground">
                 <div className="p-1 rounded hover:bg-muted/50"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></div>
               </button>
             )}
@@ -590,27 +597,28 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                   min="0"
                   value={delay}
                   onChange={(e) => updateNodeData(node.id, { delay: parseInt(e.target.value) || 0 })}
-                  className="w-full bg-card border border-border/60 rounded-[10px] pl-3 pr-8 py-1.5 text-[13px] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-medium"
+                  className="w-full bg-card border border-border/60 rounded-md pl-3 pr-8 py-1.5 text-[13px] text-foreground focus:outline-none focus:border-primary font-medium"
                 />
                 <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-center gap-0.5">
-                  <button onClick={() => updateNodeData(node.id, { delay: delay + 1 })} className="text-muted-foreground hover:text-foreground"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m18 15-6-6-6 6"/></svg></button>
-                  <button onClick={() => updateNodeData(node.id, { delay: Math.max(0, delay - 1) })} className="text-muted-foreground hover:text-foreground"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <button type="button" onClick={() => updateNodeData(node.id, { delay: delay + 1 })} className="text-muted-foreground hover:text-foreground"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m18 15-6-6-6 6"/></svg></button>
+                  <button type="button" onClick={() => updateNodeData(node.id, { delay: Math.max(0, delay - 1) })} className="text-muted-foreground hover:text-foreground"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m6 9 6 6 6-6"/></svg></button>
                 </div>
               </div>
-              <div className="flex-1 relative">
-                <select 
+              <div className="flex-1">
+                <Select 
                   value={node.data.delayUnit || 'days'}
-                  onChange={(e) => updateNodeData(node.id, { delayUnit: e.target.value })}
-                  className="w-full bg-card border border-border/60 rounded-[10px] pl-3 pr-8 py-1.5 text-[13px] text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer appearance-none"
+                  onValueChange={(val) => updateNodeData(node.id, { delayUnit: val })}
                 >
-                  <option value="minutes">Minutes</option>
-                  <option value="hours">Hours</option>
-                  <option value="days">Days</option>
-                  <option value="weeks">Weeks</option>
-                </select>
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </div>
+                  <SelectTrigger size="sm" className="w-full bg-card border-border/60 text-[13px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">Minutes</SelectItem>
+                    <SelectItem value="hours">Hours</SelectItem>
+                    <SelectItem value="days">Days</SelectItem>
+                    <SelectItem value="weeks">Weeks</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}
@@ -630,7 +638,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
           <div className={`flex flex-col px-4 py-3.5 relative ${hasError ? 'bg-red-500/5' : ''}`}>
             <div className="flex items-center gap-3">
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+                className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border"
                 style={{ background: `${displayColor}18`, borderColor: `${displayColor}50`, color: displayColor }}
               >
                 {hasError ? (
@@ -642,23 +650,24 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                 )}
               </div>
               <div className="flex-1 min-w-0 pr-6">
-                <div className={hasError ? "text-[14px] font-bold text-rose-600 dark:text-rose-400 leading-tight" : "text-[14px] font-bold text-slate-900 dark:text-slate-100 leading-tight flex items-center gap-1.5"}>
+                <div className={hasError ? "text-[14px] font-bold text-rose-600 dark:text-rose-400 leading-tight" : "text-[14px] font-bold text-foreground leading-tight flex items-center gap-1.5"}>
                   <span>{label}</span>
                   {isAiNode && (
-                    <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                     <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
                       Elesium
                     </span>
                   )}
                 </div>
-                <p className={hasError ? "text-[12px] font-semibold text-rose-600/90 dark:text-rose-400/90 mt-0.5" : "text-[12px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug line-clamp-2 max-w-[210px]"}>
+                <p className={hasError ? "text-[12px] font-semibold text-rose-600/90 dark:text-rose-400/90 mt-0.5" : "text-[12px] text-muted-foreground mt-0.5 leading-snug line-clamp-2 max-w-[210px]"}>
                   {hasError ? "Action required" : description}
                 </p>
               </div>
               
               {onDelete && (
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="absolute right-3 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors z-20 cursor-pointer"
+                  className="absolute right-3 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors z-20 cursor-pointer"
                   title="Delete node"
                 >
                   <Trash2 size={13} />
@@ -669,22 +678,22 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
             {analytics && (
               <div className="mt-3 flex items-center gap-4 pt-3 border-t border-border/40">
                 <div className="flex flex-col">
-                  <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-widest font-bold">Sent</span>
-                  <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">{analytics.sent}</span>
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Sent</span>
+                  <span className="text-xs font-semibold text-foreground">{analytics.sent}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-widest font-bold">Replied</span>
-                  <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">{analytics.replied}</span>
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Replied</span>
+                  <span className="text-xs font-semibold text-foreground">{analytics.replied}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[9px] text-indigo-600 dark:text-indigo-400 uppercase tracking-widest font-bold">Rate</span>
-                  <span className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">{analytics.reply_rate}%</span>
+                  <span className="text-[9px] text-primary uppercase tracking-widest font-bold">Rate</span>
+                  <span className="text-xs text-primary font-semibold">{analytics.reply_rate}%</span>
                 </div>
               </div>
             )}
 
             {errors && errors.length > 0 && (
-              <div className="mt-3 text-xs bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 p-3 rounded-xl flex flex-col gap-2">
+              <div className="mt-3 text-xs bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 p-3 rounded-lg flex flex-col gap-2">
                 <div className="font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-1.5 text-[11px] tracking-wide uppercase">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   Action Required
@@ -700,7 +709,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
               </div>
             )}
             {warnings && warnings.length > 0 && (
-              <div className="mt-3 text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 p-3 rounded-xl flex flex-col gap-2">
+              <div className="mt-3 text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg flex flex-col gap-2">
                 <div className="font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 text-[11px] tracking-wide uppercase">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   Warning
@@ -1254,7 +1263,7 @@ export function EISequenceTree({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border border-border/50 shadow-2xl rounded-2xl p-6 max-w-md w-full mx-4"
+              className="bg-card border border-border/50 shadow-2xl rounded-xl p-6 max-w-md w-full mx-4"
             >
               <div className="flex items-center gap-3 text-primary mb-4">
                 <AlertCircle size={24} />
@@ -1265,15 +1274,17 @@ export function EISequenceTree({
               </p>
               <div className="flex items-center justify-end gap-3">
                 <button
+                  type="button"
                   onClick={() => {
                     setConflictModalOpen(false)
                     setPendingAddParams(null)
                   }}
-                  className="px-4 py-2 rounded-lg border border-border/50 text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors"
+                  className="px-4 py-2 rounded-lg border border-border/50 text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     disableAllAutoWithdraw(rootNodes)
                     if (pendingAddParams) {
@@ -1286,7 +1297,7 @@ export function EISequenceTree({
                     setConflictModalOpen(false)
                     setPendingAddParams(null)
                   }}
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-bold text-white transition-colors"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-colors cursor-pointer"
                 >
                   Disable Auto-Withdraw and Continue
                 </button>
@@ -1304,25 +1315,27 @@ export function EISequenceTree({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border border-border shadow-2xl rounded-2xl p-6 max-w-md w-full mx-4"
+              className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full mx-4"
             >
               <div className="flex items-center gap-3 text-amber-500 mb-3">
                 <AlertTriangle size={24} />
                 <h3 className="text-lg font-bold text-foreground">Replace Sequence Canvas?</h3>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-                You currently have <span className="font-semibold text-foreground">{rootNodes.length} step(s)</span> on your canvas. Loading <span className="font-semibold text-foreground">"{selectedPreset?.name}"</span> will replace your existing sequence with this calibrated architecture.
+                You currently have <span className="font-semibold text-foreground">{rootNodes.length} step(s)</span> on your canvas. Loading <span className="font-semibold text-foreground">&quot;{selectedPreset?.name}&quot;</span> will replace your existing sequence with this calibrated architecture.
               </p>
               <div className="flex items-center justify-end gap-3">
                 <button
+                  type="button"
                   onClick={() => { setPresetModalOpen(false); setSelectedPreset(null); }}
-                  className="px-4 py-2 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
                 >
                   Keep Current Sequence
                 </button>
                 <button
+                  type="button"
                   onClick={confirmApplyPreset}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-bold text-white transition-colors shadow-md cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-colors shadow-sm cursor-pointer"
                 >
                   Replace Canvas
                 </button>
@@ -1336,10 +1349,11 @@ export function EISequenceTree({
       <div className="absolute top-6 right-6 z-40 flex items-center gap-3 pointer-events-auto">
         {!readOnly && onTemplatesClick && (
           <button
+            type="button"
             onClick={onTemplatesClick}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border/60 hover:border-indigo-500/50 shadow-sm text-xs font-semibold text-foreground hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border/60 hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
           >
-            <Layers size={14} className="text-indigo-500" />
+            <Layers size={14} className="text-primary" />
             <span>Templates</span>
           </button>
         )}
@@ -1373,13 +1387,14 @@ export function EISequenceTree({
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-3 pointer-events-auto">
         {/* Zoom Group */}
         <div className="flex flex-row bg-card/90 backdrop-blur-md border border-border/40 shadow-sm rounded-xl overflow-hidden w-fit">
-          <button onClick={() => setZoom(z => Math.min(z + 0.1, 2))} className="w-11 h-11 flex items-center justify-center hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors border-r border-border/30" title="Zoom In">
+          <button type="button" onClick={() => setZoom(z => Math.min(z + 0.1, 2))} className="w-11 h-11 flex items-center justify-center hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors border-r border-border/30 cursor-pointer" title="Zoom In">
             <ZoomIn size={18} />
           </button>
-          <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} className="w-11 h-11 flex items-center justify-center hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors border-r border-border/30" title="Zoom Out">
+          <button type="button" onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} className="w-11 h-11 flex items-center justify-center hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors border-r border-border/30 cursor-pointer" title="Zoom Out">
             <ZoomOut size={18} />
           </button>
           <button 
+            type="button"
             onClick={() => {
             if (hasFitView) return;
             setHasFitView(true);
@@ -1412,29 +1427,32 @@ export function EISequenceTree({
                 }, 50);
               }
             }
-          }} className={cn("w-11 h-11 flex items-center justify-center transition-colors", hasFitView ? "text-muted-foreground/30 cursor-not-allowed pointer-events-none" : "hover:bg-muted/50 text-muted-foreground hover:text-foreground")} title="Fit to Canvas">
+          }} className={cn("w-11 h-11 flex items-center justify-center transition-colors cursor-pointer", hasFitView ? "text-muted-foreground/30 cursor-not-allowed pointer-events-none" : "hover:bg-muted/50 text-muted-foreground hover:text-foreground")} title="Fit to Canvas">
             <Maximize size={18} />
           </button>
         </div>
 
         {/* Action Group */}
         {!readOnly && (
-          <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border/40 shadow-sm rounded-2xl overflow-hidden mt-2">
+          <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border/40 shadow-sm rounded-xl overflow-hidden mt-2">
             <button
+              type="button"
               onClick={() => useHRTreeStore.getState().undo()}
               disabled={useHRTreeStore.getState().history.length === 0}
-              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors border-b border-border/30 w-full"
+              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors border-b border-border/30 w-full cursor-pointer"
             >
               <Undo size={14} className="shrink-0" /> <span className="font-medium">Undo</span>
             </button>
             <button
+              type="button"
               onClick={() => useHRTreeStore.getState().redo()}
               disabled={useHRTreeStore.getState().future.length === 0}
-              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors border-b border-border/30 w-full"
+              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors border-b border-border/30 w-full cursor-pointer"
             >
               <Redo size={14} className="shrink-0" /> <span className="font-medium">Redo</span>
             </button>
             <button
+              type="button"
               onClick={() => {
                 let x = window.innerWidth / 2 - 100;
                 let y = 100;
@@ -1444,11 +1462,12 @@ export function EISequenceTree({
                 }
                 addStickyNote(x, y);
               }}
-              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors border-b border-border/30 w-full"
+              className="flex items-center gap-2 px-4 py-3 hover:bg-muted/50 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors border-b border-border/30 w-full cursor-pointer"
             >
               <MessageSquare size={14} className="shrink-0" /> <span className="font-medium">Add Sticky Note</span>
             </button>
             <button
+              type="button"
               onClick={async () => {
                 if (onSave) {
                   setIsSaving(true);
@@ -1460,10 +1479,10 @@ export function EISequenceTree({
                 }
               }}
               disabled={isSaving}
-              className="flex items-center gap-2 px-4 py-3 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-semibold transition-colors w-full disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-3 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-colors w-full disabled:opacity-50 cursor-pointer"
             >
               {isSaving ? (
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
               ) : (
                 <Save size={14} className="shrink-0" />
               )}
@@ -1520,7 +1539,7 @@ export function EISequenceTree({
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-6 max-w-xl w-full p-6 rounded-2xl border border-dashed border-border/80 bg-card/60 backdrop-blur-md shadow-sm text-center"
+              className="mt-6 max-w-xl w-full p-6 rounded-xl border border-dashed border-border/80 bg-card/60 backdrop-blur-md shadow-sm text-center"
             >
               <h3 className="text-sm font-semibold text-foreground mb-1">Sequence Blueprints</h3>
               <p className="text-xs text-muted-foreground mb-4">
@@ -1530,36 +1549,38 @@ export function EISequenceTree({
                 {QUICK_PRESETS.map((p) => {
                   const PIcon = p.icon;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={p.id}
                       onClick={() => applyPreset(p)}
-                      className="p-3.5 rounded-xl border border-border/60 bg-card hover:border-indigo-500/50 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                      className="p-3.5 rounded-lg border border-border/60 bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between text-left"
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className={`p-1.5 rounded-lg border text-xs ${p.color}`}>
+                          <span className={`p-1.5 rounded-md border text-xs ${p.color}`}>
                             <PIcon size={13} />
                           </span>
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
                             {p.badge}
                           </span>
                         </div>
-                        <h4 className="text-xs font-bold text-foreground group-hover:text-indigo-500 transition-colors">
+                        <h4 className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
                           {p.name}
                         </h4>
                         <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
                           {p.description}
                         </p>
                       </div>
-                      <div className="mt-3 pt-2 border-t border-border/40 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                      <div className="mt-3 pt-2 border-t border-border/40 text-[11px] font-semibold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
                         Load Preset &rarr;
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
               {onTemplatesClick && (
                 <button
+                  type="button"
                   onClick={onTemplatesClick}
                   className="mt-4 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:underline cursor-pointer"
                 >

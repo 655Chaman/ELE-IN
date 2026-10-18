@@ -73,7 +73,7 @@ export function OnboardingWizard() {
   const [copiedFounderEmail, setCopiedFounderEmail] = useState(false)
 
   // Audience State
-  const [audienceType, setAudienceType] = useState<"demo" | "single" | "csv">("demo")
+  const [audienceType, setAudienceType] = useState<"csv" | "single">("csv")
   const [singleLeadUrl, setSingleLeadUrl] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [csvFile, setCsvFile] = useState<File | null>(null)
@@ -351,6 +351,7 @@ export function OnboardingWizard() {
 
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={() => {
               localStorage.setItem("onboarding_dismissed", "true")
               navigate("/elein/campaigns")
@@ -395,9 +396,18 @@ export function OnboardingWizard() {
                   return (
                     <div
                       key={g.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isChecked}
                       onClick={() => setSelectedGoal(g.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          setSelectedGoal(g.id)
+                        }
+                      }}
                       className={cn(
-                        "p-5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 text-left group",
+                        "p-5 rounded-lg border transition-all cursor-pointer flex items-start gap-3.5 text-left group",
                         isChecked 
                           ? "bg-primary/5 border-primary shadow-sm ring-1 ring-primary/20" 
                           : "bg-card/40 border-border/70 hover:border-foreground/20 hover:bg-card/80"
@@ -419,7 +429,7 @@ export function OnboardingWizard() {
               </div>
 
               {/* Target ICP Input */}
-              <div className="p-6 rounded-2xl border border-border/60 bg-muted/10 space-y-3">
+              <div className="p-6 rounded-xl border border-border/60 bg-muted/10 space-y-3">
                 <label className="block text-xs font-bold text-foreground uppercase tracking-wide">
                   Who is your primary target decision-maker?
                 </label>
@@ -459,8 +469,9 @@ export function OnboardingWizard() {
               {/* Continue Button */}
               <div className="flex justify-end pt-2">
                 <button
+                  type="button"
                   onClick={() => setStep(2)}
-                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-md shadow-primary/20 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-colors shadow-md shadow-primary/20 cursor-pointer"
                 >
                   Continue to Sequence Preview <ArrowRight size={15} />
                 </button>
@@ -495,7 +506,7 @@ export function OnboardingWizard() {
               </div>
 
               {/* Company & Value Prop Inputs */}
-              <div className="p-6 rounded-2xl border border-border/60 bg-card/40 space-y-5">
+              <div className="p-6 rounded-xl border border-border/60 bg-card/40 space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-foreground mb-1.5 uppercase tracking-wide">
@@ -555,7 +566,7 @@ export function OnboardingWizard() {
               </div>
 
               {/* ─── The Interactive Prospect POV Box (The Visceral Aha Moment) ─── */}
-              <div className="border border-border/80 rounded-2xl bg-card/60 p-6 shadow-xl relative overflow-hidden space-y-5">
+              <div className="border border-border/80 rounded-xl bg-card/60 p-6 shadow-xl relative overflow-hidden space-y-5">
                 {/* Simulator Toolbar */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/50 pb-4">
                   <div className="flex items-center gap-2.5">
@@ -576,6 +587,7 @@ export function OnboardingWizard() {
                       ].map((t) => (
                         <button
                           key={t.id}
+                          type="button"
                           onClick={() => fetchAiGeneratedPitch(t.id as any)}
                           disabled={isGeneratingAi}
                           className={cn(
@@ -593,6 +605,7 @@ export function OnboardingWizard() {
                     {/* Step 1 vs Step 2 Toggle */}
                     <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border border-border/50">
                       <button
+                        type="button"
                         onClick={() => setProspectPovTab("connect")}
                         className={cn(
                           "text-[11px] font-semibold px-3 py-1 rounded-md transition-all cursor-pointer",
@@ -602,6 +615,7 @@ export function OnboardingWizard() {
                         Step 1: Note
                       </button>
                       <button
+                        type="button"
                         onClick={() => setProspectPovTab("followup")}
                         className={cn(
                           "text-[11px] font-semibold px-3 py-1 rounded-md transition-all cursor-pointer",
@@ -614,6 +628,7 @@ export function OnboardingWizard() {
 
                     {/* Regenerate with AI button */}
                     <button
+                      type="button"
                       onClick={() => fetchAiGeneratedPitch()}
                       disabled={isGeneratingAi}
                       className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 font-bold text-[11px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
@@ -649,6 +664,7 @@ export function OnboardingWizard() {
 
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={handleCopyPitch}
                         className="px-2.5 py-1 rounded-lg border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-all flex items-center gap-1 cursor-pointer"
                         title="Copy message to clipboard"
@@ -657,6 +673,7 @@ export function OnboardingWizard() {
                         <span>{isCopied ? "Copied" : "Copy"}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => regenerateAhaMessage(targetTitle, valueProp, aiTone)}
                         className="px-2.5 py-1 rounded-lg border border-border/50 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-all flex items-center gap-1 cursor-pointer"
                         title="Reset to default synthesis"
@@ -748,6 +765,7 @@ export function OnboardingWizard() {
                     {/* View Mode Toggle */}
                     <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border border-border/50 shrink-0">
                       <button
+                        type="button"
                         onClick={() => setSafetyViewMode("ramp")}
                         className={cn(
                           "text-[11px] font-semibold px-2.5 py-1 rounded-md transition-all cursor-pointer",
@@ -757,6 +775,7 @@ export function OnboardingWizard() {
                         4-Week Ramp
                       </button>
                       <button
+                        type="button"
                         onClick={() => setSafetyViewMode("comparison")}
                         className={cn(
                           "text-[11px] font-semibold px-2.5 py-1 rounded-md transition-all cursor-pointer",
@@ -900,14 +919,16 @@ export function OnboardingWizard() {
               {/* Navigation */}
               <div className="flex items-center justify-between pt-2">
                 <button
+                  type="button"
                   onClick={() => setStep(1)}
                   className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
                   <ArrowLeft size={14} /> Back
                 </button>
                 <button
+                  type="button"
                   onClick={() => setStep(3)}
-                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-md shadow-primary/20 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-colors shadow-md shadow-primary/20 cursor-pointer"
                 >
                   Load Audience & Leads <ArrowRight size={15} />
                 </button>
@@ -933,43 +954,61 @@ export function OnboardingWizard() {
                   Who should receive this outreach?
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Pick how you want to start. You can load sample prospects right now and add full CSV lists anytime.
+                  Pick how you want to start. Upload an exported CSV/Excel list or test with a single profile.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Option 1: Demo Leads */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Option 1: CSV Upload */}
                 <div
-                  onClick={() => setAudienceType("demo")}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={audienceType === "csv"}
+                  onClick={() => setAudienceType("csv")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      setAudienceType("csv")
+                    }
+                  }}
                   className={cn(
-                    "p-6 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group",
-                    audienceType === "demo"
+                    "p-6 rounded-lg border transition-all cursor-pointer flex flex-col justify-between group",
+                    audienceType === "csv"
                       ? "bg-primary/5 border-primary shadow-sm ring-1 ring-primary/20"
                       : "bg-card/40 border-border/70 hover:border-foreground/30 hover:bg-card/70"
                   )}
                 >
                   <div>
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
-                      <ElesiumLogo size={20} />
+                    <div className="w-10 h-10 rounded-xl bg-muted text-muted-foreground flex items-center justify-center mb-4">
+                      <UploadCloud size={20} />
                     </div>
-                    <div className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-500 mb-2">
-                      Instant • Recommended
+                    <div className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary mb-2">
+                      Full Import • Recommended
                     </div>
-                    <h3 className="text-base font-semibold text-foreground mb-1">Load 3 Demo Leads</h3>
+                    <h3 className="text-base font-semibold text-foreground mb-1">Upload CSV List</h3>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Instant test leads matching your target criteria ({targetTitle}s). Zero CSV formatting required.
+                      Upload your exported lead list from Sales Navigator or Apollo with automatic column mapping.
                     </p>
                   </div>
                   <div className="mt-6 flex items-center text-xs font-semibold text-primary">
-                    {audienceType === "demo" ? "Selected" : "Select this"}
+                    {audienceType === "csv" ? "Selected" : "Select this"}
                   </div>
                 </div>
 
                 {/* Option 2: Single Profile */}
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={audienceType === "single"}
                   onClick={() => setAudienceType("single")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      setAudienceType("single")
+                    }
+                  }}
                   className={cn(
-                    "p-6 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group",
+                    "p-6 rounded-lg border transition-all cursor-pointer flex flex-col justify-between group",
                     audienceType === "single"
                       ? "bg-primary/5 border-primary shadow-sm ring-1 ring-primary/20"
                       : "bg-card/40 border-border/70 hover:border-foreground/30 hover:bg-card/70"
@@ -991,38 +1030,11 @@ export function OnboardingWizard() {
                     {audienceType === "single" ? "Selected" : "Select this"}
                   </div>
                 </div>
-
-                {/* Option 3: CSV Upload */}
-                <div
-                  onClick={() => setAudienceType("csv")}
-                  className={cn(
-                    "p-6 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group",
-                    audienceType === "csv"
-                      ? "bg-primary/5 border-primary shadow-sm ring-1 ring-primary/20"
-                      : "bg-card/40 border-border/70 hover:border-foreground/30 hover:bg-card/70"
-                  )}
-                >
-                  <div>
-                    <div className="w-10 h-10 rounded-xl bg-muted text-muted-foreground flex items-center justify-center mb-4">
-                      <UploadCloud size={20} />
-                    </div>
-                    <div className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                      Full Import
-                    </div>
-                    <h3 className="text-base font-semibold text-foreground mb-1">Upload CSV List</h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Upload your exported lead list from Sales Navigator or Apollo with automatic column mapping.
-                    </p>
-                  </div>
-                  <div className="mt-6 flex items-center text-xs font-semibold text-primary">
-                    {audienceType === "csv" ? "Selected" : "Select this"}
-                  </div>
-                </div>
               </div>
 
               {/* Dynamic input depending on choice */}
               {audienceType === "single" && (
-                <div className="p-5 rounded-2xl border border-border/60 bg-muted/10 space-y-2">
+                <div className="p-5 rounded-xl border border-border/60 bg-muted/10 space-y-2">
                   <label className="block text-xs font-bold text-foreground">LinkedIn Profile URL</label>
                   <input
                     type="url"
@@ -1045,18 +1057,17 @@ export function OnboardingWizard() {
                 </div>
               )}
 
-              {audienceType === "demo" && (
-                <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex items-center gap-3">
-                  <CheckCircle2 size={16} className="text-primary shrink-0" />
-                  <p className="text-xs text-foreground/80 leading-relaxed">
-                    We will seed 3 realistic test prospects (<span className="font-semibold text-foreground">{targetTitle}s</span>) into your campaign so you can test sequence mechanics right away.
-                  </p>
-                </div>
-              )}
-
               {audienceType === "csv" && (
                 <div 
+                  role="button"
+                  tabIndex={0}
                   onClick={() => fileInputRef.current?.click()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      fileInputRef.current?.click()
+                    }
+                  }}
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={(e) => {
@@ -1066,7 +1077,7 @@ export function OnboardingWizard() {
                     if (droppedFile) handleCsvFile(droppedFile);
                   }}
                   className={cn(
-                    "p-8 rounded-2xl border-2 border-dashed text-center space-y-2 cursor-pointer transition-all",
+                    "p-8 rounded-lg border-2 border-dashed text-center space-y-2 cursor-pointer transition-all",
                     isDragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 bg-muted/5",
                     csvFile ? "border-emerald-500/50 bg-emerald-500/5" : ""
                   )}
@@ -1103,14 +1114,16 @@ export function OnboardingWizard() {
               {/* Navigation */}
               <div className="flex items-center justify-between pt-2">
                 <button
+                  type="button"
                   onClick={() => setStep(2)}
                   className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
                   <ArrowLeft size={14} /> Back
                 </button>
                 <button
+                  type="button"
                   onClick={() => setStep(4)}
-                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-md shadow-primary/20 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-colors shadow-md shadow-primary/20 cursor-pointer"
                 >
                   Configure LinkedIn Senders <ArrowRight size={15} />
                 </button>
@@ -1142,7 +1155,7 @@ export function OnboardingWizard() {
 
               {/* 3 Pillar Safety Grid (Reassurance, not terror) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-5 rounded-2xl border border-border/60 bg-muted/10 space-y-2">
+                <div className="p-5 rounded-xl border border-border/60 bg-muted/10 space-y-2">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
                     <ShieldCheck size={18} />
                   </div>
@@ -1152,7 +1165,7 @@ export function OnboardingWizard() {
                   </p>
                 </div>
 
-                <div className="p-5 rounded-2xl border border-border/60 bg-muted/10 space-y-2">
+                <div className="p-5 rounded-xl border border-border/60 bg-muted/10 space-y-2">
                   <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold">
                     <Zap size={18} />
                   </div>
@@ -1162,7 +1175,7 @@ export function OnboardingWizard() {
                   </p>
                 </div>
 
-                <div className="p-5 rounded-2xl border border-border/60 bg-muted/10 space-y-2">
+                <div className="p-5 rounded-xl border border-border/60 bg-muted/10 space-y-2">
                   <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold">
                     <Globe size={18} />
                   </div>
@@ -1174,7 +1187,7 @@ export function OnboardingWizard() {
               </div>
 
               {/* Two clear paths: Connect Now vs Sandbox Mode */}
-              <div className="p-6 rounded-2xl border border-border bg-card/60 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="p-6 rounded-xl border border-border bg-card/60 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="space-y-1 text-left">
                   <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
                     <Linkedin size={18} className="text-[#0A66C2]" />
@@ -1195,12 +1208,14 @@ export function OnboardingWizard() {
                   ) : (
                     <>
                       <button
+                        type="button"
                         onClick={() => setShowConnectModal(true)}
                         className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:opacity-90 transition-all cursor-pointer shadow-md shadow-primary/20"
                       >
                         Connect Account Now
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setIsSandboxMode(true)
                           toast.info("Sandbox Mode enabled for preview tour.")
@@ -1218,14 +1233,16 @@ export function OnboardingWizard() {
               {/* Navigation */}
               <div className="flex items-center justify-between pt-2">
                 <button
+                  type="button"
                   onClick={() => setStep(3)}
                   className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
                   <ArrowLeft size={14} /> Back
                 </button>
                 <button
+                  type="button"
                   onClick={() => setStep(5)}
-                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-md shadow-primary/20 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-7 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-colors shadow-md shadow-primary/20 cursor-pointer"
                 >
                   Review & Launch <ArrowRight size={15} />
                 </button>
@@ -1247,7 +1264,7 @@ export function OnboardingWizard() {
             >
               {/* Milestone Celebration */}
               <div className="text-center space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center mx-auto mb-2 shadow-inner">
+                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center mx-auto mb-2 shadow-inner">
                   <CheckCircle2 size={24} />
                 </div>
                 <h1 className="text-3xl md:text-4xl font-light tracking-tight text-foreground">
@@ -1277,9 +1294,9 @@ export function OnboardingWizard() {
               </div>
 
               {/* Authentic Founder's Stationery Letter (One Year / Basecamp Pattern) */}
-              <div className="relative rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-500/[0.04] to-amber-500/[0.01] dark:from-amber-500/[0.03] dark:to-transparent p-6 sm:p-7 shadow-sm text-left space-y-5">
+              <div className="relative rounded-xl border border-amber-500/20 bg-gradient-to-b from-amber-500/[0.04] to-amber-500/[0.01] dark:from-amber-500/[0.03] dark:to-transparent p-6 sm:p-7 shadow-sm text-left space-y-5">
                 {/* Stationery Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-amber-500/10">
+                <div className="flex items-center justify-between pb-4 border-b border-border/40">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-600 to-amber-400 text-white font-bold flex items-center justify-center text-sm shadow-md ring-2 ring-amber-400/30">
                       DK
@@ -1316,7 +1333,7 @@ export function OnboardingWizard() {
                 </div>
 
                 {/* Handwritten Signature & Direct Action */}
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-4 border-t border-amber-500/10">
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-4 border-t border-border/40">
                   <div>
                     <div className="text-[10px] font-sans uppercase tracking-widest text-muted-foreground mb-1">
                       Warmly,
@@ -1391,9 +1408,10 @@ export function OnboardingWizard() {
               {/* Final Launch Button */}
               <div className="flex flex-col items-center gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={handleCompleteOnboarding}
                   disabled={isSubmitting}
-                  className="w-full md:w-auto min-w-[300px] px-8 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-all shadow-lg shadow-primary/25 active:scale-95 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full md:w-auto min-w-[300px] px-8 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-colors shadow-lg shadow-primary/25 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <>
@@ -1407,6 +1425,7 @@ export function OnboardingWizard() {
                   )}
                 </button>
                 <button
+                  type="button"
                   onClick={() => setStep(4)}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >

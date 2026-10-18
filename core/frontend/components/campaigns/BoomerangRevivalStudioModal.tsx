@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -204,7 +205,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl h-[90vh] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
+      <div className="relative w-full max-w-6xl h-[90vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
         
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
@@ -331,17 +332,21 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">Relationship Filter:</span>
-                  <select
+                  <Select
                     value={relFilter}
-                    onChange={(e) => setRelFilter(e.target.value)}
-                    className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground"
+                    onValueChange={(val) => setRelFilter(val)}
                   >
-                    <option value="all">All Past Relationships</option>
-                    <option value="past_customer">Past Customers</option>
-                    <option value="former_champion">Former Champions</option>
-                    <option value="power_user">Power Users</option>
-                    <option value="closed_lost_contact">Closed-Lost Contacts</option>
-                  </select>
+                    <SelectTrigger size="sm" className="w-[180px] bg-background border-border text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Past Relationships</SelectItem>
+                      <SelectItem value="past_customer">Past Customers</SelectItem>
+                      <SelectItem value="former_champion">Former Champions</SelectItem>
+                      <SelectItem value="power_user">Power Users</SelectItem>
+                      <SelectItem value="closed_lost_contact">Closed-Lost Contacts</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <button
@@ -501,17 +506,21 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">Filter by Lost Reason:</span>
-                  <select
+                  <Select
                     value={reasonFilter}
-                    onChange={(e) => setReasonFilter(e.target.value)}
-                    className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground"
+                    onValueChange={(val) => setReasonFilter(val)}
                   >
-                    <option value="all">All Lost Reasons</option>
-                    <option value="missing_feature">Missing Feature (Now Shipped)</option>
-                    <option value="budget_freeze">Budget Freeze (New Fiscal Window)</option>
-                    <option value="competitor_chosen">Went With Competitor (6M Renewal)</option>
-                    <option value="bad_timing">Bad Timing / Competing Priorities</option>
-                  </select>
+                    <SelectTrigger size="sm" className="w-[220px] bg-background border-border text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Lost Reasons</SelectItem>
+                      <SelectItem value="missing_feature">Missing Feature (Now Shipped)</SelectItem>
+                      <SelectItem value="budget_freeze">Budget Freeze (New Fiscal Window)</SelectItem>
+                      <SelectItem value="competitor_chosen">Went With Competitor (6M Renewal)</SelectItem>
+                      <SelectItem value="bad_timing">Bad Timing / Competing Priorities</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <button
@@ -582,7 +591,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
         {/* Modal: Track Champion Job Change */}
         {addJobChangeOpen && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 text-xs text-card-foreground">
+            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-xs text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h3 className="font-semibold text-foreground text-base">Track Champion Job Change</h3>
                 <button onClick={() => setAddJobChangeOpen(false)} className="text-muted-foreground hover:text-foreground">
@@ -651,16 +660,20 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">Past Relationship</label>
-                    <select
+                    <Select
                       value={jcRelType}
-                      onChange={(e) => setJcRelType(e.target.value)}
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      onValueChange={(val) => setJcRelType(val)}
                     >
-                      <option value="past_customer">Past Customer</option>
-                      <option value="former_champion">Former Champion</option>
-                      <option value="power_user">Power User</option>
-                      <option value="closed_lost_contact">Closed-Lost Contact</option>
-                    </select>
+                      <SelectTrigger className="w-full mt-1 bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="past_customer">Past Customer</SelectItem>
+                        <SelectItem value="former_champion">Former Champion</SelectItem>
+                        <SelectItem value="power_user">Power User</SelectItem>
+                        <SelectItem value="closed_lost_contact">Closed-Lost Contact</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="text-muted-foreground font-medium">Days in New Role</label>
@@ -693,7 +706,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
         {/* Modal: Add Closed-Lost Deal */}
         {addRevivalOpen && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6 shadow-2xl space-y-4 text-xs text-card-foreground">
+            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-xs text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h3 className="font-semibold text-foreground text-base">Add Closed-Lost Deal for Resurrection</h3>
                 <button onClick={() => setAddRevivalOpen(false)} className="text-muted-foreground hover:text-foreground">
@@ -728,16 +741,20 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">Lost Reason</label>
-                    <select
+                    <Select
                       value={revReason}
-                      onChange={(e) => setRevReason(e.target.value)}
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      onValueChange={(val) => setRevReason(val)}
                     >
-                      <option value="missing_feature">Missing Feature</option>
-                      <option value="budget_freeze">Budget Freeze</option>
-                      <option value="competitor_chosen">Competitor Chosen</option>
-                      <option value="bad_timing">Bad Timing</option>
-                    </select>
+                      <SelectTrigger className="w-full mt-1 bg-background border-border h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="missing_feature">Missing Feature</SelectItem>
+                        <SelectItem value="budget_freeze">Budget Freeze</SelectItem>
+                        <SelectItem value="competitor_chosen">Competitor Chosen</SelectItem>
+                        <SelectItem value="bad_timing">Bad Timing</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="text-muted-foreground font-medium">Days Since Lost</label>

@@ -21,11 +21,13 @@ const StarBorder = <T extends React.ElementType = 'button'>({
   ...rest
 }: StarBorderProps<T>) => {
   const Component = as || 'button';
+  const buttonProps = !as ? { type: (rest as any).type || 'button' } : {};
 
   return (
     <Component
-      className={`relative inline-block overflow-hidden rounded-[20px] ${className}`}
+      className={`relative inline-block overflow-hidden rounded-xl ${className}`}
       {...(rest as any)}
+      {...buttonProps}
       style={{
         padding: `${thickness}px 0`,
         ...(rest as any).style
@@ -45,7 +47,7 @@ const StarBorder = <T extends React.ElementType = 'button'>({
           animationDuration: speed
         }}
       ></div>
-      <div className={`relative z-1 rounded-[20px] ${innerClassName}`}>
+      <div className={`relative z-1 rounded-xl ${innerClassName}`}>
         {children}
       </div>
     </Component>

@@ -76,15 +76,13 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-xl rounded-3xl bg-card border border-primary/20 shadow-[0_0_50px_rgba(var(--primary),0.2)] p-6 md:p-8 text-foreground overflow-hidden"
+        className="relative w-full max-w-xl rounded-xl bg-card border border-border/80 shadow-2xl p-6 md:p-8 text-foreground overflow-hidden"
       >
-        {/* Ambient Top Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-24 bg-primary/10 blur-3xl pointer-events-none" />
-
         {/* Close Button */}
         <button
+          type="button"
           onClick={handleCloseClick}
-          className="absolute top-6 right-6 text-muted-foreground hover:text-foreground p-1.5 rounded-full hover:bg-muted/50 transition z-10"
+          className="absolute top-6 right-6 text-muted-foreground hover:text-foreground p-1.5 rounded-full hover:bg-muted/50 transition z-10 cursor-pointer"
           aria-label="Close"
         >
           <X size={18} />
@@ -93,7 +91,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
         {/* EXIT INTENT SHEET (Downsell & Sunk Cost Protection) */}
         {showExitIntent ? (
           <div className="py-4 space-y-6 text-center animate-in fade-in duration-200">
-            <div className="w-14 h-14 bg-amber-500/10 text-amber-400 rounded-2xl mx-auto flex items-center justify-center border border-amber-500/20">
+            <div className="w-14 h-14 bg-amber-500/10 text-amber-400 rounded-md mx-auto flex items-center justify-center border border-amber-500/20">
               <Sparkles size={28} />
             </div>
             <div>
@@ -103,7 +101,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 text-left space-y-2 text-xs">
+            <div className="p-4 rounded-lg bg-muted/30 border border-border/50 text-left space-y-2 text-xs">
               <div className="flex items-center gap-2 text-foreground font-medium">
                 <Check size={14} className="text-primary" />
                 <span>Not ready for Annual? Flexible Monthly plan available at ₹7,999/mo.</span>
@@ -116,9 +114,10 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
 
             <div className="space-y-3 pt-2">
               <button
+                type="button"
                 disabled={isProcessing}
                 onClick={() => handleUpgrade('growth_tier')}
-                className="w-full py-3.5 px-4 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-lg flex items-center justify-center gap-2"
+                className="w-full py-3.5 px-4 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-sm flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} className="fill-current" />}
                 Switch to Flexible Monthly (₹7,999/mo) <ArrowRight size={16} />
@@ -130,7 +129,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                   setShowExitIntent(false);
                   onClose();
                 }}
-                className="text-xs text-muted-foreground/70 hover:text-rose-500 transition pt-2 block mx-auto"
+                className="text-xs text-muted-foreground/70 hover:text-rose-500 transition pt-2 block mx-auto cursor-pointer"
               >
                 I'll risk pausing outreach on "{campaignName}" for now
               </button>
@@ -142,7 +141,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
             {step === 0 && (
               <div className="space-y-5 py-2">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-primary/10 text-primary rounded-xl border border-primary/20">
+                  <div className="p-2.5 bg-primary/10 text-primary rounded-md border border-primary/20">
                     <Rocket size={22} />
                   </div>
                   <div>
@@ -151,7 +150,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-2">
+                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
                   <div className="flex items-center justify-between text-xs font-semibold text-primary">
                     <span>Campaign Potential</span>
                     <span className="bg-primary/20 px-2 py-0.5 rounded-full">High Impact</span>
@@ -162,15 +161,15 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                 </div>
 
                 {/* Anchoring & Contrast Engine (Transcript 2, Principle 6) */}
-                <div className="grid grid-cols-2 gap-2 text-left p-3 rounded-2xl bg-muted/30 border border-border/40 text-xs">
-                  <div className="p-2.5 rounded-xl bg-background/50 border border-border/30">
+                <div className="grid grid-cols-2 gap-2 text-left p-3 rounded-lg bg-muted/30 border border-border/40 text-xs">
+                  <div className="p-2.5 rounded-md bg-background/50 border border-border/30">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
                       Full-time SDR Hire
                     </span>
                     <span className="text-sm font-bold text-foreground">₹75,000+ / mo</span>
                     <span className="text-[10px] text-muted-foreground block mt-0.5">300 manual contacts/mo</span>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/30">
+                  <div className="p-2.5 rounded-md bg-primary/10 border border-primary/30">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-primary block">
                       Ele-in Growth Engine
                     </span>
@@ -194,8 +193,9 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => setStep(1)}
-                  className="w-full py-3.5 px-4 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-lg flex items-center justify-center gap-2 mt-3"
+                  className="w-full py-3.5 px-4 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-sm flex items-center justify-center gap-2 mt-3 cursor-pointer"
                 >
                   See Growth Tier Details <ArrowRight size={16} />
                 </button>
@@ -210,7 +210,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                   <p className="text-xs text-muted-foreground mt-1">Scale your outbound engine without arbitrary limits</p>
                 </div>
 
-                <div className="rounded-2xl border border-border bg-muted/20 overflow-hidden divide-y divide-border text-xs">
+                <div className="rounded-lg border border-border bg-muted/20 overflow-hidden divide-y divide-border text-xs">
                   <div className="grid grid-cols-3 p-3 font-semibold bg-muted/40 text-muted-foreground">
                     <span>Feature</span>
                     <span className="text-center">Free Tier</span>
@@ -240,14 +240,16 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
 
                 <div className="flex gap-3">
                   <button
+                    type="button"
                     onClick={() => setStep(0)}
-                    className="px-4 py-3 rounded-xl border border-border text-muted-foreground hover:text-foreground text-xs font-semibold transition"
+                    className="px-4 py-3 rounded-lg border border-border text-muted-foreground hover:text-foreground text-xs font-semibold transition cursor-pointer"
                   >
                     Back
                   </button>
                   <button
+                    type="button"
                     onClick={() => setStep(2)}
-                    className="flex-1 py-3 px-4 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-lg flex items-center justify-center gap-2 text-sm"
+                    className="flex-1 py-3 px-4 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-sm flex items-center justify-center gap-2 text-sm cursor-pointer"
                   >
                     Select Plan & Launch <ArrowRight size={16} />
                   </button>
@@ -264,9 +266,9 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                 </div>
 
                 {/* Risk Reversal Timeline */}
-                <div className="bg-muted/30 border border-border/60 rounded-2xl p-4 space-y-3">
+                <div className="bg-muted/30 border border-border/60 rounded-lg p-4 space-y-3">
                   <div className="flex items-start gap-3">
-                    <div className="p-1.5 bg-primary/20 text-primary rounded-xl shrink-0 mt-0.5">
+                    <div className="p-1.5 bg-primary/20 text-primary rounded-md shrink-0 mt-0.5">
                       <Zap size={14} />
                     </div>
                     <div className="text-xs">
@@ -275,7 +277,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0 mt-0.5">
+                    <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-md shrink-0 mt-0.5">
                       <ShieldCheck size={14} />
                     </div>
                     <div className="text-xs">
@@ -287,7 +289,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5">
+                    <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-md shrink-0 mt-0.5">
                       <Calendar size={14} />
                     </div>
                     <div className="text-xs">
@@ -299,25 +301,27 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
 
                 {/* Annual vs Monthly Toggle */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setIsAnnual(true)}
-                    className={`p-4 rounded-2xl border cursor-pointer transition relative ${
+                    className={`w-full text-left p-4 rounded-lg border cursor-pointer transition relative ${
                       isAnnual
                         ? 'border-primary bg-primary/5 ring-1 ring-primary'
                         : 'border-border bg-card hover:border-foreground/20'
                     }`}
                   >
-                    <span className="absolute -top-2.5 right-3 text-[9px] bg-primary text-primary-foreground font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                    <span className="absolute -top-2.5 right-3 text-[9px] bg-primary text-primary-foreground font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
                       Save 2 Months
                     </span>
                     <div className="font-bold text-sm text-foreground">Annual Plan</div>
                     <div className="text-xs text-primary font-bold mt-1">₹6,499 <span className="text-muted-foreground font-normal">/ mo</span></div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">₹77,988 billed yearly</div>
-                  </div>
+                  </button>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setIsAnnual(false)}
-                    className={`p-4 rounded-2xl border cursor-pointer transition ${
+                    className={`w-full text-left p-4 rounded-lg border cursor-pointer transition ${
                       !isAnnual
                         ? 'border-primary bg-primary/5 ring-1 ring-primary'
                         : 'border-border bg-card hover:border-foreground/20'
@@ -326,15 +330,16 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                     <div className="font-bold text-sm text-foreground">Monthly Plan</div>
                     <div className="text-xs text-foreground font-bold mt-1">₹7,999 <span className="text-muted-foreground font-normal">/ mo</span></div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">Billed monthly</div>
-                  </div>
+                  </button>
                 </div>
 
                 {/* CTA with Right Chevron & Trust Subtitle */}
                 <div className="space-y-2.5 text-center pt-1">
                   <button
+                    type="button"
                     disabled={isProcessing || isVerifying}
                     onClick={() => handleUpgrade(isAnnual ? 'growth_tier_annual' : 'growth_tier')}
-                    className="w-full py-4 px-4 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition shadow-xl flex items-center justify-center gap-2 group"
+                    className="w-full py-4 px-4 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 disabled:opacity-50 transition shadow-sm flex items-center justify-center gap-2 group cursor-pointer"
                   >
                     {isProcessing ? (
                       <>

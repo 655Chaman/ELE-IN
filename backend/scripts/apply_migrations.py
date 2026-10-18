@@ -118,9 +118,43 @@ ORDERED_MIGRATIONS = [
     "069_bayesian_icp_weights.sql",
     "069_proxies_webshare_columns.sql",
     "070_personas_columns_and_objections_unification.sql",
+    "071_release_consumed_daily_action.sql",
+    "072_timezone_aware_daily_action_limits.sql",
+    "073_agency_whitelabel_and_client_metrics.sql",
+    "074_proxy_latency_and_exit_ip.sql",
+    "075_prospect_social_signal_radar.sql",
+    "076_workspace_ai_gateway_settings.sql",
+    "077_proxy_quarantine_and_sticky_affinity.sql",
+    "077_workspace_auto_recharge_settings.sql",
+    "078_agency_credit_delegations.sql",
+    "078_sender_pod_load_balancing.sql",
+    "079_campaign_roi_certificates.sql",
+    "080_agency_billing_statements.sql",
+    "081_ai_inbox_battlecards_and_deal_stages.sql",
+    "081_bayesian_icp_calibration_studio.sql",
+    "082_social_prewarm_and_omnichannel_cascade.sql",
+    "083_bandit_optimizer_and_trigger_radar.sql",
+    "084_event_harvester_and_multimodal_voice.sql",
+    "085_lead_list_dynamic_segmentation.sql",
+    "086_abm_buying_committees_and_multithreading.sql",
+    "087_champion_job_changes_and_deal_revival.sql",
+    "088_competitive_displacement_and_vendor_takeover.sql",
+    "089_calendar_concierge_and_meeting_booking.sql",
+    "090_waterfall_enrichment_cascade.sql",
+    "091_email_warmup_and_dns_reputation.sql",
+    "092_crm_sync_and_deal_attribution.sql",
+    "093_employee_advocacy_and_viral_pods.sql",
+    "094_distributed_workspace_locks.sql",
+    "095_tier_aware_deduct_credits_safely.sql",
+    "096_specialized_features_credit_costs.sql",
+    "097_reconcile_missing_tables.sql",
+    "098_harden_rls_and_rpc.sql",
+    "099_add_processing_to_outbox_event_status.sql",
+    "100_leads_module_hardening.sql",
     "cleanup_orphaned_leads.sql",
     "rpc_claim_jobs.sql",
-    "rpc_decrement_count.sql"
+    "rpc_decrement_count.sql",
+    "999_master_pending_sync.sql"
 ]
 
 def print_manual_instructions(file_path):
@@ -145,7 +179,7 @@ def apply_migrations(dry_run=False):
             import psycopg2
             print("Found DATABASE_URL, attempting direct PostgreSQL connection...")
             conn = psycopg2.connect(db_url)
-            # Use explicit transactions by disabling autocommit
+            # Default to explicit transactions by disabling autocommit
             conn.autocommit = False 
             with conn.cursor() as cur:
                 # 1. Create tracking table
@@ -177,15 +211,23 @@ def apply_migrations(dry_run=False):
                         with open(mig, "r") as f:
                             sql = f.read()
                         
-                        # 2. Transaction wrap: Each file runs in its own transaction block
-                        # The execute() and INSERT run in the same transaction, then commit
-                        cur.execute(sql)
-                        cur.execute("INSERT INTO schema_migrations (filename) VALUES (%s)", (basename,))
-                        conn.commit()
+                        # 2. Transaction wrap: Handle CREATE INDEX CONCURRENTLY
+                        is_concurrent = "CONCURRENTLY" in sql.upper()
+                        if is_concurrent:
+                            conn.autocommit = True
+                            cur.execute(sql)
+                            cur.execute("INSERT INTO schema_migrations (filename) VALUES (%s)", (basename,))
+                            conn.autocommit = False
+                        else:
+                            conn.autocommit = False
+                            cur.execute(sql)
+                            cur.execute("INSERT INTO schema_migrations (filename) VALUES (%s)", (basename,))
+                            conn.commit()
                         print(f"Successfully applied {basename}")
                     except Exception as e:
                         # 3. Clear error reporting & isolating failure
-                        conn.rollback()
+                        if not conn.autocommit:
+                            conn.rollback()
                         print(f"\nERROR: Failed to apply {basename}")
                         print(f"SQL Error: {e}\nStopping migration process.")
                         conn.close()

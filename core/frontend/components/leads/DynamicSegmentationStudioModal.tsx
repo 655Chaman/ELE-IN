@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
 import type { LeadList } from './leads.types';
+import { CustomSelect } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -96,20 +97,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const [previewData, setPreviewData] = useState<any>({
-    matching_count: 142,
-    total_workspace_leads: 1250,
-    match_percentage: 11.36,
-    sample_leads: [
-      { id: 'l1', first_name: 'Elena', last_name: 'Rostova', company_name: 'VentureScale AI', job_title: 'Chief Revenue Officer', seniority: 'c_suite', company_size: '51-200', intent_tier: 'HOT', email: 'elena@venturescale.ai' },
-      { id: 'l2', first_name: 'Marcus', last_name: 'Sterling', company_name: 'Aether Cloud', job_title: 'VP Engineering', seniority: 'vp', company_size: '201-500', intent_tier: 'HOT', email: 'marcus@aethercloud.io' },
-      { id: 'l3', first_name: 'Sarah', last_name: 'Chen', company_name: 'Prism Analytics', job_title: 'Co-Founder & CEO', seniority: 'founder', company_size: '11-50', intent_tier: 'WARM', email: 'sarah@prismanalytics.com' },
-      { id: 'l4', first_name: 'Julian', last_name: 'Vance', company_name: 'HyperLogic Systems', job_title: 'Head of Sales', seniority: 'director', company_size: '51-200', intent_tier: 'HOT', email: 'julian@hyperlogicsys.com' }
-    ],
-    seniority_distribution: { c_suite: 42, founder: 35, vp: 38, director: 27 },
-    company_size_distribution: { '11-50': 48, '51-200': 62, '201-500': 32 },
-    intent_distribution: { HOT: 84, WARM: 42, COLD: 16 }
-  });
+  const [previewData, setPreviewData] = useState<any>(null);
 
   // Keep selected list in sync if initialListId changes
   useEffect(() => {
@@ -369,12 +357,12 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
-        className="w-full max-w-5xl bg-card border border-border/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-5xl bg-card border border-border/80 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
       >
         {/* Modal Header */}
         <div className="px-6 py-5 border-b border-border/60 flex items-center justify-between bg-muted/20 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
               <Sliders size={20} />
             </div>
             <div>
@@ -389,6 +377,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   </span>
                 ) : (
                   <button 
+                    type="button"
                     onClick={() => openPaywall({ featureName: "Dynamic Segmentation Studio", minTier: "PRO" })}
                     className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 hover:bg-amber-500/25 transition-all cursor-pointer"
                   >
@@ -405,8 +394,10 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
           <div className="flex items-center gap-3">
             {onClose && (
               <button 
+                type="button"
                 onClick={onClose}
-                className="w-9 h-9 rounded-xl border border-border/60 hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close dialog"
+                className="w-9 h-9 rounded-lg border border-border/60 hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -416,9 +407,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
 
         {/* In-Situ Pro Upgrade Banner for Free Users */}
         {!isPro && (
-          <div className="px-6 py-3.5 bg-gradient-to-r from-emerald-950/40 via-teal-950/30 to-background border-b border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shrink-0">
+          <div className="mx-6 my-3 p-3.5 rounded-lg border border-border/60 bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <div className="w-7 h-7 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
                 <Sparkles size={14} />
               </div>
               <div>
@@ -431,8 +422,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               </div>
             </div>
             <button
+              type="button"
               onClick={() => openPaywall({ featureName: "Smart Dynamic Segmentation & Auto-Enrollment" })}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs transition-all shadow-sm shrink-0 self-start sm:self-auto cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs transition-all shadow-xs shrink-0 self-start sm:self-auto cursor-pointer"
             >
               <Zap size={13} className="fill-current" />
               <span>Unlock Dynamic Studio</span>
@@ -447,17 +439,17 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
             <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
               Target Lead List:
             </label>
-            <select
+            <CustomSelect
               value={selectedListId}
-              onChange={(e) => setSelectedListId(e.target.value)}
-              className="text-xs font-semibold bg-background border border-border/80 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-            >
-              {lists.map(l => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.row_count >= 0 ? `${l.row_count.toLocaleString()} leads` : 'Processing'}) {l.type === 'dynamic' ? '· [Dynamic]' : ''}
-                </option>
-              ))}
-            </select>
+              onValueChange={setSelectedListId}
+              size="sm"
+              className="w-auto"
+              triggerClassName="text-xs font-semibold bg-background border-border/80 min-w-[240px]"
+              options={lists.map(l => ({
+                value: l.id,
+                label: `${l.name} (${l.row_count >= 0 ? `${l.row_count.toLocaleString()} leads` : 'Processing'})${l.type === 'dynamic' ? ' · [Dynamic]' : ''}`,
+              }))}
+            />
 
             {selectedList && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
@@ -471,8 +463,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-1.5 bg-muted/40 p-1 rounded-xl border border-border/50 self-start md:self-auto">
+          <div className="flex items-center gap-1.5 bg-muted/40 p-1 rounded-lg border border-border/50 self-start md:self-auto">
             <button
+              type="button"
               onClick={() => setActiveTab('rules')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'rules'
@@ -485,6 +478,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab('auto_enroll')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'auto_enroll'
@@ -500,6 +494,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab('preview')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'preview'
@@ -518,7 +513,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
           {activeTab === 'rules' && (
             <div className="space-y-6">
               {/* Match Mode Selector */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl bg-muted/20 border border-border/60 gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg bg-muted/20 border border-border/60 gap-3">
                 <div>
                   <span className="text-xs font-bold text-foreground block">
                     Logic Gate Matching Mode
@@ -528,8 +523,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1 bg-background/80 p-1 rounded-xl border border-border/70 self-start sm:self-auto">
+                <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/70 self-start sm:self-auto">
                   <button
+                    type="button"
                     onClick={() => setMatchType('ALL')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       matchType === 'ALL'
@@ -540,6 +536,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                     Match ALL (AND)
                   </button>
                   <button
+                    type="button"
                     onClick={() => setMatchType('ANY')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       matchType === 'ANY'
@@ -560,8 +557,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                     <span>Active Segmentation Conditions ({conditions.length})</span>
                   </span>
                   <button
+                    type="button"
                     onClick={handleAddCondition}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all cursor-pointer"
                   >
                     <Plus size={13} />
                     <span>Add Filter Condition</span>
@@ -574,47 +572,51 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                       key={cond.id}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-3.5 rounded-2xl border border-border/70 bg-card hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center gap-3 shadow-xs"
+                      className="p-3.5 rounded-lg border border-border/70 bg-card hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center gap-3 shadow-xs"
                     >
                       <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground w-16 shrink-0">
                         {index === 0 ? 'Where' : matchType === 'ALL' ? 'AND' : 'OR'}
                       </div>
 
                       {/* Field Selector */}
-                      <select
+                      <CustomSelect
                         value={cond.field}
-                        onChange={(e) => handleUpdateCondition(cond.id, { field: e.target.value })}
-                        className="text-xs font-semibold bg-background border border-border/80 rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary md:w-48 shrink-0"
-                      >
-                        <option value="seniority">Seniority Level</option>
-                        <option value="company_size">Company Headcount</option>
-                        <option value="intent_tier">Intent & Social Radar</option>
-                        <option value="connection_degree">LinkedIn Connection</option>
-                        <option value="email_verification">Email Verification</option>
-                        <option value="job_title">Job Title (Text)</option>
-                        <option value="company_name">Company Name (Text)</option>
-                      </select>
+                        onValueChange={(val) => handleUpdateCondition(cond.id, { field: val })}
+                        size="sm"
+                        className="md:w-48 shrink-0"
+                        triggerClassName="text-xs font-semibold bg-background border-border/80"
+                        options={[
+                          { value: "seniority", label: "Seniority Level" },
+                          { value: "company_size", label: "Company Headcount" },
+                          { value: "intent_tier", label: "Intent & Social Radar" },
+                          { value: "connection_degree", label: "LinkedIn Connection" },
+                          { value: "email_verification", label: "Email Verification" },
+                          { value: "job_title", label: "Job Title (Text)" },
+                          { value: "company_name", label: "Company Name (Text)" },
+                        ]}
+                      />
 
                       {/* Operator Selector */}
-                      <select
+                      <CustomSelect
                         value={cond.operator}
-                        onChange={(e) => handleUpdateCondition(cond.id, { operator: e.target.value })}
-                        className="text-xs font-medium bg-background border border-border/80 rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary md:w-32 shrink-0"
-                      >
-                        {cond.field === 'job_title' || cond.field === 'company_name' ? (
-                          <>
-                            <option value="contains">contains</option>
-                            <option value="equals">equals</option>
-                            <option value="not_contains">does not contain</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="in">is one of</option>
-                            <option value="equals">equals</option>
-                            <option value="not_equals">is not</option>
-                          </>
-                        )}
-                      </select>
+                        onValueChange={(val) => handleUpdateCondition(cond.id, { operator: val })}
+                        size="sm"
+                        className="md:w-36 shrink-0"
+                        triggerClassName="text-xs font-medium bg-background border-border/80"
+                        options={
+                          cond.field === 'job_title' || cond.field === 'company_name'
+                            ? [
+                                { value: "contains", label: "contains" },
+                                { value: "equals", label: "equals" },
+                                { value: "not_contains", label: "does not contain" },
+                              ]
+                            : [
+                                { value: "in", label: "is one of" },
+                                { value: "equals", label: "equals" },
+                                { value: "not_equals", label: "is not" },
+                              ]
+                        }
+                      />
 
                       {/* Value Input / Multi-Select */}
                       <div className="flex-1 min-w-0">
@@ -743,7 +745,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                             value={cond.value || ''}
                             onChange={(e) => handleUpdateCondition(cond.id, { value: e.target.value })}
                             placeholder={cond.field === 'job_title' ? 'e.g., VP Sales, Founder, Head of Growth' : 'e.g., Google, Stripe, Datadog'}
-                            className="w-full text-xs bg-background border border-border/80 rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full text-xs bg-background border border-border/80 rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           />
                         )}
                       </div>
@@ -752,7 +754,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                       <button
                         type="button"
                         onClick={() => handleRemoveCondition(cond.id)}
-                        className="p-2 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer shrink-0"
+                        className="p-2 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
                         title="Remove condition"
                       >
                         <Trash2 size={15} />
@@ -763,9 +765,9 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               </div>
 
               {/* Evaluation Quick Radar Widget */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-card via-muted/10 to-card border border-border/70 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="p-4 rounded-lg bg-card border border-border/70 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
                     <Radio size={18} className={isEvaluating ? 'animate-pulse' : ''} />
                   </div>
                   <div>
@@ -773,20 +775,30 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                       <span className="text-xs font-bold text-foreground">
                         Real-Time Segment Radar:
                       </span>
-                      <span className="text-xs font-extrabold text-primary">
-                        {previewData?.matching_count?.toLocaleString() || 0} qualifying leads
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        ({previewData?.match_percentage || 0}% of {previewData?.total_workspace_leads?.toLocaleString() || 0} total leads)
-                      </span>
+                      {previewData ? (
+                        <>
+                          <span className="text-xs font-extrabold text-primary">
+                            {previewData.matching_count?.toLocaleString() || 0} qualifying leads
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            ({previewData.match_percentage || 0}% of {previewData.total_workspace_leads?.toLocaleString() || 0} total leads)
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground font-medium">
+                          Pre-flight dry-run not yet executed
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                      <span>C-Suite / Founders: {((previewData?.seniority_distribution?.c_suite || 0) + (previewData?.seniority_distribution?.founder || 0))}</span>
-                      <span>•</span>
-                      <span>HOT Intent: {previewData?.intent_distribution?.HOT || 0}</span>
-                      <span>•</span>
-                      <span>Mid-Market: {previewData?.company_size_distribution?.['51-200'] || 0}</span>
-                    </div>
+                    {previewData && (
+                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                        <span>C-Suite / Founders: {((previewData?.seniority_distribution?.c_suite || 0) + (previewData?.seniority_distribution?.founder || 0))}</span>
+                        <span>•</span>
+                        <span>HOT Intent: {previewData?.intent_distribution?.HOT || 0}</span>
+                        <span>•</span>
+                        <span>Mid-Market: {previewData?.company_size_distribution?.['51-200'] || 0}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -794,7 +806,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                   type="button"
                   onClick={handleRunEvaluation}
                   disabled={isEvaluating}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shadow-xs"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shadow-xs"
                 >
                   <RefreshCw size={13} className={isEvaluating ? 'animate-spin' : ''} />
                   <span>{isEvaluating ? 'Simulating Radar...' : 'Run Live Dry-Run Preview'}</span>
@@ -806,7 +818,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
           {activeTab === 'auto_enroll' && (
             <div className="space-y-6">
               {/* Auto-Enrollment Switch */}
-              <div className="p-5 rounded-2xl bg-card border border-border/70 space-y-4 shadow-xs">
+              <div className="p-5 rounded-lg bg-card border border-border/70 space-y-4 shadow-xs">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -839,18 +851,21 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                     <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
                       Target Campaign:
                     </label>
-                    <select
+                    <CustomSelect
                       value={targetCampaignId}
-                      onChange={(e) => setTargetCampaignId(e.target.value)}
-                      className="text-xs font-semibold bg-background border border-border/80 rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary flex-1 max-w-md"
-                    >
-                      <option value="">— Select Target Campaign for Auto-Enrollment —</option>
-                      {campaigns.map(camp => (
-                        <option key={camp.id} value={camp.id}>
-                          {camp.name} ({camp.status || 'draft'})
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={setTargetCampaignId}
+                      size="sm"
+                      className="flex-1 max-w-md"
+                      triggerClassName="text-xs font-semibold bg-background border-border/80"
+                      placeholder="— Select Target Campaign for Auto-Enrollment —"
+                      options={[
+                        { value: "", label: "— Select Target Campaign for Auto-Enrollment —" },
+                        ...campaigns.map(camp => ({
+                          value: camp.id,
+                          label: `${camp.name} (${camp.status || 'draft'})`,
+                        })),
+                      ]}
+                    />
                   </div>
                 )}
               </div>
@@ -858,7 +873,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               {/* Safety & CollisionGuard Architecture Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* CollisionGuard Card */}
-                <div className="p-4 rounded-2xl bg-card border border-emerald-500/25 space-y-2.5 shadow-xs">
+                <div className="p-4 rounded-lg bg-card border border-emerald-500/25 space-y-2.5 shadow-xs">
                   <div className="flex items-center gap-2">
                     <ShieldCheck size={16} className="text-emerald-400" />
                     <span className="text-xs font-bold text-foreground">
@@ -871,7 +886,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
                 </div>
 
                 {/* Disqualification Pause Guard Card */}
-                <div className="p-4 rounded-2xl bg-card border border-amber-500/25 space-y-2.5 shadow-xs">
+                <div className="p-4 rounded-lg bg-card border border-amber-500/25 space-y-2.5 shadow-xs">
                   <div className="flex items-center gap-2">
                     <AlertCircle size={16} className="text-amber-400" />
                     <span className="text-xs font-bold text-foreground">
@@ -885,7 +900,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               </div>
 
               {/* Re-Enrollment Guard */}
-              <div className="p-4 rounded-2xl bg-muted/20 border border-border/60 flex items-center justify-between gap-4">
+              <div className="p-4 rounded-lg bg-muted/20 border border-border/60 flex items-center justify-between gap-4">
                 <div>
                   <span className="text-xs font-bold text-foreground block">
                     Allow Re-Enrollment for Completed Prospects
@@ -908,133 +923,173 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
           )}
 
           {activeTab === 'preview' && (
-            <div className="space-y-6">
-              {/* Distribution Stats Pills */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3.5 rounded-2xl bg-card border border-border/70 text-center">
-                  <span className="text-[11px] text-muted-foreground block font-medium">Qualifying Leads</span>
-                  <span className="text-xl font-black text-primary mt-0.5 block">
-                    {previewData?.matching_count?.toLocaleString() || 0}
-                  </span>
+            previewData === null ? (
+              <div className="p-12 rounded-lg border border-dashed border-border/70 text-center space-y-4 bg-card/20">
+                <div className="w-12 h-12 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mx-auto">
+                  <Radio size={24} />
                 </div>
-                <div className="p-3.5 rounded-2xl bg-card border border-border/70 text-center">
-                  <span className="text-[11px] text-muted-foreground block font-medium">Workspace ICP Match</span>
-                  <span className="text-xl font-black text-emerald-400 mt-0.5 block">
-                    {previewData?.match_percentage || 0}%
-                  </span>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Pre-Flight Dry Run Idle</h3>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1 leading-relaxed">
+                    Configure rules above and click 'Run Pre-Flight Dry Run' to evaluate matching prospects across your workspace.
+                  </p>
                 </div>
-                <div className="p-3.5 rounded-2xl bg-card border border-border/70 text-center">
-                  <span className="text-[11px] text-muted-foreground block font-medium">HOT Intent Leads</span>
-                  <span className="text-xl font-black text-red-400 mt-0.5 block">
-                    {previewData?.intent_distribution?.HOT || 0}
-                  </span>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-card border border-border/70 text-center">
-                  <span className="text-[11px] text-muted-foreground block font-medium">Total Database Scanned</span>
-                  <span className="text-xl font-black text-muted-foreground mt-0.5 block">
-                    {previewData?.total_workspace_leads?.toLocaleString() || 0}
-                  </span>
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleRunEvaluation}
+                    disabled={isEvaluating}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    <RefreshCw size={13} className={isEvaluating ? 'animate-spin' : ''} />
+                    <span>{isEvaluating ? 'Evaluating Workspace...' : 'Run Pre-Flight Dry Run'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('rules')}
+                    className="px-4 py-2 rounded-lg bg-background border border-border/80 text-foreground hover:bg-muted/40 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    Configure Segment Rules
+                  </button>
                 </div>
               </div>
-
-              {/* Sample Matching Prospects Table */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-foreground flex items-center gap-2">
-                    <Users size={14} className="text-primary" />
-                    <span>Sample Qualifying Prospects Preview</span>
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-muted-foreground hidden sm:inline">
-                      Showing top matching sample profiles
+            ) : (
+              <div className="space-y-6">
+                {/* Distribution Stats Pills */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Qualifying Leads</span>
+                    <span className="text-xl font-black text-primary mt-0.5 block">
+                      {previewData?.matching_count?.toLocaleString() || 0}
                     </span>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!selectedListId) {
-                          toast.error('Please select a lead list first.');
-                          return;
-                        }
-                        try {
-                          const res = await fetchWithAuth(`/api/leads/lists/${encodeURIComponent(selectedListId)}/dynamic-segment/export-csv`);
-                          if (res.status === 402) {
-                            openPaywall({ featureName: "Dynamic Segment CSV Export", minTier: "PRO" });
-                            return;
-                          }
-                          if (!res.ok) throw new Error('Failed to export dynamic segment CSV');
-                          const blob = await res.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `dynamic_segment_${selectedListId}_${Date.now()}.csv`;
-                          document.body.appendChild(a);
-                          a.click();
-                          a.remove();
-                          window.URL.revokeObjectURL(url);
-                          toast.success('Qualifying segment prospects exported to CSV!');
-                        } catch (e: any) {
-                          toast.error(e.message || 'Failed to export CSV');
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border border-border/80 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      <Download size={12} />
-                      <span>Export Qualifying CSV</span>
-                    </button>
+                  </div>
+                  <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Workspace ICP Match</span>
+                    <span className="text-xl font-black text-emerald-400 mt-0.5 block">
+                      {previewData?.match_percentage || 0}%
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
+                    <span className="text-[11px] text-muted-foreground block font-medium">HOT Intent Leads</span>
+                    <span className="text-xl font-black text-red-400 mt-0.5 block">
+                      {previewData?.intent_distribution?.HOT || 0}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
+                    <span className="text-[11px] text-muted-foreground block font-medium">Total Database Scanned</span>
+                    <span className="text-xl font-black text-muted-foreground mt-0.5 block">
+                      {previewData?.total_workspace_leads?.toLocaleString() || 0}
+                    </span>
                   </div>
                 </div>
 
-                <div className="border border-border/70 rounded-2xl overflow-hidden bg-card shadow-xs">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-border/60 bg-muted/20 text-[11px] font-bold text-muted-foreground">
-                        <th className="py-2.5 px-4">Prospect</th>
-                        <th className="py-2.5 px-4">Title & Seniority</th>
-                        <th className="py-2.5 px-4">Company & Size</th>
-                        <th className="py-2.5 px-4">Intent Tier</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40 text-xs">
-                      {(previewData?.sample_leads || []).map((lead: any, i: number) => (
-                        <tr key={lead.id || i} className="hover:bg-muted/30 transition-colors">
-                          <td className="py-3 px-4">
-                            <span className="font-bold text-foreground block">
-                              {lead.first_name} {lead.last_name}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {lead.email || 'Contact verified'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="font-medium text-foreground block">{lead.job_title}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-primary/10 text-primary">
-                              {lead.seniority || 'verified'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="font-medium text-foreground block">{lead.company_name}</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {lead.company_size ? `${lead.company_size} employees` : 'Headcount normal'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                              lead.intent_tier === 'HOT'
-                                ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                                : lead.intent_tier === 'WARM'
-                                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                                : 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
-                            }`}>
-                              {lead.intent_tier || 'HOT'}
-                            </span>
-                          </td>
+                {/* Sample Matching Prospects Table */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <Users size={14} className="text-primary" />
+                      <span>Sample Qualifying Prospects Preview</span>
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                        Showing top matching sample profiles
+                      </span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedListId) {
+                            toast.error('Please select a lead list first.');
+                            return;
+                          }
+                          try {
+                            const res = await fetchWithAuth(`/api/leads/lists/${encodeURIComponent(selectedListId)}/dynamic-segment/export-csv`);
+                            if (res.status === 402) {
+                              openPaywall({ featureName: "Dynamic Segment CSV Export", minTier: "PRO" });
+                              return;
+                            }
+                            if (!res.ok) throw new Error('Failed to export dynamic segment CSV');
+                            const blob = await res.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `dynamic_segment_${selectedListId}_${Date.now()}.csv`;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                            window.URL.revokeObjectURL(url);
+                            toast.success('Qualifying segment prospects exported to CSV!');
+                          } catch (e: any) {
+                            toast.error(e.message || 'Failed to export CSV');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/80 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        <Download size={12} />
+                        <span>Export Qualifying CSV</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-border/70 rounded-lg overflow-hidden bg-card shadow-xs">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-muted/20 text-[11px] font-bold text-muted-foreground">
+                          <th className="py-2.5 px-4">Prospect</th>
+                          <th className="py-2.5 px-4">Title & Seniority</th>
+                          <th className="py-2.5 px-4">Company & Size</th>
+                          <th className="py-2.5 px-4">Intent Tier</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-border/40 text-xs">
+                        {(previewData?.sample_leads || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="py-8 text-center text-xs text-muted-foreground">
+                              No prospects in your workspace currently match these criteria.
+                            </td>
+                          </tr>
+                        ) : (
+                          (previewData?.sample_leads || []).map((lead: any, i: number) => (
+                            <tr key={lead.id || i} className="hover:bg-muted/30 transition-colors">
+                              <td className="py-3 px-4">
+                                <span className="font-bold text-foreground block">
+                                  {lead.first_name} {lead.last_name}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {lead.email || 'Contact verified'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="font-medium text-foreground block">{lead.job_title}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold uppercase bg-primary/10 text-primary">
+                                  {lead.seniority || 'verified'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="font-medium text-foreground block">{lead.company_name}</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {lead.company_size ? `${lead.company_size} employees` : 'Headcount normal'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                  lead.intent_tier === 'HOT'
+                                    ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                    : lead.intent_tier === 'WARM'
+                                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                    : 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                                }`}>
+                                  {lead.intent_tier || 'HOT'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
+            )
           )}
         </div>
 
@@ -1052,7 +1107,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               type="button"
               onClick={handleSaveRules}
               disabled={isSaving}
-              className="flex-1 sm:flex-none px-4 py-2 rounded-xl border border-border/80 hover:bg-muted/60 text-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-lg border border-border/80 hover:bg-muted/60 text-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50"
             >
               {isSaving ? 'Saving Rules...' : 'Save Rules'}
             </button>
@@ -1061,7 +1116,7 @@ export function DynamicSegmentationStudioModal({ initialListId, onClose, onRules
               type="button"
               onClick={handleSyncNow}
               disabled={isSyncing}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all cursor-pointer shadow-sm disabled:opacity-50"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all cursor-pointer shadow-sm disabled:opacity-50"
             >
               <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
               <span>{isSyncing ? 'Syncing Segment...' : 'Save & Sync Segment Now'}</span>

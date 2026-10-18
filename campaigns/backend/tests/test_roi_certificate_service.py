@@ -367,11 +367,16 @@ class TestROICertificateService(unittest.TestCase):
         mock_supabase = MagicMock()
         mock_camp = MagicMock()
         mock_camp.data = [{"id": self.campaign_id, "name": "=DangerousCampaign", "status": "ACTIVE"}]
+        mock_leads = MagicMock()
+        mock_leads.data = [{"id": "lead-1", "lead_id": "l-1", "name": "Sarah Jenkins", "company": "Stripe Technologies", "title": "VP", "status": "booked"}]
 
         def table_router(table_name):
             t_mock = MagicMock()
             if table_name == "campaigns":
                 t_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value = mock_camp
+            elif table_name == "campaign_leads":
+                t_mock.select.return_value.eq.return_value.in_.return_value.limit.return_value.execute.return_value = mock_leads
+                t_mock.select.return_value.eq.return_value.execute.return_value = mock_leads
             else:
                 empty = MagicMock()
                 empty.data = []

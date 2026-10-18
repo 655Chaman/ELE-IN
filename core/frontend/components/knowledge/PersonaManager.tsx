@@ -35,18 +35,18 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
 
   return (
     <>
-      <div className="bg-white dark:bg-card/40 border border-slate-200 dark:border-border/50 rounded-[40px] p-8 lg:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-2xl relative overflow-hidden">
+      <div className="bg-card border border-border/60 rounded-xl p-8 lg:p-12 shadow-sm relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex justify-between items-center mb-10">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <Users className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+                <Users className="w-6 h-6 text-primary" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-2xl font-semibold tracking-tight text-foreground">Buyer Personas</h3>
                   {!isPro && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       {(personas || []).length}/{maxPersonas} Persona
                     </span>
                   )}
@@ -55,11 +55,12 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
               </div>
             </div>
             <button 
+              type="button"
               onClick={handleAddPersonaClick} 
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95 shadow-md ${
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm ${
                 isPersonaCapped 
-                  ? "bg-slate-100 dark:bg-muted text-foreground border border-border" 
-                  : "bg-foreground text-background hover:bg-foreground/90"
+                  ? "bg-muted text-foreground border border-border" 
+                  : "bg-primary text-primary-foreground hover:bg-primary/90"
               }`}
             >
               {isPersonaCapped ? <Lock size={15} className="text-amber-500" /> : <Plus size={16} />}
@@ -68,23 +69,24 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
           </div>
           
           {!personas || personas.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl bg-slate-50/50 dark:bg-card/30">
-              <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                <Users className="w-8 h-8 text-slate-400" />
+            <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-border/60 rounded-lg bg-muted/20">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <Users className="w-8 h-8 text-muted-foreground" />
               </div>
               <h4 className="text-lg font-medium text-foreground mb-2">No Buyer Personas Defined</h4>
               <p className="text-sm text-muted-foreground max-w-sm mb-6">Stop sending generic pitches. Define exact job titles and their specific pain points to drastically increase your reply rates.</p>
-              <button onClick={() => openPersonaModal()} className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-md">
+              <button 
+                type="button"
+                onClick={() => openPersonaModal()} 
+                className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+              >
                 <Plus size={16} /> Create Your First Persona
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {personas.map((persona: any) => (
-                <div key={persona.id} className="group relative border border-slate-200 dark:border-slate-800/80 rounded-[32px] bg-white/50 dark:bg-[#0f1115]/50 hover:bg-white dark:hover:bg-[#15181e] hover:border-blue-300 dark:hover:border-blue-500/50 transition-all duration-300 overflow-hidden shadow-sm hover:shadow-xl">
-                  {/* Card Header Background */}
-                  <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-blue-50/50 dark:from-blue-900/10 to-transparent pointer-events-none" />
-                  
+                <div key={persona.id} className="group relative border border-border/60 rounded-lg bg-card hover:border-border transition-colors shadow-xs overflow-hidden">
                   <div className="p-8 relative z-10">
                     <div className="flex justify-between items-start mb-6">
                       <div>
@@ -94,18 +96,32 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                         <div className="flex flex-wrap gap-2">
                           {Array.isArray(persona.target_titles) && persona.target_titles.length > 0 ? (
                             persona.target_titles.map((t: string, i: number) => (
-                              <span key={i} className="px-2.5 py-1 rounded-md bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs font-medium border border-blue-200 dark:border-blue-500/20">
+                              <span key={i} className="px-2.5 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium border border-primary/20">
                                 {t}
                               </span>
                             ))
                           ) : (
-                            <span className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-medium">No target titles defined</span>
+                            <span className="px-2.5 py-1 rounded-md bg-muted text-muted-foreground text-xs font-medium">No target titles defined</span>
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity translate-x-2 group-hover:translate-x-0">
-                        <button onClick={() => openPersonaModal(persona)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-muted-foreground hover:text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><Edit2 size={14} /></button>
-                        <button onClick={() => handleDeletePersona(persona.id, persona.title)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"><Trash2 size={14} /></button>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          type="button"
+                          aria-label="Edit persona"
+                          onClick={() => openPersonaModal(persona)} 
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button 
+                          type="button"
+                          aria-label="Delete persona"
+                          onClick={() => handleDeletePersona(persona.id, persona.title)} 
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-muted text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                     
@@ -115,17 +131,17 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                           <ShieldAlert className="w-4 h-4 text-primary" />
                           <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Pain Points</p>
                         </div>
-                        <div className="text-sm text-foreground/80 leading-relaxed flex flex-col gap-1.5 pl-6 border-l-2 border-orange-200 dark:border-primary/20">
+                        <div className="text-sm text-foreground/80 leading-relaxed flex flex-col gap-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                           {Array.isArray(persona.pain_points) && persona.pain_points.length > 0
                             ? persona.pain_points.map((pt: any, i: number) => <span key={i} className="flex items-start"><span className="mr-2 opacity-50">•</span>{pt}</span>)
                             : <span className="text-muted-foreground italic">None defined</span>}
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-6 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                      <div className="grid grid-cols-2 gap-6 pt-4 border-t border-border/50">
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <Sparkles className="w-3.5 h-3.5 text-green-500" />
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
                             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Value Prop</p>
                           </div>
                           <p className="text-sm text-foreground/80 leading-relaxed line-clamp-3">
@@ -135,7 +151,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                         
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+                            <MessageSquare className="w-3.5 h-3.5 text-primary" />
                             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tone Tweaks</p>
                           </div>
                           <p className="text-sm text-foreground/80 leading-relaxed line-clamp-3">
@@ -160,76 +176,81 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
-              className="fixed inset-0 bg-black/80" 
+              className="fixed inset-0 bg-background/80 backdrop-blur-sm" 
               onClick={() => setIsPersonaModalOpen(false)}
             />
             <motion.div 
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="persona-modal-title"
               initial={{ opacity: 0, scale: 0.98, y: 10 }} 
               animate={{ opacity: 1, scale: 1, y: 0 }} 
               exit={{ opacity: 0, scale: 0.98, y: 10 }}
               transition={{ type: "spring", damping: 25, stiffness: 400 }}
-              className="relative w-full max-w-[600px] bg-[#0c0c0e] border border-white/10 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.7)] flex flex-col max-h-[85vh] overflow-hidden"
+              className="relative w-full max-w-[600px] bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
             >
               {/* Header - Fixed */}
-              <div className="shrink-0 px-6 py-4 border-b border-white/5 flex justify-between items-center bg-[#0c0c0e] z-10">
+              <div className="shrink-0 px-6 py-4 border-b border-border flex justify-between items-center bg-card z-10">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
-                    <Users className="w-4 h-4 text-zinc-300" />
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <Users className="w-4 h-4 text-primary" />
                   </div>
-                  <h3 className="text-base font-semibold text-zinc-100">
+                  <h3 id="persona-modal-title" className="text-base font-semibold text-foreground">
                     {editingPersonaId ? 'Edit Persona' : 'New Persona'}
                   </h3>
                 </div>
                 <button 
+                  type="button"
                   onClick={() => setIsPersonaModalOpen(false)} 
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white transition-colors"
+                  aria-label="Close modal"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <X size={16} />
                 </button>
               </div>
 
               {/* Body - Scrollable */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-[#0c0c0e] to-[#050505]">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-card">
                 
                 {/* Name & Titles */}
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-1.5">Persona Name</label>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">Persona Name</label>
                     <input 
                       type="text" 
                       value={personaForm.title} 
                       onChange={(e) => setPersonaForm(prev => ({...prev, title: e.target.value}))}
-                      className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground hover:border-border/80 focus:outline-none focus:border-primary transition-colors"
                       placeholder="e.g. Enterprise Sales VP"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-                      Target Job Titles <span className="text-zinc-600 font-normal ml-1">(Comma separated)</span>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Target Job Titles <span className="text-muted-foreground font-normal ml-1">(Comma separated)</span>
                     </label>
                     <input 
                       type="text" 
                       value={personaForm.target_titles} 
                       onChange={(e) => setPersonaForm(prev => ({...prev, target_titles: e.target.value}))}
-                      className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground hover:border-border/80 focus:outline-none focus:border-primary transition-colors"
                       placeholder="e.g. VP Sales, CRO, Head of Sales"
                     />
                   </div>
                 </div>
 
-                <div className="w-full h-px bg-white/5" />
+                <div className="w-full h-px bg-border" />
 
                 {/* AI Directives */}
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-                      Pain Points <span className="text-zinc-600 font-normal ml-1">(One per line)</span>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Pain Points <span className="text-muted-foreground font-normal ml-1">(One per line)</span>
                     </label>
                     <textarea 
                       value={personaForm.pain_points} 
                       onChange={(e) => setPersonaForm(prev => ({...prev, pain_points: e.target.value}))}
-                      className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-primary/50 transition-all h-28 resize-none"
+                      className="w-full bg-background border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground hover:border-border/80 focus:outline-none focus:border-primary transition-colors h-28 resize-none"
                       placeholder="e.g. Reps burning 10 hours a week on manual research.
 Cold email conversion is flatlining."
                     />
@@ -237,24 +258,24 @@ Cold email conversion is flatlining."
 
                   <div className="grid grid-cols-1 gap-5">
                     <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-                        Value Prop Override <span className="text-zinc-600 font-normal ml-1">(Optional)</span>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Value Prop Override <span className="text-muted-foreground font-normal ml-1">(Optional)</span>
                       </label>
                       <textarea 
                         value={personaForm.value_prop} 
                         onChange={(e) => setPersonaForm(prev => ({...prev, value_prop: e.target.value}))}
-                        className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-emerald-500/50 transition-all h-20 resize-none"
+                        className="w-full bg-background border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground hover:border-border/80 focus:outline-none focus:border-primary transition-colors h-20 resize-none"
                         placeholder="Why does this specific persona care about your product?"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-                        Tone Tweaks <span className="text-zinc-600 font-normal ml-1">(Optional)</span>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Tone Tweaks <span className="text-muted-foreground font-normal ml-1">(Optional)</span>
                       </label>
                       <textarea 
                         value={personaForm.tone_tweaks} 
                         onChange={(e) => setPersonaForm(prev => ({...prev, tone_tweaks: e.target.value}))}
-                        className="w-full bg-transparent border border-white/10 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 hover:border-white/20 focus:outline-none focus:border-blue-500/50 transition-all h-20 resize-none"
+                        className="w-full bg-background border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground hover:border-border/80 focus:outline-none focus:border-primary transition-colors h-20 resize-none"
                         placeholder="e.g. Extremely concise, direct, highly metric-driven."
                       />
                     </div>
@@ -264,16 +285,18 @@ Cold email conversion is flatlining."
               </div>
 
               {/* Footer - Fixed */}
-              <div className="shrink-0 px-6 py-4 border-t border-white/5 bg-[#050505] flex justify-end gap-3 z-10">
+              <div className="shrink-0 px-6 py-4 border-t border-border bg-muted/30 flex justify-end gap-3 z-10">
                 <button 
+                  type="button"
                   onClick={() => setIsPersonaModalOpen(false)} 
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
                   Cancel
                 </button>
                 <button 
+                  type="button"
                   onClick={handleSavePersona} 
-                  className="bg-white hover:bg-zinc-200 text-black px-5 py-2 rounded-lg text-sm font-semibold transition-all shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm"
                 >
                   Save Persona
                 </button>

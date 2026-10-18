@@ -28,8 +28,6 @@ interface ComposerStationProps {
   isInsertingSlots: boolean;
   sendOnEnter: boolean;
   onSendOnEnterChange: (val: boolean) => void;
-  isPlaygroundActive: boolean;
-  isSimulatingProspectReply: boolean;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
@@ -53,8 +51,6 @@ export function ComposerStation({
   isInsertingSlots,
   sendOnEnter,
   onSendOnEnterChange: _onSendOnEnterChange,
-  isPlaygroundActive: _isPlaygroundActive,
-  isSimulatingProspectReply,
   textareaRef,
 }: ComposerStationProps) {
   const [isTemplatesMenuOpen, setIsTemplatesMenuOpen] = useState(false);
@@ -213,8 +209,7 @@ export function ComposerStation({
                 disabled={
                   !replyText.trim() ||
                   isSending ||
-                  isDraftingAI ||
-                  isSimulatingProspectReply
+                  isDraftingAI
                 }
                 title="Send reply (Cmd+Enter)"
                 className="px-4 py-1.5 transition-all rounded-md disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground flex items-center gap-1.5 text-xs font-semibold cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 whitespace-nowrap shadow-xs"

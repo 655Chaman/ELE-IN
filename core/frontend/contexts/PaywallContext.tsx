@@ -55,6 +55,12 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { data: balanceData } = useSWR('/api/elein/billing/credits/balance', fetcher);
   const currentCredits = Number(balanceData?.balance ?? balanceData?.data_cleaning_credits ?? 0);
 
+  // ============================================================================
+  // BETA TESTING MODE: Temporarily disable CreditTopUpModal popups during beta testing
+  // Tracked in TODO.md and brain/todo-list.md. To re-enable: set isBetaTestingMode = false
+  // ============================================================================
+  const isBetaTestingMode = true;
+
   // Paranoia Layer 1: Concurrency Lock to prevent duplicate modal spam from parallel requests
   const isLockedRef = useRef(false);
 
@@ -75,6 +81,10 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const openTopUp = useCallback((opts: TopUpTriggerOptions = {}) => {
+    if (isBetaTestingMode) {
+      // Bypassed for beta testing phase per Captain directive
+      return;
+    }
     if (isTopUpOpen || isPaywallOpen || isMilestoneOpen || isLockedRef.current) return;
     isLockedRef.current = true;
     setTopUpOptions(opts);
@@ -198,13 +208,15 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
         onSuccess={handlePaywallSuccess}
       />
 
-      {/* Global In-Situ Micro-Monetization Top-Up Modal */}
-      <CreditTopUpModal
-        isOpen={isTopUpOpen}
-        onClose={closeTopUp}
-        currentBalance={currentCredits}
-        onSuccess={handleTopUpSuccess}
-      />
+      {/* Global In-Situ Micro-Monetization Top-Up Modal (Bypassed during Beta Testing) */}
+      {!isBetaTestingMode && (
+        <CreditTopUpModal
+          isOpen={isTopUpOpen}
+          onClose={closeTopUp}
+          currentBalance={currentCredits}
+          onSuccess={handleTopUpSuccess}
+        />
+      )}
 
       {/* Global First-Win Milestone OTO Expansion Modal */}
       <FirstWinMilestoneModal

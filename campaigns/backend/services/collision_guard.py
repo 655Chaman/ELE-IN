@@ -41,7 +41,7 @@ def get_conflicting_active_leads(
     if active_statuses:
         in_flight_statuses = [str(st).strip().lower() for st in active_statuses if str(st).strip()]
     else:
-        in_flight_statuses = ["pending", "running", "waiting_for_reply", "awaiting_approval"]
+        in_flight_statuses = ["pending", "processing", "running", "waiting_for_reply", "awaiting_approval"]
 
     if not in_flight_statuses:
         return set()
@@ -107,7 +107,7 @@ def is_lead_active_in_other_campaign(
     workspace_id: str,
     lead_id: str,
     exclude_campaign_id: str,
-    active_statuses: List[str] = ["running", "waiting_for_reply", "pending", "awaiting_approval"]
+    active_statuses: Optional[List[str]] = None
 ) -> bool:
     """
     Runtime preflight helper used by the orchestrator to check if a single lead

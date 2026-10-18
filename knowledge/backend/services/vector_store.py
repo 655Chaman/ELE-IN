@@ -163,18 +163,18 @@ class SemanticBrain:
                 logger.error(f"Error checking usage limits: {e}")
 
             
-        # Phase 2: Re-sync must replace, not append
-        self.delete_by_asset_id(asset_id, workspace_id)
-        
         # Phase 1: Semantic chunking
         documents = self._chunk_content(content)
         if not documents:
             return
 
         try:
-            # Phase 2: Batch embeddings
+            # Phase 2: Batch embeddings (compute before deleting old chunks to prevent data loss)
             embeddings = self._generate_embeddings(documents)
             
+            # Re-sync must replace, not append - delete old chunks only after new embeddings succeed
+            self.delete_by_asset_id(asset_id, workspace_id)
+
             rows = []
             for i, (doc, emb) in enumerate(zip(documents, embeddings)):
                 rows.append({
@@ -190,10 +190,9 @@ class SemanticBrain:
                 
             logger.info(f"Indexed {len(documents)} chunks for asset {asset_id} using NVIDIA embeddings.")
             
-            # Phase 2: Update chunk count is handled by the SQL Trigger we added earlier!
-            
         except Exception as e:
-            logger.error(f"Failed to index document to pgvector: {e}")
+            logger.error(f"Failed to index document to pgvector for asset {asset_id}: {e}")
+            raise
 
     def _enrich_chunk_sources(self, rows: list, workspace_id: str) -> list:
         """Layer 0/1 Paranoia: Attaches real document titles to chunks and injects metadata dict."""

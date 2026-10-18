@@ -569,7 +569,7 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "default": true,
+              "default": false,
               "title": "Include Demo Fallback"
             }
           }
@@ -2505,7 +2505,7 @@
           "social_prewarm_and_omnichannel"
         ],
         "summary": "Generate Comment Endpoint",
-        "description": "Paranoia Layer 0 & 2: Generates non-slop, high-value comments tailored to the post's core premise.\nTones: 'insightful_query', 'benchmark_data', 'contrarian_value_add'.\nGated by can_social_prewarm tier limit.",
+        "description": "Paranoia Layer 0 & 2: Generates non-slop, high-value comments tailored to the post's core premise.\nTones: 'insightful_query', 'benchmark_data', 'contrarian_value_add'.\nGated by can_social_prewarm tier limit.\nCosts 1 credit.",
         "operationId": "generate_comment_endpoint_api_elein_prewarm_generate_comment_post",
         "requestBody": {
           "content": {
@@ -2886,7 +2886,7 @@
           "social_prewarm_and_omnichannel"
         ],
         "summary": "Generate Post Endpoint",
-        "description": "Generates ready-to-publish LinkedIn post formatted with hooks, bullet takeaways, and CTA.\nGated by can_thought_leadership_studio tier limit.",
+        "description": "Generates ready-to-publish LinkedIn post formatted with hooks, bullet takeaways, and CTA.\nGated by can_thought_leadership_studio tier limit.\nCosts 2 credits.",
         "operationId": "generate_post_endpoint_api_elein_content_generate_post_post",
         "requestBody": {
           "content": {
@@ -3199,7 +3199,7 @@
           "bandit_optimizer"
         ],
         "summary": "Mutate Variant Endpoint",
-        "description": "Paranoia Layer 0 & 2: Spawns next-generation mutated challenger variant from degraded arm.",
+        "description": "Paranoia Layer 0 & 2: Spawns next-generation mutated challenger variant from parent arm.",
         "operationId": "mutate_variant_endpoint_api_elein_bandit_mutate_variant_post",
         "requestBody": {
           "content": {
@@ -3719,7 +3719,7 @@
           "events_and_multimodal"
         ],
         "summary": "Generate Voice Script Endpoint",
-        "description": "Paranoia Layer 0 & 1: Synthesizes high-impact 20-35s conversational voice drop script.",
+        "description": "Paranoia Layer 0 & 1: Synthesizes high-impact 20-35s conversational voice drop script.\nCosts 2 credits.",
         "operationId": "generate_voice_script_endpoint_api_elein_events_multimodal_multimodal_generate_voice_script_post",
         "requestBody": {
           "content": {
@@ -3759,7 +3759,7 @@
           "events_and_multimodal"
         ],
         "summary": "Generate Video Card Endpoint",
-        "description": "Paranoia Layer 0 & 1: Synthesizes Loom video prospecting card with custom thumbnail copy.",
+        "description": "Paranoia Layer 0 & 1: Synthesizes Loom video prospecting card with custom thumbnail copy.\nCosts 3 credits.",
         "operationId": "generate_video_card_endpoint_api_elein_events_multimodal_multimodal_generate_video_card_post",
         "requestBody": {
           "content": {
@@ -5008,7 +5008,7 @@
           "competitive_displacement"
         ],
         "summary": "Generate Pitch Endpoint",
-        "description": "Generates tailored, diplomacy-checked displacement messaging with contract buyout clauses.",
+        "description": "Generates tailored, diplomacy-checked displacement messaging with contract buyout clauses.\nCosts 2 credits.",
         "operationId": "generate_pitch_endpoint_api_elein_displacement_generate_pitch_post",
         "requestBody": {
           "content": {
@@ -7320,7 +7320,7 @@
           "elein"
         ],
         "summary": "Get Account Usage",
-        "description": "Today's action counts per account for rate limit display.",
+        "description": "Today's action counts per account for rate limit display strictly scoped to caller's workspace (VULN-04).",
         "operationId": "get_account_usage_api_elein_accounts_usage_get",
         "responses": {
           "200": {
@@ -8943,7 +8943,7 @@
           "elein"
         ],
         "summary": "Get Lead Scores",
-        "description": "Return heat scores for all leads in a campaign.",
+        "description": "Return heat scores for all leads in a campaign, strictly isolated to the caller's workspace (VULN-02).",
         "operationId": "get_lead_scores_api_elein_campaigns__campaign_id__lead_scores_get",
         "parameters": [
           {
@@ -8988,7 +8988,7 @@
           "elein"
         ],
         "summary": "Get Message Attribution",
-        "description": "Return which sequence nodes drove replies.",
+        "description": "Return which sequence nodes drove replies strictly scoped to caller's workspace (VULN-02).",
         "operationId": "get_message_attribution_api_elein_campaigns__campaign_id__attribution_get",
         "parameters": [
           {
@@ -10248,6 +10248,43 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/VerifyPaymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/billing/cancel-session": {
+      "post": {
+        "summary": "Cancel Session",
+        "description": "Paranoia Layer 1 & 2: Explicitly marks an abandoned or dismissed checkout session\nas cancelled, preventing ghost pending orders and blocking duplicate order replays.",
+        "operationId": "cancel_session_api_elein_billing_cancel_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelSessionRequest"
               }
             }
           },
@@ -16851,6 +16888,11 @@
             ],
             "title": "Linkedin Profile Url"
           },
+          "has_valid_session": {
+            "type": "boolean",
+            "title": "Has Valid Session",
+            "default": true
+          },
           "session_cookies_json": {
             "anyOf": [
               {
@@ -17932,6 +17974,17 @@
             ],
             "title": "Allow Active Graph Mutation",
             "default": false
+          },
+          "lead_list_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead List Id"
           }
         },
         "type": "object",
@@ -17974,6 +18027,31 @@
           "edges_json"
         ],
         "title": "CampaignResponse"
+      },
+      "CancelSessionRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "default": "user_dismissed_modal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "CancelSessionRequest"
       },
       "CancelSubscriptionRequest": {
         "properties": {
@@ -19219,7 +19297,7 @@
             "type": "string",
             "title": "List Id"
           },
-          "excludeListId": {
+          "exclude_list_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -19228,7 +19306,7 @@
                 "type": "null"
               }
             ],
-            "title": "Excludelistid"
+            "title": "Exclude List Id"
           },
           "excludeOtherCampaigns": {
             "anyOf": [
@@ -20728,6 +20806,41 @@
             ],
             "title": "Mutation Theme",
             "default": "social_proof_metric"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel",
+            "default": "linkedin"
+          },
+          "touchpoint_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Touchpoint Id"
+          },
+          "retire_parent": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retire Parent",
+            "default": false
           }
         },
         "type": "object",
@@ -23790,18 +23903,6 @@
             ],
             "title": "Dkim Selector",
             "default": "elein"
-          },
-          "mock_records": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mock Records"
           }
         },
         "type": "object",

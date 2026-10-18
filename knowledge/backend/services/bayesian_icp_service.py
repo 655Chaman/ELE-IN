@@ -603,30 +603,8 @@ def get_feedback_events(supabase: Any, workspace_id: str, limit: int = 30) -> Li
     except Exception as e:
         logger.warning(f"[BayesianICP] Query to icp_feedback_events fallback: {e}")
 
-    # Fallback simulated recent learning events so UI displays activity cleanly
-    return [
-        {
-            "id": "mock_event_1",
-            "event_type": "MEETING_BOOKED",
-            "signals_affected": ["is_decision_maker", "hiring_gtm"],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "details": {"lead_role": "VP Revenue Operations", "deal_affinity": "High"}
-        },
-        {
-            "id": "mock_event_2",
-            "event_type": "POSITIVE_REPLY",
-            "signals_affected": ["is_target_industry", "has_funding"],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "details": {"sentiment": "Interested in demo"}
-        },
-        {
-            "id": "mock_event_3",
-            "event_type": "CONNECTION_ACCEPTED",
-            "signals_affected": ["job_change_6mo"],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "details": {"latency_hours": 4}
-        }
-    ]
+    # If no real feedback events exist or table unmigrated, return authentic empty ledger
+    return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

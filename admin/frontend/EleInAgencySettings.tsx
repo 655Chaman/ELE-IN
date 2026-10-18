@@ -16,6 +16,7 @@ import {
 import ShinyText from "@/components/ShinyText";
 import SpotlightCard from "@/components/SpotlightCard";
 import { usePaywall } from "@/contexts/PaywallContext";
+import { CustomSelect } from "@/components/ui/select";
 
 interface AgencyMember {
   id: string;
@@ -711,16 +712,18 @@ export function EleInAgencySettings() {
           {/* Agency Switcher if multiple */}
           {adminAgencies.length > 1 && (
             <div className="flex items-center gap-2 bg-card p-1.5 rounded-xl border border-border/60 shadow-xs">
-              <label className="text-xs font-bold text-muted-foreground pl-2">Agency:</label>
-              <select
-                className="bg-transparent text-xs font-bold text-foreground px-2 py-1 outline-none cursor-pointer"
+              <label className="text-xs font-bold text-muted-foreground pl-2 whitespace-nowrap">Agency:</label>
+              <CustomSelect
                 value={activeAgencyId || ''}
-                onChange={e => setActiveAgencyId(e.target.value)}
-              >
-                {adminAgencies.map(a => (
-                  <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
-                ))}
-              </select>
+                onValueChange={setActiveAgencyId}
+                size="sm"
+                className="w-auto"
+                triggerClassName="bg-transparent border-0 shadow-none text-xs font-bold text-foreground h-7 px-2"
+                options={adminAgencies.map(a => ({
+                  value: a.id,
+                  label: `${a.name} (${a.role})`,
+                }))}
+              />
             </div>
           )}
         </div>
@@ -1046,15 +1049,17 @@ export function EleInAgencySettings() {
                   value={newMemberEmail}
                   onChange={e => setNewMemberEmail(e.target.value)}
                 />
-                <select 
-                  className="bg-background border border-border/60 rounded-xl px-3 py-2.5 text-xs font-semibold text-foreground focus:outline-none focus:border-primary cursor-pointer"
+                <CustomSelect 
+                  className="w-full sm:w-64"
+                  triggerClassName="bg-background border-border/60 rounded-xl px-3 py-2.5 text-xs font-semibold text-foreground h-10"
                   value={newMemberRole}
-                  onChange={e => setNewMemberRole(e.target.value as any)}
-                >
-                  <option value="member">Member (Explicit Client Access)</option>
-                  <option value="admin">Admin (All Clients + Invites)</option>
-                  <option value="owner">Owner (Full Agency Control)</option>
-                </select>
+                  onValueChange={val => setNewMemberRole(val as any)}
+                  options={[
+                    { value: "member", label: "Member (Explicit Client Access)" },
+                    { value: "admin", label: "Admin (All Clients + Invites)" },
+                    { value: "owner", label: "Owner (Full Agency Control)" }
+                  ]}
+                />
                 <button 
                   type="submit"
                   disabled={isInvitingMember || !newMemberEmail.trim()}
@@ -1605,17 +1610,18 @@ export function EleInAgencySettings() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Client:</span>
-                <select
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Client:</span>
+                <CustomSelect
                   value={statementFilterClient}
-                  onChange={(e) => setStatementFilterClient(e.target.value)}
-                  className="bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-foreground focus:outline-hidden focus:border-primary cursor-pointer"
-                >
-                  <option value="all">All Client Accounts</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                  onValueChange={setStatementFilterClient}
+                  size="sm"
+                  className="w-48"
+                  triggerClassName="bg-background border-border rounded-lg px-2.5 py-1 text-xs text-foreground h-8"
+                  options={[
+                    { value: "all", label: "All Client Accounts" },
+                    ...clients.map(c => ({ value: c.id, label: c.name })),
+                  ]}
+                />
               </div>
             </div>
 
@@ -2190,16 +2196,17 @@ export function EleInAgencySettings() {
                   <label className="text-xs font-semibold text-foreground block mb-1">
                     Target Billing Scope
                   </label>
-                  <select
+                  <CustomSelect
                     value={generateModal.clientWorkspaceId}
-                    onChange={(e) => setGenerateModal(prev => ({ ...prev, clientWorkspaceId: e.target.value }))}
-                    className="w-full bg-background border border-border rounded-xl px-3.5 py-2 text-xs text-foreground focus:outline-hidden focus:border-primary cursor-pointer"
-                  >
-                    <option value="">Consolidated Roll-Up (All {clients.length} Client Workspaces)</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>Single Client: {c.name}</option>
-                    ))}
-                  </select>
+                    onValueChange={(val) => setGenerateModal(prev => ({ ...prev, clientWorkspaceId: val }))}
+                    size="sm"
+                    triggerClassName="w-full bg-background border-border rounded-xl px-3.5 py-2 text-xs text-foreground"
+                    placeholder={`Consolidated Roll-Up (All ${clients.length} Client Workspaces)`}
+                    options={[
+                      { value: "", label: `Consolidated Roll-Up (All ${clients.length} Client Workspaces)` },
+                      ...clients.map(c => ({ value: c.id, label: `Single Client: ${c.name}` })),
+                    ]}
+                  />
                 </div>
 
                 {/* Period Dates */}

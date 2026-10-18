@@ -381,12 +381,12 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
           initial={{ opacity: 0, scale: 0.98, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.98, y: 8 }}
-          className="relative w-full max-w-4xl bg-card text-foreground border border-border rounded-2xl shadow-xl overflow-hidden my-8"
+          className="relative w-full max-w-4xl bg-card text-foreground border border-border rounded-xl shadow-xl overflow-hidden my-8"
         >
           {/* Top Bar */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-background text-foreground flex items-center justify-center border border-border">
+              <div className="w-8 h-8 rounded-lg bg-background text-foreground flex items-center justify-center border border-border">
                 <Award size={16} />
               </div>
               <div>
@@ -400,8 +400,10 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
             </div>
 
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors cursor-pointer"
+              aria-label="Close dialog"
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -409,12 +411,13 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
 
           <div className="p-6 space-y-6">
             {/* ─── CONTROLS TOOLBAR (Layer 2 & ACV Estimator) ───────────────── */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-background border border-border text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-background border border-border text-xs">
               <div className="flex items-center gap-2.5 flex-wrap">
                 {/* PII Toggle */}
                 <button
+                  type="button"
                   onClick={handleTogglePii}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground font-medium transition-colors cursor-pointer"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card hover:bg-muted text-foreground font-medium transition-colors cursor-pointer"
                   title="Toggle PII Masking for public sharing safety"
                 >
                   {maskPii ? <EyeOff size={13} className="text-muted-foreground" /> : <Eye size={13} className="text-muted-foreground" />}
@@ -422,7 +425,7 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
                 </button>
 
                 {/* Deal Size Estimator Input */}
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border text-foreground">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-card border border-border text-foreground">
                   <DollarSign size={13} className="text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Deal ACV:</span>
                   <input
@@ -439,9 +442,10 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleExportCSV}
                   disabled={isExporting || isLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-muted border border-border text-foreground font-medium transition-colors cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-card hover:bg-muted border border-border text-foreground font-medium transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Download size={13} className="text-muted-foreground" />
                   <span>Export CSV</span>
@@ -449,9 +453,10 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
 
                 {/* Regenerate Telemetry Button */}
                 <button
+                  type="button"
                   onClick={handleRegenerate}
                   disabled={isRefreshing || isLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-muted border border-border text-foreground font-medium transition-colors cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-card hover:bg-muted border border-border text-foreground font-medium transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw size={13} className={isRefreshing ? "animate-spin text-muted-foreground" : "text-muted-foreground"} />
                   <span>Refresh Metrics</span>
@@ -462,7 +467,7 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
             {/* ─── THE CERTIFICATE PREVIEW CARD (Layer 0 Foundational) ── */}
             <div
               ref={cardRef}
-              className="relative overflow-hidden rounded-2xl p-6 sm:p-7 border border-border bg-background"
+              className="relative overflow-hidden rounded-lg p-6 sm:p-7 border border-border bg-background"
             >
               {/* Card Header */}
               <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border">
@@ -498,7 +503,7 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
               </div>
 
               {/* Stat Highlights Ribbon */}
-              <div className="relative grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-border border border-border rounded-2xl bg-card my-5">
+              <div className="relative grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-border border border-border rounded-lg bg-card my-5">
                 {/* Acceptance Rate */}
                 <div className="p-4">
                   <div className="flex items-center justify-between text-muted-foreground mb-1">
@@ -594,7 +599,7 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
               )}
 
               {/* Account Safety Guarantee Banner */}
-              <div className="relative mt-2 px-4 py-2.5 rounded-2xl bg-card border border-border flex items-center justify-between text-xs">
+              <div className="relative mt-2 px-4 py-2.5 rounded-lg bg-card border border-border flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 text-foreground">
                   <ShieldCheck size={14} className="text-muted-foreground" />
                   <span className="font-medium">100% Account Safety Score</span>
@@ -695,7 +700,7 @@ export const CampaignROICertificateModal: React.FC<CampaignROICertificateModalPr
             </div>
 
             {/* ─── EXPANSION CTA ──────────────────── */}
-            <div className="px-4 py-3 rounded-2xl bg-background border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="px-4 py-3 rounded-lg bg-background border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-0.5">
                 <div className="text-xs font-semibold text-foreground">
                   Scale your outbound fleet to 10+ senders

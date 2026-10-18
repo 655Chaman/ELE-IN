@@ -52,10 +52,12 @@ def resume_cooled_accounts(supabase_client, cooldown_hours: int = DEFAULT_COOLDO
                     notification_data = {
                         "workspace_id": workspace_id,
                         "event_type": "outreach_resumed",
-                        "title": "Outreach Resumed",
-                        "message": f"Account '{name}' has completed its {cooldown_hours}-hour cooling period. Automated outreach has resumed.",
-                        "created_at": now.isoformat(),
-                        "read": False
+                        "payload": {
+                            "title": "Outreach Resumed",
+                            "message": f"Account '{name}' has completed its {cooldown_hours}-hour cooling period. Automated outreach has resumed."
+                        },
+                        "status": "pending",
+                        "created_at": now.isoformat()
                     }
                     supabase_client.table("outbox_events").insert(notification_data).execute()
                 except Exception as notif_err:

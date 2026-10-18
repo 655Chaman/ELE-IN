@@ -122,7 +122,7 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
   const activeStageInfo = SCRAPER_STAGES.find(s => s.step === currentStage) || SCRAPER_STAGES[0]
 
   return (
-    <div className="border border-slate-200 dark:border-border/50 bg-slate-50 dark:bg-muted/10 rounded-3xl p-6 flex flex-col justify-between transition-all">
+    <div className="border border-slate-200 dark:border-border/50 bg-slate-50 dark:bg-muted/10 rounded-xl p-6 flex flex-col justify-between transition-all">
       <div>
         <div className="flex items-center justify-between mb-2">
           <LinkIcon size={20} className="text-foreground" />

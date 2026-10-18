@@ -133,6 +133,7 @@ export function OnboardingChecklistWidget() {
           /* ─── Collapsed Pill ─── */
           <motion.button
             key="collapsed-pill"
+            type="button"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
@@ -161,7 +162,7 @@ export function OnboardingChecklistWidget() {
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 20, opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.2 }}
-            className="w-80 md:w-96 bg-card/95 backdrop-blur-md border border-border/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="w-80 md:w-96 bg-card/95 backdrop-blur-md border border-border/80 rounded-xl shadow-2xl overflow-hidden flex flex-col"
           >
             {/* Header */}
             <div className="p-4 pb-3 border-b border-border/40 flex items-center justify-between bg-muted/20">
@@ -177,6 +178,7 @@ export function OnboardingChecklistWidget() {
 
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={handleToggleCollapse}
                   className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
                   title="Minimize"
@@ -184,6 +186,7 @@ export function OnboardingChecklistWidget() {
                   <ChevronDown size={15} />
                 </button>
                 <button
+                  type="button"
                   onClick={handleDismiss}
                   className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                   title="Dismiss Checklist"
@@ -233,6 +236,7 @@ export function OnboardingChecklistWidget() {
                         </span>
                         {!st.completed && (
                           <button
+                            type="button"
                             onClick={st.action}
                             className="text-[11px] font-bold text-primary hover:underline flex items-center gap-0.5 shrink-0 cursor-pointer"
                           >
@@ -261,6 +265,7 @@ export function OnboardingChecklistWidget() {
                 <span>Ask Founder</span>
               </a>
               <button
+                type="button"
                 onClick={() => navigate("/onboarding")}
                 className="text-primary hover:underline font-medium flex items-center gap-1 cursor-pointer"
               >
