@@ -65,5 +65,26 @@
   - **Stage 3 (Copy Evolution Studio):** Multi-theme genetic synthesizer (`social_proof_metric`, `provocative_question`, `low_friction_benchmark`, `brevity_direct`), non-destructive staging preview (`retire_parent=False`), duplicate copy avoidance, generation capping ($\le 10$), live token chips, and dynamic generation lineage timeline. 42/42 tests passing.
 - [x] **Horizons 1 through 38 & Phases 1 through 6:** Full engine completion with 1,924 / 1,924 automated tests passing.
 - [x] **Database Master Migration (`999_master_pending_sync.sql`):** 96 tables, 97 indexes, 12 functions, 54 RLS policies executed successfully in Supabase.
-- [x] **Remote Origin Push:** Committed and landed directly on GitHub `origin/main` (`96470b8`).
+- [x] **Phase 27: RFC 8058 One-Click Unsubscribe & Gmail/Yahoo Deliverability Hardening (100% Operational):**
+  - Implemented cryptographic HMAC-SHA256 signed urlsafe token generation and constant-time verification (`verify_unsubscribe_token`).
+  - Implemented compliant `List-Unsubscribe` (<https://...>, <mailto:...>) and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` email headers.
+  - Implemented unauthenticated public endpoint `POST /api/elein/unsubscribe` with instant zero-friction 200 JSON return for automated Gmail/Yahoo unsubscribes.
+  - Implemented responsive dark-mode HTML confirmation page on `GET /api/elein/unsubscribe` for human clickers.
+  - Wired atomic cascade into `leads` table (`status = 'UNSUBSCRIBED'`), suppression list (`suppression_list`), and active sequence job cancellation (`retroactive_purge`).
+  - Injected headers into `EleInExecutor.handle_send_email` with fail-open Paranoia Layer 1 fallback.
+  - 100% test coverage with 44/44 automated deliverability tests passing.
+
+- [x] **Phase 28: Lead Name & Company Slogan Sanitizer for Apollo/LinkedIn Scraping (100% Operational):**
+  - **Data Hygiene Core (`leads/backend/services/data_hygiene.py`)**:
+    - `clean_name`: Strips bracketed status tags (`(We're hiring)`, `(she/her)`, `[Hiring AEs]`, `{Open to work}`), attached job titles and status announcements after separators (` - `, ` | `, ` • `, ` / `, ` – `, ` — `), emojis, and formal honorifics/suffixes (`Dr.`, `PhD`, `PMP`).
+    - `clean_first_name`: Extracts single first name token, handles initials (`"J. Robert Oppenheimer"` -> `"Robert"`), preserves mixed-case Celtic/Dutch particles (`O'Connor`, `van der Berg`), strips trailing punctuation.
+    - `clean_company`: Strips accelerator tags (`(YC W19)`, `(formerly Twitter)`), marketing slogans after delimiters (`"Notion - The all-in-one workspace"` -> `"Notion"`), corporate legal entity suffixes (`LLC`, `Inc`, `GmbH`, `Ltd`, `B.V.`), and domain imports (`tryacme.io` -> `Acme`, `getscale.ai` -> `Scale`), while preserving short corporate acronyms (`IBM`, `AWS`, `SAP`, `BMW`, `HP`, `GMC`).
+  - **Template Interpolation Engine (`campaigns/backend/services/elein_executor.py`)**:
+    - Integrated `clean_first_name` and `clean_company` into `_interpolate_template`.
+    - Sanitizes `{{first_name}}`, `{{firstname}}`, `{{first_name_clean}}`, `{{company}}`, `{{company_name}}`, and `{{company_clean}}`.
+    - Guaranteed full fallback support (`"there"` and `"your company"`) when values are missing or stripped.
+  - **Lead Ingestion Service (`leads/backend/services/lead_ingestion_service.py`)**:
+    - Automatically cleans first names and company names upon CSV, API, or webhook ingestion before storing in database.
+  - **Verification**: 86/86 automated tests passing across 3 layers of paranoia testing.
+
 
