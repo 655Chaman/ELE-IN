@@ -144,5 +144,18 @@
     - `EleInExecutor.handle_send_email`: Bypasses tracking rewrite and tags `ssl_tracking_bypassed=True` when SSL is unverified, maintaining 100% deliverability safety.
   - **Verification**: 57/57 automated tests passing across `test_custom_tracking_cname_and_ssl_guard.py` (32/32), `test_issue6_ssl_handshake_and_cname_verification.py` (16/16), and `test_issue6_router_and_executor_tracking_guard.py` (9/9) with sub-second production build (859ms).
 
+- [x] **Phase 33: Spintax & Linguistic Variation Multiplier (100% Operational):**
+  - **Combinatorial Multiplier & Entropy Analysis (`campaigns/backend/services/template_spintax_guard.py`)**:
+    - `calculate_spintax_combinations`: Linear-time, stack-based parser evaluating sequence products and branch sums across flat and arbitrary nested spintax structures (`{opt1|opt2|{opt3|opt4}}`), masking Liquid/Mustache tags and pipe fallbacks (`{{first_name | there}}`) with 100M combination overflow clamp.
+    - `calculate_spintax_entropy`: Computes template combinations and `diversity_ratio` against campaign lead volume, mapping to ESP spam clustering risk ratings (`CRITICAL_SPAM_RISK` < 5 or < 0.05 diversity ratio, `MODERATE_VARIATION`, `HIGH_DIVERSITY`, `ENTERPRISE_IMMUNITY` >= 200) with volume-adjusted diversification recommendations.
+    - `generate_linguistic_spintax`: Converts plain B2B copy to high-converting spintax across greetings (`{Hi|Hello|Hey}`), opening hooks (`{I saw|I noticed|came across}`), value connectors, CTAs (`{Are you free for a quick chat|Open to a brief 10-minute call}`), and sign-offs (`{Best,|Thanks,|Cheers,}`), while strictly protecting `{{mustache_variables}}` and pre-existing spintax.
+    - `preview_spintax_variants`: Generates distinct rendered previews with deterministic seed sequence (`f"{seed}_{i}"`).
+  - **Executor Telemetry & Deterministic Lead Seeding (`campaigns/backend/services/elein_executor.py`)**:
+    - `_interpolate_template`: Seeded with `f"{lead_id}_{node_id}"` for reproducible phrasing per recipient; tags `data["spintax_applied"] = True`.
+    - Injected `spintax_resolved: True` across `handle_send_email`, `handle_send_message`, and `handle_connection_request`.
+  - **Router Endpoints (`campaigns/backend/routers/elein.py`)**:
+    - Exposed `POST /api/elein/spintax/analyze`, `POST /api/elein/spintax/generate`, and `POST /api/elein/spintax/preview`.
+  - **Verification**: 50/50 automated tests passing across `test_spintax_and_linguistic_variation_multiplier.py` (39/39) and `test_issue7_spintax_multiplier_entropy.py` (11/11), 215/215 deliverability regression suite green, sub-second frontend production build (675ms).
+
 
 
