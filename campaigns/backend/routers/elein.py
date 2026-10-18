@@ -1351,8 +1351,10 @@ def get_lists(
     Paranoia Layer 0 & Layer 1 (API-09): Paginated lead list retrieval.
     Enforces safe default limit=50 and hard ceiling max=200 to protect memory and PostgREST bandwidth.
     """
-    eff_limit = min(max(1, limit or 50), 200)
-    eff_offset = max(0, offset or 0)
+    actual_limit = limit if isinstance(limit, int) else 50
+    actual_offset = offset if isinstance(offset, int) else 0
+    eff_limit = min(max(1, actual_limit), 200)
+    eff_offset = max(0, actual_offset)
     try:
         res = (
             supabase.table("lead_lists")

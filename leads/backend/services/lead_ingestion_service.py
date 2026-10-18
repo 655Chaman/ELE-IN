@@ -144,6 +144,25 @@ def execute_bulk_import_leads(
         else:
             final_tz = valid_tz
 
+        # Open Profile discovery & normalization (Paranoia Layer 0 & 2)
+        raw_open = (
+            lead.get("is_open_profile")
+            if lead.get("is_open_profile") is not None
+            else lead.get("open_profile")
+            if lead.get("open_profile") is not None
+            else lead.get("open_link")
+            if lead.get("open_link") is not None
+            else lead.get("isOpenProfile")
+        )
+        is_open_profile_bool = False
+        if raw_open is not None:
+            if isinstance(raw_open, bool):
+                is_open_profile_bool = raw_open
+            elif isinstance(raw_open, (int, float)):
+                is_open_profile_bool = bool(raw_open == 1)
+            elif isinstance(raw_open, str):
+                is_open_profile_bool = raw_open.strip().lower() in ("true", "1", "yes", "y", "t", "open")
+
         processed_lead = dict(lead)
         processed_lead["norm_url"] = norm_url
         processed_lead["email"] = email
@@ -154,6 +173,7 @@ def execute_bulk_import_leads(
         processed_lead["location"] = p_loc
         processed_lead["domain"] = lead_domain
         processed_lead["timezone"] = final_tz
+        processed_lead["is_open_profile"] = is_open_profile_bool
         deduped_leads.append(processed_lead)
 
     if not deduped_leads:
@@ -287,7 +307,8 @@ def execute_bulk_import_leads(
                         "job_title": lead.get("job_title"),
                         "location": lead.get("location"),
                         "domain": lead.get("domain"),
-                        "timezone": lead.get("timezone") or timezone or "UTC"
+                        "timezone": lead.get("timezone") or timezone or "UTC",
+                        "is_open_profile": lead.get("is_open_profile", False)
                     })
                     lead["assigned_id"] = new_id
 
@@ -310,7 +331,12 @@ def execute_bulk_import_leads(
                             supabase.table("leads").upsert(l_item).execute()
                             inserted_lead_ids.append(l_item["id"])
                         except Exception:
-                            pass
+                            try:
+                                fallback_item = {k: v for k, v in l_item.items() if k != "is_open_profile"}
+                                supabase.table("leads").upsert(fallback_item).execute()
+                                inserted_lead_ids.append(l_item["id"])
+                            except Exception:
+                                pass
 
             for lead in updates_to_perform:
                 eid = lead.get("existing_id")
@@ -323,6 +349,7 @@ def execute_bulk_import_leads(
                         if lead.get("job_title"): update_payload["job_title"] = lead["job_title"]
                         if lead.get("location"): update_payload["location"] = lead["location"]
                         if lead.get("timezone"): update_payload["timezone"] = lead["timezone"]
+                        if "is_open_profile" in lead: update_payload["is_open_profile"] = lead["is_open_profile"]
                         if update_payload:
                             supabase.table("leads").update(update_payload).eq("id", eid).execute()
                         inserted_lead_ids.append(eid)

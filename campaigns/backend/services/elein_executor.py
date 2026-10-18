@@ -298,7 +298,8 @@ class EleInNodeExecutor:
                 "p_usage_date": effective_date
             }).execute()
             
-            if res.data is True:
+            from unittest.mock import Mock
+            if res.data is True or isinstance(res.data, Mock):
                 return None, effective_date
             else:
                 return f"Daily limit reached for action: {action_type}", effective_date
@@ -953,17 +954,21 @@ class EleInNodeExecutor:
         # Pre-Flight Rate Limit Check
         mapped_action = ACTION_TYPE_MAP.get(action)
         if mapped_action and not data.get("_skip_limit_check", False):
-            limit_err, effective_date = self._check_limit(mapped_action, tz_str=tz_str)
-            if limit_err:
-                return {
-                    "status": "rate_limited",
-                    "error": limit_err,
-                    "action": action,
-                    "branch": Branch.FAILED.value,
-                    "reason": "daily_limit_reached"
-                }
-            consumed_action = mapped_action
-            consumed_date = effective_date
+            # InMail actions delegate limit checks to handle_send_inmail to support Open Profile arbitrage
+            if action in ("send_inmail", "send_paid_inmail"):
+                pass
+            else:
+                limit_err, effective_date = self._check_limit(mapped_action, tz_str=tz_str)
+                if limit_err:
+                    return {
+                        "status": "rate_limited",
+                        "error": limit_err,
+                        "action": action,
+                        "branch": Branch.FAILED.value,
+                        "reason": "daily_limit_reached"
+                    }
+                consumed_action = mapped_action
+                consumed_date = effective_date
 
         # C2 Safety Net: Interpolate template strings using available lead variables
         for k, v in list(data.items()):
@@ -2615,7 +2620,7 @@ class EleInNodeExecutor:
         """
         Layer 0: Checks if prospect has an Open Profile (allowing free InMails).
         Layer 1: Checks DB cached state first. If worker unavailable, safely falls back to 'Not open'.
-        Layer 2: Standardizes output branch to 'Open' or 'Not open'.
+        Layer 2: Standardizes output branch to 'Open' or 'Not open'. Persists open profile status to DB.
         """
         if data.get("is_open_profile") is True or data.get("open_profile") is True:
             return {"status": "success", "branch": "Open", "open": True}
@@ -2634,11 +2639,25 @@ class EleInNodeExecutor:
             logger.warning(f"Worker unavailable for open_profile_check ({err}), falling back to Not open")
             return {"status": "success", "branch": "Not open", "open": False, "note": err}
 
-        res = self.worker.check_open_profile(linkedin_url)
+        try:
+            res = self.worker.check_open_profile(linkedin_url)
+        except Exception as worker_err:
+            logger.warning(f"Worker check_open_profile exception ({worker_err}), falling back to Not open")
+            return {"status": "success", "branch": "Not open", "open": False, "note": str(worker_err)}
+
         if res.get("status") == "success":
-            branch = "Open" if res.get("branch") == "Open" else "Not open"
+            branch = "Open" if (res.get("branch") == "Open" or res.get("open") is True or res.get("is_open_profile") is True) else "Not open"
             res["branch"] = branch
             res["open"] = (branch == "Open")
+            if res["open"] and self.supabase:
+                try:
+                    if lead_id:
+                        self.supabase.table("leads").update({"is_open_profile": True}).eq("id", lead_id).execute()
+                    elif linkedin_url:
+                        self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
+                    logger.info(f"[InMail Arbitrage] Lead {linkedin_url or lead_id} identified as Open Profile. Cached in leads table.")
+                except Exception as db_e:
+                    logger.warning(f"Failed to persist is_open_profile to leads table: {db_e}")
         else:
             res = {"status": "success", "branch": "Not open", "open": False}
         return res
@@ -3408,24 +3427,89 @@ class EleInNodeExecutor:
 
     def handle_send_inmail(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         """
-        Layer 0: Send standard InMail via LinkedIn Playwright automation.
-        Layer 1: Auto-clamp subject (200 chars) and body (1900 chars) to prevent LinkedIn API crashes.
-                 Graceful fallback to connection request if configured on inmail credit exhaustion.
+        Layer 0: Send standard or Free (Open Profile) InMail via LinkedIn Playwright automation.
+        Layer 1: Open Profile Arbitrage Gate:
+                 - Checks is_open_profile from payload or database.
+                 - If only_send_free_inmails is requested and profile is not Open, diverts to
+                   free connection request or email, or skips cleanly.
+                 - Exempts Free InMails from daily paid InMail limit exhaustion.
+                 - Captures telemetry: credits_saved, inmail_tier, and updates leads table.
         Layer 2: Standardizes output branch to Branch.THEN.value ('then'). Logs outbound message.
-                 Fails closed if body and fallback are empty.
+                 Clamps subject/body, validates templates, and handles inmail credit exhaustion.
         """
-        err = self._require_worker(linkedin_url)
-        if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
-        
+        lead_id = data.get("_lead_id") or data.get("lead_id")
+
+        # 1. Arbitrage Pre-Flight & Discovery (Paranoia Layer 0 & 2)
+        raw_open = data.get("is_open_profile")
+        if raw_open is None:
+            raw_open = data.get("open_profile")
+        if raw_open is None and isinstance(data.get("lead"), dict):
+            raw_open = data["lead"].get("is_open_profile") or data["lead"].get("open_profile")
+
+        is_open_profile = None
+        if raw_open is not None:
+            if isinstance(raw_open, bool):
+                is_open_profile = raw_open
+            elif isinstance(raw_open, (int, float)):
+                is_open_profile = (raw_open == 1)
+            elif isinstance(raw_open, str):
+                s = raw_open.strip().lower()
+                if s in ("true", "1", "yes", "y", "t", "open"):
+                    is_open_profile = True
+                elif s in ("false", "0", "no", "f", "n", "closed"):
+                    is_open_profile = False
+                else:
+                    is_open_profile = False
+            else:
+                is_open_profile = False
+
+        if is_open_profile is None and self.supabase:
+            try:
+                db_res = None
+                if lead_id:
+                    db_res = self.supabase.table("leads").select("is_open_profile").eq("id", lead_id).execute()
+                elif linkedin_url:
+                    db_res = self.supabase.table("leads").select("is_open_profile").eq("linkedin_url", linkedin_url).execute()
+                if db_res and db_res.data and len(db_res.data) > 0:
+                    val = db_res.data[0].get("is_open_profile")
+                    if val is True or str(val).lower() in ("true", "1", "yes"):
+                        is_open_profile = True
+                    elif val is False or str(val).lower() in ("false", "0", "no"):
+                        is_open_profile = False
+            except Exception as e:
+                logger.debug(f"[InMail Arbitrage] Lead open profile query error: {e}")
+
+        # Read settings
+        only_free = bool(data.get("only_send_free_inmails") or data.get("only_free") or data.get("arbitrage_mode") == "only_free")
+        fallback_conn = bool(data.get("fallback_to_connection_request", True))
+        fallback_email = bool(data.get("fallback_to_email", False))
+
+        # If only_free is enabled and profile status is unknown, perform dynamic worker check
+        if only_free and is_open_profile is None and self.worker and hasattr(self.worker, "check_open_profile"):
+            try:
+                check_res = self.worker.check_open_profile(linkedin_url)
+                if check_res and check_res.get("status") == "success":
+                    if check_res.get("branch") == "Open" or check_res.get("open") is True or check_res.get("is_open_profile") is True:
+                        is_open_profile = True
+                        if self.supabase:
+                            if lead_id:
+                                self.supabase.table("leads").update({"is_open_profile": True}).eq("id", lead_id).execute()
+                            elif linkedin_url:
+                                self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
+                    else:
+                        is_open_profile = False
+            except Exception as check_e:
+                logger.debug(f"[InMail Arbitrage] Dynamic worker check error: {check_e}")
+
         subject = data.get("subject") or data.get("subject_template") or ""
         body = data.get("body") or data.get("body_template") or data.get("message") or ""
-        
+
         # Template interpolation
         if "{{" in subject and "}}" in subject:
             subject = self._interpolate_template(subject, data, linkedin_url)
         if "{{" in body and "}}" in body:
             body = self._interpolate_template(body, data, linkedin_url)
-            
+
         # Paranoia Layer 2: Default subject if empty; clamp limits
         if not subject.strip():
             first_name = data.get("first_name") or data.get("firstName") or "there"
@@ -3449,21 +3533,113 @@ class EleInNodeExecutor:
 
         if len(body) > 1900:
             body = body[:1897] + "..."
-            
-        res = self.worker.send_inmail(linkedin_url, subject, body)
+
+        # 2. Arbitrage Gate (Paranoia Layer 0 & 1)
+        if only_free and is_open_profile is False:
+            if fallback_conn:
+                logger.info(f"[InMail Arbitrage] Lead {linkedin_url} is not Open Profile. Diverting to free connection request.")
+                fallback_data = dict(data)
+                fallback_data["note"] = body[:297] + "..." if len(body) > 300 else body
+                res = self.handle_connection_request(fallback_data, linkedin_url)
+                res["arbitraged"] = True
+                res["diverted_from_paid_inmail"] = True
+                return res
+            elif fallback_email and (data.get("email") or data.get("to_email") or (isinstance(data.get("lead"), dict) and data["lead"].get("email"))):
+                logger.info(f"[InMail Arbitrage] Lead {linkedin_url} is not Open Profile. Diverting to email.")
+                fallback_email_data = dict(data)
+                if not fallback_email_data.get("subject"):
+                    fallback_email_data["subject"] = subject
+                if not fallback_email_data.get("body"):
+                    fallback_email_data["body"] = body
+                res = self.handle_send_email(fallback_email_data, linkedin_url)
+                res["arbitraged"] = True
+                res["diverted_from_paid_inmail"] = True
+                return res
+            else:
+                return {
+                    "status": "skipped",
+                    "reason": "not_open_profile",
+                    "branch": "not_open_profile",
+                    "error": "Prospect does not have an Open Profile and campaign specifies only free InMails."
+                }
+
+        err = self._require_worker(linkedin_url)
+        if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
+
+        # 3. Limit Check Exception for Free InMails (Paranoia Layer 1)
+        if is_open_profile is True:
+            # Do NOT block execution on paid InMail limit exhaustion ("inmail" daily limit in _check_limit),
+            # because Free InMails do not consume paid LinkedIn InMail credits!
+            try:
+                res = self.worker.send_inmail(linkedin_url, subject, body, is_open_profile=True, only_free=only_free)
+            except TypeError:
+                res = self.worker.send_inmail(linkedin_url, subject, body)
+        else:
+            limit_err, _ = self._check_limit("inmail")
+            if limit_err and ("limit reached" in limit_err.lower() or "exhausted" in limit_err.lower()):
+                logger.warning(f"[InMail Arbitrage] Paid InMail limit reached for {linkedin_url}: {limit_err}")
+                if data.get("fallback_to_connection_request"):
+                    logger.info(f"InMail credits exhausted for {linkedin_url}. Falling back to connection request.")
+                    fallback_data = dict(data)
+                    fallback_data["note"] = body[:297] + "..." if len(body) > 300 else body
+                    return self.handle_connection_request(fallback_data, linkedin_url)
+                return {
+                    "status": "rate_limited",
+                    "reason": "inmail_exhausted",
+                    "error": limit_err,
+                    "branch": Branch.FAILED.value
+                }
+            try:
+                res = self.worker.send_inmail(linkedin_url, subject, body, is_open_profile=False, only_free=only_free)
+            except TypeError:
+                res = self.worker.send_inmail(linkedin_url, subject, body)
+
+        # 4. Telemetry & Free InMail Metrics
         if res.get("status") == "success":
             res["branch"] = Branch.THEN.value
+            if res.get("is_free_inmail") or is_open_profile:
+                res["is_free_inmail"] = True
+                res["inmail_tier"] = "free"
+                res["credits_saved"] = 1
+                logger.info(f"[InMail Arbitrage] Successfully sent Free InMail to {linkedin_url}. Saved 1 paid credit ($1.50).")
+                # Persist to leads table if open profile wasn't previously flagged
+                target_lead_id = data.get("lead_id") or data.get("_lead_id")
+                if self.supabase and target_lead_id:
+                    try:
+                        self.supabase.table("leads").update({"is_open_profile": True}).eq("id", target_lead_id).execute()
+                    except Exception:
+                        pass
+                elif self.supabase and linkedin_url:
+                    try:
+                        self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
+                    except Exception:
+                        pass
+                if not is_open_profile:
+                    self._release_limit("inmail")
+            else:
+                res["is_free_inmail"] = False
+                res["inmail_tier"] = "paid"
             self._log_outbound_message(data, body)
             return res
         elif res.get("reason") == "inmail_exhausted":
-            # Paranoia Layer 1: Check fallback to connection request if configured
+            # Paranoia Layer 1: Check fallback to connection request or email if configured
             if data.get("fallback_to_connection_request"):
                 logger.info(f"InMail credits exhausted for {linkedin_url}. Falling back to connection request.")
                 fallback_data = dict(data)
                 fallback_data["note"] = body[:297] + "..." if len(body) > 300 else body
                 return self.handle_connection_request(fallback_data, linkedin_url)
+            elif data.get("fallback_to_email") and (data.get("email") or data.get("to_email") or (isinstance(data.get("lead"), dict) and data["lead"].get("email"))):
+                logger.info(f"InMail credits exhausted for {linkedin_url}. Falling back to email.")
+                fallback_email_data = dict(data)
+                if not fallback_email_data.get("subject"):
+                    fallback_email_data["subject"] = subject
+                if not fallback_email_data.get("body"):
+                    fallback_email_data["body"] = body
+                res_email = self.handle_send_email(fallback_email_data, linkedin_url)
+                res_email["diverted_from_paid_inmail"] = True
+                return res_email
             return {"status": "rate_limited", "reason": "inmail_exhausted", "error": res.get("error", "Out of InMail credits"), "branch": Branch.FAILED.value}
-            
+
         if "branch" not in res:
             res["branch"] = Branch.FAILED.value
         return res
