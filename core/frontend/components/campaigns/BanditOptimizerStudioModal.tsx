@@ -512,47 +512,55 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
         const data = await res.json();
         const createdVariant = data.variant;
         toast.success("New variation added to Elesium testing pool!");
-        setArms(prev => [
+        const newArmObj = {
+          id: createdVariant?.id || `custom-${Date.now()}`,
+          name: newArmName.trim(),
+          arm_type: "full_message",
+          template_text: newArmTemplate.trim(),
+          impressions: 0,
+          positive_replies: 0,
+          objections: 0,
+          unsubscribes: 0,
+          expected_cvr: 0.35,
+          win_probability: 0.20,
+          status: "active",
+          is_winner: false,
+          traffic_allocation: "15%"
+        };
+        setArmsByStep(prev => ({
           ...prev,
-          {
-            id: createdVariant.id || `custom-${Date.now()}`,
-            name: newArmName.trim(),
-            arm_type: "full_message",
-            template_text: newArmTemplate.trim(),
-            impressions: 0,
-            positive_replies: 0,
-            objections: 0,
-            unsubscribes: 0,
-            expected_cvr: 0.35,
-            win_probability: 0.20,
-            status: "active",
-            is_winner: false,
-            traffic_allocation: "15%"
-          }
-        ]);
+          [selectedStepId]: [
+            ...(prev[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || []),
+            newArmObj
+          ]
+        }));
         setNewArmName("");
         setNewArmTemplate("");
         setShowAddArmModal(false);
       } else {
         // Fallback local add
-        setArms(prev => [
+        const newArmObj = {
+          id: `custom-${Date.now()}`,
+          name: newArmName.trim(),
+          arm_type: "full_message",
+          template_text: newArmTemplate.trim(),
+          impressions: 0,
+          positive_replies: 0,
+          objections: 0,
+          unsubscribes: 0,
+          expected_cvr: 0.35,
+          win_probability: 0.20,
+          status: "active",
+          is_winner: false,
+          traffic_allocation: "15%"
+        };
+        setArmsByStep(prev => ({
           ...prev,
-          {
-            id: `custom-${Date.now()}`,
-            name: newArmName.trim(),
-            arm_type: "full_message",
-            template_text: newArmTemplate.trim(),
-            impressions: 0,
-            positive_replies: 0,
-            objections: 0,
-            unsubscribes: 0,
-            expected_cvr: 0.35,
-            win_probability: 0.20,
-            status: "active",
-            is_winner: false,
-            traffic_allocation: "15%"
-          }
-        ]);
+          [selectedStepId]: [
+            ...(prev[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || []),
+            newArmObj
+          ]
+        }));
         toast.success("Variation added to active testing pool!");
         setNewArmName("");
         setNewArmTemplate("");
@@ -597,16 +605,22 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
         const data = await res.json();
         const challenger = data.challenger_variant;
         toast.success("Elesium AI generated a new high-converting angle!");
-        setArms(prev => [
-          ...prev.map(a => a.id === parentVariantId ? { ...a, status: "retired", traffic_allocation: "0%" } : a),
-          {
-            ...challenger,
-            expected_cvr: 0.45,
-            win_probability: 0.50,
-            traffic_allocation: "30%",
-            is_winner: false
-          }
-        ]);
+        setArmsByStep(prev => {
+          const list = prev[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || [];
+          return {
+            ...prev,
+            [selectedStepId]: [
+              ...list.map(a => a.id === parentVariantId ? { ...a, status: "retired", traffic_allocation: "0%" } : a),
+              {
+                ...challenger,
+                expected_cvr: 0.45,
+                win_probability: 0.50,
+                traffic_allocation: "30%",
+                is_winner: false
+              }
+            ]
+          };
+        });
         setGenerationHistory(prev => [
           ...prev,
           {
@@ -705,7 +719,13 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
       is_winner: false,
       status: "active"
     };
-    setArms(prev => [...prev, newArm]);
+    setArmsByStep(prev => ({
+      ...prev,
+      [selectedStepId]: [
+        ...(prev[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || []),
+        newArm
+      ]
+    }));
     setGenerationHistory(prev => [
       ...prev,
       {
@@ -723,14 +743,26 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
   // Handle Apply to Sequence Step
   const handleApplyToStep = (arm: any) => {
     setAppliedArmId(arm.id);
+    setArmsByStep(prev => {
+      const list = prev[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || [];
+      return {
+        ...prev,
+        [selectedStepId]: list.map((a: any) => ({
+          ...a,
+          is_winner: a.id === arm.id,
+          traffic_allocation: a.id === arm.id ? "85%" : "15%",
+        }))
+      };
+    });
+    setSelectedArmId(arm.id);
     const campaignLabel = selectedCampaignId === 'all' 
       ? 'All Active Campaigns' 
       : (campaignList.find((c: any) => c.id === selectedCampaignId)?.name || 'Selected Campaign');
     
     toast.success(
-      `Applied "${arm.name}" to ${activeTouchpoint.name} in ${campaignLabel}!`,
+      `Applied "${arm.name}" as Champion for ${activeTouchpoint.name} in ${campaignLabel}!`,
       {
-        description: `This copy is now active for this sequence step in your campaign.`
+        description: `Traffic allocation updated: 85% allocated to this angle.`
       }
     );
     setTimeout(() => setAppliedArmId(null), 3000);
@@ -850,8 +882,8 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-5xl rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden my-6 max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-3 sm:p-4 overflow-hidden">
+      <div className="relative w-full max-w-5xl rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden h-[90vh] max-h-[920px] flex flex-col">
         
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between gap-4 shrink-0">
