@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { toast } from "sonner"
-import { Check, Database, Sparkles, Lock, Zap } from "lucide-react"
+import { Check, Database, Sparkles, Lock, Zap, Loader2 } from "lucide-react"
 import { fetchWithAuth, fetcher } from "@/lib/apiClient"
 import { usePaywall } from "@/contexts/PaywallContext"
 import useSWR from "swr"
@@ -20,6 +21,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
   const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
   const tier = billingData?.tier || 'FREE';
   const isPro = tier === 'PRO' || tier === 'ENTERPRISE';
+  const [isSyncing, setIsSyncing] = useState(false);
 
   return (
     <div className="animate-in fade-in w-full text-center pb-4 pt-2">
@@ -161,16 +163,64 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
               <p>Contacts will be automatically deduped and enriched when imported.</p>
             </div>
             
-            <button 
-              className="w-full mt-6 py-2 bg-foreground text-background font-semibold rounded-lg hover:bg-foreground/90 disabled:opacity-50"
-              disabled={!selectedHubspotList}
-              onClick={async () => {
-                toast.info("Direct HubSpot list sync is currently in preview. Please use CSV export or configure the inbound webhook in Settings.");
-                onClose();
-              }}
-            >
-              Start Sync
-            </button>
+            {!isPro ? (
+              <button
+                type="button"
+                className="w-full mt-6 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                onClick={() => {
+                  openPaywall({ featureName: "HubSpot CRM Integration" });
+                  toast.info("HubSpot CRM integration requires Growth Pro.");
+                }}
+              >
+                <Lock size={14} />
+                <span>Unlock HubSpot Sync with Pro</span>
+              </button>
+            ) : (
+              <button 
+                type="button"
+                className="w-full mt-6 py-2.5 bg-foreground text-background font-semibold rounded-lg hover:bg-foreground/90 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs"
+                disabled={!selectedHubspotList || isSyncing}
+                onClick={async () => {
+                  if (!selectedHubspotList) {
+                    toast.error("Please select a HubSpot contact list");
+                    return;
+                  }
+                  setIsSyncing(true);
+                  try {
+                    const res = await fetchWithAuth(`/api/elein/hubspot/import?list_id=${encodeURIComponent(selectedHubspotList)}`, {
+                      method: "POST"
+                    });
+                    if (res.status === 403) {
+                      openPaywall({ featureName: "HubSpot CRM Integration" });
+                      toast.info("HubSpot CRM integration requires Growth Pro.");
+                      return;
+                    }
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      throw new Error(errData.detail || "Failed to trigger HubSpot sync");
+                    }
+                    toast.success("HubSpot list import started in the background! Leads will appear shortly.");
+                    onClose();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to start HubSpot sync. Please check your connection.");
+                  } finally {
+                    setIsSyncing(false);
+                  }
+                }}
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>Initiating Sync...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={15} />
+                    <span>Start Sync</span>
+                  </>
+                )}
+              </button>
+            )}
         </div>
       )}
     </div>

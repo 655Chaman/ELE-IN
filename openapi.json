@@ -10540,6 +10540,101 @@
         }
       }
     },
+    "/api/elein/deliverability/dmarc-alignment-audit": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Dmarc Alignment Audit",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 36):\nWorkspace-scoped DMARC/DKIM/SPF identifier alignment audit under RFC 7489.\nEvaluates strict vs. relaxed alignment modes, subdomain inheritance fallback,\nand returns deliverability risk analysis and DNS remediation guidance.",
+        "operationId": "api_dmarc_alignment_audit_api_elein_deliverability_dmarc_alignment_audit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DMARCAlignmentAuditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Dmarc Alignment Audit Api Elein Deliverability Dmarc Alignment Audit Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/check-dns-drift": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Check Dns Drift",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 36):\nWorkspace-scoped DNS drift tripwire and auto-quarantine scanner.\nAudits all workspace sender inboxes for SPF drop, RFC 7208 multiple-record collision,\nrevoked DKIM keys, and unaligned DMARC policies.",
+        "operationId": "api_check_dns_drift_api_elein_deliverability_check_dns_drift_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DNSDriftScanRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Req"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Check Dns Drift Api Elein Deliverability Check Dns Drift Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -20210,6 +20305,136 @@
           "amount"
         ],
         "title": "CreditReclaimRequest"
+      },
+      "DMARCAlignmentAuditRequest": {
+        "properties": {
+          "from_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Domain"
+          },
+          "from_header_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Header Domain"
+          },
+          "return_path_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Path Domain"
+          },
+          "dkim_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dkim Domain"
+          },
+          "dkim_selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dkim Selector",
+            "default": "elein"
+          },
+          "dmarc_record": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dmarc Record"
+          },
+          "mock_dns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mock Dns"
+          }
+        },
+        "type": "object",
+        "title": "DMARCAlignmentAuditRequest"
+      },
+      "DNSDriftScanRequest": {
+        "properties": {
+          "auto_quarantine": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Quarantine",
+            "default": true
+          },
+          "mock_inboxes": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mock Inboxes"
+          },
+          "mock_dns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mock Dns"
+          }
+        },
+        "type": "object",
+        "title": "DNSDriftScanRequest"
       },
       "DeletionRequest": {
         "properties": {

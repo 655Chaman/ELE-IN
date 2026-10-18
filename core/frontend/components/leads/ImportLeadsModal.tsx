@@ -352,7 +352,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                 <button 
                   type="button"
                   onClick={handleSubmit} 
-                  disabled={!name.trim() || isUploading || (method === 'search' && !liveUrl) || (method === 'sales_nav' && !salesNavUrl.trim()) || (method === 'linkedin_url' && !urlList.trim()) || (method === 'csv' && step === 1 && !file) || (method === 'csv' && step === 2 && !mappings.linkedin_url)} 
+                  disabled={!name.trim() || isUploading || (method === 'search' && !liveUrl) || (method === 'sales_nav' && !salesNavUrl.trim()) || (method === 'linkedin_url' && !urlList.trim()) || (method === 'csv' && step === 1 && !file) || (method === 'csv' && step === 2 && !mappings.linkedin_url && !mappings.email)} 
                   className="px-8 py-2.5 text-sm font-bold bg-foreground hover:bg-foreground/90 rounded-lg text-background transition-all disabled:opacity-50 flex justify-center items-center gap-2 shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {isUploading ? (

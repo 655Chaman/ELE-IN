@@ -763,6 +763,115 @@ class TestEmailShieldAndSpamTrapGuard(unittest.TestCase):
         self.assertTrue(audit["is_spam_trap"])
         self.assertFalse(audit["can_safely_send"])
 
+    def test_subaddressed_role_based_address_detection(self):
+        """
+        Layer 0 & 2: Subaddressed/plus-tagged role-based mailboxes (e.g. info+marketing@company.com,
+        support+urgent@acme.com, billing+invoices@target.com) are normalized to the base role
+        prefix, identified as ROLE_BASED, and assigned the correct department category.
+        """
+        cases = [
+            ("info+marketing@company.com", "GENERAL_INQUIRY"),
+            ("support+urgent@acme.com", "SUPPORT"),
+            ("billing+invoices@target.com", "FINANCE_BILLING"),
+            ("legal+contracts@enterprise.org", "LEGAL_COMPLIANCE"),
+            ("sales+outbound@saas.io", "SALES"),
+        ]
+        for email, expected_category in cases:
+            is_role, cat = EmailShieldService.is_role_based_email(email)
+            self.assertTrue(is_role, f"Failed for {email}")
+            self.assertEqual(cat, expected_category, f"Wrong category for {email}")
+
+            audit = EmailShieldService.audit_email_address(email, allow_role_based=False)
+            self.assertEqual(audit["classification"], EmailClassification.ROLE_BASED.value)
+            self.assertFalse(audit["can_safely_send"])
+            self.assertEqual(audit["role_category"], expected_category)
+
+            # When allow_role_based=True, can_safely_send becomes True
+            audit_allowed = EmailShieldService.audit_email_address(email, allow_role_based=True)
+            self.assertTrue(audit_allowed["can_safely_send"])
+
+    def test_disposable_domain_trailing_dot_and_mailto(self):
+        """
+        Layer 1 & 2: Disposable emails formatted with trailing FQDN dot (user@mailinator.com.),
+        mailto: protocol (mailto:burner@guerrillamail.com), or angle brackets (<temp@10minutemail.com>)
+        are all correctly identified as DISPOSABLE and blocked.
+        """
+        disposable_variations = [
+            "user@mailinator.com.",
+            "mailto:burner@guerrillamail.com",
+            "<temp@10minutemail.com>",
+            "\"ephemeral\" <trash@yopmail.com>",
+        ]
+        for em in disposable_variations:
+            audit = EmailShieldService.audit_email_address(em)
+            self.assertEqual(
+                audit["classification"],
+                EmailClassification.DISPOSABLE.value,
+                f"Failed classification for {em}",
+            )
+            self.assertTrue(audit["is_disposable"])
+            self.assertFalse(audit["can_safely_send"])
+            self.assertEqual(audit["rejection_reason"], "DISPOSABLE_EMAIL_DOMAIN")
+
+    def test_batch_audit_all_invalid_emails_ratio_zero(self):
+        """
+        Layer 1 & 2: A batch containing exclusively invalid or malformed email inputs
+        computes safe_to_send_ratio_pct = 0.0 without divide-by-zero errors.
+        """
+        invalid_batch = [
+            "not-an-email",
+            "@missinguser.com",
+            "user@",
+            "user@domain..com",
+            "",
+        ]
+        stats = EmailShieldService.audit_email_batch(invalid_batch)
+        self.assertEqual(stats["total_emails"], 5)
+        self.assertEqual(stats["safe_count"], 0)
+        self.assertEqual(stats["invalid_count"], 5)
+        self.assertEqual(stats["corporate_count"], 0)
+        self.assertEqual(stats["free_webmail_count"], 0)
+        self.assertEqual(stats["safe_to_send_ratio_pct"], 0.0)
+
+    def test_executor_preserves_spintax_and_tracking_with_shield(self):
+        """
+        Layer 1: Email node containing spintax template in body and valid corporate email
+        passes deliverability check, resolves spintax, records deliverability telemetry,
+        and dispatches successfully.
+        """
+        data = {
+            "to_email": "alex@stripe.com",
+            "subject": "Platform introduction",
+            "body": "{Hi|Hello} Alex, hope you are doing well.",
+            "lead_id": "lead-spintax-1",
+        }
+        res = self.executor.handle_send_email(data, linkedin_url=None)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["branch"], Branch.THEN.value)
+        self.assertEqual(res.get("email_classification"), "CORPORATE")
+        self.assertEqual(res.get("deliverability_risk"), "SAFE")
+        self.assertTrue(res.get("spintax_resolved"))
+        # Verify outbound message was logged to messages table
+        table_calls = [c[1][0] for c in self.mock_supabase.table.mock_calls if c[1]]
+        self.assertIn("messages", table_calls)
+
+    def test_executor_double_dot_email_returns_skipped_invalid_format(self):
+        """
+        Layer 1 & 2: Recipient email with double dot in domain (user@domain..com)
+        passes initial simple regex but fails EmailShieldService RFC validation,
+        gracefully returning status='skipped' and reason='INVALID_EMAIL_FORMAT'.
+        """
+        data = {
+            "to_email": "user@domain..com",
+            "subject": "Inquiry",
+            "body": "Hello",
+            "lead_id": "lead-bad-rfc",
+        }
+        res = self.executor.handle_send_email(data, linkedin_url=None)
+        self.assertEqual(res["status"], "skipped")
+        self.assertEqual(res["reason"], "INVALID_EMAIL_FORMAT")
+
 
 if __name__ == "__main__":
     unittest.main()
+

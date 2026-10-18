@@ -4761,9 +4761,49 @@ Respond ONLY with valid JSON."""
                     except Exception as lock_err:
                         logger.debug(f"[DeliverabilityPool] Non-fatal affinity lock persist error: {lock_err}")
 
+            if not selected_inbox and data.get("selected_inbox"):
+                selected_inbox = data.get("selected_inbox")
+                if selected_inbox.get("email"):
+                    from_email = selected_inbox.get("email")
+
+            # Paranoia Layer 1 & 2: Live DMARC/DKIM/SPF Identifier Alignment & DNS Drift Pre-Flight Guard (Phase 36)
+            dmarc_audit: Dict[str, Any] = {}
+            inbox_to_audit = selected_inbox or ({"email": from_email} if from_email else None)
+            if inbox_to_audit and inbox_to_audit.get("email"):
+                sender_email = inbox_to_audit.get("email")
+                try:
+                    from core.backend.services.dmarc_alignment_service import DMARCAlignmentService
+                    mock_dns_payload = data.get("mock_dns") or inbox_to_audit.get("mock_dns")
+                    if mock_dns_payload is not None:
+                        dmarc_audit = DMARCAlignmentService.audit_sender_inbox_dns_health(inbox_to_audit, mock_dns=mock_dns_payload)
+                    else:
+                        dmarc_audit = DMARCAlignmentService.audit_sender_inbox_dns_health(inbox_to_audit)
+                except Exception as dmarc_err:
+                    logger.warning(f"[DeliverabilityGuard] Non-fatal DMARC health check error: {dmarc_err}")
+                    dmarc_audit = {}
+
+                # Paranoia Layer 1 & 2 Pre-flight DMARC Guard:
+                if dmarc_audit.get("should_quarantine") and not dmarc_audit.get("alignment", {}).get("can_safely_send", True):
+                    policy_val = str(dmarc_audit.get("alignment", {}).get("dmarc_policy") or dmarc_audit.get("alignment", {}).get("policy", "")).lower().replace("p=", "").strip()
+                    if policy_val in ("reject", "quarantine"):
+                        logger.error(
+                            f"[DeliverabilityGuard] ABORT: Sender domain {dmarc_audit.get('domain')} fails DMARC alignment under policy {dmarc_audit.get('alignment', {}).get('dmarc_policy') or dmarc_audit.get('alignment', {}).get('policy')}"
+                        )
+                        _refund_sendgrid_credit(reason="dmarc_alignment_failure")
+                        return {
+                            "status": "skipped",
+                            "reason": "dmarc_alignment_failure",
+                            "error": f"Sender domain {dmarc_audit.get('domain')} fails DMARC identifier alignment under {dmarc_audit.get('alignment', {}).get('dmarc_policy') or dmarc_audit.get('alignment', {}).get('policy')} policy.",
+                            "branch": Branch.FAILED.value,
+                        }
+
             def _enrich_delivery_outcome(res_dict: Dict[str, Any]) -> Dict[str, Any]:
                 if data.get("spintax_applied"):
                     res_dict["spintax_resolved"] = True
+                if dmarc_audit:
+                    res_dict["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
+                    res_dict["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy") or dmarc_audit.get("alignment", {}).get("policy", "none")
+                    res_dict["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
                 if selected_inbox:
                     res_dict["sender_domain"] = selected_inbox.get("sender_domain") or (
                         selected_inbox.get("email", "").split("@")[-1] if "@" in str(selected_inbox.get("email", "")) else None
@@ -4870,6 +4910,10 @@ Respond ONLY with valid JSON."""
                         "body": body,
                         "tracking_rewritten": rewritten_count,
                     }
+                    if dmarc_audit:
+                        out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
+                        out["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy", "none")
+                        out["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
                     if selected_inbox:
                         out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
                         out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
@@ -4933,6 +4977,10 @@ Respond ONLY with valid JSON."""
                             "subject": subject,
                             "tracking_rewritten": rewritten_count,
                         }
+                        if dmarc_audit:
+                            out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
+                            out["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy", "none")
+                            out["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
                         if selected_inbox:
                             out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
                             out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
@@ -4973,6 +5021,10 @@ Respond ONLY with valid JSON."""
                 "subject": subject,
                 "tracking_rewritten": rewritten_count,
             }
+            if dmarc_audit:
+                out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
+                out["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy", "none")
+                out["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
             if ssl_tracking_bypassed:
                 out["ssl_tracking_bypassed"] = True
             if audit:

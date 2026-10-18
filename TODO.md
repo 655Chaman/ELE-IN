@@ -186,5 +186,18 @@
     - Exposed `POST /api/elein/deliverability/audit-email` and `POST /api/elein/deliverability/audit-batch` with workspace IDOR scoping.
   - **Verification**: 63/63 automated tests passing across `test_email_shield_service.py` (30/30) and `test_email_shield_and_spam_trap_guard.py` (33/33), 225/225 deliverability regression suite green, sub-second frontend production build (624ms).
 
+- [x] **Phase 36: Live DMARC/DKIM/SPF Alignment Auditor, DNS Drift Tripwire & Auto-Quarantine (100% Operational):**
+  - **RFC 7489 Alignment Core Service (`core/backend/services/dmarc_alignment_service.py`)**:
+    - `DMARCAlignmentMode`: `RELAXED = "r"`, `STRICT = "s"`.
+    - `DMARCPolicy`: `NONE = "none"`, `QUARANTINE = "quarantine"`, `REJECT = "reject"`, `MISSING = "missing"`.
+    - `parse_dmarc_record`: Full RFC 7489 tag parsing (`v`, `p`, `sp`, `aspf`, `adkim`, `pct`, `rua`, `ruf`, `fo`, `ri`) with `v=DMARC1` verification and tag sanitization.
+    - `evaluate_dmarc_alignment`: Verifies SPF and DKIM identifier alignment against visible `From:` header domain. Evaluates strict vs relaxed modes, executes RFC 7489 section 6.6.3 organizational domain DMARC fallback (`_dmarc.{root_domain}`) for subdomains, and evaluates deliverability risk (`SAFE`, `CRITICAL_REJECT_RISK`, `HIGH_SPAM_RISK`, `MODERATE_RISK`).
+    - `audit_sender_inbox_dns_health`: Detects critical DNS drift tripwires (`SPF_MISSING_DRIFT`, `MULTIPLE_SPF_RFC7208_COLLISION`, `SPF_PERMISSIVE_PLUS_ALL`, `DKIM_MISSING_DRIFT`, `DKIM_REVOKED_KEY`, `DMARC_REJECT_UNALIGNED`, `DMARC_QUARANTINE_UNALIGNED`) and produces structured remediation DNS records.
+    - `scan_workspace_dns_drift`: Multi-tenant workspace audit scanning all active sender inboxes, auto-quarantining degraded mailboxes (`status="QUARANTINED"`), and dispatching notifications with actionable remediation instructions.
+  - **Executor Pre-Flight Guard & Router Integration (`campaigns/backend/services/elein_executor.py`, `campaigns/backend/routers/elein.py`)**:
+    - `EleInExecutor.handle_send_email`: Pre-flight DMARC alignment check aborts sends to unaligned mailboxes under `p=reject` or `p=quarantine` (`reason="dmarc_alignment_failure"`), refunding allocated SendGrid credits and preserving sender domain reputation. Enriches dispatch telemetry with `dmarc_aligned`, `dmarc_policy`, and `dmarc_score`.
+    - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/dmarc-alignment-audit` and `POST /api/elein/deliverability/check-dns-drift`.
+  - **Verification**: 75/75 automated tests passing across `test_dmarc_alignment_service.py` (32/32) and `test_dmarc_alignment_and_dns_drift_guard.py` (43/43), 305/305 deliverability regression suite green, sub-second frontend production build (672ms).
+
 
 

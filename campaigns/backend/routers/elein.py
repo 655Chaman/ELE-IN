@@ -7311,6 +7311,81 @@ def api_warmup_get_inbox_status(
     }
 
 
+# ==============================================================================
+# Phase 36: Live DMARC/DKIM/SPF Alignment Auditor, DNS Drift Tripwire & Auto-Quarantine
+# ==============================================================================
+
+class DMARCAlignmentAuditRequest(BaseModel):
+    from_domain: Optional[str] = None
+    from_header_domain: Optional[str] = None
+    return_path_domain: Optional[str] = None
+    dkim_domain: Optional[str] = None
+    dkim_selector: Optional[str] = "elein"
+    dmarc_record: Optional[str] = None
+    mock_dns: Optional[Dict[str, Any]] = None
+
+
+class DNSDriftScanRequest(BaseModel):
+    auto_quarantine: Optional[bool] = True
+    mock_inboxes: Optional[List[Dict[str, Any]]] = None
+    mock_dns: Optional[Dict[str, Any]] = None
+
+
+@router.post("/deliverability/dmarc-alignment-audit", response_model=dict)
+def api_dmarc_alignment_audit(
+    req: DMARCAlignmentAuditRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 36):
+    Workspace-scoped DMARC/DKIM/SPF identifier alignment audit under RFC 7489.
+    Evaluates strict vs. relaxed alignment modes, subdomain inheritance fallback,
+    and returns deliverability risk analysis and DNS remediation guidance.
+    """
+    from core.backend.services.dmarc_alignment_service import DMARCAlignmentService
+
+    from_domain = req.from_domain or req.from_header_domain or ""
+    if not from_domain:
+        raise HTTPException(status_code=400, detail="from_domain is required")
+
+    return DMARCAlignmentService.evaluate_dmarc_alignment(
+        from_header_domain=from_domain,
+        return_path_domain=req.return_path_domain,
+        dkim_domain=req.dkim_domain,
+        dmarc_record=req.dmarc_record,
+        dkim_selector=req.dkim_selector or "elein",
+        mock_dns=req.mock_dns,
+    )
+
+
+@router.post("/deliverability/check-dns-drift", response_model=dict)
+def api_check_dns_drift(
+    req: Optional[DNSDriftScanRequest] = None,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 36):
+    Workspace-scoped DNS drift tripwire and auto-quarantine scanner.
+    Audits all workspace sender inboxes for SPF drop, RFC 7208 multiple-record collision,
+    revoked DKIM keys, and unaligned DMARC policies.
+    """
+    from core.backend.services.dmarc_alignment_service import DMARCAlignmentService
+
+    auto_q = True if req is None or req.auto_quarantine is None else req.auto_quarantine
+    mock_inboxes = req.mock_inboxes if req else None
+    mock_dns = req.mock_dns if req else None
+
+    return DMARCAlignmentService.scan_workspace_dns_drift(
+        supabase=supabase,
+        workspace_id=workspace_id,
+        auto_quarantine=auto_q,
+        mock_inboxes=mock_inboxes,
+        mock_dns=mock_dns,
+    )
+
+
+
 
 
 
