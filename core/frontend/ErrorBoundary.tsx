@@ -2,6 +2,8 @@ import React, { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 
+import { captureFrontendError } from "./lib/telemetry";
+
 interface Props {
   children?: ReactNode;
 }
@@ -22,7 +24,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
+    console.error("Uncaught error in ErrorBoundary:", error, errorInfo);
+    captureFrontendError(error, {
+      componentStack: errorInfo.componentStack,
+      source: "ErrorBoundary",
+    });
   }
 
   private handleRefresh = () => {

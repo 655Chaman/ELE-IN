@@ -724,6 +724,7 @@ async def webhook_stripe(request: Request):
         
     return {"status": "ok"}
 
+@router.post("/webhook/razorpay")
 async def webhook_razorpay(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature")

@@ -209,17 +209,14 @@ export function TestDriveSimulator() {
 
   return (
     <>
-      <StarBorder
-        as="button"
+      <button
         type="button"
         onClick={() => setIsTestOpen(true)}
-        className="group flex-shrink-0 cursor-pointer"
-        innerClassName="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-foreground hover:bg-foreground/90 text-background text-sm font-bold transition-all shadow-lg cursor-pointer"
-        speed="3s"
+        className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-all shadow-xs cursor-pointer shrink-0"
       >
-        <ElesiumLogo size={16} />
-        <span>Elesium Test Objection</span>
-      </StarBorder>
+        <ElesiumLogo size={14} />
+        <span>Simulate AI Reply</span>
+      </button>
 
       <AnimatePresence>
         {isTestOpen && (

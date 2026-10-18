@@ -56,10 +56,9 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const currentCredits = Number(balanceData?.balance ?? balanceData?.data_cleaning_credits ?? 0);
 
   // ============================================================================
-  // BETA TESTING MODE: Temporarily disable CreditTopUpModal popups during beta testing
-  // Tracked in TODO.md and brain/todo-list.md. To re-enable: set isBetaTestingMode = false
+  // PRE-COMMERCIAL LAUNCH (Phase 21): Enable live CreditTopUpModal and Paywalls
   // ============================================================================
-  const isBetaTestingMode = true;
+  const isBetaTestingMode = false;
 
   // Paranoia Layer 1: Concurrency Lock to prevent duplicate modal spam from parallel requests
   const isLockedRef = useRef(false);

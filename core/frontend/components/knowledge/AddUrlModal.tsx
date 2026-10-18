@@ -122,10 +122,12 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
   const activeStageInfo = SCRAPER_STAGES.find(s => s.step === currentStage) || SCRAPER_STAGES[0]
 
   return (
-    <div className="border border-slate-200 dark:border-border/50 bg-slate-50 dark:bg-muted/10 rounded-xl p-6 flex flex-col justify-between transition-all">
+    <div className="border border-border/60 bg-muted/20 hover:bg-muted/30 transition-all rounded-xl p-5 flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <LinkIcon size={20} className="text-foreground" />
+          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+            {isCapped ? <Lock size={18} className="text-amber-500" /> : <LinkIcon size={18} />}
+          </div>
           {isScraping && (
             <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold flex items-center gap-1">
               <RefreshCw size={10} className="animate-spin" />
@@ -153,8 +155,8 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
               if (scrapeError) setScrapeError(null)
             }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleScrape() }}
-            placeholder="domain.com or https://company.io"
-            className="bg-white dark:bg-background border border-slate-200 dark:border-border/50 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary w-full shadow-sm text-foreground placeholder:text-muted-foreground"
+            placeholder="https://company.com"
+            className="bg-background border border-border/60 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary w-full shadow-2xs text-foreground placeholder:text-muted-foreground"
           />
         )}
 
@@ -216,10 +218,10 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
             disabled={isScraping || !scrapeUrl.trim()}
             onClick={handleScrape}
             className={cn(
-              "py-2 rounded-xl text-xs font-semibold transition-all w-full disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer",
+              "py-2 rounded-lg text-xs font-semibold transition-all w-full disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer",
               isCapped
                 ? "bg-muted text-foreground border border-border hover:bg-muted/80"
-                : "bg-foreground text-background hover:bg-foreground/90 active:scale-[0.99]"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
             )}
           >
             {isScraping ? (

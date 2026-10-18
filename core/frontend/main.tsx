@@ -1,4 +1,5 @@
 import './catch_errors';
+import { initFrontendTelemetry } from './lib/telemetry';
 
 import { ErrorBoundary } from './ErrorBoundary';
 import { StrictMode } from 'react'
@@ -7,6 +8,9 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { registerNotificationServiceWorker } from './lib/desktopNotification';
+
+// Initialize production observability & error tracking
+initFrontendTelemetry();
 
 // Register background Service Worker for persistent OS desktop notifications
 if (typeof window !== 'undefined') {

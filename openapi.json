@@ -10328,6 +10328,22 @@
         }
       }
     },
+    "/api/elein/billing/webhook/razorpay": {
+      "post": {
+        "summary": "Webhook Razorpay",
+        "operationId": "webhook_razorpay_api_elein_billing_webhook_razorpay_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/billing/webhook/lemonsqueezy": {
       "post": {
         "summary": "Webhook Lemonsqueezy",
@@ -19438,7 +19454,6 @@
             "title": "Error"
           }
         },
-        "additionalProperties": false,
         "type": "object",
         "title": "ErrorLog"
       },

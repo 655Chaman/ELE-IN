@@ -133,7 +133,7 @@ export default function EleInKnowledge() {
   const [retryingAssetId, setRetryingAssetId] = useState<string | null>(null);
 
   // Paste Text State
-  const [isScraping, setIsScraping] = useState(false);
+  const [isSavingPaste, setIsSavingPaste] = useState(false);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteTitle, setPasteTitle] = useState("");
@@ -281,12 +281,16 @@ export default function EleInKnowledge() {
   };
 
   const handlePasteText = async () => {
+    if (isAssetCapped) {
+      openPaywall({ featureName: "Knowledge Base Storage" });
+      toast.info(`Free plan limit reached (${assetCount}/${maxAssets} documents). Upgrade to Growth Pro to add up to 25 documents.`);
+      return;
+    }
     if (!pasteText.trim()) return toast.error("Please enter some text");
     if (!pasteTitle.trim()) return toast.error("Please enter a title");
     
     try {
-      setIsScraping(true);
-      setIsPasteModalOpen(false);
+      setIsSavingPaste(true);
       const res = await fetchWithAuth("/api/assets/knowledge/upload/text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -304,12 +308,13 @@ export default function EleInKnowledge() {
       toast.success("Text saved! Processing in background...");
       setPasteText("");
       setPasteTitle("");
+      setIsPasteModalOpen(false);
       mutateAssets();
       mutateSynthesis();
     } catch (e: any) {
       toast.error(e.message || "Failed to upload text");
     } finally {
-      setIsScraping(false);
+      setIsSavingPaste(false);
     }
   };
 
@@ -374,73 +379,43 @@ export default function EleInKnowledge() {
     <div className="min-h-[100dvh] bg-background text-foreground font-sans overflow-x-hidden">
       <main className="max-w-[1200px] mx-auto p-6 md:p-8 lg:p-10">
 
-      {/* ─── BLOCKING OVERLAY FOR SCRAPING ─────────────────────────────────────── */}
-      <AnimatePresence>
-        {isScraping && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] bg-background/60 backdrop-blur-md flex flex-col items-center justify-center p-4"
-            style={{ pointerEvents: 'auto' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              toast.warning("The AI is currently digesting this website. Please do not navigate away so the knowledge graph isn't interrupted.");
-            }}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 10 }}
-              animate={{ scale: 1, y: 0 }}
-              className="bg-card border border-border/60 shadow-2xl rounded-xl p-10 flex flex-col items-center text-center max-w-md w-full"
-            >
-              <div className="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 mb-6 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/20 to-cyan-500/20 animate-spin" style={{ animationDuration: '3s' }} />
-                <BrainCircuit className="w-8 h-8 text-primary relative z-10 animate-pulse" />
-              </div>
-              <h2 className="text-xl font-bold tracking-tight text-foreground mb-3">
-                <ShinyText text="Digesting Knowledge..." speed={2} className="text-foreground" />
-              </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Please wait a few moments while the AI scrapes, chunks, and embeds this website into your vector database. 
-                <br/><br/>
-                <span className="font-semibold text-foreground">Do not close or navigate away from this page.</span>
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
         
         {/* ─── HEADER ─────────────────────────────────────────────── */}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             {/* Editable company name title */}
             {isEditingName ? (
-              <div className="flex items-center gap-2 mb-2">
-                <input
-                  autoFocus
-                  disabled={isSavingCompanyName}
-                  value={editedCompanyName}
-                  onChange={(e) => setEditedCompanyName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCompanyName(); if (e.key === 'Escape') setIsEditingName(false); }}
-                  className="text-2xl font-bold bg-background border border-border focus:border-primary rounded-lg px-2.5 py-1 text-foreground focus:outline-none w-auto min-w-[200px] shadow-xs disabled:opacity-50"
-                />
-                <button 
-                  type="button"
-                  onClick={handleSaveCompanyName} 
-                  disabled={isSavingCompanyName}
-                  className="text-xs px-3 py-1 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center min-w-[50px] transition-colors"
-                >
-                  {isSavingCompanyName ? <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : 'Save'}
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setIsEditingName(false)} 
-                  disabled={isSavingCompanyName}
-                  className="text-xs px-3 py-1 bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 disabled:opacity-50 transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
+                  <BrainCircuit className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    disabled={isSavingCompanyName}
+                    value={editedCompanyName}
+                    onChange={(e) => setEditedCompanyName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCompanyName(); if (e.key === 'Escape') setIsEditingName(false); }}
+                    placeholder="Workspace Name"
+                    className="text-xl font-bold bg-background border border-border focus:border-primary rounded-lg px-2.5 py-1 text-foreground focus:outline-none w-auto min-w-[220px] shadow-xs disabled:opacity-50"
+                  />
+                  <button 
+                    type="button"
+                    onClick={handleSaveCompanyName} 
+                    disabled={isSavingCompanyName}
+                    className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center min-w-[50px] transition-colors cursor-pointer"
+                  >
+                    {isSavingCompanyName ? <div className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" /> : 'Save'}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setIsEditingName(false)} 
+                    disabled={isSavingCompanyName}
+                    className="text-xs px-3 py-1.5 bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             ) : (
               <h1
@@ -494,22 +469,21 @@ export default function EleInKnowledge() {
 
         {/* ─── IN-SITU PAY RAMP: KNOWLEDGE BASE & AI BRAIN CAPACITY ─── */}
         {!isPro && (
-          <div className="mb-8 p-4 sm:p-5 rounded-xl bg-gradient-to-r from-indigo-950/40 via-blue-950/30 to-background border border-indigo-500/20 shadow-lg relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="mb-8 p-4 sm:p-5 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 shadow-xs relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3.5">
-              <div className="w-10 h-10 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 text-primary">
                 <ElesiumLogo size={20} />
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                    <ElesiumLogo size={14} />
                     Free AI Knowledge Plan
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
                     {assetCount}/{maxAssets} Docs &bull; {personaCount}/{maxPersonas} Personas
                   </span>
                   {(isAssetCapped || isPersonaCapped) && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 flex items-center gap-1">
                       <Lock size={10} /> Quota Limit Reached
                     </span>
                   )}
@@ -523,38 +497,45 @@ export default function EleInKnowledge() {
             <button
               type="button"
               onClick={() => openPaywall({ featureName: "Knowledge Base & AI Brain Capacity" })}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-md shadow-indigo-600/20 transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shrink-0"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shrink-0"
             >
-              <ElesiumLogo size={14} />
               <span>Expand AI Capacity</span>
               <ArrowRight size={14} />
             </button>
           </div>
         )}
 
-        {/* ─── PILL NAVIGATION WITH LIVE COUNTS (Transcript 3: Staff Discovery) ───── */}
-        <div className="bg-muted/40 p-1.5 rounded-lg border border-border/60 w-full grid grid-cols-2 sm:grid-cols-4 mb-8 shadow-2xs gap-1">
-
-          {tabs.map((tab) => (
-            <button 
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {activeTab === tab.id && (
-                <motion.div layoutId="kb-active-pill" className="absolute inset-0 bg-background shadow-xs border border-border/50 rounded-lg" transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
-              )}
-              <span className="relative z-10 flex items-center justify-center gap-2">
-                {tab.icon} <span>{tab.label}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold font-mono transition-colors ${
-                  activeTab === tab.id ? 'bg-primary/20 text-primary' : 'bg-muted/70 text-muted-foreground'
-                }`}>
-                  {tab.count}
+        {/* ─── PILL NAVIGATION WITH LIVE COUNTS ───── */}
+        <div 
+          role="tablist"
+          aria-label="Knowledge Base Navigation"
+          className="bg-muted/40 p-1.5 rounded-xl border border-border/60 w-full flex flex-wrap lg:flex-nowrap items-center gap-1.5 mb-8 shadow-2xs"
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button 
+                key={tab.id}
+                role="tab"
+                aria-selected={isActive}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}
+              >
+                {isActive && (
+                  <motion.div layoutId="kb-active-pill" className="absolute inset-0 bg-background shadow-xs border border-border/50 rounded-lg" transition={{ type: "spring", bounce: 0.15, duration: 0.4 }} />
+                )}
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  {tab.icon} <span>{tab.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold font-mono transition-colors ${
+                    isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {tab.count}
+                  </span>
                 </span>
-              </span>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
 
         {/* ─── CONTENT AREA ────────────────────────────────────────────────────────── */}
@@ -567,10 +548,10 @@ export default function EleInKnowledge() {
             transition={{ duration: 0.3 }}
           >
             {activeTab === 'assets' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 {/* Data Sources (Spans 2 columns) */}
-                <div className="md:col-span-2 group outline-none">
+                <div className="lg:col-span-2 group outline-none">
                   <div className="h-full bg-card border border-border/60 rounded-xl p-6 lg:p-8 overflow-hidden relative shadow-xs">
                     <div className="relative z-10">
                       {/* Section heading */}
@@ -598,26 +579,56 @@ export default function EleInKnowledge() {
                         <div
                           role="button"
                           tabIndex={0}
-                          onClick={() => setIsPasteModalOpen(true)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
+                          onClick={() => {
+                            if (isAssetCapped) {
+                              openPaywall({ featureName: "Knowledge Base Storage" });
+                              toast.info(`Free plan limit reached (${assetCount}/${maxAssets} documents). Upgrade to Growth Pro to add up to 25 documents.`);
+                            } else {
                               setIsPasteModalOpen(true);
                             }
                           }}
-                          className="border border-border/60 bg-muted/20 hover:bg-muted/30 transition-all rounded-lg p-5 flex flex-col justify-between cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              if (isAssetCapped) {
+                                openPaywall({ featureName: "Knowledge Base Storage" });
+                              } else {
+                                setIsPasteModalOpen(true);
+                              }
+                            }
+                          }}
+                          className="border border-border/60 bg-muted/20 hover:bg-muted/30 transition-all rounded-xl p-5 flex flex-col justify-between cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <div>
-                            <FileText size={20} className="text-foreground mb-2" />
-                            <h3 className="font-semibold text-sm text-foreground">Copy-paste anything</h3>
-                            <p className="text-xs text-muted-foreground mt-1 mb-3">Paste raw text, email templates, or notes directly.</p>
+                            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-2">
+                              {isAssetCapped ? <Lock size={18} className="text-amber-500" /> : <FileText size={18} />}
+                            </div>
+                            <h3 className="font-semibold text-sm text-foreground">
+                              {isAssetCapped ? "Upgrade to Paste Text" : "Copy-paste anything"}
+                            </h3>
+                            <p className="text-xs text-muted-foreground mt-1 mb-3">
+                              {isAssetCapped
+                                ? `Limit reached (${assetCount}/${maxAssets} docs)`
+                                : "Paste raw text, email templates, or notes directly."}
+                            </p>
                           </div>
                           <button 
                             type="button"
                             tabIndex={-1}
-                            className="bg-foreground text-background py-2 rounded-lg text-xs font-semibold hover:bg-foreground/90 transition-colors w-full"
+                            className={`w-full py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                              isAssetCapped
+                                ? "bg-muted text-foreground border border-border hover:bg-muted/80"
+                                : "bg-primary text-primary-foreground hover:bg-primary/90"
+                            }`}
                           >
-                            Open Editor
+                            {isAssetCapped ? (
+                              <>
+                                <Lock size={12} className="text-amber-500" />
+                                <span>Unlock More Docs</span>
+                              </>
+                            ) : (
+                              <span>Open Editor</span>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -678,9 +689,9 @@ export default function EleInKnowledge() {
                         type="button"
                         onClick={handleAddObjection} 
                         disabled={isCreatingObjection} 
-                        className="bg-red-500 hover:bg-red-600 text-white rounded-md px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
                       >
-                        {isCreatingObjection ? <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Plus size={14} />}
+                        {isCreatingObjection ? <div className="w-3.5 h-3.5 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Plus size={14} />}
                         <span className="hidden sm:inline">New Playbook</span>
                       </button>
                     </div>
@@ -699,9 +710,9 @@ export default function EleInKnowledge() {
                               type="button"
                               onClick={handleAddObjection} 
                               disabled={isCreatingObjection} 
-                              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center min-w-[140px]"
+                              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold transition-colors flex items-center justify-center min-w-[140px] shadow-xs cursor-pointer"
                             >
-                              {isCreatingObjection ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : 'Create First Playbook'}
+                              {isCreatingObjection ? <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : 'Create First Playbook'}
                             </button>
                           </div>
                         ) : (
@@ -873,26 +884,23 @@ export default function EleInKnowledge() {
                               setIsSavingObjection(false);
                             }
                           }}
-                          className={`px-5 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center min-w-[120px] shadow-xs ${
+                          className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center min-w-[120px] shadow-xs cursor-pointer ${
                             isDirtyObjection || isSavingObjection
-                              ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-md shadow-red-500/20 hover:opacity-90' 
+                              ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
                               : 'bg-muted text-muted-foreground cursor-not-allowed'
                           } disabled:opacity-50 ${isDirtyObjection && !isSavingObjection ? 'animate-pulse' : ''}`}
                         >
-                          {isSavingObjection ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : 'Save Strategy'}
+                          {isSavingObjection ? <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : 'Save Strategy'}
                         </button>
                       </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full p-12 text-center relative overflow-hidden flex-1">
-                      <div className="absolute inset-0 bg-gradient-to-br from-red-500/3 via-orange-500/3 to-transparent pointer-events-none" />
+                      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
                       
                       <div className="relative mb-6">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-md shadow-red-500/20">
-                          <ShieldAlert className="w-7 h-7 text-white" />
-                        </div>
-                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 border-2 border-background flex items-center justify-center">
-                          <Sparkles className="w-2.5 h-2.5 text-white" />
+                        <div className="w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs text-primary">
+                          <ShieldAlert className="w-7 h-7 text-primary" />
                         </div>
                       </div>
                       
@@ -914,9 +922,9 @@ export default function EleInKnowledge() {
                           type="button"
                           onClick={handleAddObjection}
                           disabled={isCreatingObjection}
-                          className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-lg text-sm font-bold hover:opacity-90 transition-opacity shadow-md shadow-red-500/20 flex items-center gap-2 disabled:opacity-50 relative z-10"
+                          className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-semibold transition-all shadow-xs flex items-center gap-2 disabled:opacity-50 relative z-10 cursor-pointer"
                         >
-                          {isCreatingObjection ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Plus size={16} />}
+                          {isCreatingObjection ? <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Plus size={16} />}
                           Create Your First Playbook
                         </button>
                       )}
@@ -1049,9 +1057,14 @@ export default function EleInKnowledge() {
                 <button 
                   type="button"
                   onClick={handlePasteText} 
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-xs"
+                  disabled={isSavingPaste}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-xs disabled:opacity-50 flex items-center justify-center cursor-pointer"
                 >
-                  Save Text
+                  {isSavingPaste ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
+                  ) : (
+                    'Save Text'
+                  )}
                 </button>
               </div>
             </motion.div>

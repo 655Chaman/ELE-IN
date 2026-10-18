@@ -47,7 +47,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
                   <h3 className="text-2xl font-semibold tracking-tight text-foreground">Buyer Personas</h3>
                   {!isPro && (
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      {(personas || []).length}/{maxPersonas} Persona
+                      {(personas || []).length}/{maxPersonas} Personas
                     </span>
                   )}
                 </div>
@@ -171,7 +171,7 @@ export function PersonaManager({ personas, mutatePersonas, mutateObjections }: {
       {/* Modal Injection */}
       <AnimatePresence>
         {isPersonaModalOpen && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:pl-[240px] pointer-events-auto">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-auto">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 

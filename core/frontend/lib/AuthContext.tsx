@@ -16,6 +16,8 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+import { setTelemetryUserContext } from './telemetry';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setTelemetryUserContext(session?.user ? { id: session.user.id, email: session.user.email } : null);
       setIsLoading(false);
     });
 
@@ -33,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setTelemetryUserContext(session?.user ? { id: session.user.id, email: session.user.email } : null);
       setIsLoading(false);
     });
 

@@ -1,7 +1,18 @@
-window.addEventListener('error', (e) => {
-  fetch('/api/elein/log_error', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno, error: e.error?.stack })
-  }).catch(() => {});
-});
+import { captureFrontendError } from './lib/telemetry';
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e) => {
+    captureFrontendError(e.error || e.message, {
+      filename: e.filename,
+      lineno: e.lineno,
+      colno: e.colno,
+      source: 'window.onerror',
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    captureFrontendError(e.reason, {
+      source: 'window.onunhandledrejection',
+    });
+  });
+}

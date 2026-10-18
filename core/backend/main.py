@@ -20,11 +20,45 @@ from core.backend.core.security import setup_security
 
 import os
 import logging
+from typing import Optional, Dict, Any
 import sentry_sdk
+
+def _safe_float(val: Optional[str], default: float) -> float:
+    if not val:
+        return default
+    try:
+        parsed = float(val)
+        return max(0.0, min(1.0, parsed))
+    except (ValueError, TypeError):
+        return default
+
+def _sentry_before_send(event: Dict[str, Any], hint: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    # Paranoia Layer 2: Scrub sensitive auth headers and tokens before transmitting to Sentry
+    request_data = event.get("request")
+    if request_data and isinstance(request_data, dict):
+        headers = request_data.get("headers")
+        if headers and isinstance(headers, dict):
+            sensitive_keys = {"authorization", "cookie", "x-api-key", "set-cookie", "x-razorpay-signature"}
+            for k in list(headers.keys()):
+                if k.lower() in sensitive_keys:
+                    headers[k] = "[SCRUBBED]"
+    return event
 
 SENTRY_DSN = os.environ.get("SENTRY_DSN")
 if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=1.0)
+    try:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=os.environ.get("ENVIRONMENT", "production"),
+            release=os.environ.get("APP_VERSION", "3.0.0"),
+            traces_sample_rate=_safe_float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE"), 0.2),
+            profiles_sample_rate=_safe_float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE"), 0.1),
+            send_default_pii=False,
+            before_send=_sentry_before_send,
+        )
+        logging.getLogger(__name__).info("Sentry initialized with environment: %s", os.environ.get("ENVIRONMENT", "production"))
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to initialize Sentry: {e}")
 else:
     logging.getLogger(__name__).warning("SENTRY_DSN not set, skipping Sentry initialization.")
 

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { mutate } from 'swr';
 import { useAuth } from '@/lib/AuthContext';
+import { setTelemetryWorkspaceContext } from '@/lib/telemetry';
 
 interface Workspace {
   id: string;
@@ -69,9 +70,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [session]);
 
+  useEffect(() => {
+    setTelemetryWorkspaceContext(activeWorkspaceId);
+  }, [activeWorkspaceId]);
+
   const setActiveWorkspaceId = (id: string) => {
     setActiveWorkspaceIdState(id);
     localStorage.setItem('elein_active_workspace', id);
+    setTelemetryWorkspaceContext(id);
     // Reload after a short delay to ensure localStorage write flushes
     mutate(() => true, undefined, { revalidate: true });
   };

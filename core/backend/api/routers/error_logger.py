@@ -23,7 +23,7 @@ class ErrorLog(BaseModel):
     error: Optional[str] = None
 
     class Config:
-        extra = "forbid"
+        extra = "ignore"
 
 # Simple in-memory rate limiting: max 10 requests per IP per minute
 _rate_limit_records = defaultdict(list)
@@ -63,4 +63,28 @@ async def log_error(request: Request, payload: ErrorLog):
 
     print("FRONTEND ERROR:", json.dumps(data, indent=2))
     frontend_logger.info(json.dumps(data))
+
+    # Paranoia Layer 1: Forward fallback errors to Sentry if initialized
+    try:
+        import sentry_sdk
+        scope_manager = getattr(sentry_sdk, "new_scope", getattr(sentry_sdk, "push_scope", None))
+        if scope_manager:
+            with scope_manager() as scope:
+                scope.set_tag("source", "frontend_fallback")
+                if payload.filename:
+                    scope.set_tag("frontend_file", payload.filename)
+                if payload.lineno is not None:
+                    scope.set_extra("lineno", payload.lineno)
+                if payload.colno is not None:
+                    scope.set_extra("colno", payload.colno)
+                if payload.error:
+                    scope.set_extra("raw_error", _truncate(payload.error, 1000))
+                scope.set_extra("client_ip", client_ip)
+                sentry_sdk.capture_message(
+                    f"Frontend Fallback Error: {payload.message or 'Unknown frontend error'}",
+                    level="error"
+                )
+    except Exception as e:
+        frontend_logger.warning(f"Could not forward frontend error to Sentry: {e}")
+
     return {"status": "ok"}
