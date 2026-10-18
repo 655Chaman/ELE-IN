@@ -13,6 +13,17 @@
 
 ## 🟢 COMPLETED MILESTONES
 
+- [x] **Phase 25: Production Container Probes & Edge Security Hardening (100% Operational):**
+  - Implemented unauthenticated container orchestrator probes: `GET /health` and `GET /api/health` for liveness (zero-dependency, returns 200 with service metadata); `GET /ready` and `GET /api/ready` for readiness with Supabase PostgREST connectivity probe and graceful HTTP 503 fallback when degraded.
+  - Hardened CORS configuration in [`core/backend/main.py`](file:///Users/krdeeksha/Ele-in/core/backend/main.py) with `ALLOWED_ORIGINS` environment support, production domain defaults, and `allow_credentials=True` safety without wildcard exposure.
+  - Upgraded SlowAPI rate limiting in [`core/backend/core/security.py`](file:///Users/krdeeksha/Ele-in/core/backend/core/security.py) using spoofing-defended IP resolver (`CF-Connecting-IP`, `X-Real-IP`, `X-Forwarded-For`, port stripping, `ipaddress.ip_address` validation) with configurable `RATE_LIMIT_DEFAULT` (default `300/minute`).
+  - Enforced strict enterprise security headers on 100% of responses (`Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin-allow-popups`, `Cross-Origin-Resource-Policy: cross-origin`).
+
+- [x] **Phase 26: Pre-Launch E2E Staging Smoke Test & Operational Runbook (100% Verified):**
+  - Created automated pre-flight smoke test suite [`campaigns/backend/tests/test_preflight_production_smoke.py`](file:///Users/krdeeksha/Ele-in/campaigns/backend/tests/test_preflight_production_smoke.py) covering liveness, readiness, degraded database failover, security headers, CORS preflight, rate limiting, and static media traversal defense (8/8 tests passing).
+  - Authored comprehensive production operational runbook [`docs/OPERATIONAL_RUNBOOK.md`](file:///Users/krdeeksha/Ele-in/docs/OPERATIONAL_RUNBOOK.md) documenting service topology, Kubernetes probe specifications, environment variable matrix, ghost worker self-healing, and incident response playbooks.
+  - Zero TypeScript errors (`npx tsc -b`) and sub-second Vite production build (851ms).
+
 - [x] **Phase 23: Complete Radius Harmonization & Micro-Interaction Eradication (100% Verified):**
   - Standardized all outer modal dialogs, shells, and containers from `rounded-3xl` and `rounded-2xl` to standard `rounded-xl` (12px).
   - Standardized all inner cards, inputs, icon badges, and preview docks to `rounded-lg` (8px), and status indicators/pills to `rounded-full`.

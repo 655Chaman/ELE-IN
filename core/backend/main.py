@@ -20,7 +20,9 @@ from core.backend.core.security import setup_security
 
 import os
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from fastapi.responses import JSONResponse
 import sentry_sdk
 
 def _safe_float(val: Optional[str], default: float) -> float:
@@ -84,10 +86,37 @@ app.mount("/api/elein/media/attachments", StaticFiles(directory=attachments_dir)
 
 # 3. Setup middlewares
 app.add_middleware(CorrelationIdMiddleware)
+
+# Paranoia Layer 1: Configurable CORS allow-list with credentials protection
+raw_allowed_origins = os.environ.get("ALLOWED_ORIGINS", "")
+if raw_allowed_origins.strip():
+    allowed_origins = [o.strip() for o in raw_allowed_origins.split(",") if o.strip()]
+    allow_credentials = "*" not in allowed_origins
+else:
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+    if env == "production":
+        allowed_origins = [
+            "https://ele-in.com",
+            "https://app.ele-in.com",
+            "https://elein.in",
+            "https://app.elein.in",
+        ]
+        allow_credentials = True
+    else:
+        allowed_origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+            "http://localhost:3000",
+            "*",
+        ]
+        allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "*"],
-    allow_credentials=False, # Must be false if origins is *
+    allow_origins=allowed_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -161,6 +190,68 @@ from admin.backend.routers.onboarding import router as onboarding_router
 app.include_router(onboarding_router, prefix="/api", dependencies=[Depends(get_current_user_id)])
 import sys
 
+# ── Unauthenticated Liveness & Readiness Probes (Paranoia Layer 0 & 1) ───────────
+@app.get("/health", tags=["system"], summary="Liveness probe for container orchestrators")
+@app.get("/api/health", tags=["system"], summary="Liveness probe for API reverse proxy")
+def liveness_probe():
+    """
+    Paranoia Layer 0 & 1: Fast unauthenticated liveness probe for container orchestrators,
+    load balancers, and external uptime monitors. Never throws or performs blocking I/O.
+    """
+    return {
+        "status": "healthy",
+        "service": "ele-in-backend",
+        "version": app.version,
+        "environment": os.environ.get("ENVIRONMENT", "production"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.get("/ready", tags=["system"], summary="Readiness probe verifying DB connectivity")
+@app.get("/api/ready", tags=["system"], summary="Readiness probe for API reverse proxy")
+def readiness_probe():
+    """
+    Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity
+    and essential services before routing traffic. Returns HTTP 200 if connected, or
+    HTTP 503 with degraded status if unreachable.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        from core.backend.api.auth_dep import get_service_client
+        svc = get_service_client()
+        if not svc:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "degraded",
+                    "database": "unconfigured",
+                    "service": "ele-in-backend",
+                    "version": app.version,
+                    "error": "Database service client is unconfigured",
+                    "timestamp": now_iso
+                }
+            )
+        # Fast query with minimal overhead to verify PostgREST connection
+        svc.table("workspaces").select("id").limit(1).execute()
+        return {
+            "status": "ready",
+            "database": "connected",
+            "service": "ele-in-backend",
+            "version": app.version,
+            "timestamp": now_iso
+        }
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Readiness probe check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "database": "unreachable",
+                "service": "ele-in-backend",
+                "version": app.version,
+                "error": str(exc),
+                "timestamp": now_iso
+            }
+        )
 
 @app.on_event("startup")
 def detect_route_collisions():

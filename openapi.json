@@ -16510,6 +16510,86 @@
         }
       }
     },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness probe for API reverse proxy",
+        "description": "Paranoia Layer 0 & 1: Fast unauthenticated liveness probe for container orchestrators,\nload balancers, and external uptime monitors. Never throws or performs blocking I/O.",
+        "operationId": "liveness_probe_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness probe for container orchestrators",
+        "description": "Paranoia Layer 0 & 1: Fast unauthenticated liveness probe for container orchestrators,\nload balancers, and external uptime monitors. Never throws or performs blocking I/O.",
+        "operationId": "liveness_probe_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness probe for API reverse proxy",
+        "description": "Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity\nand essential services before routing traffic. Returns HTTP 200 if connected, or\nHTTP 503 with degraded status if unreachable.",
+        "operationId": "readiness_probe_api_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness probe verifying DB connectivity",
+        "description": "Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity\nand essential services before routing traffic. Returns HTTP 200 if connected, or\nHTTP 503 with degraded status if unreachable.",
+        "operationId": "readiness_probe_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/metrics": {
       "get": {
         "summary": "Metrics",

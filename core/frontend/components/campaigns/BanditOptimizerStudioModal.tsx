@@ -881,6 +881,23 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
     return true;
   });
 
+  const handleInsertTag = (tag: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setNewArmTemplate(prev => (prev ? prev + ' ' + tag : tag));
+      return;
+    }
+    const start = textarea.selectionStart ?? newArmTemplate.length;
+    const end = textarea.selectionEnd ?? newArmTemplate.length;
+    const text = newArmTemplate;
+    const updated = text.substring(0, start) + tag + text.substring(end);
+    setNewArmTemplate(updated);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-3 sm:p-4 overflow-hidden">
       <div className="relative w-full max-w-5xl rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden h-[90vh] max-h-[920px] flex flex-col">
@@ -1076,10 +1093,20 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowAddArmModal(true)}
+                      onClick={() => {
+                        if (!isPro) {
+                          openPaywall({
+                            featureName: "Custom Copy Variations",
+                            minTier: "PRO",
+                            description: "Author and test custom copy variations in the Elesium smart allocation pool."
+                          });
+                          return;
+                        }
+                        setShowAddArmModal(true);
+                      }}
                       className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      {!isPro ? <Lock className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" /> : <Plus className="h-3.5 w-3.5" />}
                       <span>Add Angle</span>
                     </button>
                     <button
@@ -1097,6 +1124,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                       disabled={isDrawingSample}
                       className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 cursor-pointer shadow-xs"
                     >
+                      {!isPro && <Lock className="h-3 w-3 text-amber-300" />}
                       <RefreshCw className={`h-3.5 w-3.5 ${isDrawingSample ? 'animate-spin' : ''}`} />
                       <span>Simulate Send</span>
                     </button>
@@ -1250,9 +1278,18 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                               </div>
 
                               {/* Message Preview with Tokens */}
-                              <div className="rounded-lg bg-background/60 p-3 border border-border text-xs leading-relaxed text-foreground/90 font-sans line-clamp-3">
+                              <div className={`rounded-lg bg-background/60 p-3 border border-border text-xs leading-relaxed text-foreground/90 font-sans transition-all ${expandedArmIds[arm.id] ? '' : 'line-clamp-3'}`}>
                                 {renderTemplateWithTokens(arm.template_text)}
                               </div>
+                              {arm.template_text && arm.template_text.length > 110 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedArmIds(prev => ({ ...prev, [arm.id]: !prev[arm.id] }))}
+                                  className="text-[11px] text-primary hover:underline font-medium self-start cursor-pointer -mt-1 block"
+                                >
+                                  {expandedArmIds[arm.id] ? "Show less" : "Show full copy"}
+                                </button>
+                              )}
                             </div>
 
                             {/* Footer & Actions */}
@@ -1495,7 +1532,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                                   disabled={enrollingTriggerId === trigger.id}
                                   className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 cursor-pointer"
                                 >
-                                  <Rocket className="h-3.5 w-3.5" />
+                                  {!isPro ? <Lock className="h-3.5 w-3.5 text-amber-300" /> : <Rocket className="h-3.5 w-3.5" />}
                                   <span>Enroll with Icebreaker</span>
                                 </button>
                                 <button
@@ -1576,12 +1613,12 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                           <div className="flex items-center justify-between gap-1 mb-1">
                             <span className="text-xs font-semibold text-foreground line-clamp-1">{arm.name}</span>
                             {arm.is_winner && (
-                              <span className="rounded-md px-1.5 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] font-semibold shrink-0">
+                              <span className="rounded-md px-1.5 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[10px] font-semibold shrink-0">
                                 Winner
                               </span>
                             )}
                             {arm.status === 'degraded' && (
-                              <span className="rounded-md px-1.5 py-0.5 bg-rose-500/10 text-rose-500 text-[10px] font-semibold shrink-0">
+                              <span className="rounded-md px-1.5 py-0.5 bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 text-[10px] font-semibold shrink-0">
                                 Degraded
                               </span>
                             )}
@@ -1635,10 +1672,21 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                   </div>
                   <button
                     type="button"
-                    onClick={handleSynthesizeChallenger}
+                    onClick={() => {
+                      if (!isPro) {
+                        openPaywall({
+                          featureName: "Elesium AI Copy Re-Writer",
+                          minTier: "PRO",
+                          description: "Synthesize next-generation challenger angles automatically with Elesium AI."
+                        });
+                        return;
+                      }
+                      handleSynthesizeChallenger();
+                    }}
                     disabled={isSynthesizingCopy}
                     className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
                   >
+                    {!isPro && <Lock className="h-3.5 w-3.5 text-amber-300" />}
                     {isSynthesizingCopy ? (
                       <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     ) : (
@@ -1675,14 +1723,14 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                         <div className="flex items-center gap-1.5 text-xs">
                           <span className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-medium border ${
                             (synthesizedChallenger.template_text?.length || 0) <= 295
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
-                              : 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-semibold'
+                              : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400 font-semibold'
                           }`}>
                             {synthesizedChallenger.template_text?.length || 0} / 295 Chars (LinkedIn Safe)
                           </span>
                         </div>
                       ) : (
-                        <span className="px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-500 text-[11px] font-medium">
+                        <span className="px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-400 text-[11px] font-semibold">
                           Email Step (Subject + Body)
                         </span>
                       )}
@@ -1807,8 +1855,8 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
 
         {/* Add Custom Variation Modal */}
         {showAddArmModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/80 backdrop-blur-xs p-4">
-            <div className="relative w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-lg space-y-4">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="relative w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <Plus className="h-4 w-4 text-primary" />
@@ -1819,7 +1867,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                 <button
                   type="button"
                   onClick={() => setShowAddArmModal(false)}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1834,7 +1882,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                     onChange={(e) => setNewArmName(e.target.value)}
                     placeholder="e.g. Founder-to-Founder Low Friction"
                     maxLength={120}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
                     required
                   />
                 </div>
@@ -1845,7 +1893,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                       Message Copy
                     </label>
                     <span className="text-xs text-muted-foreground">
-                      Click tags to insert:
+                      Click tags to insert at cursor:
                     </span>
                   </div>
 
@@ -1855,7 +1903,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                       <button
                         type="button"
                         key={tag}
-                        onClick={() => setNewArmTemplate(prev => prev + ' ' + tag)}
+                        onClick={() => handleInsertTag(tag)}
                         className="px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-mono hover:bg-primary/20 transition-colors cursor-pointer"
                       >
                         + {tag}
@@ -1864,31 +1912,51 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                   </div>
 
                   <textarea
+                    ref={textareaRef}
                     rows={4}
                     value={newArmTemplate}
                     onChange={(e) => setNewArmTemplate(e.target.value)}
                     placeholder="Hey {{first_name}}, saw your team's expansion at {{company}}..."
                     maxLength={2000}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono text-xs"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono text-xs leading-relaxed"
                     required
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {activeTouchpoint.contextHint}
-                  </p>
+                  <div className="flex items-center justify-between mt-1 text-[11px]">
+                    <span className="text-muted-foreground">
+                      {activeTouchpoint.contextHint}
+                    </span>
+                    <span
+                      className={`font-mono font-medium shrink-0 ml-2 ${
+                        activeTouchpoint.charLimit && newArmTemplate.length > activeTouchpoint.charLimit
+                          ? "text-destructive font-bold"
+                          : activeTouchpoint.charLimit && newArmTemplate.length >= activeTouchpoint.charLimit * 0.9
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {newArmTemplate.length}
+                      {activeTouchpoint.charLimit ? ` / ${activeTouchpoint.charLimit}` : ""} chars
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
                   <button
                     type="button"
                     onClick={() => setShowAddArmModal(false)}
-                    className="rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-foreground hover:bg-muted cursor-pointer"
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-foreground hover:bg-muted cursor-pointer transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmittingNewArm}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+                    disabled={
+                      isSubmittingNewArm ||
+                      !newArmName.trim() ||
+                      !newArmTemplate.trim() ||
+                      Boolean(activeTouchpoint.charLimit && newArmTemplate.length > activeTouchpoint.charLimit)
+                    }
+                    className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 cursor-pointer transition-all"
                   >
                     {isSubmittingNewArm && <RefreshCw className="h-3 w-3 animate-spin" />}
                     <span>Deploy Variation</span>
