@@ -641,19 +641,49 @@ class LocationTimezoneService:
             return None
 
     @staticmethod
-    def _clean_phone(phone: Optional[str]) -> Optional[str]:
-        """Cleans and standardizes an international phone number string."""
+    def _clean_phone(phone: Optional[str], country_hint: Optional[str] = None) -> Optional[str]:
+        """
+        Cleans and standardizes an international phone number string.
+        Paranoia Layer 1 & 2: Prevents 10-digit US/Canada numbers (e.g. 415, 917, 330)
+        from inverting into European/Asian country dial codes (+41 Switzerland, +91 India, +33 France).
+        """
         if not phone:
             return None
         raw = str(phone).strip()
-        digits_and_plus = re.sub(r"[^\d+]", "", raw)
-        if not digits_and_plus:
+        if not raw:
             return None
-        if digits_and_plus.startswith("00"):
-            return "+" + digits_and_plus[2:]
-        if not digits_and_plus.startswith("+"):
-            return "+" + digits_and_plus
-        return digits_and_plus
+        
+        digits_only = re.sub(r"\D", "", raw)
+        if not digits_only:
+            return None
+
+        if raw.startswith("00"):
+            return "+" + digits_only[2:]
+        if raw.startswith("+"):
+            return "+" + digits_only
+
+        # If phone did NOT explicitly start with + or 00:
+        if country_hint:
+            norm_c = LocationTimezoneService.normalize_text(country_hint)
+            if norm_c in ("united states", "us", "usa", "canada", "ca"):
+                if len(digits_only) == 10:
+                    return "+1" + digits_only
+                if len(digits_only) == 11 and digits_only.startswith("1"):
+                    return "+" + digits_only
+
+        # 10-digit North American Numbering Plan (NANP): Area code [2-9]xx
+        if len(digits_only) == 10 and digits_only[0] in "23456789":
+            return "+1" + digits_only
+
+        # 11-digit NANP number starting with 1
+        if len(digits_only) == 11 and digits_only.startswith("1"):
+            return "+" + digits_only
+
+        # Fallback for international numbers lacking leading plus
+        if len(digits_only) >= 11:
+            return "+" + digits_only
+
+        return None
 
     @staticmethod
     @functools.lru_cache(maxsize=4096)
@@ -821,7 +851,7 @@ class LocationTimezoneService:
         # -------------------------------------------------------------------
         # Phase 4: Phone Dial Code Matching
         # -------------------------------------------------------------------
-        cleaned_phone = LocationTimezoneService._clean_phone(phone)
+        cleaned_phone = LocationTimezoneService._clean_phone(phone, norm_country)
         if cleaned_phone:
             for prefix, dial_tz in PHONE_DIAL_CODES:
                 if cleaned_phone.startswith(prefix):

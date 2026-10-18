@@ -264,7 +264,7 @@ def retroactive_purge_suppressed_leads(
     for i in range(0, len(lead_id_list), CHUNK_SIZE):
         chunk = lead_id_list[i : i + CHUNK_SIZE]
         try:
-            supabase.table("leads").update({"status": "Suppressed"}).eq("workspace_id", workspace_id).in_("id", chunk).execute()
+            supabase.table("leads").update({"status": "suppressed"}).eq("workspace_id", workspace_id).in_("id", chunk).execute()
         except Exception as e:
             logger.debug(f"[SuppressionPurge] Lead status update ignored: {e}")
 
@@ -418,31 +418,39 @@ def check_lead_suppression(
     if not clean_dom and clean_em and "@" in clean_em:
         clean_dom = clean_em.rsplit("@", 1)[-1].strip().lower()
 
+    filters = []
+    if clean_li:
+        filters.append(f"linkedin_url.eq.{clean_li}")
+        filters.append(f"value.eq.{clean_li}")
+    if clean_em:
+        filters.append(f"email.eq.{clean_em}")
+        filters.append(f"value.eq.{clean_em}")
+    if clean_dom:
+        filters.append(f"domain.eq.{clean_dom}")
+        filters.append(f"value.eq.{clean_dom}")
+        filters.append(f"value.eq.@{clean_dom}")
+
+    if not filters:
+        return {"suppressed": False, "matched_by": None, "matched_value": None, "reason": None}
+
     try:
         res = (
             supabase.table("suppression_list")
             .select("id, linkedin_url, email, domain, value, reason")
             .eq("workspace_id", workspace_id)
+            .or_(",".join(filters))
+            .limit(1)
             .execute()
         )
         rows = res.data or []
+        if rows:
+            row = rows[0]
+            matched_by = "domain" if (clean_dom and (row.get("domain") == clean_dom or row.get("value") in (clean_dom, f"@{clean_dom}"))) else (
+                "email" if (clean_em and (row.get("email") == clean_em or row.get("value") == clean_em)) else "linkedin_url"
+            )
+            matched_value = clean_dom if matched_by == "domain" else (clean_em if matched_by == "email" else clean_li)
+            return {"suppressed": True, "matched_by": matched_by, "matched_value": matched_value, "reason": row.get("reason")}
+        return {"suppressed": False, "matched_by": None, "matched_value": None, "reason": None}
     except Exception as e:
-        logger.warning(f"[SuppressionCheck] Failed querying suppression_list: {e}")
-        rows = []
-
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        r_li = row.get("linkedin_url")
-        r_em = row.get("email")
-        r_dom = row.get("domain")
-        r_val = str(row.get("value") or "").strip().lower()
-
-        if clean_li and (r_li == clean_li or r_val == clean_li):
-            return {"suppressed": True, "matched_by": "linkedin_url", "matched_value": clean_li, "reason": row.get("reason")}
-        if clean_em and (r_em == clean_em or r_val == clean_em):
-            return {"suppressed": True, "matched_by": "email", "matched_value": clean_em, "reason": row.get("reason")}
-        if clean_dom and (r_dom == clean_dom or r_val == clean_dom or r_val == f"@{clean_dom}"):
-            return {"suppressed": True, "matched_by": "domain", "matched_value": clean_dom, "reason": row.get("reason")}
-
-    return {"suppressed": False, "matched_by": None, "matched_value": None, "reason": None}
+        logger.warning(f"[SuppressionCheck] Targeted suppression query failed: {e}")
+        raise

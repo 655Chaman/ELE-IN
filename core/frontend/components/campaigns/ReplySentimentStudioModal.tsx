@@ -93,6 +93,17 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
 
   const [activeTab, setActiveTab] = useState<"classifier" | "ooo_rules" | "actions">("classifier");
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   // Classifier state
   const [testText, setTestText] = useState(
     "Hi Alex, I am currently out of the office on annual leave, returning October 28th. For urgent issues please reach out to support."
@@ -315,13 +326,22 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
   const oooInfo = classification?.ooo_data || classification?.ooo_details;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden text-foreground">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reply-sentiment-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-4xl max-h-[90vh] bg-card border border-border rounded-xl shadow-lg flex flex-col overflow-hidden text-foreground my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold tracking-tight text-foreground">
+            <h2 id="reply-sentiment-title" className="text-base font-semibold tracking-tight text-foreground">
               Inbound Reply Sentiment & OOO Snooze Studio
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -340,6 +360,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
             <button
               type="button"
               onClick={onClose}
+              aria-label="Close dialog"
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />

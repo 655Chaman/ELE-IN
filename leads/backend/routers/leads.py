@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from supabase import Client, AsyncClient
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
@@ -48,7 +48,8 @@ def sanitize_csv_value(val: Any) -> Any:
     if val is None:
         return ""
     s = str(val)
-    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+    s_clean = s.lstrip()
+    if s_clean and s_clean[0] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + s
     return s
 
@@ -271,6 +272,54 @@ async def remove_lead_from_list(
         import logging
         logging.getLogger(__name__).error(f"Error removing lead from list: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred.")
+
+
+class BulkRemoveListMembersRequest(BaseModel):
+    lead_ids: List[str]
+
+
+@router.delete("/lists/{list_id}/leads", response_model=dict)
+async def bulk_remove_leads_from_list(
+    list_id: str,
+    payload: BulkRemoveListMembersRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: AsyncClient = Depends(get_async_supabase_client)
+):
+    """
+    Paranoia Layer 0, 1 & 2: Bulk removes multiple leads from a list in single batch operations.
+    Prevents client-side Promise.all socket exhaustion and gateway timeouts.
+    """
+    try:
+        # Verify list ownership
+        l_check = await supabase.table("lead_lists").select("id").eq("id", list_id).eq("workspace_id", workspace_id).execute()
+        if not l_check.data:
+            raise HTTPException(status_code=404, detail="Lead list not found or unauthorized.")
+
+        clean_ids = [str(lid).strip() for lid in payload.lead_ids if str(lid).strip()]
+        if not clean_ids:
+            return {"success": True, "removed_count": 0}
+
+        chunk_size = 100
+        removed_count = 0
+        for i in range(0, len(clean_ids), chunk_size):
+            chunk = clean_ids[i:i + chunk_size]
+            await supabase.table("list_members").delete().eq("list_id", list_id).in_("opportunity_id", chunk).execute()
+            removed_count += len(chunk)
+
+        try:
+            count_res = await supabase.table("list_members").select("id", count="exact").eq("list_id", list_id).execute()
+            new_count = count_res.count if hasattr(count_res, "count") and count_res.count is not None else 0
+            await supabase.table("lead_lists").update({"row_count": new_count}).eq("id", list_id).execute()
+        except Exception:
+            pass
+
+        return {"success": True, "removed_count": removed_count, "list_id": list_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error bulk removing leads from list {list_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to bulk remove leads from list.")
 
 
 @router.delete("/lists/{list_id}", response_model=dict)
@@ -789,6 +838,12 @@ def export_dynamic_segment_csv_endpoint(
     Exports qualifying prospects for a dynamic segment to CSV with formula injection defense.
     """
     _check_workspace_tier_permission(workspace_id, "can_dynamic_lead_segmentation", supabase)
+    
+    # Paranoia Layer 1 & 2: Verify list ownership to prevent cross-tenant IDOR leaks
+    list_res = supabase.table("lead_lists").select("id, name").eq("id", list_id).eq("workspace_id", workspace_id).execute()
+    if not list_res.data:
+        raise HTTPException(status_code=404, detail="Lead list not found or unauthorized.")
+
     from leads.backend.services.lead_segmentation_service import export_dynamic_segment_csv
     csv_data = export_dynamic_segment_csv(
         workspace_id=workspace_id,
@@ -936,8 +991,12 @@ def check_suppression_endpoint(
         return res
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"[SuppressionCheck] Error checking suppression: {e}")
-        return {"suppressed": False, "matched_by": None, "matched_value": None, "reason": None}
+        logging.getLogger(__name__).error(f"[SuppressionCheck] Error checking suppression: {e}", exc_info=True)
+        # Paranoia Layer 1: Fail closed on errors to prevent unsuppressed outreach to DNC contacts
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to verify suppression status due to service error. Outreach blocked for compliance safety."
+        )
 
 
 @router.delete("/suppression/{entry_id}", response_model=dict)

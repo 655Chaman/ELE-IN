@@ -19,6 +19,7 @@ import { fetchWithAuth as apiFetch } from "@/lib/apiClient";
 import { usePaywall } from "../../contexts/PaywallContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export interface StoWindowResult {
   best_hour: number;
@@ -121,6 +122,12 @@ export const SendTimeOptimizationStudioModal: React.FC<
   const [endHour, setEndHour] = useState<number>(
     Number.isFinite(initialEndHour) ? initialEndHour : 17
   );
+  const [startHourStr, setStartHourStr] = useState<string>(
+    String(Number.isFinite(initialStartHour) ? initialStartHour : 9)
+  );
+  const [endHourStr, setEndHourStr] = useState<string>(
+    String(Number.isFinite(initialEndHour) ? initialEndHour : 17)
+  );
   const [weekendSending, setWeekendSending] = useState<boolean>(initialWeekendSending);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -142,9 +149,13 @@ export const SendTimeOptimizationStudioModal: React.FC<
   // Sync props when opened
   useEffect(() => {
     if (isOpen) {
+      const initS = Number.isFinite(initialStartHour) ? initialStartHour : 9;
+      const initE = Number.isFinite(initialEndHour) ? initialEndHour : 17;
       setTimezone(initialTimezone || "America/New_York");
-      setStartHour(Number.isFinite(initialStartHour) ? initialStartHour : 9);
-      setEndHour(Number.isFinite(initialEndHour) ? initialEndHour : 17);
+      setStartHour(initS);
+      setEndHour(initE);
+      setStartHourStr(String(initS));
+      setEndHourStr(String(initE));
       setWeekendSending(Boolean(initialWeekendSending));
       setAppliedSuccess(false);
       setErrorMsg(null);
@@ -481,14 +492,23 @@ export const SendTimeOptimizationStudioModal: React.FC<
                     type="number"
                     min={0}
                     max={23}
-                    value={startHour}
+                    value={startHourStr}
                     onChange={(e) => {
                       const val = e.target.value;
-                      if (val === "") {
-                        setStartHour(0);
-                      } else {
-                        setStartHour(Math.max(0, Math.min(23, parseInt(val, 10) || 0)));
+                      setStartHourStr(val);
+                      if (val !== "") {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          setStartHour(Math.max(0, Math.min(23, parsed)));
+                        }
                       }
+                    }}
+                    onBlur={() => {
+                      let parsed = parseInt(startHourStr, 10);
+                      if (isNaN(parsed)) parsed = 9;
+                      parsed = Math.max(0, Math.min(23, parsed));
+                      setStartHour(parsed);
+                      setStartHourStr(String(parsed));
                     }}
                     className="w-full px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
@@ -501,14 +521,23 @@ export const SendTimeOptimizationStudioModal: React.FC<
                     type="number"
                     min={0}
                     max={23}
-                    value={endHour}
+                    value={endHourStr}
                     onChange={(e) => {
                       const val = e.target.value;
-                      if (val === "") {
-                        setEndHour(0);
-                      } else {
-                        setEndHour(Math.max(0, Math.min(23, parseInt(val, 10) || 0)));
+                      setEndHourStr(val);
+                      if (val !== "") {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) {
+                          setEndHour(Math.max(0, Math.min(23, parsed)));
+                        }
                       }
+                    }}
+                    onBlur={() => {
+                      let parsed = parseInt(endHourStr, 10);
+                      if (isNaN(parsed)) parsed = 17;
+                      parsed = Math.max(0, Math.min(23, parsed));
+                      setEndHour(parsed);
+                      setEndHourStr(String(parsed));
                     }}
                     className="w-full px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
@@ -516,8 +545,8 @@ export const SendTimeOptimizationStudioModal: React.FC<
               </div>
 
               {isCurfewInverted && (
-                <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-start gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                   <span>
                     Curfew start ({startHour}:00) cannot be after end ({endHour}:00). System will default to 09:00 - 17:00.
                   </span>
@@ -770,8 +799,14 @@ export const SendTimeOptimizationStudioModal: React.FC<
             {onApplyStoMode && (
               <button
                 type="button"
+                disabled={isCurfewInverted}
                 onClick={handleApplySto}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground transition-all cursor-pointer"
+                className={cn(
+                  "inline-flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                  isCurfewInverted
+                    ? "bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
+                    : "bg-primary hover:bg-primary/90 text-primary-foreground"
+                )}
               >
                 {appliedSuccess
                   ? "STO Schedule Applied"

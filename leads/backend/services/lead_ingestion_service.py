@@ -86,7 +86,14 @@ def execute_bulk_import_leads(
 
     for lead in leads:
         raw_url = lead.get("linkedin_url", "")
-        norm_url = DataHygieneService.normalize_linkedin_url(raw_url) or raw_url
+        norm_url = DataHygieneService.normalize_linkedin_url(raw_url)
+        # Paranoia Layer 1 & 2: Prevent Stored XSS via javascript:/data: pseudo-protocols
+        if not norm_url and raw_url:
+            clean_raw = str(raw_url).strip()
+            if clean_raw.lower().startswith(("http://", "https://")):
+                norm_url = clean_raw
+            else:
+                norm_url = ""
         email = DataHygieneService.clean_email(lead.get("email", ""))
 
         # Identifier key: prefer norm_url, fallback to email
@@ -243,8 +250,8 @@ def execute_bulk_import_leads(
                 query = supabase.table("leads").select("id, linkedin_url, email, first_name, last_name, company_name, job_title, location, timezone").eq("workspace_id", workspace_id)
                 
                 if norm_urls and emails:
-                    url_list_str = ",".join(f'"{u}"' for u in norm_urls[:50])
-                    email_list_str = ",".join(f'"{e}"' for e in emails[:50])
+                    url_list_str = ",".join(f'"{u}"' for u in norm_urls)
+                    email_list_str = ",".join(f'"{e}"' for e in emails)
                     query = query.or_(f"linkedin_url.in.({url_list_str}),email.in.({email_list_str})")
                 elif norm_urls:
                     query = query.in_("linkedin_url", norm_urls)
@@ -351,14 +358,14 @@ def execute_bulk_import_leads(
                         if lead.get("timezone"): update_payload["timezone"] = lead["timezone"]
                         if "is_open_profile" in lead: update_payload["is_open_profile"] = lead["is_open_profile"]
                         if update_payload:
-                            supabase.table("leads").update(update_payload).eq("id", eid).execute()
+                            supabase.table("leads").update(update_payload).eq("id", eid).eq("workspace_id", workspace_id).execute()
                         inserted_lead_ids.append(eid)
                     except Exception:
                         inserted_lead_ids.append(eid)
 
             if inserted_lead_ids:
                 list_member_rows = [
-                    {"list_id": list_id, "opportunity_id": lid}
+                    {"workspace_id": workspace_id, "list_id": list_id, "opportunity_id": lid}
                     for lid in inserted_lead_ids
                 ]
                 try:
@@ -369,6 +376,7 @@ def execute_bulk_import_leads(
                     for lid in inserted_lead_ids:
                         try:
                             supabase.table("list_members").insert({
+                                "workspace_id": workspace_id,
                                 "list_id": list_id,
                                 "opportunity_id": lid
                             }).execute()
@@ -376,7 +384,8 @@ def execute_bulk_import_leads(
                         except Exception:
                             inserted_count += 1
 
-        _record_in_memory_leads(workspace_id, list_id, deduped_leads)
+        if not any_table_succeeded:
+            _record_in_memory_leads(workspace_id, list_id, deduped_leads)
 
         source = "direct_table" if any_table_succeeded else "in_memory"
         final_inserted = inserted_count if any_table_succeeded else max(0, len(deduped_leads) - duplicate_count - colliding_count)
@@ -403,7 +412,7 @@ def execute_bulk_import_leads(
 
 
 def _record_in_memory_leads(workspace_id: str, list_id: str, leads: List[Dict[str, Any]]):
-    """Stores leads in module-level in-memory cache for unmigrated database environments."""
+    """Stores leads in module-level in-memory cache for unmigrated database environments with size bounding."""
     if workspace_id not in _IN_MEMORY_LEADS:
         _IN_MEMORY_LEADS[workspace_id] = {}
     if list_id not in _IN_MEMORY_LEADS[workspace_id]:
@@ -414,6 +423,10 @@ def _record_in_memory_leads(workspace_id: str, list_id: str, leads: List[Dict[st
         if "id" not in lead_entry:
             lead_entry["id"] = f"lead-inmem-{uuid.uuid4().hex[:8]}"
         _IN_MEMORY_LEADS[workspace_id][list_id].append(lead_entry)
+
+    # Paranoia Layer 1: Bound in-memory list cache to prevent RAM exhaustion
+    if len(_IN_MEMORY_LEADS[workspace_id][list_id]) > 500:
+        _IN_MEMORY_LEADS[workspace_id][list_id] = _IN_MEMORY_LEADS[workspace_id][list_id][-500:]
 
 
 def get_in_memory_leads_for_list(workspace_id: str, list_id: str) -> List[Dict[str, Any]]:

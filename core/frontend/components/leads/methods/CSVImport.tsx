@@ -1,3 +1,4 @@
+import { useState } from "react"
 import Papa from "papaparse"
 import { motion } from "motion/react"
 import { toast } from "sonner"
@@ -23,62 +24,91 @@ export function CSVImport() {
 
   const { openPaywall } = usePaywall();
   const isPro = billing?.tier === 'PRO' || billing?.tier === 'ENTERPRISE';
+  const [isDragging, setIsDragging] = useState(false);
+
+  const processSelectedFile = async (selected: File) => {
+    if (!selected.name.toLowerCase().endsWith(".csv")) {
+      toast.error("Please select a .csv file. Excel spreadsheets (.xlsx) can be exported to CSV.");
+      return;
+    }
+    // Paranoia Layer 1 & 2: Cap upload file size to prevent browser memory crashes / V8 lockups
+    if (selected.size > 25 * 1024 * 1024) {
+      toast.error("File size exceeds 25MB limit. Please upload a smaller CSV or split the file.");
+      return;
+    }
+    setFile(selected);
+
+    // Fast non-blocking row count calculation
+    try {
+      if (selected.size < 5 * 1024 * 1024) {
+        const text = await selected.text();
+        const lines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
+        setDetectedRowCount(Math.max(0, lines.length - 1));
+      } else {
+        const slice = selected.slice(0, 256 * 1024);
+        const text = await slice.text();
+        const sampleLines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
+        const avgBytesPerLine = (256 * 1024) / Math.max(1, sampleLines.length);
+        setDetectedRowCount(Math.round(selected.size / avgBytesPerLine));
+      }
+    } catch (err) {
+      setDetectedRowCount(0);
+    }
+
+    Papa.parse(selected, {
+      header: true,
+      preview: 5,
+      complete: (results: any) => {
+        if (results.meta.fields) {
+          const fields: string[] = results.meta.fields;
+          setHeaders(fields);
+          if (results.data && Array.isArray(results.data)) {
+            setSampleRows(results.data.slice(0, 5));
+          }
+          const guess = (keywords: string[]) => fields.find((f: string) => {
+            const lower = f.toLowerCase().trim();
+            return keywords.some((k: string) => lower === k || lower.includes(k));
+          }) || "";
+          const guessedFirst = guess(['first_name', 'first name', 'firstname', 'fname', 'first', 'given']);
+          const guessedLast = guess(['last_name', 'last name', 'lastname', 'lname', 'last', 'surname']);
+          const guessedFull = guess(['full_name', 'full name', 'fullname', 'contact name', 'lead name', 'prospect name', 'name']);
+          setMappings({
+            first_name: guessedFirst,
+            last_name: guessedLast,
+            full_name: (!guessedFirst && guessedFull) ? guessedFull : "",
+            linkedin_url: guess(['linkedin_url', 'linkedin url', 'linkedin', 'profile_url', 'profile url', 'url', 'profile', 'sales navigator url', 'sales_nav_url']),
+            company_name: guess(['company_name', 'company name', 'company', 'organization', 'org', 'account', 'employer'])
+          });
+        }
+      }
+    });
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) {
-      if (!selected.name.toLowerCase().endsWith(".csv")) {
-        toast.error("Please select a .csv file. Excel spreadsheets (.xlsx) can be exported to CSV.");
-        return;
-      }
-      setFile(selected);
-
-      // Fast non-blocking row count calculation
-      try {
-        if (selected.size < 5 * 1024 * 1024) {
-          const text = await selected.text();
-          const lines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
-          setDetectedRowCount(Math.max(0, lines.length - 1));
-        } else {
-          const slice = selected.slice(0, 256 * 1024);
-          const text = await slice.text();
-          const sampleLines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
-          const avgBytesPerLine = (256 * 1024) / Math.max(1, sampleLines.length);
-          setDetectedRowCount(Math.round(selected.size / avgBytesPerLine));
-        }
-      } catch (err) {
-        setDetectedRowCount(0);
-      }
-
-      Papa.parse(selected, {
-        header: true,
-        preview: 5,
-        complete: (results: any) => {
-          if (results.meta.fields) {
-            const fields: string[] = results.meta.fields;
-            setHeaders(fields);
-            if (results.data && Array.isArray(results.data)) {
-              setSampleRows(results.data.slice(0, 5));
-            }
-            const guess = (keywords: string[]) => fields.find((f: string) => {
-              const lower = f.toLowerCase().trim();
-              return keywords.some((k: string) => lower === k || lower.includes(k));
-            }) || "";
-            const guessedFirst = guess(['first_name', 'first name', 'firstname', 'fname', 'first', 'given']);
-            const guessedLast = guess(['last_name', 'last name', 'lastname', 'lname', 'last', 'surname']);
-            const guessedFull = guess(['full_name', 'full name', 'fullname', 'contact name', 'lead name', 'prospect name', 'name']);
-            setMappings({
-              first_name: guessedFirst,
-              last_name: guessedLast,
-              full_name: (!guessedFirst && guessedFull) ? guessedFull : "",
-              linkedin_url: guess(['linkedin_url', 'linkedin url', 'linkedin', 'profile_url', 'profile url', 'url', 'profile', 'sales navigator url', 'sales_nav_url']),
-              company_name: guess(['company_name', 'company name', 'company', 'organization', 'org', 'account', 'employer'])
-            });
-          }
-        }
-      });
+      processSelectedFile(selected);
     }
-  }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) {
+      processSelectedFile(dropped);
+    }
+  };
 
   const hygieneCost = detectedRowCount > 0 ? Math.max(1, Math.ceil(detectedRowCount / 100)) : 1;
 
@@ -101,14 +131,21 @@ export function CSVImport() {
                   fileInputRef.current?.click();
                 }
               }}
-              className="border-dashed border-2 border-border hover:border-primary/70 hover:bg-primary/5 rounded-lg p-10 flex flex-col items-center gap-3 transition-all cursor-pointer bg-muted/20 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-dashed border-2 rounded-lg p-10 flex flex-col items-center gap-3 transition-all cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                isDragging 
+                  ? "border-primary bg-primary/10 scale-[1.01]" 
+                  : "border-border hover:border-primary/70 hover:bg-primary/5 bg-muted/20"
+              }`}
               onClick={() => fileInputRef.current?.click()}
             >
               <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileChange} />
               <div className="p-5 rounded-lg bg-background border border-border/60 shadow-xs"><Upload size={24} className="text-foreground" /></div>
               <div className="text-center">
-                <p className="text-sm font-semibold">{file ? <span className="text-primary">{file.name}</span> : "Click to browse or drag CSV here"}</p>
-                <p className="text-xs font-medium text-muted-foreground mt-1">Max 50MB · CSV only</p>
+                <p className="text-sm font-semibold">{file ? <span className="text-primary">{file.name}</span> : (isDragging ? "Drop your CSV file here" : "Click to browse or drag CSV here")}</p>
+                <p className="text-xs font-medium text-muted-foreground mt-1">Max 25MB · CSV only</p>
                 <p className="text-[10px] text-muted-foreground mt-1">Supports: First Name, Last Name, LinkedIn, Company</p>
               </div>
             </div>

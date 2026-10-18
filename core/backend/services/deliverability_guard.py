@@ -8,6 +8,8 @@ Rigorously designed under the Three-Layer Logic Architecture (Paranoia Framework
 
 import logging
 import re
+import socket
+import ssl
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -131,17 +133,249 @@ def _lookup_cname_record(qname: str, timeout: float = 2.5) -> Optional[str]:
     return None
 
 
+def verify_ssl_handshake(
+    hostname: str,
+    port: int = 443,
+    timeout: float = 3.0,
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: TLS/SSL Handshake & Certificate Verification Engine.
+    - Layer 2: Sanitizes hostname against SSRF, internal hosts, local IPs, and malformed inputs.
+               Returns {"ssl_valid": False, "error": "FORBIDDEN_OR_INVALID_HOST"} if invalid.
+    - Layer 0: Establishes TLS socket, retrieves peer certificate, verifies expiration and SAN list.
+    - Layer 1: Gracefully catches verification errors, timeouts, connection refused, and gaierrors without crashing.
+    """
+    clean_host = sanitize_domain_input(hostname)
+    if not clean_host:
+        return {
+            "ssl_valid": False,
+            "status": "FORBIDDEN_OR_INVALID_HOST",
+            "error": "FORBIDDEN_OR_INVALID_HOST",
+            "hostname": hostname,
+        }
+
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((clean_host, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=clean_host) as ssock:
+                cert = ssock.getpeercert()
+
+        if not cert:
+            return {
+                "ssl_valid": False,
+                "status": "NO_CERTIFICATE_FOUND",
+                "error": "No peer certificate returned by TLS handshake",
+                "hostname": clean_host,
+            }
+
+        # Extract Subject Common Name (CN)
+        subject_cn = None
+        for rdn in cert.get("subject", ()):
+            for key, value in rdn:
+                if key == "commonName":
+                    subject_cn = value
+                    break
+
+        # Extract Issuer dict/tuple
+        issuer = cert.get("issuer")
+
+        # Extract Subject Alternative Names (SANs)
+        san_list = [val for typ, val in cert.get("subjectAltName", []) if typ == "DNS"]
+
+        # Parse expiration date
+        not_after_str = cert.get("notAfter")
+        if not not_after_str:
+            return {
+                "ssl_valid": False,
+                "status": "MISSING_EXPIRATION_DATE",
+                "error": "Certificate missing notAfter expiration date",
+                "hostname": clean_host,
+            }
+
+        try:
+            exp_ts = ssl.cert_time_to_seconds(not_after_str)
+            exp_dt = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
+        except Exception:
+            exp_dt = datetime.strptime(not_after_str, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        days_until_expiry = (exp_dt - now_utc).days
+
+        if days_until_expiry <= 0:
+            return {
+                "ssl_valid": False,
+                "status": "CERTIFICATE_EXPIRED",
+                "hostname": clean_host,
+                "days_until_expiry": days_until_expiry,
+                "expires_at": exp_dt.isoformat(),
+                "error": f"Certificate expired {abs(days_until_expiry)} days ago",
+                "issuer": issuer,
+                "subject": subject_cn or clean_host,
+                "alt_names": san_list,
+                "san_list": san_list,
+            }
+
+        return {
+            "ssl_valid": True,
+            "status": "ACTIVE_VALID",
+            "hostname": clean_host,
+            "days_until_expiry": days_until_expiry,
+            "expires_at": exp_dt.isoformat(),
+            "san_list": san_list,
+            "alt_names": san_list,
+            "issuer": issuer,
+            "subject": subject_cn or clean_host,
+        }
+
+    except ssl.SSLCertVerificationError as e:
+        return {
+            "ssl_valid": False,
+            "status": "SSL_CERT_VERIFICATION_FAILED",
+            "error": str(e),
+            "hostname": clean_host,
+        }
+    except ssl.SSLError as e:
+        return {
+            "ssl_valid": False,
+            "status": "SSL_HANDSHAKE_ERROR",
+            "error": str(e),
+            "hostname": clean_host,
+        }
+    except (socket.timeout, TimeoutError) as e:
+        return {
+            "ssl_valid": False,
+            "status": "CONNECTION_TIMEOUT",
+            "error": "Connection timed out",
+            "hostname": clean_host,
+        }
+    except ConnectionRefusedError as e:
+        return {
+            "ssl_valid": False,
+            "status": "CONNECTION_REFUSED",
+            "error": "Port 443 refused",
+            "hostname": clean_host,
+        }
+    except (socket.gaierror, Exception) as e:
+        return {
+            "ssl_valid": False,
+            "status": "SSL_CHECK_FAILED",
+            "error": str(e),
+            "hostname": clean_host,
+        }
+
+
+def verify_custom_tracking_domain(
+    tracking_fqdn: str,
+    expected_cname_target: str = "track.elein.ai",
+    check_live_ssl: bool = True,
+    timeout: float = 3.0,
+    mock_cname: Optional[str] = None,
+    mock_ssl_valid: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Custom Tracking Domain CNAME & SSL Handshake Verification.
+    - Layer 0: Checks DNS CNAME pointing to expected_cname_target.
+    - Layer 1: Validates live SSL handshake if CNAME matches, handling pending provisioning gracefully.
+    - Layer 2: Sanitizes tracking_fqdn, prevents SSRF, and respects mock overrides for deterministic testability.
+    """
+    clean_fqdn = sanitize_domain_input(tracking_fqdn)
+    clean_expected = (expected_cname_target or "track.elein.ai").strip().rstrip(".").lower()
+
+    if not clean_fqdn:
+        return {
+            "valid": False,
+            "status": "CNAME_MISSING_OR_MISMATCH",
+            "cname_target": None,
+            "expected_cname": clean_expected,
+            "ssl_verified": False,
+            "can_track_safely": False,
+            "error": "FORBIDDEN_OR_INVALID_HOST",
+        }
+
+    # Resolve CNAME target
+    if mock_cname is not None:
+        cname_target = mock_cname.strip().rstrip(".").lower() if mock_cname else None
+    else:
+        raw_target = _lookup_cname_record(clean_fqdn, timeout=timeout)
+        cname_target = raw_target.strip().rstrip(".").lower() if raw_target else None
+
+    # Check if CNAME matches expected target
+    cname_matches = bool(cname_target and cname_target == clean_expected)
+    if not cname_matches:
+        return {
+            "valid": False,
+            "status": "CNAME_MISSING_OR_MISMATCH",
+            "cname_target": cname_target,
+            "expected_cname": clean_expected,
+            "ssl_verified": False,
+            "can_track_safely": False,
+        }
+
+    # CNAME is valid: check live SSL
+    if check_live_ssl:
+        if mock_ssl_valid is not None:
+            if mock_ssl_valid:
+                ssl_res = {
+                    "ssl_valid": True,
+                    "status": "ACTIVE_VALID",
+                    "hostname": clean_fqdn,
+                    "days_until_expiry": 90,
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(days=90)).isoformat(),
+                    "san_list": [clean_fqdn],
+                }
+            else:
+                ssl_res = {
+                    "ssl_valid": False,
+                    "status": "SSL_CERT_VERIFICATION_FAILED",
+                    "error": "SSL certificate verification failed",
+                    "hostname": clean_fqdn,
+                }
+        else:
+            ssl_res = verify_ssl_handshake(clean_fqdn, timeout=timeout)
+
+        if ssl_res.get("ssl_valid"):
+            return {
+                "valid": True,
+                "status": "VERIFIED_ACTIVE",
+                "cname_target": cname_target,
+                "ssl_verified": True,
+                "can_track_safely": True,
+                "ssl_details": ssl_res,
+            }
+        else:
+            return {
+                "valid": False,
+                "status": "SSL_PENDING_PROVISIONING",
+                "cname_target": cname_target,
+                "ssl_verified": False,
+                "can_track_safely": False,
+                "ssl_error": ssl_res.get("error"),
+                "action_required": "CNAME is configured, but SSL certificate is still provisioning or invalid. Tracking links will remain plain until SSL is active.",
+                "ssl_details": ssl_res,
+            }
+    else:
+        return {
+            "valid": True,
+            "status": "CNAME_ONLY",
+            "cname_target": cname_target,
+            "ssl_verified": False,
+            "can_track_safely": False,
+        }
+
+
 def verify_domain_dns_health(
     domain: str,
     tracking_subdomain: str = "track",
     expected_cname_target: str = "track.elein.ai",
     dkim_selector: str = "elein",
     mock_records: Optional[Dict[str, Any]] = None,
+    check_live_ssl: bool = True,
+    mock_ssl_valid: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
-    Paranoia Layer 0, 1 & 2: Inspects SPF, DKIM, DMARC, and Custom Tracking CNAME records.
-    Detects RFC 7208 multiple-SPF collisions, permissive '+all' SPFconfigurations,
-    and un-enforced DMARC 'p=none' policies.
+    Paranoia Layer 0, 1 & 2: Inspects SPF, DKIM, DMARC, and Custom Tracking CNAME records with live SSL handshake.
+    Detects RFC 7208 multiple-SPF collisions, permissive '+all' SPF configurations,
+    un-enforced DMARC 'p=none' policies, and unprovisioned or expired SSL certificates.
     """
     clean_domain = sanitize_domain_input(domain)
     if not clean_domain:
@@ -165,8 +399,6 @@ def verify_domain_dns_health(
     root_txt = _lookup_txt_records(clean_domain)
     dkim_txt = _lookup_txt_records(f"{clean_selector}._domainkey.{clean_domain}")
     dmarc_txt = _lookup_txt_records(f"_dmarc.{clean_domain}")
-    cname_val = _lookup_cname_record(f"{clean_sub}.{clean_domain}")
-    ssl_verified = bool(cname_val == clean_cname_target)
 
     errors: List[str] = []
     warnings: List[str] = []
@@ -230,14 +462,44 @@ def verify_domain_dns_health(
                 score += 15
                 warnings.append("DMARC policy is set to 'p=none' (monitoring only). Upgrade to 'p=quarantine' or 'p=reject' for inbox protection.")
 
-    # 4. Evaluate Custom Tracking Domain CNAME (15 points)
+    # 4. Evaluate Custom Tracking Domain CNAME & SSL Handshake (15 points)
     tracking_fqdn = f"{clean_sub}.{clean_domain}"
-    cname_valid = bool(cname_val and cname_val == clean_cname_target)
+    mock_cname = None
+    if mock_records:
+        mock_cname = mock_records.get("cname") or mock_records.get("tracking_cname")
+        if mock_ssl_valid is None:
+            mock_ssl_valid = mock_records.get("ssl_valid") or mock_records.get("mock_ssl_valid")
+
+    cname_check = verify_custom_tracking_domain(
+        tracking_fqdn=tracking_fqdn,
+        expected_cname_target=clean_cname_target,
+        check_live_ssl=check_live_ssl,
+        timeout=2.5,
+        mock_cname=mock_cname,
+        mock_ssl_valid=mock_ssl_valid,
+    )
+
+    cname_target = cname_check.get("cname_target")
+    cname_valid = cname_check.get("status") in ("VERIFIED_ACTIVE", "SSL_PENDING_PROVISIONING", "CNAME_ONLY") or bool(
+        cname_target and cname_target == clean_cname_target
+    )
+    ssl_verified = bool(cname_check.get("ssl_verified"))
+
     if cname_valid:
         score += 15
+        if not ssl_verified:
+            logger.warning(
+                f"[DeliverabilityGuard] Custom tracking CNAME ({tracking_fqdn} -> {clean_cname_target}) is configured, "
+                f"but SSL certificate is still provisioning or invalid. Status: {cname_check.get('status')}"
+            )
+            warnings.append(
+                f"Custom tracking CNAME ({tracking_fqdn} -> {clean_cname_target}) is configured, but SSL certificate is still provisioning. "
+                "Tracking links will remain plain until SSL is active."
+            )
     else:
         warnings.append(
-            f"Custom tracking CNAME ({tracking_fqdn} -> {clean_cname_target}) is not verified. Links will use direct unrewritten URLs to avoid SSL errors."
+            f"Custom tracking CNAME ({tracking_fqdn} -> {clean_cname_target}) is not verified. "
+            "Links will use direct unrewritten URLs to avoid SSL errors."
         )
 
     score = max(0, min(100, score))
@@ -266,8 +528,11 @@ def verify_domain_dns_health(
                 "valid": cname_valid,
                 "host": tracking_fqdn,
                 "expected_target": clean_cname_target,
-                "actual_target": cname_val,
+                "actual_target": cname_target,
                 "ssl_verified": bool(cname_valid and ssl_verified),
+                "status": cname_check.get("status"),
+                "ssl_details": cname_check.get("ssl_details"),
+                "can_track_safely": cname_check.get("can_track_safely", False),
             },
         },
     }
@@ -367,18 +632,35 @@ def rewrite_tracking_links(
     verified custom tracking domain.
     - Layer 1 Fallback: If ssl_verified is False or tracking_domain is invalid/unsafe,
       returns the original body untouched so recipients NEVER hit SSL certificate errors.
-    - Layer 2 Safety: Never rewrites mailto:, tel:, or unsubscribe links that already point to tracking domain.
+    - Layer 2 Safety: Never rewrites links already pointing to tracking domain or containing /t/c/.
+      Preserves trailing sentence punctuation (., !, ?, ;, ", ,).
     """
     if not body or not isinstance(body, str):
         return {"body": "", "rewritten_count": 0, "tracking_applied": False}
 
     clean_tracking = sanitize_domain_input(tracking_domain)
-    if not clean_tracking or not ssl_verified or not email_id:
+    if not clean_tracking:
         return {
             "body": body,
             "rewritten_count": 0,
             "tracking_applied": False,
-            "fallback_reason": "SSL_OR_DOMAIN_UNVERIFIED" if not ssl_verified else "NO_VALID_TRACKING_DOMAIN",
+            "fallback_reason": "NO_VALID_TRACKING_DOMAIN",
+        }
+
+    if not ssl_verified:
+        return {
+            "body": body,
+            "rewritten_count": 0,
+            "tracking_applied": False,
+            "fallback_reason": "SSL_UNVERIFIED_PREVENTED_BROWSER_WARNING",
+        }
+
+    if not email_id:
+        return {
+            "body": body,
+            "rewritten_count": 0,
+            "tracking_applied": False,
+            "fallback_reason": "MISSING_EMAIL_ID",
         }
 
     url_pattern = re.compile(r"(https?://[^\s\"'<>)\]]+)", re.IGNORECASE)
@@ -387,18 +669,23 @@ def rewrite_tracking_links(
     def _replace_match(match: re.Match) -> str:
         nonlocal rewritten_count
         original_url = match.group(1)
-        # Strip trailing punctuation that is part of prose (e.g. period or comma at end of sentence)
+        # Strip trailing punctuation that is part of prose (e.g. period, comma, !, ?, ;, " at end of sentence)
         trailing = ""
-        while original_url and original_url[-1] in (".", ",", ";", "!"):
+        while original_url and original_url[-1] in (".", ",", ";", "!", "?", '"'):
             trailing = original_url[-1] + trailing
             original_url = original_url[:-1]
+
+        if not original_url:
+            return match.group(1)
 
         try:
             parsed = urllib.parse.urlparse(original_url)
             host = (parsed.hostname or "").lower()
             # Do not double-wrap links already pointing to the tracking domain
             if not host or host == clean_tracking or host.endswith(f".{clean_tracking}"):
-                return match.group(1)
+                return original_url + trailing
+            if "/t/c/" in parsed.path:
+                return original_url + trailing
         except Exception:
             return match.group(1)
 

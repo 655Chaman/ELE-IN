@@ -895,26 +895,48 @@ def enroll_lead_with_icebreaker(
 
     # 5. Create or update campaign_execution_states / enrollment
     now_iso = datetime.now(timezone.utc).isoformat()
-    enrollment_payload = {
-        "campaign_id": campaign_id,
-        "lead_id": lead_id,
-        "workspace_id": workspace_id,
-        "status": "active",
-        "variables": {
-            "social_icebreaker": chosen_icebreaker,
-            "first_name": lead.get("first_name", ""),
-            "last_name": lead.get("last_name", "")
-        },
-        "updated_at": now_iso
-    }
-
     try:
-        supabase.table("campaign_execution_states").upsert(
-            enrollment_payload,
+        # Fetch active version
+        ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("created_at", desc=True).limit(1).execute()
+        ver_id = ver_res.data[0]["id"] if (ver_res.data and len(ver_res.data) > 0) else None
+
+        enr_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{campaign_id}_{lead_id}"))
+        enr_payload = {
+            "id": enr_id,
+            "campaign_id": campaign_id,
+            "lead_id": lead_id,
+            "workspace_id": workspace_id,
+            "status": "active"
+        }
+        if ver_id:
+            enr_payload["campaign_version_id"] = ver_id
+        if sender_account_id:
+            enr_payload["account_id"] = sender_account_id
+
+        supabase.table("campaign_enrollments").upsert(
+            enr_payload,
             on_conflict="campaign_id,lead_id"
         ).execute()
+
+        exec_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"exec_{enr_id}"))
+        exec_payload = {
+            "id": exec_id,
+            "enrollment_id": enr_id,
+            "workspace_id": workspace_id,
+            "status": "active",
+            "variables": {
+                "social_icebreaker": chosen_icebreaker,
+                "first_name": lead.get("first_name", ""),
+                "last_name": lead.get("last_name", "")
+            },
+            "updated_at": now_iso
+        }
+        supabase.table("campaign_execution_states").upsert(
+            exec_payload,
+            on_conflict="enrollment_id"
+        ).execute()
     except Exception as e:
-        logger.warning(f"Error upserting into campaign_execution_states: {e}, falling back to update lead")
+        logger.warning(f"Error enrolling lead into campaign_enrollments/execution_states: {e}")
 
     # Update lead's social_icebreaker and last_social_retargeted_at
     update_data: Dict[str, Any] = {"last_social_retargeted_at": now_iso}
@@ -1140,22 +1162,25 @@ def export_social_radar_feed_csv(
         p_name = sanitize_text(f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip())
         c_name = sanitize_text(lead.get("company_name", ""))
         title = sanitize_text(lead.get("job_title", ""))
-        sig_type = top_sig.get("signal_type", "")
+        sig_type = sanitize_text(top_sig.get("signal_type", ""))
         summary = sanitize_text(top_sig.get("signal_summary", ""))
         angle = sanitize_text(lead.get("best_outreach_angle", ""))
         ice = sanitize_text(lead.get("social_icebreaker", ""))
+        lead_id_clean = sanitize_text(lead.get("id", ""))
+        li_url_clean = sanitize_text(lead.get("linkedin_url", ""))
+        timing_clean = sanitize_text(lead.get("recommended_timing", ""))
 
         writer.writerow([
-            lead.get("id", ""),
+            lead_id_clean,
             p_name,
             c_name,
             title,
-            lead.get("linkedin_url", ""),
+            li_url_clean,
             lead.get("social_intent_score", 0),
             lead.get("social_intent_tier", "COLD"),
             sig_type,
             summary,
-            lead.get("recommended_timing", ""),
+            timing_clean,
             angle,
             ice
         ])

@@ -479,6 +479,10 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
       toast.error("Please provide both a variation name and message copy.");
       return;
     }
+    if (activeTouchpoint.charLimit && newArmTemplate.trim().length > activeTouchpoint.charLimit) {
+      toast.error(`Copy exceeds the ${activeTouchpoint.charLimit}-character limit for ${activeTouchpoint.name}.`);
+      return;
+    }
     if (!isPro) {
       openPaywall({
         featureName: "Custom Copy Variations",
@@ -1917,7 +1921,7 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
                     value={newArmTemplate}
                     onChange={(e) => setNewArmTemplate(e.target.value)}
                     placeholder="Hey {{first_name}}, saw your team's expansion at {{company}}..."
-                    maxLength={2000}
+                    maxLength={activeTouchpoint.charLimit || 2000}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono text-xs leading-relaxed"
                     required
                   />

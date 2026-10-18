@@ -721,14 +721,16 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
                     row_lower
                 ))
                 
-                # Paranoia Layer 1 & 2: Normalize LinkedIn URL and drop invalid entries
-                linkedin = DataHygieneService.normalize_linkedin_url(raw_linkedin)
-                if not linkedin:
+                # Paranoia Layer 1 & 2: Normalize LinkedIn URL and clean email; allow email-first leads
+                linkedin = DataHygieneService.normalize_linkedin_url(raw_linkedin) if raw_linkedin else ""
+                clean_email = DataHygieneService.clean_email(email) if email else ""
+                if not linkedin and not clean_email:
                     continue
                 
-                if linkedin in seen_in_file:
+                dedupe_key = linkedin or clean_email
+                if dedupe_key in seen_in_file:
                     continue
-                seen_in_file.add(linkedin)
+                seen_in_file.add(dedupe_key)
                     
                 domain = ""
                 if email and "@" in email:
@@ -5310,7 +5312,7 @@ def enroll_leads(campaign_id: str, body: EnrollLeadsRequest, supabase: Client = 
 
         if new_opp_ids:
             # Get active version
-            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
+            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("created_at", desc=True).limit(1).execute()
             if not ver_res.data:
                 raise HTTPException(status_code=400, detail="Campaign has no versions")
             version_id = ver_res.data[0]["id"]
@@ -5529,7 +5531,7 @@ def get_campaign_detail(campaign_id: str, supabase: Client = Depends(get_supabas
         # Fallback: If nodes is empty, reconstruct from campaign_versions + campaign_nodes + campaign_edges
         if not nodes:
             try:
-                ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
+                ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("created_at", desc=True).limit(1).execute()
                 if ver_res.data:
                     vid = ver_res.data[0]["id"]
                     n_res = supabase.table("campaign_nodes").select("*").eq("campaign_version_id", vid).execute()
@@ -5708,12 +5710,18 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
         leads_map = {}
         for i in range(0, len(candidate_opp_ids), 200):
             chunk = candidate_opp_ids[i:i+200]
-            leads_res = supabase.table("leads").select("id, linkedin_url, email").eq("workspace_id", workspace_id).in_("id", chunk).execute()
+            leads_res = supabase.table("leads").select("id, linkedin_url, email, domain").eq("workspace_id", workspace_id).in_("id", chunk).execute()
             for row in (leads_res.data or []):
                 leads_map[row["id"]] = row
                 
         all_linkedins = list({l.get("linkedin_url") for l in leads_map.values() if l.get("linkedin_url")})
         all_emails = list({l.get("email") for l in leads_map.values() if l.get("email")})
+        all_domains = list({
+            (l.get("domain") or (l.get("email", "").split("@")[-1].strip().lower() if "@" in (l.get("email") or "") else ""))
+            for l in leads_map.values()
+            if (l.get("domain") or "@" in (l.get("email") or ""))
+        })
+        all_domains = [d for d in all_domains if d]
         
         supp_linkedin = set()
         for i in range(0, len(all_linkedins), 200):
@@ -5726,6 +5734,12 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
             chunk = all_emails[i:i+200]
             res = supabase.table("suppression_list").select("email").eq("workspace_id", workspace_id).in_("email", chunk).execute()
             supp_email.update(r.get("email") for r in (res.data or []))
+
+        supp_domain = set()
+        for i in range(0, len(all_domains), 200):
+            chunk = all_domains[i:i+200]
+            res = supabase.table("suppression_list").select("domain").eq("workspace_id", workspace_id).in_("domain", chunk).execute()
+            supp_domain.update(r.get("domain") for r in (res.data or []))
         
         final_opp_ids = []
         for opp_id in candidate_opp_ids:
@@ -5734,7 +5748,9 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
             if opp_id in excluded_opp_ids:
                 continue
             l = leads_map.get(opp_id, {})
-            if l.get("linkedin_url") in supp_linkedin or l.get("email") in supp_email:
+            l_email = l.get("email") or ""
+            l_dom = l.get("domain") or (l_email.split("@")[-1].strip().lower() if "@" in l_email else "")
+            if l.get("linkedin_url") in supp_linkedin or l_email in supp_email or (l_dom and l_dom in supp_domain):
                 continue
             final_opp_ids.append(opp_id)
         
@@ -5743,7 +5759,7 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
         
         if final_opp_ids:
             # Get active version
-            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
+            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", campaign_id).order("created_at", desc=True).limit(1).execute()
             if not ver_res.data:
                 raise HTTPException(status_code=400, detail="Campaign has no versions")
             version_id = ver_res.data[0]["id"]
@@ -5794,7 +5810,6 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
                 execution_data.append({
                     "id": str(uuid.uuid5(uuid.NAMESPACE_OID, f"exec_{enrollment_id}")),
                     "workspace_id": workspace_id,
-                    "campaign_id": campaign_id,
                     "enrollment_id": enrollment_id,
                     "status": "pending",
                     "variables": {}
@@ -6423,6 +6438,240 @@ def get_sender_pool_domains_endpoint(
         "domains": domain_metrics,
         "total_domains": len(domain_metrics) if isinstance(domain_metrics, (dict, list)) else 0,
         "workspace_id": workspace_id,
+    }
+
+
+class VerifyTrackingDomainRequest(BaseModel):
+    tracking_domain: str
+    expected_cname: Optional[str] = "track.elein.ai"
+    check_live_ssl: Optional[bool] = True
+
+
+@router.post("/deliverability/verify-tracking-domain", response_model=dict)
+def verify_tracking_domain_endpoint(
+    req: VerifyTrackingDomainRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Issue 6 (Custom Domain Tracking CNAME & Automated SSL Verification Guard):
+    Verifies DNS CNAME pointing to expected_cname and performs a live TLS handshake
+    to ensure the custom tracking domain has an active, valid SSL certificate.
+    Prevents browser NET::ERR_CERT_COMMON_NAME_INVALID warnings when SSL is still provisioning.
+    If verified, updates tracking_domain and ssl_verified=True on matching workspace sender inboxes.
+    """
+    from core.backend.services.deliverability_guard import (
+        verify_custom_tracking_domain,
+        sanitize_domain_input,
+    )
+
+    clean_ws = str(workspace_id or "").strip()
+    raw_domain = (req.tracking_domain or "").strip()
+    clean_domain = sanitize_domain_input(raw_domain)
+
+    if not clean_domain:
+        return {
+            "tracking_domain": raw_domain,
+            "valid": False,
+            "status": "FORBIDDEN_OR_INVALID_HOST",
+            "can_track_safely": False,
+            "ssl_verified": False,
+            "cname_target": None,
+            "details": {"error": "Invalid or forbidden tracking domain provided."},
+        }
+
+    expected_target = (req.expected_cname or "track.elein.ai").strip()
+    check_ssl = True if req.check_live_ssl is None else bool(req.check_live_ssl)
+
+    try:
+        res = verify_custom_tracking_domain(
+            tracking_fqdn=clean_domain,
+            expected_cname_target=expected_target,
+            check_live_ssl=check_ssl,
+        )
+    except Exception as exc:
+        logger.warning(f"[VerifyTrackingDomain] Verification execution error for {clean_domain}: {exc}")
+        return {
+            "tracking_domain": clean_domain,
+            "valid": False,
+            "status": "VERIFICATION_ERROR",
+            "can_track_safely": False,
+            "ssl_verified": False,
+            "cname_target": None,
+            "details": {"error": str(exc)},
+        }
+
+    # If verified, update tracking_domain and ssl_verified=True for workspace sender inboxes matching root domain
+    inboxes_updated = 0
+    if res.get("valid") and res.get("ssl_verified") and supabase and clean_ws:
+        try:
+            from integrations.backend.services.email_sender_service import extract_root_domain
+            target_root = extract_root_domain(clean_domain)
+
+            inb_res = (
+                supabase.table("email_sender_inboxes")
+                .select("id, email, sender_domain, tracking_domain")
+                .eq("workspace_id", clean_ws)
+                .execute()
+            )
+            inboxes = getattr(inb_res, "data", []) or []
+            if isinstance(inboxes, list):
+                for inb in inboxes:
+                    inb_id = inb.get("id")
+                    inb_email = str(inb.get("email") or "").strip()
+                    inb_domain = str(inb.get("sender_domain") or "").strip()
+
+                    inb_root = extract_root_domain(inb_domain) or extract_root_domain(inb_email)
+                    email_match = False
+                    if target_root:
+                        email_match = bool(
+                            (inb_root and inb_root.lower() == target_root.lower())
+                            or inb_email.lower().endswith(f"@{target_root.lower()}")
+                            or inb_email.lower().endswith(f".{target_root.lower()}")
+                            or (inb_domain and inb_domain.lower() == target_root.lower())
+                        )
+
+                    if inb_id and email_match:
+                        try:
+                            supabase.table("email_sender_inboxes").update({
+                                "tracking_domain": clean_domain,
+                                "ssl_verified": True,
+                            }).eq("id", inb_id).eq("workspace_id", clean_ws).execute()
+                            inboxes_updated += 1
+                        except Exception as upd_err:
+                            logger.debug(f"[VerifyTrackingDomain] Non-fatal inbox update failed for {inb_id}: {upd_err}")
+        except Exception as exc:
+            logger.warning(f"[VerifyTrackingDomain] Non-fatal inbox sync failed for workspace {clean_ws}: {exc}")
+
+    return {
+        "tracking_domain": clean_domain,
+        "valid": bool(res.get("valid")),
+        "status": res.get("status"),
+        "can_track_safely": bool(res.get("can_track_safely")),
+        "ssl_verified": bool(res.get("ssl_verified")),
+        "cname_target": res.get("cname_target"),
+        "inboxes_updated": inboxes_updated,
+        "details": res.get("ssl_details") or res,
+    }
+
+
+@router.get("/deliverability/tracking-domain-status", response_model=dict)
+def get_tracking_domain_status_endpoint(
+    domain: str = Query(..., description="Root domain or tracking subdomain to check"),
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Issue 6 (Custom Domain Tracking CNAME & Automated SSL Verification Guard):
+    Returns cached verification status from email_sender_inboxes or runs a live check.
+    Enforces workspace boundary to prevent IDOR leaks.
+    """
+    from core.backend.services.deliverability_guard import (
+        verify_custom_tracking_domain,
+        sanitize_domain_input,
+    )
+    from integrations.backend.services.email_sender_service import extract_root_domain
+
+    clean_ws = str(workspace_id or "").strip()
+    raw_domain = str(domain or "").strip()
+    clean_dom = sanitize_domain_input(raw_domain)
+
+    if not clean_dom:
+        return {
+            "domain": raw_domain,
+            "valid": False,
+            "status": "FORBIDDEN_OR_INVALID_HOST",
+            "can_track_safely": False,
+            "ssl_verified": False,
+            "cached": False,
+            "cname_target": None,
+            "details": {"error": "Invalid or forbidden domain provided."},
+        }
+
+    root_dom = extract_root_domain(clean_dom) or clean_dom
+
+    # Check cached status in email_sender_inboxes
+    cached_inbox = None
+    if supabase and clean_ws:
+        try:
+            res = (
+                supabase.table("email_sender_inboxes")
+                .select("id, email, sender_domain, tracking_domain, ssl_verified")
+                .eq("workspace_id", clean_ws)
+                .execute()
+            )
+            inboxes = getattr(res, "data", []) or []
+            if isinstance(inboxes, list):
+                for inb in inboxes:
+                    inb_dom = extract_root_domain(inb.get("sender_domain")) or extract_root_domain(inb.get("email"))
+                    inb_track = inb.get("tracking_domain")
+                    if (
+                        (inb_dom and inb_dom.lower() == root_dom.lower())
+                        or (inb_track and clean_dom.lower() in inb_track.lower())
+                    ):
+                        if inb.get("tracking_domain") and inb.get("ssl_verified") is not None:
+                            cached_inbox = inb
+                            break
+        except Exception as exc:
+            logger.debug(f"[TrackingDomainStatus] Cache check query fallback: {exc}")
+
+    if cached_inbox and cached_inbox.get("tracking_domain"):
+        is_ssl = bool(cached_inbox.get("ssl_verified"))
+        return {
+            "domain": clean_dom,
+            "tracking_domain": cached_inbox.get("tracking_domain"),
+            "valid": is_ssl,
+            "status": "VERIFIED_ACTIVE" if is_ssl else "SSL_PENDING_PROVISIONING",
+            "can_track_safely": is_ssl,
+            "ssl_verified": is_ssl,
+            "cached": True,
+            "inbox_id": cached_inbox.get("id"),
+            "cname_target": "track.elein.ai",
+            "details": {
+                "source": "cache",
+                "inbox_email": cached_inbox.get("email"),
+            },
+        }
+
+    # Lightweight live check
+    probe_domain = clean_dom
+    try:
+        check_res = verify_custom_tracking_domain(probe_domain, timeout=2.5)
+        # If bare root domain failed CNAME, retry with 'track.' prefix
+        if (
+            not check_res.get("valid")
+            and check_res.get("status") == "CNAME_MISSING_OR_MISMATCH"
+            and not clean_dom.startswith("track.")
+            and clean_dom.count(".") == 1
+        ):
+            alt_res = verify_custom_tracking_domain(f"track.{clean_dom}", timeout=2.5)
+            if alt_res.get("cname_target") or alt_res.get("valid"):
+                check_res = alt_res
+                probe_domain = f"track.{clean_dom}"
+    except Exception as exc:
+        logger.warning(f"[TrackingDomainStatus] Live check error for {clean_dom}: {exc}")
+        return {
+            "domain": clean_dom,
+            "tracking_domain": clean_dom,
+            "valid": False,
+            "status": "CHECK_FAILED",
+            "can_track_safely": False,
+            "ssl_verified": False,
+            "cached": False,
+            "cname_target": None,
+            "details": {"error": str(exc)},
+        }
+
+    return {
+        "domain": clean_dom,
+        "tracking_domain": probe_domain,
+        "valid": bool(check_res.get("valid")),
+        "status": check_res.get("status"),
+        "can_track_safely": bool(check_res.get("can_track_safely")),
+        "ssl_verified": bool(check_res.get("ssl_verified")),
+        "cached": False,
+        "cname_target": check_res.get("cname_target"),
+        "details": check_res.get("ssl_details") or check_res,
     }
 
 

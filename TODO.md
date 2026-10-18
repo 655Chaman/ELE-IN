@@ -131,5 +131,18 @@
     - Exposed `GET /api/elein/sender-pool/domains` providing full workspace domain health observability.
   - **Verification**: 64/64 automated tests passing across `test_domain_rotation_and_burnout_protection.py` (35/35), `test_domain_grouping_burnout_circuit_breaker.py` (9/9), `test_issue5_executor_router.py` (7/7), and `test_horizon29_cold_email_deliverability_pool.py` (13/13) with sub-second production build (639ms).
 
+- [x] **Phase 32: Custom Domain Tracking (CNAME) & Automated SSL Verification Guard (100% Operational):**
+  - **Live TLS/SSL Handshake & CNAME Verification (`core/backend/services/deliverability_guard.py`)**:
+    - `verify_ssl_handshake`: Performs standard library TLS socket handshake on port 443 with SNI (`server_hostname`), extracts peer certificates, SANs, Common Name, issuer, and calculates `days_until_expiry` from `notAfter`. Catches certificate expiration, host mismatch, socket timeout, and connection refused gracefully.
+    - `verify_custom_tracking_domain`: Performs CNAME resolution against expected target (`track.elein.ai`) and performs live TLS handshake. Reports `VERIFIED_ACTIVE`, `SSL_PENDING_PROVISIONING`, `CNAME_MISSING_OR_MISMATCH`, or `CERTIFICATE_EXPIRED`.
+    - `verify_domain_dns_health`: Integrates live custom tracking CNAME and SSL status directly into overall deliverability scoring, emitting actionable setup instructions.
+  - **Fail-Safe Tracking Link Rewriting**:
+    - `rewrite_tracking_links`: When `ssl_verified=False` (or SSL is still provisioning), immediately falls open and leaves email body links untouched, returning `fallback_reason="SSL_UNVERIFIED_PREVENTED_BROWSER_WARNING"`. This completely prevents red `"NET::ERR_CERT_COMMON_NAME_INVALID"` browser warnings for recipients.
+    - Preserves trailing prose punctuation (`.`, `,`, `!`, `?`, `"`, `;`) and prevents double-wrapping links already pointing to the tracking domain.
+  - **Router & Executor Integration (`campaigns/backend/routers/elein.py`, `campaigns/backend/services/elein_executor.py`)**:
+    - Exposed `POST /api/elein/deliverability/verify-tracking-domain` and `GET /api/elein/deliverability/tracking-domain-status` with tenant IDOR boundaries. Updates matching sender inboxes in `email_sender_inboxes` with `tracking_domain` and `ssl_verified=True` upon verification.
+    - `EleInExecutor.handle_send_email`: Bypasses tracking rewrite and tags `ssl_tracking_bypassed=True` when SSL is unverified, maintaining 100% deliverability safety.
+  - **Verification**: 57/57 automated tests passing across `test_custom_tracking_cname_and_ssl_guard.py` (32/32), `test_issue6_ssl_handshake_and_cname_verification.py` (16/16), and `test_issue6_router_and_executor_tracking_guard.py` (9/9) with sub-second production build (859ms).
+
 
 

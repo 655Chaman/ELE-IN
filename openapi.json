@@ -396,6 +396,59 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Bulk Remove Leads From List",
+        "description": "Paranoia Layer 0, 1 & 2: Bulk removes multiple leads from a list in single batch operations.\nPrevents client-side Promise.all socket exhaustion and gateway timeouts.",
+        "operationId": "bulk_remove_leads_from_list_api_leads_lists__list_id__leads_delete",
+        "parameters": [
+          {
+            "name": "list_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "List Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkRemoveListMembersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Bulk Remove Leads From List Api Leads Lists  List Id  Leads Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/leads/lists/{list_id}/leads/{lead_id}": {
@@ -9792,6 +9845,97 @@
         }
       }
     },
+    "/api/elein/deliverability/verify-tracking-domain": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Verify Tracking Domain Endpoint",
+        "description": "Issue 6 (Custom Domain Tracking CNAME & Automated SSL Verification Guard):\nVerifies DNS CNAME pointing to expected_cname and performs a live TLS handshake\nto ensure the custom tracking domain has an active, valid SSL certificate.\nPrevents browser NET::ERR_CERT_COMMON_NAME_INVALID warnings when SSL is still provisioning.\nIf verified, updates tracking_domain and ssl_verified=True on matching workspace sender inboxes.",
+        "operationId": "verify_tracking_domain_endpoint_api_elein_deliverability_verify_tracking_domain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTrackingDomainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Verify Tracking Domain Endpoint Api Elein Deliverability Verify Tracking Domain Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/tracking-domain-status": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Get Tracking Domain Status Endpoint",
+        "description": "Issue 6 (Custom Domain Tracking CNAME & Automated SSL Verification Guard):\nReturns cached verification status from email_sender_inboxes or runs a live check.\nEnforces workspace boundary to prevent IDOR leaks.",
+        "operationId": "get_tracking_domain_status_endpoint_api_elein_deliverability_tracking_domain_status_get",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Root domain or tracking subdomain to check",
+              "title": "Domain"
+            },
+            "description": "Root domain or tracking subdomain to check"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Tracking Domain Status Endpoint Api Elein Deliverability Tracking Domain Status Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/classify-reply": {
       "post": {
         "tags": [
@@ -18361,6 +18505,22 @@
         ],
         "title": "BulkApplyDefaultsRequest"
       },
+      "BulkRemoveListMembersRequest": {
+        "properties": {
+          "lead_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lead Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lead_ids"
+        ],
+        "title": "BulkRemoveListMembersRequest"
+      },
       "BulkStatusRequest": {
         "properties": {
           "opportunity_ids": {
@@ -24686,6 +24846,43 @@
           "timestamp"
         ],
         "title": "VerifySignatureRequest"
+      },
+      "VerifyTrackingDomainRequest": {
+        "properties": {
+          "tracking_domain": {
+            "type": "string",
+            "title": "Tracking Domain"
+          },
+          "expected_cname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Cname",
+            "default": "track.elein.ai"
+          },
+          "check_live_ssl": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Live Ssl",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracking_domain"
+        ],
+        "title": "VerifyTrackingDomainRequest"
       },
       "WarmupCurvePayload": {
         "properties": {

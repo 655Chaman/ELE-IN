@@ -730,17 +730,34 @@ def sync_dynamic_segment_members(
     if auto_enroll_campaign_id:
         auto_enroll_campaign_id = str(auto_enroll_campaign_id).strip()
 
-    # 2. Fetch all leads in workspace
-    leads_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).execute()
-    all_leads = leads_res.data or []
+    # 2. Fetch all leads in workspace (paginated to prevent 1000-row PostgREST cap)
+    all_leads = []
+    page_size = 1000
+    start = 0
+    while True:
+        leads_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).range(start, start + page_size - 1).execute()
+        batch = leads_res.data or []
+        all_leads.extend(batch)
+        if len(batch) < page_size:
+            break
+        start += page_size
 
     # 3. Evaluate rules
     matching_leads = filter_leads_in_memory(all_leads, rules)
     qualifying_ids: Set[str] = {str(ld["id"]).strip() for ld in matching_leads if ld.get("id")}
 
-    # 4. Fetch current list members
-    members_res = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).execute()
-    current_member_ids: Set[str] = {str(m["opportunity_id"]).strip() for m in (members_res.data or []) if m.get("opportunity_id")}
+    # 4. Fetch current list members (paginated)
+    current_member_ids: Set[str] = set()
+    start = 0
+    while True:
+        members_res = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).range(start, start + page_size - 1).execute()
+        batch = members_res.data or []
+        for m in batch:
+            if m.get("opportunity_id"):
+                current_member_ids.add(str(m["opportunity_id"]).strip())
+        if len(batch) < page_size:
+            break
+        start += page_size
 
     to_add = qualifying_ids - current_member_ids
     to_remove = current_member_ids - qualifying_ids
@@ -753,7 +770,7 @@ def sync_dynamic_segment_members(
     to_add_list = list(to_add)
     for i in range(0, len(to_add_list), batch_size):
         chunk = to_add_list[i:i + batch_size]
-        new_members = [{"list_id": clean_lid, "opportunity_id": lid} for lid in chunk]
+        new_members = [{"workspace_id": clean_ws, "list_id": clean_lid, "opportunity_id": lid} for lid in chunk]
         supabase.table("list_members").insert(new_members).execute()
         added_count += len(chunk)
 
@@ -803,6 +820,10 @@ def sync_dynamic_segment_members(
 
             fresh_leads = [lid for lid in enrollable_leads if lid not in already_enrolled]
 
+            # Fetch active campaign version
+            ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", auto_enroll_campaign_id).order("created_at", desc=True).limit(1).execute()
+            version_id = ver_res.data[0]["id"] if (ver_res.data and len(ver_res.data) > 0) else None
+
             # Bulk enroll
             enrollment_rows = []
             execution_rows = []
@@ -810,14 +831,18 @@ def sync_dynamic_segment_members(
 
             for lid in fresh_leads:
                 enr_id = str(uuid.uuid4())
-                enrollment_rows.append({
+                enr_payload = {
                     "id": enr_id,
                     "campaign_id": auto_enroll_campaign_id,
                     "lead_id": lid,
                     "workspace_id": clean_ws
-                })
+                }
+                if version_id:
+                    enr_payload["campaign_version_id"] = version_id
+                enrollment_rows.append(enr_payload)
                 execution_rows.append({
                     "id": str(uuid.uuid4()),
+                    "workspace_id": clean_ws,
                     "enrollment_id": enr_id,
                     "status": "pending",
                     "variables": {}

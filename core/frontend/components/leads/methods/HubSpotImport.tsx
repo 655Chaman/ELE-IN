@@ -165,8 +165,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
               className="w-full mt-6 py-2 bg-foreground text-background font-semibold rounded-lg hover:bg-foreground/90 disabled:opacity-50"
               disabled={!selectedHubspotList}
               onClick={async () => {
-                toast.success("List synchronization started!");
-                // Here we would call the /import endpoint
+                toast.info("Direct HubSpot list sync is currently in preview. Please use CSV export or configure the inbound webhook in Settings.");
                 onClose();
               }}
             >

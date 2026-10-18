@@ -35,10 +35,12 @@ class TestHorizon29ColdEmailDeliverabilityPool(unittest.TestCase):
     # LAYER 0: FOUNDATIONAL LAYER TESTS
     # =========================================================================
 
+    @patch("core.backend.services.deliverability_guard.verify_ssl_handshake")
     @patch("core.backend.services.deliverability_guard._lookup_cname_record")
     @patch("core.backend.services.deliverability_guard._lookup_txt_records")
-    def test_layer0_verify_domain_dns_healthy(self, mock_txt, mock_cname):
+    def test_layer0_verify_domain_dns_healthy(self, mock_txt, mock_cname, mock_ssl):
         """Layer 0: Full SPF, DKIM, DMARC (p=reject), and CNAME verification yields 100/100 HEALTHY."""
+        mock_ssl.return_value = {"ssl_valid": True, "status": "ACTIVE_VALID"}
         def txt_side_effect(qname, timeout=2.5):
             if qname == "acmecorp.com":
                 return ["v=spf1 include:_spf.google.com include:sendgrid.net ~all"]
@@ -220,7 +222,10 @@ class TestHorizon29ColdEmailDeliverabilityPool(unittest.TestCase):
         self.assertFalse(res["tracking_applied"])
         self.assertEqual(res["rewritten_count"], 0)
         self.assertEqual(res["body"], raw_body)
-        self.assertEqual(res["fallback_reason"], "SSL_OR_DOMAIN_UNVERIFIED")
+        self.assertIn(
+            res["fallback_reason"],
+            ("SSL_UNVERIFIED_PREVENTED_BROWSER_WARNING", "SSL_OR_DOMAIN_UNVERIFIED"),
+        )
 
     def test_layer1_expired_quarantine_auto_recovery(self):
         """Layer 1: An inbox whose quarantined_until is in the past automatically recovers for pool selection."""

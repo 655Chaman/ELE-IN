@@ -136,6 +136,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
 
         if (!isPro) {
           toast.success(`Exported ${exportedData.length} sample leads (Free Plan). Upgrade to Growth Pro for full unmasked email addresses.`)
@@ -170,6 +171,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
         toast.success(`Exported ${sliceData.length} leads to CSV`)
       }
     } catch (e: any) {
@@ -187,9 +189,18 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         data: current?.data?.filter((l: any) => !selectedIds.has(l.id))
       }), false)
       
-      await Promise.all(
-        idsToRemove.map(id => fetchWithAuth(`/api/leads/lists/${list.id}/leads/${id}`, { method: 'DELETE' }))
-      )
+      // Paranoia Layer 1 & 2: Use bulk delete endpoint to eliminate browser socket exhaustion DoS
+      const res = await fetchWithAuth(`/api/leads/lists/${list.id}/leads`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_ids: idsToRemove })
+      })
+      if (!res.ok) {
+        // Fallback for backward compatibility
+        await Promise.all(
+          idsToRemove.slice(0, 20).map(id => fetchWithAuth(`/api/leads/lists/${list.id}/leads/${id}`, { method: 'DELETE' }))
+        )
+      }
       setSelectedIds(new Set())
       mutateLists()
       toast.success(`Removed ${idsToRemove.length} leads from "${list.name}"`)
@@ -395,9 +406,9 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                           </div>
                           {lead.linkedin_url && (
                             <a 
-                              href={lead.linkedin_url} 
+                              href={lead.linkedin_url.startsWith('http') ? lead.linkedin_url : `https://${lead.linkedin_url}`} 
                               target="_blank" 
-                              rel="noreferrer" 
+                              rel="noopener noreferrer" 
                               onClick={(e) => e.stopPropagation()}
                               className="text-muted-foreground hover:text-primary transition-colors p-1"
                               title="Open LinkedIn Profile"

@@ -63,6 +63,7 @@ const STUDIOS = [
 ]
 
 export function EleInLeads() {
+  const { activeWorkspaceId } = useWorkspace()
   const [activeTab, setActiveTab] = useState<"lists" | "radar" | "prewarm" | "bandit" | "events" | "segmentation" | "abm" | "boomerang" | "omnichannel" | "displacement" | "calendar" | "waterfall" | "warmup" | "crm" | "advocacy">("lists")
   const [segmentationListId, setSegmentationListId] = useState<string | undefined>(undefined)
   const [isStudiosOpen, setIsStudiosOpen] = useState(false)
@@ -77,16 +78,20 @@ export function EleInLeads() {
   const prevListsRef = useRef<Map<string, LeadList>>(new Map())
   const errorShownRef = useRef<Set<string>>(new Set())
   
+  // Paranoia Layer 1: Scope SWR cache to activeWorkspaceId to eliminate stale cache display on workspace switch
+  const listsKey = activeWorkspaceId ? `/api/elein/leads/lists?workspace_id=${activeWorkspaceId}` : '/api/elein/leads/lists'
   const { data: lists, error, isLoading, mutate } = useSWR<LeadList[]>(
-    '/api/elein/leads/lists', 
+    listsKey, 
     fetcher,
     {
       refreshInterval: (latestData?: LeadList[]) => (latestData || []).some((l: any) => l.row_count === -1 || l.status === 'importing' || l.status === 'processing') ? 3000 : 0
     }
   )
-  const { data: radarData } = useSWR<{ feed?: any[]; total_items?: number }>('/api/leads/social-radar/feed', fetcher)
+  const radarKey = activeWorkspaceId ? `/api/leads/social-radar/feed?workspace_id=${activeWorkspaceId}` : '/api/leads/social-radar/feed'
+  const { data: radarData } = useSWR<{ feed?: any[]; total_items?: number }>(radarKey, fetcher)
   const { openPaywall } = usePaywall()
-  const { data: billingData } = useSWR<{ tier?: string; tier_limits?: any }>('/api/elein/workspaces/billing', fetcher)
+  const billingKey = activeWorkspaceId ? `/api/elein/workspaces/billing?workspace_id=${activeWorkspaceId}` : '/api/elein/workspaces/billing'
+  const { data: billingData } = useSWR<{ tier?: string; tier_limits?: any }>(billingKey, fetcher)
   const tier = billingData?.tier || 'FREE'
   const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
   
@@ -117,8 +122,6 @@ export function EleInLeads() {
       prevListsRef.current.set(list.id, list)
     })
   }, [safeLists])
-  
-  const { activeWorkspaceId } = useWorkspace()
 
   useEffect(() => {
     const channel = supabase

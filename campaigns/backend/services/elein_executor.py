@@ -4746,6 +4746,9 @@ Respond ONLY with valid JSON."""
                     res_dict["domain_burnout_status"] = burnout_st
                     res_dict["domain_health_status"] = burnout_st
 
+                if ssl_tracking_bypassed:
+                    res_dict["ssl_tracking_bypassed"] = True
+
                 if selected_inbox_id:
                     try:
                         from integrations.backend.services.email_sender_service import record_inbox_delivery_outcome
@@ -4760,18 +4763,26 @@ Respond ONLY with valid JSON."""
                 return res_dict
 
             rewritten_count = 0
+            ssl_tracking_bypassed = False
             if tracking_domain:
-                from core.backend.services.deliverability_guard import rewrite_tracking_links
-                email_track_id = str(data.get("email_id") or f"em_{lead_id or 'anon'}")
-                rw_res = rewrite_tracking_links(
-                    body=body,
-                    tracking_domain=tracking_domain,
-                    email_id=email_track_id,
-                    workspace_id=self.workspace_id or "ws-default",
-                    ssl_verified=ssl_verified,
-                )
-                body = rw_res.get("body", body)
-                rewritten_count = int(rw_res.get("rewritten_count", 0))
+                if not ssl_verified:
+                    logger.info(
+                        f"[DeliverabilityGuard] Tracking domain {tracking_domain} has unverified SSL. Bypassing tracking link rewrite to prevent browser certificate warning."
+                    )
+                    rewritten_count = 0
+                    ssl_tracking_bypassed = True
+                else:
+                    from core.backend.services.deliverability_guard import rewrite_tracking_links
+                    email_track_id = str(data.get("email_id") or f"em_{lead_id or 'anon'}")
+                    rw_res = rewrite_tracking_links(
+                        body=body,
+                        tracking_domain=tracking_domain,
+                        email_id=email_track_id,
+                        workspace_id=self.workspace_id or "ws-default",
+                        ssl_verified=True,
+                    )
+                    body = rw_res.get("body", body)
+                    rewritten_count = int(rw_res.get("rewritten_count", 0))
 
             # Paranoia Layer 1: RFC 8058 One-Click Unsubscribe Headers (Fail-open)
             rfc_headers: Dict[str, str] = {}
@@ -4806,6 +4817,8 @@ Respond ONLY with valid JSON."""
                         "body": body,
                         "tracking_rewritten": rewritten_count,
                     }
+                    if ssl_tracking_bypassed:
+                        out["ssl_tracking_bypassed"] = True
                     if bandit_meta.get("enabled"):
                         out["bandit_variant_id"] = bandit_meta.get("bandit_variant_id")
                         out["bandit_arm_name"] = bandit_meta.get("bandit_arm_name")
@@ -4858,6 +4871,8 @@ Respond ONLY with valid JSON."""
                             "subject": subject,
                             "tracking_rewritten": rewritten_count,
                         }
+                        if ssl_tracking_bypassed:
+                            out["ssl_tracking_bypassed"] = True
                         if bandit_meta.get("enabled"):
                             out["bandit_variant_id"] = bandit_meta.get("bandit_variant_id")
                             out["bandit_arm_name"] = bandit_meta.get("bandit_arm_name")
@@ -4887,6 +4902,8 @@ Respond ONLY with valid JSON."""
                 "subject": subject,
                 "tracking_rewritten": rewritten_count,
             }
+            if ssl_tracking_bypassed:
+                out["ssl_tracking_bypassed"] = True
             if rfc_headers:
                 out["headers"] = rfc_headers
                 if "List-Unsubscribe" in rfc_headers:

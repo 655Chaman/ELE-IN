@@ -22,14 +22,18 @@ export function DeleteConfirmationModal({ list, onClose, onConfirm }: { list: an
     setIsDeleting(true);
     try {
       const res = await fetchWithAuth(`/api/elein/leads/${list.id}`, {method: 'DELETE'});
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Failed to delete list");
+      }
       toast.success("List deleted successfully");
       onConfirm();
+      onClose();
     } catch (e: any) {
-      friendlyToast('Failed to delete lead — please try again.', e);
+      friendlyToast(e?.message || 'Failed to delete list — please try again.', e);
+    } finally {
+      setIsDeleting(false);
     }
-    setIsDeleting(false);
-    onClose();
   };
 
   return (
