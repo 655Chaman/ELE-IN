@@ -437,6 +437,9 @@ class EleInNodeExecutor:
         if not template or not isinstance(template, str):
             return ""
 
+        if "{" in template and "|" in template:
+            data["spintax_applied"] = True
+
         from campaigns.backend.services.template_spintax_guard import clean_enrichment_value, resolve_spintax
         from leads.backend.services.data_hygiene import DataHygieneService
 
@@ -780,7 +783,10 @@ class EleInNodeExecutor:
         interpolated = re.sub(r"[ \t]+", " ", interpolated)
         interpolated = re.sub(r"\s+([,.\?!;:])", r"\1", interpolated)
         interpolated = re.sub(r"\n{3,}", "\n\n", interpolated).strip()
-        seed_val = str(data.get("_lead_id") or data.get("lead_id") or linkedin_url or "") or None
+        lead_id = data.get("_lead_id") or data.get("lead_id")
+        seed_val = f"{lead_id or data.get('email') or 'lead'}_{data.get('_current_node_id', 'node')}"
+        if "{" in template and "|" in template:
+            data["spintax_applied"] = True
         return resolve_spintax(interpolated, seed=seed_val)
 
     def handle_trigger_radar_enrich(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
@@ -2172,6 +2178,8 @@ class EleInNodeExecutor:
                     out["bandit_variant_id"] = bandit_meta.get("bandit_variant_id")
                     out["bandit_arm_name"] = bandit_meta.get("bandit_arm_name")
                     out["sticky_hit"] = bandit_meta.get("sticky_hit", False)
+                if data.get("spintax_applied"):
+                    out["spintax_resolved"] = True
                 return out
             elif res.get("status") in ("rate_limited", "security_challenge", "session_expired", "pool_exhausted"):
                 return res
@@ -3171,6 +3179,8 @@ class EleInNodeExecutor:
                     if "variables" not in res or not isinstance(res.get("variables"), dict):
                         res["variables"] = {}
                     res["variables"]["_last_bandit_variant_id"] = bandit_meta.get("bandit_variant_id")
+            if data.get("spintax_applied"):
+                res["spintax_resolved"] = True
             return res
 
         except LinkedInActionOutcomeUnknown:
@@ -4603,10 +4613,10 @@ Respond ONLY with valid JSON."""
                 if bandit_meta.get("subject"):
                     subject = bandit_meta["subject"]
             else:
-                # Variable interpolation
-                if "{{" in subject and "}}" in subject:
+                # Variable & Spintax interpolation
+                if ("{{" in subject and "}}" in subject) or ("{" in subject and "|" in subject):
                     subject = self._interpolate_template(subject, data, linkedin_url)
-                if "{{" in body and "}}" in body:
+                if ("{{" in body and "}}" in body) or ("{" in body and "|" in body):
                     body = self._interpolate_template(body, data, linkedin_url)
 
             # Clamping (Paranoia Layer 2)
@@ -4735,6 +4745,8 @@ Respond ONLY with valid JSON."""
                         logger.debug(f"[DeliverabilityPool] Non-fatal affinity lock persist error: {lock_err}")
 
             def _enrich_delivery_outcome(res_dict: Dict[str, Any]) -> Dict[str, Any]:
+                if data.get("spintax_applied"):
+                    res_dict["spintax_resolved"] = True
                 if selected_inbox:
                     res_dict["sender_domain"] = selected_inbox.get("sender_domain") or (
                         selected_inbox.get("email", "").split("@")[-1] if "@" in str(selected_inbox.get("email", "")) else None
@@ -4823,6 +4835,8 @@ Respond ONLY with valid JSON."""
                         out["bandit_variant_id"] = bandit_meta.get("bandit_variant_id")
                         out["bandit_arm_name"] = bandit_meta.get("bandit_arm_name")
                         out["sticky_hit"] = bandit_meta.get("sticky_hit", False)
+                    if data.get("spintax_applied"):
+                        out["spintax_resolved"] = True
                     if rfc_headers:
                         out["headers"] = rfc_headers
                         if "List-Unsubscribe" in rfc_headers:
@@ -4877,6 +4891,8 @@ Respond ONLY with valid JSON."""
                             out["bandit_variant_id"] = bandit_meta.get("bandit_variant_id")
                             out["bandit_arm_name"] = bandit_meta.get("bandit_arm_name")
                             out["sticky_hit"] = bandit_meta.get("sticky_hit", False)
+                        if data.get("spintax_applied"):
+                            out["spintax_resolved"] = True
                         if rfc_headers:
                             out["headers"] = rfc_headers
                             if "List-Unsubscribe" in rfc_headers:
@@ -4904,6 +4920,8 @@ Respond ONLY with valid JSON."""
             }
             if ssl_tracking_bypassed:
                 out["ssl_tracking_bypassed"] = True
+            if data.get("spintax_applied"):
+                out["spintax_resolved"] = True
             if rfc_headers:
                 out["headers"] = rfc_headers
                 if "List-Unsubscribe" in rfc_headers:

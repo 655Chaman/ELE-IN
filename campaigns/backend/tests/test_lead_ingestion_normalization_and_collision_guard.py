@@ -389,8 +389,8 @@ class TestCSVHygieneCreditSecurity(unittest.TestCase):
 
         with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".csv") as tmp:
             tmp.write("first_name,last_name,email,linkedin_url\n")
-            tmp.write("John,Doe,john@example.com,\n")
-            tmp.write("Jane,Doe,jane@example.com,\n")
+            tmp.write("John,Doe,,\n")
+            tmp.write("Jane,Doe,,\n")
             tmp_path = tmp.name
 
         try:

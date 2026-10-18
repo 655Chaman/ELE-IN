@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, Send, Copy, Check, 
   ArrowRight, RefreshCw, CheckCircle2, 
-  Calendar, Layers, Compass, FileText, Download, X
+  Calendar, Layers, Compass, FileText, Download, X, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
+import { usePaywall } from '@/contexts/PaywallContext';
 import { OmnichannelRetargetingStudioModal } from './OmnichannelRetargetingStudioModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -31,6 +32,7 @@ const SAMPLE_POSTS = [
 ];
 
 export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: PreWarmStudioProps) {
+  const { openPaywall } = usePaywall();
   const [activeTab, setActiveTab] = useState<'prewarm' | 'omnichannel' | 'content'>('prewarm');
 
   // Tab 1: Pre-Warm & Comment Generator State
@@ -173,11 +175,19 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
           post_snippet: postText
         })
       });
+      if (res.status === 402 || res.status === 403) {
+        openPaywall({
+          featureName: "Autonomous Social Pre-Warmer & Profile Engagement",
+          minTier: "PRO",
+          description: "Simulate organic prospect interest with scheduled profile views, post reactions, and contextual AI comments."
+        });
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.detail?.message || err?.detail || "Failed to enqueue pre-warm sequence");
       }
-      toast.success("Enqueued 3-touch prewarm sequence (Profile View -> Like -> AI Comment)!");
+      toast.success("Enqueued pre-warm sequence (Profile View -> Like -> AI Comment)!");
     } catch (e: any) {
       toast.error(e?.message || "Failed to schedule pre-warm sequence.");
     } finally {
@@ -194,6 +204,14 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ days_threshold: daysThreshold })
       });
+      if (res.status === 402 || res.status === 403) {
+        openPaywall({
+          featureName: "Autonomous Omnichannel Fallback Scanner",
+          minTier: "PRO",
+          description: "Automatically scan connection requests pending > 7 days and generate waterfall fallback routes."
+        });
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.detail?.message || err?.detail || "Failed to scan stuck invitations");
@@ -222,6 +240,14 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
           company: lead.company
         })
       });
+      if (res.status === 402 || res.status === 403) {
+        openPaywall({
+          featureName: "Autonomous Omnichannel Fallback Cascade",
+          minTier: "PRO",
+          description: "Automatically reroute stalled LinkedIn connection invites to verified email sequences and sponsored InMail."
+        });
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.detail?.message || err?.detail || "Failed to execute omnichannel cascade");
@@ -291,7 +317,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden"
       onClick={onClose}
     >
       <div
@@ -450,13 +476,16 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                   Prospect Post Text (Paste from LinkedIn):
                 </label>
                 <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
+                    Simulated Sandbox
+                  </span>
                   <span className="text-xs text-muted-foreground">Sample Posts:</span>
                   {SAMPLE_POSTS.map((sp, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => { setPostText(sp.snippet); setGeneratedComment(null); }}
-                      className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground border border-border cursor-pointer"
+                      className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground border border-border cursor-pointer transition-colors"
                     >
                       #{idx + 1}
                     </button>
@@ -548,6 +577,24 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                 </button>
               </div>
 
+              {/* Light-Touch Enqueue Option (Profile View + Reaction only) */}
+              {!generatedComment && (
+                <div className="flex items-center justify-between p-3 bg-muted/20 border border-dashed border-border rounded-lg text-xs">
+                  <span className="text-muted-foreground">
+                    Skip AI comment? You can enqueue light-touch pre-warming (Profile View + Post Reaction only):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSchedulePrewarm}
+                    disabled={isSchedulingPrewarm}
+                    className="px-3 py-1.5 bg-card hover:bg-muted text-foreground border border-border rounded-lg font-medium flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                  >
+                    <Calendar size={12} className="text-primary" />
+                    <span>Enqueue 2-Touch (View + React)</span>
+                  </button>
+                </div>
+              )}
+
               {/* Generated Comment Result Box */}
               {generatedComment && (
                 <div className="p-3.5 bg-muted/30 rounded-lg border border-border space-y-2 animate-in fade-in duration-200">
@@ -584,7 +631,7 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                       className="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                     >
                       <Calendar size={12} />
-                      <span>Enqueue 3-Touch Pre-Warm For Lead</span>
+                      <span>Enqueue Full 3-Touch Pre-Warm (View + React + Comment)</span>
                     </button>
                   </div>
                 </div>
@@ -682,6 +729,11 @@ export function PreWarmStudioModal({ onClose, initialLeadId, initialLeadName }: 
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-foreground">{lead.first_name} {lead.last_name}</span>
                         <span className="text-muted-foreground">@ {lead.company}</span>
+                        {lead.lead_id?.startsWith('lead-sim-') && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                            Simulated Lead
+                          </span>
+                        )}
                         <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border font-mono">
                           {lead.days_pending}d pending
                         </span>

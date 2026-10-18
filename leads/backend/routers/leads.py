@@ -48,7 +48,7 @@ def sanitize_csv_value(val: Any) -> Any:
     if val is None:
         return ""
     s = str(val)
-    s_clean = s.lstrip()
+    s_clean = s.lstrip(" ")
     if s_clean and s_clean[0] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + s
     return s

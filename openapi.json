@@ -10120,6 +10120,140 @@
         }
       }
     },
+    "/api/elein/spintax/analyze": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Analyze Spintax Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2 (Issue 7):\nAnalyzes spintax template entropy, diversity ratio against campaign lead volume,\nand returns ESP deliverability recommendations.",
+        "operationId": "analyze_spintax_endpoint_api_elein_spintax_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpintaxAnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Analyze Spintax Endpoint Api Elein Spintax Analyze Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/spintax/generate": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Generate Spintax Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2 (Issue 7):\nAutomatically enriches plain outbound copy into high-converting B2B linguistic spintax\nwhile strictly protecting mustache variables and pre-existing spintax blocks.",
+        "operationId": "generate_spintax_endpoint_api_elein_spintax_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpintaxGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Generate Spintax Endpoint Api Elein Spintax Generate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/spintax/preview": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Preview Spintax Endpoint",
+        "description": "Paranoia Layer 0 & 2 (Issue 7):\nReturns an array of distinct, rendered spintax preview variants.",
+        "operationId": "preview_spintax_endpoint_api_elein_spintax_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpintaxPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response Preview Spintax Endpoint Api Elein Spintax Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -23817,6 +23951,92 @@
         },
         "type": "object",
         "title": "SocialRadarScanRequest"
+      },
+      "SpintaxAnalyzeRequest": {
+        "properties": {
+          "template": {
+            "type": "string",
+            "title": "Template"
+          },
+          "campaign_lead_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Lead Count",
+            "default": 1000
+          }
+        },
+        "type": "object",
+        "required": [
+          "template"
+        ],
+        "title": "SpintaxAnalyzeRequest"
+      },
+      "SpintaxGenerateRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "intensity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intensity",
+            "default": "balanced"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "SpintaxGenerateRequest"
+      },
+      "SpintaxPreviewRequest": {
+        "properties": {
+          "template": {
+            "type": "string",
+            "title": "Template"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "default": 5
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "template"
+        ],
+        "title": "SpintaxPreviewRequest"
       },
       "SubmitPostBoostPayload": {
         "properties": {

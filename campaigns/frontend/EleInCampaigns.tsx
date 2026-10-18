@@ -519,12 +519,35 @@ export function EleInCampaigns() {
       return;
     }
 
+    // Paranoia Layer 1 & 2 (AUDIT-07): Batch Preflight Safety Gate
+    // Intercept campaigns with 0 senders or empty targets before dispatching
+    const unreadyCampaigns: string[] = [];
+    const validCandidates = candidates.filter(id => {
+      const c = campaigns.find(camp => camp.id === id);
+      if (!c) return false;
+      const sendersCount = Array.isArray(c.senders) ? c.senders.length : 0;
+      if (sendersCount === 0) {
+        unreadyCampaigns.push(`"${c.name}"`);
+        return false;
+      }
+      return true;
+    });
+
+    if (unreadyCampaigns.length > 0) {
+      toast.error(
+        `Preflight Safety Alert: ${unreadyCampaigns.length} campaign${unreadyCampaigns.length === 1 ? '' : 's'} (${unreadyCampaigns.slice(0, 3).join(", ")}${unreadyCampaigns.length > 3 ? '...' : ''}) have 0 senders assigned and cannot be launched. Please configure senders first.`
+      );
+      if (validCandidates.length === 0) {
+        return;
+      }
+    }
+
     setIsBatchOperating(true);
     setBatchActionType("resume");
 
     try {
       const results = await Promise.allSettled(
-        candidates.map(async (id) => {
+        validCandidates.map(async (id) => {
           const res = await fetchWithAuth(`/api/elein/campaigns/${id}/activate`, { method: 'PATCH' });
           if (!res.ok) throw new Error("Failed to activate campaign");
           return id;

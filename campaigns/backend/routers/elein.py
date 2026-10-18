@@ -5580,26 +5580,24 @@ def get_campaign_detail(campaign_id: str, supabase: Client = Depends(get_supabas
         campaign["sender_account_ids"] = sender_ids
         campaign["sender_account_ids_json"] = sender_ids
 
-        # Fetch stats safely
-        states_res_data = []
+        # Fetch stats safely (Paranoia Layer 0 & 1 - AUDIT-08: Streamlined Aggregation & Tenant Scoping)
+        stats = {}
         try:
-            enrolls = _fetch_all_enrollments(supabase, campaign_id)
-            enr_ids = [r["id"] for r in enrolls]
+            enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id=workspace_id)
+            enr_ids = [r["id"] for r in enrolls if isinstance(r, dict) and r.get("id")]
             if enr_ids:
-                chunk_size = 200
-                states_res_data = []
+                chunk_size = 1000
                 for i in range(0, len(enr_ids), chunk_size):
                     chunk = enr_ids[i:i + chunk_size]
-                    states_res = supabase.table("campaign_execution_states").select("status").in_("enrollment_id", chunk).execute()
-                    states_res_data.extend(states_res.data or [])
+                    states_res = supabase.table("campaign_execution_states").select("status").eq("workspace_id", workspace_id).in_("enrollment_id", chunk).execute()
+                    for s in (states_res.data or []):
+                        if isinstance(s, dict):
+                            st = s.get("status")
+                            if st:
+                                stats[st] = stats.get(st, 0) + 1
         except Exception as e:
             logger.warning(f"[get_campaign_detail] Stats query fallback: {e}")
-            states_res_data = []
-        
-        stats = {}
-        for s in states_res_data:
-            st = s["status"]
-            stats[st] = stats.get(st, 0) + 1
+            stats = {}
         
         # Calculate totals
         total_leads = sum(stats.values())
@@ -6886,6 +6884,86 @@ def get_crm_revenue_attribution_endpoint(
         raise HTTPException(status_code=403, detail=str(p_err))
     except ValueError as v_err:
         raise HTTPException(status_code=400, detail=str(v_err))
+
+
+# ==============================================================================
+# Issue 7: Spintax & Linguistic Variation Multiplier Endpoints
+# ==============================================================================
+
+class SpintaxAnalyzeRequest(BaseModel):
+    template: str
+    campaign_lead_count: Optional[int] = 1000
+
+
+class SpintaxGenerateRequest(BaseModel):
+    text: str
+    intensity: Optional[str] = "balanced"
+
+
+class SpintaxPreviewRequest(BaseModel):
+    template: str
+    count: Optional[int] = 5
+    seed: Optional[str] = None
+
+
+@router.post("/spintax/analyze", response_model=dict)
+def analyze_spintax_endpoint(
+    req: SpintaxAnalyzeRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Issue 7):
+    Analyzes spintax template entropy, diversity ratio against campaign lead volume,
+    and returns ESP deliverability recommendations.
+    """
+    from campaigns.backend.services.template_spintax_guard import calculate_spintax_entropy
+    return calculate_spintax_entropy(
+        text=req.template,
+        campaign_lead_count=req.campaign_lead_count if req.campaign_lead_count is not None else 1000,
+    )
+
+
+@router.post("/spintax/generate", response_model=dict)
+def generate_spintax_endpoint(
+    req: SpintaxGenerateRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Issue 7):
+    Automatically enriches plain outbound copy into high-converting B2B linguistic spintax
+    while strictly protecting mustache variables and pre-existing spintax blocks.
+    """
+    from campaigns.backend.services.template_spintax_guard import generate_linguistic_spintax
+    res = generate_linguistic_spintax(
+        plain_text=req.text,
+        intensity=req.intensity or "balanced",
+    )
+    return {
+        "original_text": res.get("original_text", req.text),
+        "spintax_text": res.get("spintax_text", req.text),
+        "enriched_text": res.get("spintax_text", req.text),
+        "entropy": res.get("entropy", {}),
+        "entropy_analysis": res.get("entropy", {}),
+        "replacements_count": res.get("replacements_count", 0),
+    }
+
+
+@router.post("/spintax/preview", response_model=List[str])
+def preview_spintax_endpoint(
+    req: SpintaxPreviewRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0 & 2 (Issue 7):
+    Returns an array of distinct, rendered spintax preview variants.
+    """
+    from campaigns.backend.services.template_spintax_guard import preview_spintax_variants
+    return preview_spintax_variants(
+        text=req.template,
+        count=req.count if req.count is not None else 5,
+        seed=req.seed,
+    )
+
 
 
 

@@ -31,19 +31,38 @@ def _b64url_decode(s: str) -> bytes:
 
 def _resolve_secret(secret: Optional[str] = None) -> str:
     """
-    Paranoia Layer 1: Resolves HMAC signing secret in priority order:
-    1. Explicit secret argument
-    2. UNSUBSCRIBE_SECRET environment variable
-    3. SUPABASE_JWT_SECRET environment variable
-    4. Deterministic fallback secret
+    Paranoia Layer 0 & 1 (AUDIT-04): Resolves HMAC signing secret in strict priority order.
+    Fails closed in non-test environments if no cryptographic secret is configured,
+    eliminating universal token forgery vulnerabilities.
     """
-    resolved = (
-        (secret and secret.strip())
-        or os.environ.get("UNSUBSCRIBE_SECRET")
+    if secret and secret.strip():
+        return secret.strip()
+
+    env_secret = (
+        os.environ.get("UNSUBSCRIBE_SECRET")
         or os.environ.get("SUPABASE_JWT_SECRET")
-        or "elein-rfc8058-unsub-secret"
+        or os.environ.get("JWT_SECRET")
     )
-    return resolved.strip()
+    if env_secret and env_secret.strip():
+        return env_secret.strip()
+
+    is_test_env = (
+        bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        or os.environ.get("ENV") == "test"
+        or os.environ.get("ENVIRONMENT") == "test"
+    )
+    is_prod_env = (
+        os.environ.get("ENV") in ("production", "prod", "staging")
+        or os.environ.get("ENVIRONMENT") in ("production", "prod", "staging")
+    )
+
+    if is_prod_env or not is_test_env:
+        raise RuntimeError(
+            "RFC 8058 Cryptographic Security Violation: Neither UNSUBSCRIBE_SECRET nor SUPABASE_JWT_SECRET is configured. "
+            "Failing closed to prevent universal unsubscribe token forgery in live environments."
+        )
+
+    return "elein-rfc8058-unsub-secret"
 
 
 def generate_unsubscribe_token(

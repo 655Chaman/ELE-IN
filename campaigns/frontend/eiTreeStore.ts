@@ -507,22 +507,38 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
     visited.add(node.id)
 
     const cleanData = { ...(node.data || {}) }
-    // Paranoia Layer 0 & 2 (UI-17): Guard against empty, null, or NaN delay values
+    // Paranoia Layer 0, 1 & 2 (UI-17 & AUDIT-01): Allow valid 0-delay (immediate action) while guarding against null, NaN, negative, or Infinity
     if ("delay_hours" in cleanData || (node.type as string) === "delay" || String(node.type).includes("delay")) {
-      const num = Number(cleanData.delay_hours)
-      cleanData.delay_hours = (!isNaN(num) && num > 0) ? Math.ceil(num) : 24
+      const raw = cleanData.delay_hours
+      if (raw !== undefined && raw !== null && raw !== "") {
+        const num = Number(raw)
+        cleanData.delay_hours = (!isNaN(num) && isFinite(num) && num >= 0) ? Math.max(0, Math.ceil(num)) : 24
+      } else if ((node.type as string) === "delay" || String(node.type).includes("delay")) {
+        cleanData.delay_hours = 24
+      }
     }
     if ("delay_days" in cleanData) {
-      const num = Number(cleanData.delay_days)
-      cleanData.delay_days = (!isNaN(num) && num > 0) ? Math.ceil(num) : 1
+      const raw = cleanData.delay_days
+      if (raw !== undefined && raw !== null && raw !== "") {
+        const num = Number(raw)
+        cleanData.delay_days = (!isNaN(num) && isFinite(num) && num >= 0) ? Math.max(0, Math.ceil(num)) : 1
+      }
     }
     if ("delay_minutes" in cleanData) {
-      const num = Number(cleanData.delay_minutes)
-      cleanData.delay_minutes = (!isNaN(num) && num > 0) ? Math.ceil(num) : 15
+      const raw = cleanData.delay_minutes
+      if (raw !== undefined && raw !== null && raw !== "") {
+        const num = Number(raw)
+        cleanData.delay_minutes = (!isNaN(num) && isFinite(num) && num >= 0) ? Math.max(0, Math.ceil(num)) : 15
+      }
     }
     if ("delay" in cleanData) {
-      const num = Number(cleanData.delay)
-      cleanData.delay = (!isNaN(num) && num > 0) ? Math.ceil(num) : (cleanData.delay_hours || 24)
+      const raw = cleanData.delay
+      if (raw !== undefined && raw !== null && raw !== "") {
+        const num = Number(raw)
+        cleanData.delay = (!isNaN(num) && isFinite(num) && num >= 0) ? Math.max(0, Math.ceil(num)) : (cleanData.delay_hours ?? 24)
+      } else {
+        cleanData.delay = cleanData.delay_hours ?? 24
+      }
     }
 
     nodes.push({

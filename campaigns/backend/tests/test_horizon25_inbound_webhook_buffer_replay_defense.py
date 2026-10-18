@@ -209,6 +209,71 @@ class TestHorizon25InboundWebhookBufferReplayDefense(unittest.IsolatedAsyncioTes
         self.assertIn("Webhook timestamp rejected", cm.exception.detail)
 
     @patch("campaigns.backend.routers.inbound_webhooks.get_service_client")
+    async def test_hubspot_webhook_signature_verification_success(self, mock_get_client):
+        """Layer 1 (Security): Valid HMAC signature or Bearer secret authenticates webhook."""
+        mock_get_client.return_value = self.mock_supabase
+        mock_table = MagicMock()
+        self.mock_supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.eq.return_value = mock_table
+        mock_table.insert.return_value = mock_table
+        mock_table.upsert.return_value = mock_table
+        # Returns: 1) workspace active, 2) workspace_settings with secret, 3) existing leads empty, 4) insert lead
+        mock_table.execute.side_effect = [
+            MagicMock(data=[{"id": self.workspace_id, "status": "active"}]),
+            MagicMock(data=[{"hubspot_webhook_secret": "my-hubspot-secret-123"}]),
+            MagicMock(data=[]),
+            MagicMock(data=[{"id": "lead_123"}])
+        ]
+
+        now_ts = str(int(time.time()))
+        mock_req = MagicMock()
+        mock_req.json = AsyncMock(return_value={"email": "authed@hubspot.com"})
+        mock_req.body = AsyncMock(return_value=b'{"email": "authed@hubspot.com"}')
+        mock_req.query_params.get.return_value = None
+        mock_req.headers.get.side_effect = lambda h: {
+            "x-hubspot-request-timestamp": now_ts,
+            "x-webhook-secret": "my-hubspot-secret-123"
+        }.get(h.lower())
+
+        res = await hubspot_inbound_webhook(
+            workspace_id=self.workspace_id,
+            request=mock_req
+        )
+        self.assertEqual(res["status"], "success")
+
+    @patch("campaigns.backend.routers.inbound_webhooks.get_service_client")
+    async def test_hubspot_webhook_tampered_signature_raises_401(self, mock_get_client):
+        """Layer 1 (Security): Invalid signature or mismatched secret raises HTTP 401."""
+        mock_get_client.return_value = self.mock_supabase
+        mock_table = MagicMock()
+        self.mock_supabase.table.return_value = mock_table
+        mock_table.select.return_value = mock_table
+        mock_table.eq.return_value = mock_table
+        mock_table.execute.side_effect = [
+            MagicMock(data=[{"id": self.workspace_id, "status": "active"}]),
+            MagicMock(data=[{"hubspot_webhook_secret": "my-hubspot-secret-123"}])
+        ]
+
+        now_ts = str(int(time.time()))
+        mock_req = MagicMock()
+        mock_req.json = AsyncMock(return_value={"email": "hacker@evil.com"})
+        mock_req.body = AsyncMock(return_value=b'{"email": "hacker@evil.com"}')
+        mock_req.query_params.get.return_value = None
+        mock_req.headers.get.side_effect = lambda h: {
+            "x-hubspot-request-timestamp": now_ts,
+            "x-webhook-secret": "wrong-secret-attack"
+        }.get(h.lower())
+
+        with self.assertRaises(HTTPException) as cm:
+            await hubspot_inbound_webhook(
+                workspace_id=self.workspace_id,
+                request=mock_req
+            )
+        self.assertEqual(cm.exception.status_code, 401)
+        self.assertIn("Invalid HubSpot webhook signature", cm.exception.detail)
+
+    @patch("campaigns.backend.routers.inbound_webhooks.get_service_client")
     async def test_batch_size_flooding_ceiling(self, mock_get_client):
         """Layer 1: Reject batches exceeding MAX_BATCH_SIZE (500) with HTTP 400."""
         mock_get_client.return_value = self.mock_supabase

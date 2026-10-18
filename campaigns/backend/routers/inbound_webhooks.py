@@ -939,6 +939,91 @@ async def hubspot_inbound_webhook(
     if not is_valid_ts:
         raise HTTPException(status_code=401, detail=f"Webhook timestamp rejected: {ts_err}")
 
+    # ── Paranoia Layer 1 & 2 (AUDIT-03 & VULN-09): Cryptographic Signature & Secret Verification ──
+    configured_secret = None
+    try:
+        ws_settings_res = supabase.table("workspace_settings").select("hubspot_webhook_secret").eq("workspace_id", workspace_id).execute()
+        if ws_settings_res.data and isinstance(ws_settings_res.data, list) and len(ws_settings_res.data) > 0:
+            configured_secret = _extract_str_or_none(ws_settings_res.data[0].get("hubspot_webhook_secret"))
+    except Exception as e:
+        logger.warning(f"Error checking workspace_settings for hubspot secret: {e}")
+
+    if not configured_secret:
+        configured_secret = _extract_str_or_none(os.environ.get("HUBSPOT_CLIENT_SECRET") or os.environ.get("HUBSPOT_WEBHOOK_SECRET"))
+
+    sig_v3 = None
+    sig_v1 = None
+    incoming_secret = None
+    if hasattr(request, "headers") and hasattr(request.headers, "get"):
+        sig_v3 = _extract_header_or_none(request.headers.get("X-HubSpot-Signature-v3") or request.headers.get("x-hubspot-signature-v3"))
+        sig_v1 = _extract_header_or_none(request.headers.get("X-HubSpot-Signature") or request.headers.get("x-hubspot-signature") or request.headers.get("X-Webhook-Signature"))
+        incoming_secret = _extract_str_or_none(
+            request.headers.get("X-Webhook-Secret") or
+            request.headers.get("X-HubSpot-Secret") or
+            request.headers.get("Authorization")
+        )
+    if not incoming_secret and hasattr(request, "query_params") and hasattr(request.query_params, "get"):
+        incoming_secret = _extract_str_or_none(request.query_params.get("secret"))
+
+    is_test_env = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    if not is_test_env and not configured_secret:
+        raise HTTPException(
+            status_code=401,
+            detail="HubSpot webhook unconfigured: workspace must configure a webhook secret or HUBSPOT_CLIENT_SECRET."
+        )
+
+    authenticated = False
+    if configured_secret:
+        # 1. Shared secret comparison
+        if incoming_secret:
+            clean_inc = incoming_secret[7:].strip() if incoming_secret.startswith("Bearer ") else incoming_secret.strip()
+            if hmac.compare_digest(configured_secret, clean_inc):
+                authenticated = True
+
+        # 2. HubSpot v3 Signature verification
+        if not authenticated and sig_v3 and ts_hdr:
+            try:
+                method = request.method.upper()
+                url_str = str(request.url)
+                raw_body_bytes = await request.body()
+                source = f"{method}{url_str}{raw_body_bytes.decode('utf-8', errors='replace')}{ts_hdr}".encode("utf-8")
+                h = hmac.new(configured_secret.encode("utf-8"), source, hashlib.sha256)
+                expected_v3 = base64.b64encode(h.digest()).decode("utf-8")
+                if hmac.compare_digest(expected_v3, sig_v3):
+                    authenticated = True
+            except Exception as v3_err:
+                logger.debug(f"[HubSpotWebhook] v3 signature check error: {v3_err}")
+
+        # 3. HubSpot v1/v2 Signature verification
+        if not authenticated and sig_v1:
+            try:
+                raw_body_bytes = await request.body()
+                source_v1 = configured_secret.encode("utf-8") + raw_body_bytes
+                expected_v1 = hashlib.sha256(source_v1).hexdigest()
+                if hmac.compare_digest(expected_v1, sig_v1):
+                    authenticated = True
+            except Exception as v1_err:
+                logger.debug(f"[HubSpotWebhook] v1 signature check error: {v1_err}")
+
+        # 4. Standard verify_webhook_signature fallback
+        if not authenticated and sig_v1 and ts_hdr:
+            from integrations.backend.services.webhook_service import verify_webhook_signature
+            try:
+                raw_body_str = (await request.body()).decode("utf-8", errors="replace")
+                if verify_webhook_signature(raw_body_str, configured_secret, ts_hdr, sig_v1, tolerance_seconds=300):
+                    authenticated = True
+            except Exception:
+                pass
+
+    if configured_secret or sig_v3 or sig_v1 or incoming_secret:
+        if not authenticated:
+            raise HTTPException(status_code=401, detail="Invalid HubSpot webhook signature or unauthorized secret.")
+    elif not is_test_env:
+        raise HTTPException(
+            status_code=401,
+            detail="HubSpot webhook unconfigured: workspace must configure a webhook secret or HUBSPOT_CLIENT_SECRET."
+        )
+
     # 3. Idempotency Check (Layer 1 & 2 Replay Protection)
     explicit_key = None
     if hasattr(request, "headers") and hasattr(request.headers, "get"):
@@ -989,9 +1074,17 @@ def zapier_sample_endpoint(
 # =============================================================================
 
 def _cascade_halt_lead_linkedin_outreach(supabase, workspace_id: str, lead_id: str, error_reason: str):
-    """Halts active LinkedIn campaign execution states for a lead across the workspace."""
+    """Halts active LinkedIn campaign execution states for a lead strictly within the specified workspace (VULN-TENANT-ISOLATION)."""
     try:
-        enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+        if not workspace_id or not lead_id:
+            return
+        enr_res = (
+            supabase.table("campaign_enrollments")
+            .select("id")
+            .eq("workspace_id", workspace_id)
+            .eq("lead_id", lead_id)
+            .execute()
+        )
         if enr_res.data and isinstance(enr_res.data, list):
             enr_ids = [r["id"] for r in enr_res.data if isinstance(r, dict) and "id" in r]
             if enr_ids:
@@ -1001,9 +1094,9 @@ def _cascade_halt_lead_linkedin_outreach(supabase, workspace_id: str, lead_id: s
                     "lease_token": None,
                     "lease_expires_at": None,
                     "updated_at": datetime.utcnow().isoformat()
-                }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
+                }).eq("workspace_id", workspace_id).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
     except Exception as e:
-        logger.warning(f"Failed to cascade halt execution states for lead {lead_id}: {e}")
+        logger.warning(f"Failed to cascade halt execution states for lead {lead_id} in workspace {workspace_id}: {e}")
 
 
 @router.post("/hooks/smartlead/{workspace_id}")

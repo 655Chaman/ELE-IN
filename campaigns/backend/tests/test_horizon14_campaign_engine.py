@@ -702,6 +702,7 @@ class TestHorizon14CampaignEngine(unittest.TestCase):
         tables["suppression_list"].select.return_value.eq.return_value.in_.return_value.execute.side_effect = [
             MagicMock(data=[{"linkedin_url": "https://linkedin.com/in/sup"}]),  # linkedin check
             MagicMock(data=[]),  # email check
+            MagicMock(data=[]),  # domain check
         ]
         # Active version and accounts
         tables["campaign_versions"].select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(

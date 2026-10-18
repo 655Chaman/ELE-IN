@@ -144,11 +144,16 @@ class TestSuppressionDncAndRetroactivePurgeGuard(unittest.TestCase):
     def test_check_lead_suppression_matches_wildcard_domain(self):
         """Paranoia Layer 0: Lead with 'alice@competitor.io' matches workspace domain suppression 'competitor.io'."""
         mock_svc, tables = self._setup_multi_table_mock()
-        tables["suppression_list"].select.return_value.eq.return_value.execute.return_value = MagicMock(
+        hit_resp = MagicMock(
             data=[
                 {"id": "sup_1", "linkedin_url": None, "email": None, "domain": "competitor.io", "value": "competitor.io", "reason": "competitor"}
             ]
         )
+        empty_resp = MagicMock(data=[])
+        tables["suppression_list"].select.return_value.eq.return_value.or_.return_value.limit.return_value.execute.side_effect = [
+            hit_resp,
+            empty_resp,
+        ]
 
         check_hit = check_lead_suppression(mock_svc, "ws_dnc", email="Alice.VP@Competitor.io")
         self.assertTrue(check_hit["suppressed"])

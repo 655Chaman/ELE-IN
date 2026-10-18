@@ -384,8 +384,7 @@ def execute_bulk_import_leads(
                         except Exception:
                             inserted_count += 1
 
-        if not any_table_succeeded:
-            _record_in_memory_leads(workspace_id, list_id, deduped_leads)
+        _record_in_memory_leads(workspace_id, list_id, deduped_leads)
 
         source = "direct_table" if any_table_succeeded else "in_memory"
         final_inserted = inserted_count if any_table_succeeded else max(0, len(deduped_leads) - duplicate_count - colliding_count)

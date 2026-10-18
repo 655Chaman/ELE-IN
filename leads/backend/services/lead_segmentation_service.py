@@ -730,34 +730,43 @@ def sync_dynamic_segment_members(
     if auto_enroll_campaign_id:
         auto_enroll_campaign_id = str(auto_enroll_campaign_id).strip()
 
-    # 2. Fetch all leads in workspace (paginated to prevent 1000-row PostgREST cap)
-    all_leads = []
-    page_size = 1000
-    start = 0
-    while True:
-        leads_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).range(start, start + page_size - 1).execute()
-        batch = leads_res.data or []
-        all_leads.extend(batch)
-        if len(batch) < page_size:
-            break
-        start += page_size
+    # 2. Fetch all leads in workspace (paginated when >= 1000 to prevent PostgREST limit)
+    leads_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).execute()
+    all_leads = leads_res.data or []
+    if len(all_leads) == 1000:
+        start = 1000
+        while True:
+            try:
+                page_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).range(start, start + 999).execute()
+                batch = page_res.data or []
+                all_leads.extend(batch)
+                if len(batch) < 1000:
+                    break
+                start += 1000
+            except Exception:
+                break
 
     # 3. Evaluate rules
     matching_leads = filter_leads_in_memory(all_leads, rules)
     qualifying_ids: Set[str] = {str(ld["id"]).strip() for ld in matching_leads if ld.get("id")}
 
-    # 4. Fetch current list members (paginated)
-    current_member_ids: Set[str] = set()
-    start = 0
-    while True:
-        members_res = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).range(start, start + page_size - 1).execute()
-        batch = members_res.data or []
-        for m in batch:
-            if m.get("opportunity_id"):
-                current_member_ids.add(str(m["opportunity_id"]).strip())
-        if len(batch) < page_size:
-            break
-        start += page_size
+    # 4. Fetch current list members
+    members_res = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).execute()
+    member_rows = members_res.data or []
+    if len(member_rows) == 1000:
+        start = 1000
+        while True:
+            try:
+                m_page = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).range(start, start + 999).execute()
+                batch = m_page.data or []
+                member_rows.extend(batch)
+                if len(batch) < 1000:
+                    break
+                start += 1000
+            except Exception:
+                break
+
+    current_member_ids: Set[str] = {str(m["opportunity_id"]).strip() for m in member_rows if isinstance(m, dict) and m.get("opportunity_id")}
 
     to_add = qualifying_ids - current_member_ids
     to_remove = current_member_ids - qualifying_ids

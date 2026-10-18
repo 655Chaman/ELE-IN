@@ -30,7 +30,9 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
   const [incumbentVendor, setIncumbentVendor] = useState('apollo');
   const [domain, setDomain] = useState('');
   const [seatCount, setSeatCount] = useState(10);
+  const [seatCountStr, setSeatCountStr] = useState('10');
   const [renewalDays, setRenewalDays] = useState(60);
+  const [renewalDaysStr, setRenewalDaysStr] = useState('60');
   const [isCreating, setIsCreating] = useState(false);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
 
@@ -106,7 +108,9 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
   const [pitchTitle, setPitchTitle] = useState('VP of Sales');
   const [pitchVendor, setPitchVendor] = useState('apollo');
   const [pitchSeats, setPitchSeats] = useState(12);
+  const [pitchSeatsStr, setPitchSeatsStr] = useState('12');
   const [pitchDays, setPitchDays] = useState(60);
+  const [pitchDaysStr, setPitchDaysStr] = useState('60');
   const [isGeneratingPitch, setIsGeneratingPitch] = useState(false);
   const [generatedPitch, setGeneratedPitch] = useState<{
     linkedin_pitch?: string;
@@ -160,6 +164,10 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
         setTargetContactName('');
         setTargetContactTitle('');
         setDomain('');
+        setSeatCount(10);
+        setSeatCountStr('10');
+        setRenewalDays(60);
+        setRenewalDaysStr('60');
         mutateOpps();
       } else {
         toast.error(data.detail || 'Failed to track competitor target.');
@@ -239,7 +247,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-hidden"
       onClick={onClose}
     >
       <div
@@ -442,9 +450,16 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                                 {item.target_contact_name} ({item.target_contact_title})
                               </p>
                             </div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-muted/40 text-foreground border border-border">
-                              {item.incumbent_vendor}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {Boolean(item.simulated || item.is_simulated || item.id?.startsWith('mock-') || ['NorthStar Logistics', 'CloudMetric Labs', 'SaaSFlow Solutions'].includes(item.target_company)) && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                                  Simulated Demo
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-muted/40 text-foreground border border-border">
+                                {item.incumbent_vendor}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Renewal Status & Vulnerability Metric */}
@@ -453,15 +468,15 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                               <div className="text-[10px] text-muted-foreground font-medium">Renewal In</div>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 {isPeak ? (
-                                  <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-background text-foreground border border-border">
+                                  <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
                                     {renewalDaysVal}d (Peak Window)
                                   </span>
                                 ) : isUrgent ? (
-                                  <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-background text-foreground border border-border">
+                                  <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                                     {renewalDaysVal}d (Urgent)
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-background text-muted-foreground border border-border">
+                                  <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-muted text-muted-foreground border border-border">
                                     {renewalDaysVal}d
                                   </span>
                                 )}
@@ -473,7 +488,9 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                                 <div className="text-xs font-semibold text-foreground">{vulnScore}/100</div>
                                 <div className="flex-1 bg-muted h-1.5 rounded-full overflow-hidden">
                                   <div
-                                    className="bg-foreground h-full rounded-full"
+                                    className={`h-full rounded-full transition-all ${
+                                      vulnScore >= 80 ? 'bg-emerald-500' : vulnScore >= 60 ? 'bg-amber-500' : 'bg-primary'
+                                    }`}
                                     style={{ width: `${Math.min(100, vulnScore)}%` }}
                                   />
                                 </div>
@@ -499,7 +516,9 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                               setPitchTitle(item.target_contact_title);
                               setPitchVendor(item.incumbent_vendor);
                               setPitchSeats(item.seat_count || 10);
+                              setPitchSeatsStr(String(item.seat_count || 10));
                               setPitchDays(item.contract_renewal_days || 60);
+                              setPitchDaysStr(String(item.contract_renewal_days || 60));
                               setActiveTab('pitch_studio');
                             }}
                             className="flex-1 py-1.5 px-2 bg-muted/40 hover:bg-muted border border-border text-foreground rounded-lg text-xs font-medium transition-colors text-center"
@@ -776,8 +795,14 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     <input
                       type="number"
                       min={1}
-                      value={pitchSeats}
-                      onChange={(e) => setPitchSeats(Number(e.target.value) || 1)}
+                      max={5000}
+                      value={pitchSeatsStr}
+                      onChange={(e) => setPitchSeatsStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(1, Math.min(5000, parseInt(pitchSeatsStr, 10) || 1));
+                        setPitchSeats(val);
+                        setPitchSeatsStr(String(val));
+                      }}
                       className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
@@ -786,8 +811,14 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     <input
                       type="number"
                       min={1}
-                      value={pitchDays}
-                      onChange={(e) => setPitchDays(Number(e.target.value) || 1)}
+                      max={365}
+                      value={pitchDaysStr}
+                      onChange={(e) => setPitchDaysStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(1, Math.min(365, parseInt(pitchDaysStr, 10) || 1));
+                        setPitchDays(val);
+                        setPitchDaysStr(String(val));
+                      }}
                       className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
@@ -992,8 +1023,13 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       type="number"
                       min={1}
                       max={5000}
-                      value={seatCount}
-                      onChange={(e) => setSeatCount(Number(e.target.value) || 1)}
+                      value={seatCountStr}
+                      onChange={(e) => setSeatCountStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(1, Math.min(5000, parseInt(seatCountStr, 10) || 1));
+                        setSeatCount(val);
+                        setSeatCountStr(String(val));
+                      }}
                       className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
@@ -1003,8 +1039,13 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       type="number"
                       min={1}
                       max={365}
-                      value={renewalDays}
-                      onChange={(e) => setRenewalDays(Number(e.target.value) || 1)}
+                      value={renewalDaysStr}
+                      onChange={(e) => setRenewalDaysStr(e.target.value)}
+                      onBlur={() => {
+                        const val = Math.max(1, Math.min(365, parseInt(renewalDaysStr, 10) || 1));
+                        setRenewalDays(val);
+                        setRenewalDaysStr(String(val));
+                      }}
                       className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>

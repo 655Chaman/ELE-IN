@@ -61,6 +61,9 @@ class TestCrossChannelSyncAndUnsubscribe(unittest.TestCase):
                 m.select.return_value.eq.return_value.execute.return_value = MagicMock(
                     data=[{"id": "enr-101"}]
                 )
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{"id": "enr-101"}]
+                )
                 m.select.return_value.in_.return_value.execute.return_value = MagicMock(
                     data=[{"id": "enr-101"}]
                 )
@@ -70,6 +73,7 @@ class TestCrossChannelSyncAndUnsubscribe(unittest.TestCase):
                 )
                 m.update.return_value.in_.return_value.in_.return_value.execute.return_value = MagicMock(data=[])
                 m.update.return_value.in_.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+                m.update.return_value.eq.return_value.in_.return_value.in_.return_value.execute.return_value = MagicMock(data=[])
             elif tbl == "outbox_events":
                 m.insert.return_value.execute.return_value = MagicMock(data=[])
             elif tbl == "messages":

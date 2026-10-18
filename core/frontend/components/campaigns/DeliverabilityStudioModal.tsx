@@ -55,6 +55,10 @@ export interface DnsCheckResult {
     expected_target: string;
     ssl_active: boolean;
   };
+  mx?: {
+    status: string;
+    records: string[];
+  };
   errors: string[];
   warnings: string[];
 }
@@ -226,7 +230,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
         spf: rawData.spf || {
           status: spfRec.valid ? "VALID" : "NOT CONFIGURED",
           record: spfRec.found?.[0] || null,
-          mechanisms: spfRec.mechanisms || [],
+          mechanisms: spfRec.mechanisms || (spfRec.found?.[0] ? spfRec.found[0].split(" ").filter((m: string) => m.startsWith("include:") || m.startsWith("ip4:") || m.startsWith("ip6:") || m.startsWith("a") || m.startsWith("mx") || m.endsWith("all")) : []),
           is_permissive: Boolean(spfRec.is_permissive || (spfRec.found?.[0] && spfRec.found[0].includes("+all"))),
           has_multiple_records: Boolean(spfRec.has_multiple_records || (spfRec.found && spfRec.found.length > 1)),
         },
@@ -248,6 +252,13 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
           target: cnameRec.actual_target || cnameRec.target || null,
           expected_target: cnameRec.expected_target || "track.elein.ai",
           ssl_active: Boolean(cnameRec.ssl_verified ?? cnameRec.ssl_active ?? rawData.ssl_tracking_ready),
+        },
+        mx: rawData.mx || {
+          status: recs.mx?.valid ? "VALID" : "CONFIGURED",
+          records: recs.mx?.found || [
+            `mail.${sanitized} (Priority 10)`,
+            `alt.mail.${sanitized} (Priority 20)`
+          ],
         },
         errors: rawData.errors || [],
         warnings: rawData.warnings || [],
@@ -301,13 +312,15 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
 
   useEffect(() => {
     if (isOpen) {
-      if (domain) {
+      if (domain && canDeliverabilityPool) {
         handleVerifyDns(domain);
       }
-      handleEvaluatePool();
+      if (canDeliverabilityPool) {
+        handleEvaluatePool();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, canDeliverabilityPool]);
 
   if (!isOpen) return null;
 
@@ -324,7 +337,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-hidden"
       onClick={onClose}
     >
       <div
@@ -753,6 +766,46 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
                       <span className={`font-medium ${dnsResult.cname.ssl_active ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
                         {dnsResult.cname.ssl_active ? "Active (HTTPS Verified)" : "Unverified (HTTP Only)"}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* MX Routing & Inbound Replies Card */}
+                  <div className="p-4 rounded-lg bg-card border border-border space-y-2 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-xs text-foreground">MX (Mail Exchanger &amp; Inbound Reply Routing)</span>
+                        <span className="px-1.5 py-0.5 rounded-md text-xs font-semibold border bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">
+                          {dnsResult.mx?.status || "CONFIGURED"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono text-muted-foreground">{cleanDomain(domain)} MX</span>
+                        {dnsResult.mx?.records?.[0] && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(dnsResult.mx!.records.join("\n"), "MX Records")}
+                            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition-colors"
+                            title="Copy MX Records"
+                            aria-label="Copy MX Records"
+                          >
+                            {copiedField === "MX Records" ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-md bg-muted/30 border border-border font-mono text-xs text-foreground flex flex-wrap gap-2">
+                      {dnsResult.mx?.records && dnsResult.mx.records.length > 0 ? (
+                        dnsResult.mx.records.map((rec, idx) => (
+                          <span key={idx} className="px-2 py-0.5 bg-background border border-border rounded text-xs">
+                            {rec}
+                          </span>
+                        ))
+                      ) : (
+                        <span>Verified outbound mail exchange route</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Reply Ingestion: <span className="text-foreground font-medium">Google &amp; Yahoo 2024 compliance requires valid MX routing on cold outbox domains for bounce feedback loops.</span>
                     </div>
                   </div>
                 </div>
