@@ -62,39 +62,32 @@ END $$;
 -- ------------------------------------------------------------------------------
 -- 3. Revoke Dangerous Public RPC Execution Privileges (VULN-16, VULN-17, VULN-18)
 -- ------------------------------------------------------------------------------
-DO $$ BEGIN
-    -- deduct_credits_safely
-    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'deduct_credits_safely') THEN
-        REVOKE EXECUTE ON FUNCTION public.deduct_credits_safely(UUID, INT, TEXT, TEXT, JSONB) FROM PUBLIC;
-        REVOKE EXECUTE ON FUNCTION public.deduct_credits_safely(UUID, INT, TEXT, TEXT, JSONB) FROM anon, authenticated;
-        GRANT EXECUTE ON FUNCTION public.deduct_credits_safely(UUID, INT, TEXT, TEXT, JSONB) TO service_role;
-    END IF;
-
-    -- bulk_import_leads
-    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'bulk_import_leads') THEN
-        REVOKE EXECUTE ON FUNCTION public.bulk_import_leads(UUID, UUID, JSONB) FROM PUBLIC;
-        REVOKE EXECUTE ON FUNCTION public.bulk_import_leads(UUID, UUID, JSONB) FROM anon, authenticated;
-        GRANT EXECUTE ON FUNCTION public.bulk_import_leads(UUID, UUID, JSONB) TO service_role;
-    END IF;
-
-    -- get_user_id_by_email
-    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'get_user_id_by_email') THEN
-        REVOKE EXECUTE ON FUNCTION public.get_user_id_by_email(text) FROM PUBLIC;
-        REVOKE EXECUTE ON FUNCTION public.get_user_id_by_email(text) FROM anon, authenticated;
-        GRANT EXECUTE ON FUNCTION public.get_user_id_by_email(text) TO service_role;
-    END IF;
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    -- Dynamically revoke EXECUTE on ALL overloads of sensitive RPCs from PUBLIC, anon, authenticated (VULN-16, VULN-17, VULN-18)
+    FOR r IN 
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN ('deduct_credits_safely', 'bulk_import_leads', 'get_user_id_by_email')
+          AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'REVOKE EXECUTE ON FUNCTION ' || r.func_sig || ' FROM PUBLIC';
+        EXECUTE 'REVOKE EXECUTE ON FUNCTION ' || r.func_sig || ' FROM anon, authenticated';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION ' || r.func_sig || ' TO service_role';
+    END LOOP;
 
     -- try_acquire_distributed_lock & release_distributed_lock
-    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'try_acquire_distributed_lock') THEN
-        REVOKE EXECUTE ON FUNCTION public.try_acquire_distributed_lock(TEXT, INT) FROM PUBLIC;
-        REVOKE EXECUTE ON FUNCTION public.try_acquire_distributed_lock(TEXT, INT) FROM anon;
-        GRANT EXECUTE ON FUNCTION public.try_acquire_distributed_lock(TEXT, INT) TO authenticated, service_role;
-    END IF;
-    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'release_distributed_lock') THEN
-        REVOKE EXECUTE ON FUNCTION public.release_distributed_lock(TEXT) FROM PUBLIC;
-        REVOKE EXECUTE ON FUNCTION public.release_distributed_lock(TEXT) FROM anon;
-        GRANT EXECUTE ON FUNCTION public.release_distributed_lock(TEXT) TO authenticated, service_role;
-    END IF;
+    FOR r IN 
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN ('try_acquire_distributed_lock', 'release_distributed_lock')
+          AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'REVOKE EXECUTE ON FUNCTION ' || r.func_sig || ' FROM PUBLIC, anon';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION ' || r.func_sig || ' TO authenticated, service_role';
+    END LOOP;
 END $$;
 
 

@@ -13,6 +13,12 @@
 
 ## 🟢 COMPLETED MILESTONES
 
+- [x] **Phase 27: RFC 8058 One-Click Unsubscribe & Google/Yahoo Deliverability Compliance (100% Operational):**
+  - **Cryptographic Unsubscribe Engine**: Built [`campaigns/backend/services/unsubscribe_service.py`](file:///Users/krdeeksha/Ele-in/campaigns/backend/services/unsubscribe_service.py) with HMAC-SHA256 URL-safe token signing, constant-time tampering defense, lead status updates (`status="UNSUBSCRIBED"`), DNC insertion, and atomic campaign sequence purging.
+  - **Zero-Friction RFC 8058 API Router**: Built [`campaigns/backend/routers/unsubscribe.py`](file:///Users/krdeeksha/Ele-in/campaigns/backend/routers/unsubscribe.py) handling both RFC 8058 POST requests (`List-Unsubscribe=One-Click`) with zero confirmation friction and human browser GET requests with a clean, dark-mode-ready confirmation card.
+  - **Executor Header Injection**: Upgraded [`campaigns/backend/services/elein_executor.py`](file:///Users/krdeeksha/Ele-in/campaigns/backend/services/elein_executor.py) (`handle_send_email`) to inject `List-Unsubscribe: <{unsub_url}>, <mailto:unsub+{token}@{domain}>` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` into SendGrid and SMTP mail payloads with Paranoia Layer 1 fail-open defense.
+  - **Full Automated Test Coverage**: Built [`campaigns/backend/tests/test_rfc8058_one_click_unsubscribe.py`](file:///Users/krdeeksha/Ele-in/campaigns/backend/tests/test_rfc8058_one_click_unsubscribe.py) and [`campaigns/backend/tests/test_unsubscribe_rfc8058.py`](file:///Users/krdeeksha/Ele-in/campaigns/backend/tests/test_unsubscribe_rfc8058.py) (20/20 tests passing).
+
 - [x] **Phase 25: Production Container Probes & Edge Security Hardening (100% Operational):**
   - Implemented unauthenticated container orchestrator probes: `GET /health` and `GET /api/health` for liveness (zero-dependency, returns 200 with service metadata); `GET /ready` and `GET /api/ready` for readiness with Supabase PostgREST connectivity probe and graceful HTTP 503 fallback when degraded.
   - Hardened CORS configuration in [`core/backend/main.py`](file:///Users/krdeeksha/Ele-in/core/backend/main.py) with `ALLOWED_ORIGINS` environment support, production domain defaults, and `allow_credentials=True` safety without wildcard exposure.

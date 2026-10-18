@@ -18,14 +18,17 @@ import {
 import { fetchWithAuth as apiFetch } from "@/lib/apiClient";
 import { usePaywall } from "../../contexts/PaywallContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
 export interface StoWindowResult {
   best_hour: number;
   confidence: number;
   source: "historical_engagement" | "industry_prior" | string;
-  sample_size: number;
-  hourly_distribution: Record<string, number>;
-  allowed_window: [number, number];
+  data_points?: number;
+  sample_size?: number;
+  scores?: Record<string, number>;
+  hourly_distribution?: Record<string, number>;
+  allowed_window?: [number, number];
 }
 
 export interface StoEvaluationResponse {
@@ -125,6 +128,17 @@ export const SendTimeOptimizationStudioModal: React.FC<
   const [appliedSuccess, setAppliedSuccess] = useState<boolean>(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   // Sync props when opened
   useEffect(() => {
     if (isOpen) {
@@ -146,6 +160,8 @@ export const SendTimeOptimizationStudioModal: React.FC<
     }
     return [safeStart, safeEnd];
   };
+
+  const isCurfewInverted = startHour > endHour;
 
   const runStoEvaluation = async (
     overrideTz?: string,
@@ -257,16 +273,24 @@ export const SendTimeOptimizationStudioModal: React.FC<
 
   if (!isOpen) return null;
 
-  const dist = evaluation?.sto_window?.hourly_distribution || {
-    "8": 0.1,
-    "9": 0.24,
-    "10": 0.22,
-    "11": 0.12,
-    "13": 0.06,
-    "14": 0.14,
-    "15": 0.08,
-    "16": 0.04,
-  };
+  const rawDist =
+    evaluation?.sto_window?.scores ||
+    evaluation?.sto_window?.hourly_distribution ||
+    null;
+
+  const dist: Record<string, number> =
+    rawDist && Object.keys(rawDist).length > 0
+      ? rawDist
+      : {
+          "8": 0.1,
+          "9": 0.24,
+          "10": 0.22,
+          "11": 0.12,
+          "13": 0.06,
+          "14": 0.14,
+          "15": 0.08,
+          "16": 0.04,
+        };
 
   const maxProb = Math.max(
     0.01,
@@ -292,27 +316,31 @@ export const SendTimeOptimizationStudioModal: React.FC<
     if (onApplyStoMode) {
       onApplyStoMode({
         scheduling_mode: "ai_sto",
-        timezone,
+        timezone: initialTimezone || timezone,
         start_hour: safeStart,
         end_hour: safeEnd,
       });
     }
     setAppliedSuccess(true);
+    toast.success("AI Send-Time Optimization applied to campaign schedule");
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sto-studio-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl rounded-xl bg-card border border-border shadow-lg overflow-hidden text-foreground my-8"
+        className="relative w-full max-w-4xl max-h-[90vh] rounded-xl bg-card border border-border shadow-lg flex flex-col overflow-hidden text-foreground my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-base font-semibold tracking-tight text-foreground">
+            <h2 id="sto-studio-modal-title" className="text-base font-semibold tracking-tight text-foreground">
               Send-Time Optimization & Activity Pacing Studio
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -323,13 +351,14 @@ export const SendTimeOptimizationStudioModal: React.FC<
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            aria-label="Close dialog"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto">
           {/* Free Tier Banner if gated */}
           {!canAiSto && (
             <div className="p-4 rounded-lg bg-muted/30 border border-border flex items-center justify-between gap-4">
@@ -453,10 +482,15 @@ export const SendTimeOptimizationStudioModal: React.FC<
                     min={0}
                     max={23}
                     value={startHour}
-                    onChange={(e) =>
-                      setStartHour(Math.max(0, Math.min(23, Number(e.target.value) || 0)))
-                    }
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        setStartHour(0);
+                      } else {
+                        setStartHour(Math.max(0, Math.min(23, parseInt(val, 10) || 0)));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
@@ -468,13 +502,28 @@ export const SendTimeOptimizationStudioModal: React.FC<
                     min={0}
                     max={23}
                     value={endHour}
-                    onChange={(e) =>
-                      setEndHour(Math.max(0, Math.min(23, Number(e.target.value) || 0)))
-                    }
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        setEndHour(0);
+                      } else {
+                        setEndHour(Math.max(0, Math.min(23, parseInt(val, 10) || 0)));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
               </div>
+
+              {isCurfewInverted && (
+                <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-500 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    Curfew start ({startHour}:00) cannot be after end ({endHour}:00). System will default to 09:00 - 17:00.
+                  </span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pt-1">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
                   <input
@@ -548,7 +597,11 @@ export const SendTimeOptimizationStudioModal: React.FC<
               </div>
               <div className="text-xs text-muted-foreground mt-1">
                 {evaluation?.sto_window?.source === "historical_engagement"
-                  ? `Historical Telemetry (${evaluation.sto_window.sample_size} events)`
+                  ? `Historical Telemetry (${
+                      evaluation.sto_window.data_points ??
+                      evaluation.sto_window.sample_size ??
+                      0
+                    } events)`
                   : "B2B Executive Prior (Cold Start)"}
               </div>
             </div>
@@ -577,7 +630,7 @@ export const SendTimeOptimizationStudioModal: React.FC<
                   24-Hour Local Engagement Probability Distribution ({evaluation?.timezone || timezone})
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block" />
                   Selected Peak Slot ({String(bestHour).padStart(2, "0")}:00)
@@ -587,54 +640,68 @@ export const SendTimeOptimizationStudioModal: React.FC<
                   Allowed Working Window ({String(winStart).padStart(2, "0")}:00-{String(winEnd).padStart(2, "0")}:00)
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-muted border border-border inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-sm bg-muted/80 border border-border inline-block" />
                   Curfew Blocked
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-24 gap-1 items-end h-36 pt-4 px-1 border-b border-border">
-              {Array.from({ length: 24 }, (_, hr) => {
-                const prob = Number(dist[String(hr)] ?? dist[hr] ?? 0.01);
-                const heightPct = Math.max(8, Math.round((prob / maxProb) * 100));
-                const inWindow = hr >= winStart && hr <= winEnd;
-                const isBest = hr === bestHour;
+            {/* Horizontally scrollable wrapper to prevent chart collapse on narrow displays */}
+            <div className="overflow-x-auto pb-2 -mx-1 px-1">
+              <div className="min-w-[540px]">
+                <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-1 items-end h-36 pt-6 px-1 border-b border-border">
+                  {Array.from({ length: 24 }, (_, hr) => {
+                    const prob = Number(dist[String(hr)] ?? dist[hr] ?? 0.01);
+                    const heightPct = Math.max(8, Math.round((prob / maxProb) * 100));
+                    const inWindow = hr >= winStart && hr <= winEnd;
+                    const isBest = hr === bestHour;
 
-                return (
-                  <div
-                    key={hr}
-                    className="flex flex-col items-center justify-end h-full group relative"
-                  >
-                    {/* Tooltip */}
-                    <div className="opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity absolute -top-8 z-10 px-1.5 py-0.5 rounded bg-card border border-border text-xs text-foreground whitespace-nowrap shadow-sm">
-                      {String(hr).padStart(2, "0")}:00 - {(prob * 100).toFixed(1)}%
-                    </div>
-                    <div
-                      style={{ height: `${heightPct}%` }}
-                      className={`w-full rounded-t transition-all ${
-                        isBest
-                          ? "bg-primary"
-                          : inWindow
-                          ? "bg-primary/40 hover:bg-primary/60"
-                          : "bg-muted opacity-50"
-                      }`}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+                    const tooltipAlign =
+                      hr === 0
+                        ? "left-0"
+                        : hr === 23
+                        ? "right-0"
+                        : "left-1/2 -translate-x-1/2";
 
-            <div className="grid grid-cols-24 gap-1 text-xs text-muted-foreground font-mono text-center">
-              {Array.from({ length: 24 }, (_, hr) => (
-                <div
-                  key={hr}
-                  className={
-                    hr === bestHour ? "text-primary font-semibold" : ""
-                  }
-                >
-                  {String(hr).padStart(2, "0")}
+                    return (
+                      <div
+                        key={hr}
+                        className="flex flex-col items-center justify-end h-full group relative"
+                      >
+                        {/* Tooltip with boundary-safe clamping */}
+                        <div
+                          className={`opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity absolute -top-8 z-20 px-1.5 py-0.5 rounded bg-card border border-border text-[11px] text-foreground whitespace-nowrap shadow-sm ${tooltipAlign}`}
+                        >
+                          {String(hr).padStart(2, "0")}:00 - {(prob * 100).toFixed(1)}%
+                        </div>
+                        <div
+                          style={{ height: `${heightPct}%` }}
+                          className={`w-full rounded-t transition-all ${
+                            isBest
+                              ? "bg-primary shadow-xs ring-1 ring-primary/50"
+                              : inWindow
+                              ? "bg-primary/40 hover:bg-primary/60"
+                              : "bg-muted/70 border border-dashed border-border/60 opacity-60"
+                          }`}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
+
+                <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-1 text-[11px] text-muted-foreground font-mono text-center pt-2">
+                  {Array.from({ length: 24 }, (_, hr) => (
+                    <div
+                      key={hr}
+                      className={
+                        hr === bestHour ? "text-primary font-semibold" : ""
+                      }
+                    >
+                      {String(hr).padStart(2, "0")}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -677,7 +744,7 @@ export const SendTimeOptimizationStudioModal: React.FC<
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-border bg-background">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-border bg-background shrink-0">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {isSchedulingModeSto || appliedSuccess ? (
               <span className="inline-flex items-center gap-1.5 text-primary font-medium">

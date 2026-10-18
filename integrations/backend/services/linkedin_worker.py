@@ -104,34 +104,100 @@ class LinkedInWorker:
         self.account_id = account_id
         self._last_security_event = None
 
-        raw_cookies = cookies if cookies is not None else cookies_json
-        if isinstance(raw_cookies, str):
-            try:
-                self.cookies = json.loads(raw_cookies) if raw_cookies.strip() else []
-            except Exception as e:
-                raise ValueError(f"Invalid cookies_json format: {e}")
-        elif isinstance(raw_cookies, list):
-            self.cookies = raw_cookies
-        elif isinstance(raw_cookies, dict):
-            self.cookies = [raw_cookies]
-        elif raw_cookies is None:
-            self.cookies = []
-        else:
-            raise ValueError("cookies must be a JSON string, list, or dict")
+        import ast
 
-        if not isinstance(self.cookies, list):
-            self.cookies = []
-            
+        def _deserialize_cookies(raw: Any) -> list:
+            """
+            Paranoia Layer 0, 1 & 2 (ENG-15): Multi-strategy resilient cookie parser.
+            Parses:
+            1. Standard JSON string: '[{"name": "li_at", "value": "..."}]'
+            2. Double-encoded JSON string: '"[{\\"name\\": \\"li_at\\", ...}]"'
+            3. Python-formatted literal with single quotes: "[{'name': 'li_at', ...}]"
+            4. HTTP Cookie Header string: "li_at=AQED...; JSESSIONID=\"ajax:123\"; bcookie=..."
+            5. Raw list or dict.
+            """
+            if raw is None:
+                return []
+            if isinstance(raw, list):
+                return raw
+            if isinstance(raw, dict):
+                return [raw]
+            if not isinstance(raw, str):
+                raise ValueError("cookies must be a JSON string, list, or dict")
+
+            cleaned = raw.strip()
+            if not cleaned:
+                return []
+
+            # Strategy 1: Standard JSON decoding (with recursion for double-encoding)
+            try:
+                parsed = json.loads(cleaned)
+                if isinstance(parsed, str):
+                    parsed = json.loads(parsed)
+                if isinstance(parsed, list):
+                    return parsed
+                if isinstance(parsed, dict):
+                    return [parsed]
+            except Exception:
+                pass
+
+            # Strategy 2: Python ast.literal_eval for single quotes or trailing commas
+            try:
+                parsed = ast.literal_eval(cleaned)
+                if isinstance(parsed, list):
+                    return parsed
+                if isinstance(parsed, dict):
+                    return [parsed]
+            except Exception:
+                pass
+
+            # Strategy 3: Semicolon-delimited HTTP Cookie Header string
+            # e.g. "li_at=AQED...; JSESSIONID=\"ajax:1234\"; bcookie=..."
+            if "=" in cleaned:
+                header_cookies = []
+                pairs = [p.strip() for p in cleaned.split(";") if p.strip()]
+                for pair in pairs:
+                    if "=" not in pair:
+                        continue
+                    k, v = pair.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k:
+                        header_cookies.append({
+                            "name": k,
+                            "value": v,
+                            "domain": ".linkedin.com",
+                            "path": "/",
+                            "secure": True,
+                            "httpOnly": (k in ["li_at", "JSESSIONID"])
+                        })
+                if header_cookies:
+                    return header_cookies
+
+            raise ValueError("Invalid cookies format: could not parse as JSON or HTTP Cookie header")
+
+        raw_cookies = cookies if cookies is not None else cookies_json
+        self.cookies = _deserialize_cookies(raw_cookies)
         self.cookies = [c for c in self.cookies if isinstance(c, dict)]
+
         for ck in self.cookies:
+            # Strip redundant wrapping quotes from value if present
+            if "value" in ck and isinstance(ck["value"], str):
+                val = ck["value"].strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    ck["value"] = val[1:-1]
             if "sameSite" in ck and ck["sameSite"] not in ["Strict", "Lax", "None"]:
                 del ck["sameSite"]
-                
+            if not ck.get("domain"):
+                ck["domain"] = ".linkedin.com"
+            if not ck.get("path"):
+                ck["path"] = "/"
+
         li_at_cookie = next((c for c in self.cookies if c.get("name") == "li_at"), None)
         if li_at_cookie and li_at_cookie.get("domain"):
             if "linkedin.com" not in li_at_cookie["domain"].lower():
                 raise ValueError("Cookie 'li_at' present but not from linkedin.com domain")
-                
+
         jsessionid_cookie = next((c for c in self.cookies if c.get("name") == "JSESSIONID"), None)
         if jsessionid_cookie and jsessionid_cookie.get("domain"):
             if "linkedin.com" not in jsessionid_cookie["domain"].lower():

@@ -351,46 +351,61 @@ export function CampaignPreflightModal({
                   {data.checks.map((check) => {
                     const isPass = check.status === "pass"
                     const isWarn = check.status === "warn"
+                    const isFail = check.status === "fail"
                     return (
                       <div
                         key={check.id}
-                        className="p-4 rounded-lg border border-border bg-background transition-colors"
+                        className={cn(
+                          "p-4 rounded-lg border transition-all",
+                          isFail 
+                            ? "bg-destructive/10 border-destructive/40 shadow-[0_0_15px_rgba(239,68,68,0.1)] ring-1 ring-destructive/30" 
+                            : isWarn 
+                            ? "bg-amber-500/5 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.05)]" 
+                            : "bg-background border-border"
+                        )}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-3">
-                            <div className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 border border-border bg-card text-muted-foreground">
-                              {check.id === "senders" ? <Linkedin size={13} /> :
-                               check.id === "audience" ? <Users size={13} /> :
-                               isPass ? <CheckCircle2 size={13} /> :
-                               isWarn ? <AlertTriangle size={13} /> :
+                            <div className={cn(
+                              "w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 border",
+                              isFail 
+                                ? "bg-destructive/20 border-destructive/50 text-destructive" 
+                                : isWarn 
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-500" 
+                                : "bg-card border-border text-muted-foreground"
+                            )}>
+                              {check.id === "senders" ? <Linkedin size={13} className={isFail ? "text-destructive" : isWarn ? "text-amber-500" : undefined} /> :
+                               check.id === "audience" ? <Users size={13} className={isFail ? "text-destructive" : isWarn ? "text-amber-500" : undefined} /> :
+                               isPass ? <CheckCircle2 size={13} className="text-emerald-500" /> :
+                               isWarn ? <AlertTriangle size={13} className="text-amber-500" /> :
                                <AlertCircle size={13} className="text-destructive" />}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
-                                <h5 className="font-semibold text-xs text-foreground">{check.title}</h5>
+                                <h5 className={cn("font-semibold text-xs", isFail ? "text-destructive font-bold" : isWarn ? "text-amber-500" : "text-foreground")}>{check.title}</h5>
                                 <span className={cn(
-                                  "text-[10px] font-medium px-1.5 py-0.5 rounded border",
-                                  isPass ? "bg-muted border-border text-foreground" :
-                                  isWarn ? "bg-muted border-border text-muted-foreground" :
-                                  "bg-destructive/10 border-destructive/30 text-destructive"
+                                  "text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider",
+                                  isPass ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" :
+                                  isWarn ? "bg-amber-500/10 border-amber-500/30 text-amber-500" :
+                                  "bg-destructive text-destructive-foreground font-black shadow-xs"
                                 )}>
-                                  {isPass ? "Passed" : isWarn ? "Warning" : "Blocked"}
+                                  {isPass ? "Passed" : isWarn ? "Warning" : "Hard Blocker"}
                                 </span>
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">{check.summary}</p>
+                              <p className={cn("text-xs mt-0.5", isFail ? "text-destructive/90 font-medium" : isWarn ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{check.summary}</p>
                             </div>
                           </div>
 
-                          <span className="text-xs font-mono text-muted-foreground shrink-0">
+                          <span className={cn("text-xs font-mono shrink-0", isFail ? "text-destructive font-bold" : "text-muted-foreground")}>
                             {check.score}/20 pts
                           </span>
                         </div>
 
                         {check.details && check.details.length > 0 && (
-                          <div className="mt-3 pt-2.5 border-t border-border pl-10 space-y-1">
+                          <div className={cn("mt-3 pt-2.5 border-t pl-10 space-y-1", isFail ? "border-destructive/20" : isWarn ? "border-amber-500/20" : "border-border")}>
                             {check.details.map((d, di) => (
-                              <p key={di} className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                <span className="w-1 h-1 rounded-full bg-muted-foreground shrink-0" />
+                              <p key={di} className={cn("text-xs flex items-center gap-1.5", isFail ? "text-destructive/80 font-medium" : isWarn ? "text-amber-600/90 dark:text-amber-400/90" : "text-muted-foreground")}>
+                                <span className={cn("w-1 h-1 rounded-full shrink-0", isFail ? "bg-destructive" : isWarn ? "bg-amber-500" : "bg-muted-foreground")} />
                                 <span>{d}</span>
                               </p>
                             ))}
@@ -642,17 +657,19 @@ export function CampaignPreflightModal({
               <button
                 type="button"
                 disabled
-                className="w-full sm:w-auto px-4 py-2 text-xs font-medium rounded-md bg-muted text-muted-foreground cursor-not-allowed border border-border"
+                className="w-full sm:w-auto px-4 py-2 text-xs font-bold rounded-md bg-destructive/15 text-destructive border border-destructive/40 cursor-not-allowed flex items-center justify-center gap-2 shadow-xs"
               >
-                Resolve Blockers to Launch
+                <AlertCircle size={14} className="text-destructive shrink-0" />
+                <span>Launch Blocked: {data?.critical_errors.length || 0} Hard Blocker(s)</span>
               </button>
             ) : isWarningState && !acknowledgeWarnings ? (
               <button
                 type="button"
                 onClick={() => setAcknowledgeWarnings(true)}
-                className="w-full sm:w-auto px-4 py-2 text-xs font-medium rounded-md bg-background hover:bg-muted text-foreground border border-border transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 text-xs font-medium rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors cursor-pointer flex items-center gap-1.5"
               >
-                Acknowledge Warnings & Proceed
+                <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+                <span>Acknowledge Warnings & Proceed</span>
               </button>
             ) : (
               <button

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import {
-  Repeat, Users, RotateCcw, RefreshCw, Copy, Check, ExternalLink,
-  ArrowRight, ShieldAlert, Rocket, X, Plus, Briefcase, Award, DollarSign, GitBranch, TrendingUp
+  Repeat, Users, RotateCcw, RefreshCw, Copy, Check,
+  ArrowRight, ShieldAlert, Rocket, X, Plus, Award, DollarSign, GitBranch, TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -20,6 +20,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   const { openPaywall } = usePaywall();
   const [activeTab, setActiveTab] = useState<'boomerang' | 'warm_intros' | 'revivals'>('boomerang');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [enrollingId, setEnrollingId] = useState<string | null>(null);
 
   // ── Tab 1: Job-Change Boomerang State ──
   const [relFilter, setRelFilter] = useState<string>('all');
@@ -33,19 +34,8 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   const [jcDays, setJcDays] = useState(21);
   const [isSavingJc, setIsSavingJc] = useState(false);
 
-  const { data: jcData, mutate: mutateJc } = useSWR<{ success: boolean; job_changes: any[] }>(
-    `/api/elein/boomerang/job-changes${relFilter !== 'all' ? `?relationship=${relFilter}` : ''}`,
-    fetcher,
-    { revalidateOnFocus: false }
-  );
-
   // ── Tab 2: Warm Intro Graph State ──
   const [scriptMode, setScriptMode] = useState<Record<string, 'connector' | 'direct'>>({});
-  const { data: wpData, mutate: mutateWp } = useSWR<{ success: boolean; warm_intros: any[] }>(
-    '/api/elein/boomerang/warm-intros',
-    fetcher,
-    { revalidateOnFocus: false }
-  );
 
   // ── Tab 3: Closed-Lost Revival State ──
   const [reasonFilter, setReasonFilter] = useState<string>('all');
@@ -58,6 +48,35 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   const [revValue, setRevValue] = useState(35000);
   const [revTrigger, setRevTrigger] = useState('Shipped Autonomous ABM Multithreading & Buying Committee Studio');
   const [isSavingRev, setIsSavingRev] = useState(false);
+
+  // Keyboard navigation & Escape dismiss
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (addJobChangeOpen) {
+          setAddJobChangeOpen(false);
+        } else if (addRevivalOpen) {
+          setAddRevivalOpen(false);
+        } else if (onClose) {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [addJobChangeOpen, addRevivalOpen, onClose]);
+
+  const { data: jcData, mutate: mutateJc } = useSWR<{ success: boolean; job_changes: any[] }>(
+    `/api/elein/boomerang/job-changes${relFilter !== 'all' ? `?relationship=${relFilter}` : ''}`,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  const { data: wpData, mutate: mutateWp } = useSWR<{ success: boolean; warm_intros: any[] }>(
+    '/api/elein/boomerang/warm-intros',
+    fetcher,
+    { revalidateOnFocus: false }
+  );
 
   const { data: revData, mutate: mutateRev } = useSWR<{ success: boolean; revivals: any[] }>(
     `/api/elein/boomerang/revivals${reasonFilter !== 'all' ? `?reason=${reasonFilter}` : ''}`,
@@ -79,6 +98,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   };
 
   const handleEnroll = async (itemId: string, itemType: 'job_change' | 'warm_intro' | 'revival', label: string) => {
+    setEnrollingId(itemId);
     try {
       const res = await fetchWithAuth('/api/elein/boomerang/enroll', {
         method: 'POST',
@@ -104,6 +124,8 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
       }
     } catch (e: any) {
       toast.error('Error enrolling: ' + e.message);
+    } finally {
+      setEnrollingId(null);
     }
   };
 
@@ -204,13 +226,22 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl h-[90vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-card-foreground">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="boomerang-modal-title"
+        className="relative w-full max-w-6xl max-h-[90vh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-foreground my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-foreground">
+            <h2 id="boomerang-modal-title" className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
               Champion Boomerang, Warm Intro Graph & Deal Revival Studio
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -226,14 +257,16 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                 mutateRev();
                 toast.success('Boomerang & Revival telemetry synced!');
               }}
-              className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors"
+              aria-label="Sync telemetry"
+              className="p-2 rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors"
+                aria-label="Close studio"
+                className="p-2 rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -242,9 +275,9 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
         </div>
 
         {/* KPI Ribbon */}
-        <div className="grid grid-cols-4 gap-4 px-6 py-3 border-b border-border bg-muted/40">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-background border border-border text-muted-foreground">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 px-4 sm:px-6 py-3 border-b border-border bg-muted/60 text-xs">
+          <div className="bg-background border border-border rounded-lg p-2.5 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-muted/60 border border-border text-muted-foreground">
               <Award className="w-4 h-4" />
             </div>
             <div>
@@ -253,8 +286,8 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-background border border-border text-muted-foreground">
+          <div className="bg-background border border-border rounded-lg p-2.5 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-muted/60 border border-border text-muted-foreground">
               <GitBranch className="w-4 h-4" />
             </div>
             <div>
@@ -263,18 +296,19 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-background border border-border text-muted-foreground">
+          {/* Leading Financial Metric */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/20 text-primary">
               <DollarSign className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">Revivable Pipeline</div>
-              <div className="text-sm font-semibold text-foreground">${totalRecoverablePipeline.toLocaleString()} ACV</div>
+              <div className="text-xs text-primary/80 font-medium">Revivable Pipeline</div>
+              <div className="text-sm font-bold text-primary">${totalRecoverablePipeline.toLocaleString()} ACV</div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-background border border-border text-muted-foreground">
+          <div className="bg-background border border-border rounded-lg p-2.5 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-muted/60 border border-border text-muted-foreground">
               <TrendingUp className="w-4 h-4" />
             </div>
             <div>
@@ -285,12 +319,18 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-border bg-background px-6">
+        <div
+          role="tablist"
+          aria-label="Boomerang Revival Sections"
+          className="flex border-b border-border bg-background px-6 overflow-x-auto scrollbar-none whitespace-nowrap shrink-0"
+        >
           <button
+            role="tab"
+            aria-selected={activeTab === 'boomerang'}
             onClick={() => setActiveTab('boomerang')}
-            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all ${
+            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               activeTab === 'boomerang'
-                ? 'border-foreground text-foreground'
+                ? 'border-primary text-primary font-semibold'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -299,10 +339,12 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeTab === 'warm_intros'}
             onClick={() => setActiveTab('warm_intros')}
-            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all ${
+            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               activeTab === 'warm_intros'
-                ? 'border-foreground text-foreground'
+                ? 'border-primary text-primary font-semibold'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -311,10 +353,12 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeTab === 'revivals'}
             onClick={() => setActiveTab('revivals')}
-            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all ${
+            className={`py-3 px-4 text-xs font-medium flex items-center gap-2 border-b-2 transition-all shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               activeTab === 'revivals'
-                ? 'border-foreground text-foreground'
+                ? 'border-primary text-primary font-semibold'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -366,36 +410,36 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                         <div className="font-semibold text-foreground text-sm">{jc.prospect_name}</div>
                         {getRelBadge(jc.relationship_type)}
                         {jc.is_internal_promotion && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-muted/40 text-muted-foreground border border-border">
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted/60 text-muted-foreground border border-border">
                             Internal Promotion Guard Active
                           </span>
                         )}
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/40 text-foreground border border-border">
+                        <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/60 text-foreground border border-border">
                           {jc.buying_window_score}/100 Buying Window (Day {jc.days_in_new_role})
                         </span>
                       </div>
                     </div>
 
                     {/* Visual Job Move Banner */}
-                    <div className="flex flex-col sm:flex-row items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border text-xs">
-                      <div className="flex-1">
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Previous Role</div>
+                    <div className="flex flex-col sm:flex-row items-center gap-3 p-3 rounded-lg bg-muted/60 border border-border text-xs">
+                      <div className="flex-1 w-full sm:w-auto">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">Previous Role</div>
                         <div className="font-medium text-muted-foreground mt-0.5">{jc.previous_title} @ <span className="text-foreground">{jc.previous_company}</span></div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <div className="flex-1">
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">New Executive Role (First 90 Days)</div>
+                      <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 rotate-90 sm:rotate-0 transition-transform" />
+                      <div className="flex-1 w-full sm:w-auto">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">New Executive Role (First 90 Days)</div>
                         <div className="font-semibold text-foreground mt-0.5">{jc.new_title} @ <span className="text-foreground">{jc.new_company}</span></div>
                       </div>
                     </div>
 
                     {/* Playbook Message */}
                     <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium text-muted-foreground">Auto-Synthesized Boomerang Playbook Message:</div>
-                      <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-foreground whitespace-pre-line font-mono leading-relaxed">
+                      <div className="text-xs font-medium text-muted-foreground">Auto-Synthesized Boomerang Playbook Message:</div>
+                      <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-foreground whitespace-pre-line font-sans leading-relaxed">
                         {jc.playbook_message}
                       </div>
                     </div>
@@ -403,7 +447,8 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
                         onClick={() => copyToClipboard(jc.playbook_message, jc.id)}
-                        className="px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5"
+                        aria-label="Copy playbook message"
+                        className="px-3 py-1.5 rounded-lg bg-muted/60 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {copiedId === jc.id ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
                         Copy Playbook
@@ -411,9 +456,18 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
                       <button
                         onClick={() => handleEnroll(jc.id, 'job_change', jc.prospect_name)}
-                        className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-1.5"
+                        disabled={enrollingId === jc.id || jc.status === 'enrolled'}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          jc.status === 'enrolled'
+                            ? 'bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60'
+                            : 'bg-primary hover:bg-primary/90 text-primary-foreground active:scale-[0.98]'
+                        }`}
                       >
-                        <Rocket className="w-3.5 h-3.5" />
+                        {enrollingId === jc.id ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Rocket className="w-3.5 h-3.5" />
+                        )}
                         {jc.status === 'enrolled' ? 'Enrolled in Sequence' : 'Launch Boomerang Sequence'}
                       </button>
                     </div>
@@ -438,30 +492,30 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                         <span className="text-xs text-muted-foreground">({wp.target_title} @ {wp.target_company})</span>
                       </div>
 
-                      <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/40 text-foreground border border-border">
+                      <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/60 text-foreground border border-border">
                         {wp.warmth_score}/100 Warmth Score
                       </span>
                     </div>
 
                     {/* Visual Referral Bridge */}
-                    <div className="flex flex-col sm:flex-row items-center gap-3 p-3.5 rounded-lg bg-muted/40 border border-border text-xs">
-                      <div className="px-3 py-1.5 rounded-md bg-background border border-border text-foreground font-medium">
+                    <div className="flex flex-col sm:flex-row items-center gap-3 p-3.5 rounded-lg bg-muted/60 border border-border text-xs">
+                      <div className="px-3 py-1.5 rounded-md bg-background border border-border text-foreground font-medium w-full sm:w-auto text-center">
                         You (Sender)
                       </div>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                      <div className="flex-1 p-2 rounded-md bg-background border border-border">
+                      <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 rotate-90 sm:rotate-0 transition-transform" />
+                      <div className="flex-1 p-2 rounded-md bg-background border border-border w-full sm:w-auto">
                         <div className="font-semibold text-foreground">{wp.connector_name} ({wp.connector_role})</div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">{wp.overlap_context}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{wp.overlap_context}</div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                      <div className="px-3 py-1.5 rounded-md bg-background border border-border text-foreground font-semibold">
+                      <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 rotate-90 sm:rotate-0 transition-transform" />
+                      <div className="px-3 py-1.5 rounded-md bg-background border border-border text-foreground font-semibold w-full sm:w-auto text-center">
                         {wp.target_prospect_name} @ {wp.target_company}
                       </div>
                     </div>
 
                     {/* Dual Script Selector */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex bg-muted/40 p-1 rounded-lg border border-border text-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex bg-muted/60 p-1 rounded-lg border border-border text-xs overflow-x-auto scrollbar-none whitespace-nowrap">
                         <button
                           onClick={() => setScriptMode({ ...scriptMode, [wp.id]: 'direct' })}
                           className={`px-3 py-1 rounded-md font-medium transition-all ${
@@ -483,15 +537,32 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => copyToClipboard(activeDraft, wp.id)}
-                          className="px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5"
+                          aria-label="Copy intro script"
+                          className="px-3 py-1.5 rounded-lg bg-muted/60 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {copiedId === wp.id ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
                           Copy Script
                         </button>
+                        <button
+                          onClick={() => handleEnroll(wp.id, 'warm_intro', wp.target_prospect_name)}
+                          disabled={enrollingId === wp.id || wp.status === 'enrolled'}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                            wp.status === 'enrolled'
+                              ? 'bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60'
+                              : 'bg-primary hover:bg-primary/90 text-primary-foreground active:scale-[0.98]'
+                          }`}
+                        >
+                          {enrollingId === wp.id ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Rocket className="w-3.5 h-3.5" />
+                          )}
+                          {wp.status === 'enrolled' ? 'Enrolled' : 'Launch Warm Intro'}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-foreground whitespace-pre-line font-mono leading-relaxed">
+                    <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-foreground whitespace-pre-line font-sans leading-relaxed">
                       {activeDraft}
                     </div>
                   </div>
@@ -503,14 +574,14 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
           {/* TAB 3: CLOSED-LOST DEAL RESURRECTION ENGINE */}
           {activeTab === 'revivals' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">Filter by Lost Reason:</span>
+                  <span className="text-xs text-muted-foreground font-medium">Filter by Lost Reason:</span>
                   <Select
                     value={reasonFilter}
                     onValueChange={(val) => setReasonFilter(val)}
                   >
-                    <SelectTrigger size="sm" className="w-[220px] bg-background border-border text-xs">
+                    <SelectTrigger size="sm" className="w-[220px] bg-background border-border text-xs focus-visible:ring-2 focus-visible:ring-ring">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -525,7 +596,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
                 <button
                   onClick={() => setAddRevivalOpen(true)}
-                  className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
                 >
                   <Plus className="w-4 h-4" />
                   Add Closed-Lost Deal to Revive
@@ -540,33 +611,34 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                         <div className="flex items-center gap-2.5">
                           <span className="font-semibold text-foreground text-sm">{rev.company_name}</span>
                           <span className="text-xs text-muted-foreground">- {rev.prospect_name} ({rev.title})</span>
-                          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-muted/40 text-foreground border border-border">
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted/60 text-foreground border border-border">
                             ${Number(rev.original_deal_value).toLocaleString()} ACV
                           </span>
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           Revival Trigger: {rev.revival_trigger}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/40 text-muted-foreground border border-border">
+                        <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/60 text-muted-foreground border border-border">
                           Lost {rev.days_since_lost}d ago ({rev.lost_reason.replace('_', ' ')})
                         </span>
-                        <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/40 text-foreground border border-border">
+                        <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/60 text-foreground border border-border">
                           {rev.revival_score}/100 Readiness
                         </span>
                       </div>
                     </div>
 
-                    <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-foreground whitespace-pre-line font-mono leading-relaxed">
+                    <div className="p-3.5 rounded-lg bg-background border border-border text-xs text-foreground whitespace-pre-line font-sans leading-relaxed">
                       {rev.resurrection_message}
                     </div>
 
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => copyToClipboard(rev.resurrection_message, rev.id)}
-                        className="px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5"
+                        aria-label="Copy resurrection message"
+                        className="px-3 py-1.5 rounded-lg bg-muted/60 hover:bg-muted border border-border text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {copiedId === rev.id ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
                         Copy Resurrection Message
@@ -574,9 +646,18 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
                       <button
                         onClick={() => handleEnroll(rev.id, 'revival', rev.company_name)}
-                        className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                        disabled={enrollingId === rev.id || rev.status === 'revival_sent'}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          rev.status === 'revival_sent'
+                            ? 'bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60'
+                            : 'bg-primary hover:bg-primary/90 text-primary-foreground active:scale-[0.98]'
+                        }`}
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        {enrollingId === rev.id ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        )}
                         {rev.status === 'revival_sent' ? 'Resurrection Active' : 'Resurrect Deal Sequence'}
                       </button>
                     </div>
@@ -590,11 +671,24 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
         {/* Modal: Track Champion Job Change */}
         {addJobChangeOpen && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-xs text-card-foreground">
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-y-auto"
+            onClick={() => setAddJobChangeOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="track-jobchange-title"
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-xl p-6 shadow-2xl space-y-4 text-xs text-foreground my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between border-b border-border pb-3">
-                <h3 className="font-semibold text-foreground text-base">Track Champion Job Change</h3>
-                <button onClick={() => setAddJobChangeOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <h3 id="track-jobchange-title" className="font-semibold text-foreground text-base">Track Champion Job Change</h3>
+                <button
+                  onClick={() => setAddJobChangeOpen(false)}
+                  aria-label="Close dialog"
+                  className="p-1.5 text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -607,11 +701,11 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     value={jcName}
                     onChange={(e) => setJcName(e.target.value)}
                     placeholder="e.g. Claire Underwood"
-                    className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                    className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">Previous Company *</label>
                     <input
@@ -619,7 +713,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       value={jcPrevCompany}
                       onChange={(e) => setJcPrevCompany(e.target.value)}
                       placeholder="e.g. Snowflake"
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -629,12 +723,12 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       value={jcPrevTitle}
                       onChange={(e) => setJcPrevTitle(e.target.value)}
                       placeholder="e.g. VP Sales"
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">New Company *</label>
                     <input
@@ -642,7 +736,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       value={jcNewCompany}
                       onChange={(e) => setJcNewCompany(e.target.value)}
                       placeholder="e.g. Databricks"
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -652,19 +746,19 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       value={jcNewTitle}
                       onChange={(e) => setJcNewTitle(e.target.value)}
                       placeholder="e.g. Chief Revenue Officer"
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">Past Relationship</label>
                     <Select
                       value={jcRelType}
                       onValueChange={(val) => setJcRelType(val)}
                     >
-                      <SelectTrigger className="w-full mt-1 bg-background border-border h-9 text-xs">
+                      <SelectTrigger className="w-full mt-1 bg-background border-border h-9 text-xs focus-visible:ring-2 focus-visible:ring-ring">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -679,23 +773,28 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     <label className="text-muted-foreground font-medium">Days in New Role</label>
                     <input
                       type="number"
+                      min={0}
                       value={jcDays}
-                      onChange={(e) => setJcDays(parseInt(e.target.value, 10) || 14)}
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      onChange={(e) => setJcDays(Number(e.target.value) || 0)}
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setAddJobChangeOpen(false)} className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground font-medium">
+                <button
+                  onClick={() => setAddJobChangeOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-muted/60 hover:bg-muted border border-border text-muted-foreground hover:text-foreground font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreateJobChange}
                   disabled={isSavingJc}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
                 >
+                  {isSavingJc && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                   Generate Boomerang Playbook
                 </button>
               </div>
@@ -705,17 +804,30 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
 
         {/* Modal: Add Closed-Lost Deal */}
         {addRevivalOpen && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-card border border-border rounded-lg p-6 shadow-2xl space-y-4 text-xs text-card-foreground">
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-y-auto"
+            onClick={() => setAddRevivalOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-revival-title"
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-xl p-6 shadow-2xl space-y-4 text-xs text-foreground my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between border-b border-border pb-3">
-                <h3 className="font-semibold text-foreground text-base">Add Closed-Lost Deal for Resurrection</h3>
-                <button onClick={() => setAddRevivalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <h3 id="add-revival-title" className="font-semibold text-foreground text-base">Add Closed-Lost Deal for Resurrection</h3>
+                <button
+                  onClick={() => setAddRevivalOpen(false)}
+                  aria-label="Close dialog"
+                  className="p-1.5 text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">Prospect Name *</label>
                     <input
@@ -723,7 +835,7 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       value={revName}
                       onChange={(e) => setRevName(e.target.value)}
                       placeholder="e.g. Lucas Graham"
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -733,19 +845,19 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                       value={revCompany}
                       onChange={(e) => setRevCompany(e.target.value)}
                       placeholder="e.g. Notion"
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-muted-foreground font-medium">Lost Reason</label>
                     <Select
                       value={revReason}
                       onValueChange={(val) => setRevReason(val)}
                     >
-                      <SelectTrigger className="w-full mt-1 bg-background border-border h-9 text-xs">
+                      <SelectTrigger className="w-full mt-1 bg-background border-border h-9 text-xs focus-visible:ring-2 focus-visible:ring-ring">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -760,39 +872,57 @@ export function BoomerangRevivalStudioModal({ onClose, campaignId }: BoomerangRe
                     <label className="text-muted-foreground font-medium">Days Since Lost</label>
                     <input
                       type="number"
+                      min={0}
                       value={revDays}
-                      onChange={(e) => setRevDays(parseInt(e.target.value, 10) || 0)}
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      onChange={(e) => setRevDays(Number(e.target.value) || 0)}
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
                     <label className="text-muted-foreground font-medium">Deal Value ($)</label>
                     <input
                       type="number"
+                      min={0}
                       value={revValue}
-                      onChange={(e) => setRevValue(parseInt(e.target.value, 10) || 25000)}
-                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground"
+                      onChange={(e) => setRevValue(Number(e.target.value) || 0)}
+                      className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
 
+                <div>
+                  <label className="text-muted-foreground font-medium">Resurrection Trigger / Product Update</label>
+                  <input
+                    type="text"
+                    value={revTrigger}
+                    onChange={(e) => setRevTrigger(e.target.value)}
+                    placeholder="e.g. Shipped Autonomous ABM Multithreading & Buying Committee Studio"
+                    className="w-full mt-1 bg-background border border-border rounded-lg p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+
                 {revDays < 14 && (
-                  <div className="p-3 rounded-lg bg-muted/40 border border-border text-muted-foreground flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 shrink-0 text-foreground" />
-                    <span>Paranoia Layer 2 Anti-Pestering Guard: Deals lost fewer than 14 days ago will be blocked to prevent prospect irritation.</span>
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 shrink-0" />
+                    <span>Paranoia Layer 2 Anti-Pestering Guard: Deals lost fewer than 14 days ago are blocked from resurrection outreach to prevent prospect annoyance.</span>
                   </div>
                 )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setAddRevivalOpen(false)} className="px-4 py-2 rounded-lg bg-muted/40 hover:bg-muted border border-border text-muted-foreground font-medium">
+                <button
+                  onClick={() => setAddRevivalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-muted/60 hover:bg-muted border border-border text-muted-foreground hover:text-foreground font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreateRevival}
-                  disabled={isSavingRev}
-                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium cursor-pointer transition-colors"
+                  disabled={isSavingRev || revDays < 14}
+                  title={revDays < 14 ? 'Deals lost fewer than 14 days ago are blocked by Anti-Pestering Guard.' : undefined}
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
                 >
+                  {isSavingRev && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                   Create Resurrection Playbook
                 </button>
               </div>

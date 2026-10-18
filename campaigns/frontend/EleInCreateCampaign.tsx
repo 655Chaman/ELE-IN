@@ -113,9 +113,14 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
 // ─── Step 1: Leads ────────────────────────────────────────────────────────────
 
 function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChange: (k: string, v: any) => void; onNext?: () => void; showErrors?: boolean }) {
-  const { data, error, isLoading, mutate } = useSWR("/api/elein/leads/lists", fetcher)
+  const { data, error, isLoading, mutate } = useSWR("/api/elein/leads/lists", fetcher, { revalidateOnFocus: true })
   const lists = data || []
   
+  // Paranoia Layer 0 & 1 (UI-20): Automatically revalidate audience lead counts on mount and lead list change
+  useEffect(() => {
+    mutate()
+  }, [state.leadListId, mutate])
+
   useEffect(() => {
     if (lists.length === 1 && !state.leadListId) {
       onChange("leadListId", lists[0].id)
@@ -180,7 +185,11 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
             <>
             <Select
               value={state.leadListId || "none"}
-              onValueChange={val => onChange("leadListId", val === "none" ? "" : val)}
+              onValueChange={val => {
+                const nextVal = val === "none" ? "" : val
+                onChange("leadListId", nextVal)
+                mutate()
+              }}
               disabled={isLoading || lists.length === 0}
             >
               <SelectTrigger className="w-full bg-background/50 border-border/50 py-2.5 text-sm h-10">
@@ -906,8 +915,20 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
   const { data: accounts, error } = useSWR("/api/elein/accounts", fetcher)
   
   useEffect(() => {
-    if (accounts && accounts.length === 1 && (!state.senderIds || state.senderIds.length === 0)) {
-      onChange("senderIds", [accounts[0].id])
+    if (accounts && Array.isArray(accounts)) {
+      const activeAccountIds = new Set(
+        accounts
+          .filter((a: any) => a.id && a.is_active !== false && String(a.status || "").toUpperCase() !== "DISCONNECTED")
+          .map((a: any) => a.id)
+      )
+      if (state.senderIds && state.senderIds.length > 0) {
+        const pruned = state.senderIds.filter((id: string) => activeAccountIds.has(id))
+        if (pruned.length !== state.senderIds.length) {
+          onChange("senderIds", pruned)
+        }
+      } else if (accounts.length === 1 && activeAccountIds.has(accounts[0].id)) {
+        onChange("senderIds", [accounts[0].id])
+      }
     }
   }, [accounts, state.senderIds, onChange])
 
@@ -1087,6 +1108,12 @@ const formatTimezone = (tzName: string) => {
   }
 };
 
+const parseHourFromTime = (t: string | undefined, fallback: number): number => {
+  if (!t || typeof t !== "string") return fallback;
+  const h = parseInt(t.split(":")[0], 10);
+  return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
+};
+
 function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v: any) => void }) {
   const [localTz, setLocalTz] = useState<string>("");
   const [isStoStudioOpen, setIsStoStudioOpen] = useState<boolean>(false);
@@ -1113,12 +1140,6 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
 
   const currentMode = state.scheduling_mode || "campaign_timezone";
   const weekendSending = Boolean(state.schedule?.weekend_sending);
-
-  const parseHourFromTime = (t: string | undefined, fallback: number): number => {
-    if (!t || typeof t !== "string") return fallback;
-    const h = parseInt(t.split(":")[0], 10);
-    return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
-  };
 
   const handleSelectMode = (mode: string) => {
     if (mode === "lead_local_time" && !canLeadLocalTz) {
@@ -1318,14 +1339,20 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
                <input 
                  type="time" 
                  value={state.schedule?.startTime || "09:00"}
-                 onChange={(e) => onChange("schedule", { ...state.schedule, startTime: e.target.value })}
+                 onChange={(e) => {
+                   const nextVal = e.target.value;
+                   onChange("schedule", { ...state.schedule, startTime: nextVal, start_hour: parseHourFromTime(nextVal, 9) });
+                 }}
                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                />
                <span className="text-muted-foreground text-sm">to</span>
                <input 
                  type="time" 
                  value={state.schedule?.endTime || "17:00"}
-                 onChange={(e) => onChange("schedule", { ...state.schedule, endTime: e.target.value })}
+                 onChange={(e) => {
+                   const nextVal = e.target.value;
+                   onChange("schedule", { ...state.schedule, endTime: nextVal, end_hour: parseHourFromTime(nextVal, 17) });
+                 }}
                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                />
              </div>
@@ -1751,6 +1778,50 @@ function EleInCreateCampaignInner() {
   const sendersReady = senderCount > 0
   const isPreflightClear = sequenceHasNodes && audienceReady && sendersReady
 
+  // Paranoia Layer 2 (UI-16): Guarded step navigation validating prerequisites
+  const validateStepPrerequisites = (targetStep: number): { allowed: boolean; maxAllowedStep: number; reason?: string } => {
+    if (targetStep <= 0) return { allowed: true, maxAllowedStep: 0 }
+
+    // Prerequisite for Step 1+: Sequence must have at least one valid node
+    const currentRootNodes = useHRTreeStore.getState().rootNodes
+    if (!currentRootNodes || currentRootNodes.length === 0) {
+      return { allowed: false, maxAllowedStep: 0, reason: "Please configure at least one outreach node in your sequence canvas." }
+    }
+    const { errors } = validateTree(currentRootNodes)
+    if (Object.values(errors).some(e => e.length > 0)) {
+      return { allowed: false, maxAllowedStep: 0, reason: "Please fix sequence node errors before continuing." }
+    }
+
+    if (targetStep === 1) return { allowed: true, maxAllowedStep: 1 }
+
+    // Prerequisite for Step 2+: Campaign name and lead list must be configured
+    const form = useHRTreeStore.getState().formState
+    if (!form.campaignName || !form.campaignName.trim() || !form.leadListId) {
+      return { allowed: false, maxAllowedStep: 1, reason: "Please enter a campaign name and select a valid lead list." }
+    }
+
+    if (targetStep === 2) return { allowed: true, maxAllowedStep: 2 }
+
+    // Prerequisite for Step 3+: Senders must be assigned
+    if (!form.senderIds || form.senderIds.length === 0) {
+      return { allowed: false, maxAllowedStep: 2, reason: "Please connect and assign at least one LinkedIn sender account." }
+    }
+
+    if (targetStep === 3) return { allowed: true, maxAllowedStep: 3 }
+
+    return { allowed: true, maxAllowedStep: 4 }
+  }
+
+  const navigateToStep = (targetStep: number) => {
+    const check = validateStepPrerequisites(targetStep)
+    if (!check.allowed && targetStep > check.maxAllowedStep) {
+      toast.error("Prerequisites Incomplete", { description: check.reason })
+      setStep(check.maxAllowedStep)
+      return
+    }
+    setStep(targetStep)
+  }
+
   // ─── Route params & Edit / Load state ──────────────────────────────────────
   const { id: routeId } = useParams<{ id?: string }>()
   const location = useLocation()
@@ -1896,6 +1967,13 @@ function EleInCreateCampaignInner() {
     isLoadingCampaignRef.current = false
 
     if (params.get("resume") !== "true") {
+      const stepParam = params.get("step")
+      if (stepParam !== null) {
+        const parsedStep = parseInt(stepParam, 10)
+        if (!isNaN(parsedStep) && parsedStep >= 0 && parsedStep <= 4) {
+          navigateToStep(parsedStep)
+        }
+      }
       isRestoringRef.current = false
       return
     }
@@ -1912,7 +1990,7 @@ function EleInCreateCampaignInner() {
           useHRTreeStore.getState().setFormState(draft.formState)
         }
         if (typeof draft.step === "number") {
-          setStep(draft.step)
+          navigateToStep(draft.step)
         } else {
           setStep(0)
         }
@@ -2011,7 +2089,12 @@ function EleInCreateCampaignInner() {
           senders: state.senderIds || [],
           timezone: state.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           status,
-          schedule: state.schedule,
+          schedule: {
+            ...(state.schedule || {}),
+            start_hour: parseHourFromTime(state.schedule?.startTime, 9),
+            end_hour: parseHourFromTime(state.schedule?.endTime, 17),
+            timezone: state.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          },
           limit: state.limit,
           lead_list_id: state.leadListId || null,
           metadata: { 
@@ -2259,7 +2342,7 @@ function EleInCreateCampaignInner() {
                           type="button"
                           onClick={() => {
                             setActivationErrors([]);
-                            setStep(targetStep!);
+                            navigateToStep(targetStep!);
                           }}
                           className="shrink-0 px-2.5 py-1.5 bg-destructive hover:bg-destructive/90 text-white font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-xs"
                         >
@@ -2319,7 +2402,7 @@ function EleInCreateCampaignInner() {
           },
           stopOnReply: state.stopOnReply ?? true
         }}
-        onJumpToStep={(s) => setStep(s)}
+        onJumpToStep={(s) => navigateToStep(s)}
       />
 
       {/* Step Header */}
@@ -2332,7 +2415,7 @@ function EleInCreateCampaignInner() {
             navigate("/elein/campaigns")
           }
         }} 
-        onStepClick={(i) => setStep(i)} 
+        onStepClick={(i) => navigateToStep(i)} 
       />
       
       <div className="flex-1 overflow-y-auto relative">
@@ -2365,7 +2448,7 @@ function EleInCreateCampaignInner() {
               <StepPreview 
                 state={state} 
                 onChange={handleStateChange} 
-                onJumpToStep={(s) => setStep(s)} 
+                onJumpToStep={(s) => navigateToStep(s)} 
                 onOpenPreflightModal={() => setShowPreflightModal(true)}
               />
             )}

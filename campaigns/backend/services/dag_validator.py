@@ -177,6 +177,40 @@ def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
     total_touchpoints = sum(1 for nid in node_order if _is_touchpoint_node(node_map[nid]))
     reachable_touchpoints = sum(1 for nid in reachable_node_ids if _is_touchpoint_node(node_map[nid]))
 
+    # Paranoia Layer 1 & 2 (API-12): Validate destination URLs for webhook nodes against non-HTTP schemes and SSRF
+    invalid_webhook_urls: List[Dict[str, Any]] = []
+    for nid in node_order:
+        node = node_map[nid]
+        ndata = node.get("data") if isinstance(node.get("data"), dict) else {}
+        ntype = str(node.get("type") or node.get("node_type") or "").lower()
+        webhook_url = ndata.get("url") or ndata.get("webhook_url")
+        if webhook_url or "webhook" in ntype:
+            if not webhook_url or not isinstance(webhook_url, str) or not webhook_url.strip():
+                if "webhook" in ntype and ntype not in ("trigger_webhook", "inbound_intent_trigger"):
+                    invalid_webhook_urls.append({
+                        "node_id": nid,
+                        "url": "",
+                        "error": "Missing webhook destination URL"
+                    })
+            else:
+                raw_url = str(webhook_url).strip()
+                if not (raw_url.startswith("{{") and raw_url.endswith("}}")):
+                    try:
+                        from core.backend.services.http_client import validate_outbound_url_for_ssrf
+                        is_safe, ssrf_err = validate_outbound_url_for_ssrf(raw_url)
+                        if not is_safe:
+                            invalid_webhook_urls.append({
+                                "node_id": nid,
+                                "url": raw_url,
+                                "error": ssrf_err
+                            })
+                    except Exception as err:
+                        invalid_webhook_urls.append({
+                            "node_id": nid,
+                            "url": raw_url,
+                            "error": f"URL validation error: {err}"
+                        })
+
     return {
         "has_cycle": cycle_detected,
         "dangling_edges": dangling_edges,
@@ -186,6 +220,7 @@ def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
         "dead_end_branch_nodes": dead_end_branch_nodes,
         "total_touchpoints": total_touchpoints,
         "reachable_touchpoints": reachable_touchpoints,
+        "invalid_webhook_urls": invalid_webhook_urls,
     }
 
 

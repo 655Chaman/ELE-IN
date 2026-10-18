@@ -1363,3 +1363,75 @@ BEGIN
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END; $$;
+
+-- ============================================================
+-- 40. Campaign Subsystem RLS & Tenant Isolation Policies (VULN-19, DB-02)
+-- ============================================================
+ALTER TABLE public.campaign_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_enrollments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_execution_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_node_executions ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    DROP POLICY IF EXISTS campaign_versions_tenant_isolation ON public.campaign_versions;
+    CREATE POLICY campaign_versions_tenant_isolation ON public.campaign_versions
+    FOR ALL USING (
+        campaign_id IN (
+            SELECT id FROM public.campaigns 
+            WHERE workspace_id IN (SELECT public.my_workspace_ids())
+        )
+    )
+    WITH CHECK (
+        campaign_id IN (
+            SELECT id FROM public.campaigns 
+            WHERE workspace_id IN (SELECT public.my_workspace_ids())
+        )
+    );
+
+    DROP POLICY IF EXISTS campaign_enrollments_tenant_isolation ON public.campaign_enrollments;
+    CREATE POLICY campaign_enrollments_tenant_isolation ON public.campaign_enrollments
+    FOR ALL USING (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    )
+    WITH CHECK (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    );
+
+    DROP POLICY IF EXISTS campaign_execution_states_tenant_isolation ON public.campaign_execution_states;
+    CREATE POLICY campaign_execution_states_tenant_isolation ON public.campaign_execution_states
+    FOR ALL USING (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    )
+    WITH CHECK (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    );
+
+    DROP POLICY IF EXISTS campaign_node_executions_tenant_isolation ON public.campaign_node_executions;
+    CREATE POLICY campaign_node_executions_tenant_isolation ON public.campaign_node_executions
+    FOR ALL USING (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    )
+    WITH CHECK (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    );
+END $$;
+
+-- ============================================================
+-- 41. Revoke Dangerous Public RPC Execution Privileges (VULN-16, VULN-17, VULN-18)
+-- ============================================================
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN 
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN ('deduct_credits_safely', 'bulk_import_leads', 'get_user_id_by_email')
+          AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'REVOKE EXECUTE ON FUNCTION ' || r.func_sig || ' FROM PUBLIC';
+        EXECUTE 'REVOKE EXECUTE ON FUNCTION ' || r.func_sig || ' FROM anon, authenticated';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION ' || r.func_sig || ' TO service_role';
+    END LOOP;
+END $$;
+

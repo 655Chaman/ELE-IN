@@ -14,7 +14,7 @@ import time
 from io import StringIO
 from datetime import date, datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Tuple
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends, Query
 from fastapi.responses import StreamingResponse
 import os
 from integrations.backend.services.voyager_scraper import VoyagerScraper, DailyLimitExceeded, VoyagerThrottled, SessionExpired
@@ -1308,14 +1308,33 @@ def get_daily_budget(
 
 
 @router.get("/leads/lists", response_model=List[dict])
-def get_lists(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def get_lists(
+    limit: Optional[int] = Query(default=50, ge=1, le=200),
+    offset: Optional[int] = Query(default=0, ge=0),
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """
+    Paranoia Layer 0 & Layer 1 (API-09): Paginated lead list retrieval.
+    Enforces safe default limit=50 and hard ceiling max=200 to protect memory and PostgREST bandwidth.
+    """
+    eff_limit = min(max(1, limit or 50), 200)
+    eff_offset = max(0, offset or 0)
     try:
-        res = supabase.table("lead_lists").select("*").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
+        res = (
+            supabase.table("lead_lists")
+            .select("*")
+            .eq("workspace_id", workspace_id)
+            .order("created_at", desc=True)
+            .range(eff_offset, eff_offset + eff_limit - 1)
+            .execute()
+        )
         return res.data or []
     except Exception as e:
         logger.warning(f"get_lists: lead_lists query failed ({e}); checking in-memory fallback for zero-migration resilience")
         from leads.backend.services.lead_ingestion_service import get_in_memory_lead_lists
-        return get_in_memory_lead_lists(workspace_id)
+        mem_lists = get_in_memory_lead_lists(workspace_id) or []
+        return mem_lists[eff_offset : eff_offset + eff_limit]
 
 
 @router.delete("/leads/{list_id}", response_model=dict)
@@ -3384,6 +3403,15 @@ def run_campaign_preflight_audit(
             acc_res = supabase.table("accounts").select("id, name, linkedin_profile_url, status, is_active, proxy_id, is_warmup, warmup_start_date, daily_connection_limit, daily_message_limit").in_("id", sender_ids).eq("workspace_id", workspace_id).execute()
             accounts = acc_res.data or []
             
+            existing_ids = {a.get("id") for a in accounts if a.get("id")}
+            missing_ids = set(sender_ids) - existing_ids
+
+            if missing_ids:
+                senders_status = "fail"
+                senders_score = 0
+                critical_errors.append(f"{len(missing_ids)} assigned sender account(s) no longer exist in this workspace (deleted or unlinked). Update your sender selection before launch.")
+                senders_details.append(f"{len(missing_ids)} deleted/missing sender account(s) detected.")
+
             if not accounts:
                 senders_status = "fail"
                 senders_score = 0
@@ -3391,7 +3419,8 @@ def run_campaign_preflight_audit(
                 senders_details.append("Accounts query returned 0 rows.")
             else:
                 for a in accounts:
-                    is_active = a.get("is_active") is True or a.get("status") == "ACTIVE"
+                    status_str = str(a.get("status") or "").upper()
+                    is_active = (a.get("is_active") is not False) and (status_str in ("ACTIVE", "CONNECTED", "HEALTHY"))
                     if is_active:
                         active_accounts.append(a)
                     else:
@@ -3407,8 +3436,9 @@ def run_campaign_preflight_audit(
                     senders_score = 0
                     critical_errors.append("All selected sender accounts are DISCONNECTED or CHALLENGED. Re-connect a LinkedIn account before launching.")
                 elif len(challenged_accounts) > 0:
-                    senders_status = "warn"
-                    senders_score = max(10, senders_score - 5)
+                    if senders_status != "fail":
+                        senders_status = "warn"
+                        senders_score = max(10, senders_score - 5)
                     warnings.append(f"{len(challenged_accounts)} account(s) have disconnected sessions: {', '.join(a.get('name', 'Account') for a in challenged_accounts)}")
 
                 if len(unproxied_accounts) > 0:
@@ -3844,6 +3874,13 @@ def create_campaign(
                 status_code=422,
                 detail=f"Campaign graph contains dangling edges referencing non-existent nodes: {dag_report['dangling_edges']}"
             )
+        # Paranoia Layer 1 & 2 (API-12): Fail-closed validation for invalid webhook URLs
+        if dag_report.get("invalid_webhook_urls"):
+            err_msg = "; ".join(f"Node '{item['node_id']}': {item['error']}" for item in dag_report["invalid_webhook_urls"])
+            raise HTTPException(
+                status_code=422,
+                detail=f"Campaign contains invalid or unsafe webhook URLs: {err_msg}"
+            )
         if campaign.status == "ACTIVE" and len(edges_raw) > 0:
             if dag_report["orphaned_node_ids"]:
                 raise HTTPException(
@@ -4075,6 +4112,13 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
             raise HTTPException(
                 status_code=422,
                 detail=f"Campaign graph contains dangling edges referencing non-existent nodes: {dag_report['dangling_edges']}"
+            )
+        # Paranoia Layer 1 & 2 (API-12): Fail-closed validation for invalid webhook URLs
+        if dag_report.get("invalid_webhook_urls"):
+            err_msg = "; ".join(f"Node '{item['node_id']}': {item['error']}" for item in dag_report["invalid_webhook_urls"])
+            raise HTTPException(
+                status_code=422,
+                detail=f"Campaign contains invalid or unsafe webhook URLs: {err_msg}"
             )
         if payload.status == "ACTIVE" and len(edges_raw) > 0:
             if dag_report["orphaned_node_ids"]:

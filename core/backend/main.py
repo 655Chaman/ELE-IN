@@ -74,15 +74,9 @@ app = FastAPI(
     version="3.0.0"
 )
 
-# Mount local media directory for streamable voice notes
-voice_notes_dir = os.path.join(os.getcwd(), "uploads", "voice_notes")
-os.makedirs(voice_notes_dir, exist_ok=True)
-app.mount("/api/elein/media/voice_notes", StaticFiles(directory=voice_notes_dir), name="voice_notes")
-
-# Mount local media directory for message attachments (documents, images)
-attachments_dir = os.path.join(os.getcwd(), "uploads", "attachments")
-os.makedirs(attachments_dir, exist_ok=True)
-app.mount("/api/elein/media/attachments", StaticFiles(directory=attachments_dir), name="attachments")
+# Paranoia Hardening (VULN-14): Authenticated Media Router for voice notes and attachments
+from core.backend.routers import media as media_router
+app.include_router(media_router.router)
 
 # 3. Setup middlewares
 app.add_middleware(CorrelationIdMiddleware)
@@ -132,10 +126,14 @@ from core.backend.api.auth_dep import get_current_user_id, get_current_workspace
 app.include_router(settings.router, prefix="/api/settings", dependencies=[Depends(get_current_user_id)])
 app.include_router(leads.router, prefix="/api/leads", tags=["leads"], dependencies=[Depends(get_current_workspace)])
 
-from campaigns.backend.routers import inbound_webhooks, sender_pods, roi_certificates, social_prewarm, bandit_router, event_multimodal_router, abm_router, boomerang_router, displacement_router, calendar_concierge_router, waterfall_enrichment_router, warmup_router, crm_attribution_router, advocacy_pod_router
+from campaigns.backend.routers import inbound_webhooks, sender_pods, roi_certificates, social_prewarm, bandit_router, event_multimodal_router, abm_router, boomerang_router, displacement_router, calendar_concierge_router, waterfall_enrichment_router, warmup_router, crm_attribution_router, advocacy_pod_router, unsubscribe
 app.include_router(inbound_webhooks.router, prefix="/api")
 app.include_router(sender_pods.router, dependencies=[Depends(get_current_workspace)])
 app.include_router(roi_certificates.router)
+# RFC 8058 One-Click Unsubscribe (Public / Unauthenticated)
+app.include_router(unsubscribe.router, prefix="/api/elein")
+app.include_router(unsubscribe.router, prefix="/api")
+app.include_router(unsubscribe.router)
 app.include_router(social_prewarm.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 app.include_router(bandit_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])
 app.include_router(event_multimodal_router.router, prefix="/api/elein", dependencies=[Depends(get_current_workspace)])

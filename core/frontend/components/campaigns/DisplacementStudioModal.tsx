@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import {
   Target, ShieldAlert, DollarSign, Calculator, RefreshCw, Copy, Check,
-  Rocket, X, Plus, Clock, Building2, User, ChevronRight, TrendingUp, AlertTriangle, CheckCircle2, Sliders, MessageSquare
+  Rocket, X, Plus, Clock, Building2, User, AlertTriangle, CheckCircle2, MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -33,6 +33,21 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
   const [renewalDays, setRenewalDays] = useState(60);
   const [isCreating, setIsCreating] = useState(false);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
+
+  // Keyboard navigation & Escape dismiss
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (addModalOpen) {
+          setAddModalOpen(false);
+        } else if (onClose) {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [addModalOpen, onClose]);
 
   const { data: oppData, mutate: mutateOpps, isLoading: isOppsLoading } = useSWR<{
     success: boolean;
@@ -99,6 +114,10 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
     buyout_clause?: string;
     annual_savings?: number;
     recommended_angle?: string;
+    subject?: string;
+    body?: string;
+    displacement_hook?: string;
+    contract_buyout_offer?: string;
   } | null>(null);
 
   const copyToClipboard = (text: string, key: string) => {
@@ -219,13 +238,22 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
   const peakWindowCount = displacements.filter(d => (d.contract_renewal_days || 0) >= 45 && (d.contract_renewal_days || 0) <= 90).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-card border border-border rounded-xl shadow-2xl text-card-foreground overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="displacement-modal-title"
+        className="relative w-full max-w-6xl max-h-[92vh] max-h-[92dvh] flex flex-col bg-card border border-border rounded-xl shadow-2xl text-foreground overflow-hidden my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header Bar */}
         <div className="px-6 py-4 border-b border-border bg-background flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-foreground">
+            <h2 id="displacement-modal-title" className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
               Autonomous Competitive Takeover & Tech-Stack Displacement
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -234,14 +262,15 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted border border-border rounded-lg transition-colors"
+            aria-label="Close studio"
+            className="p-2 text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Global Telemetry Metric Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 py-3 bg-muted/40 border-b border-border text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 py-3 bg-muted/60 border-b border-border text-xs">
           <div className="bg-background border border-border rounded-lg p-3 flex items-center gap-3">
             <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
             <div>
@@ -256,11 +285,12 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
               <div className="text-sm font-semibold text-foreground">{peakWindowCount} Accounts (45-90d)</div>
             </div>
           </div>
-          <div className="bg-background border border-border rounded-lg p-3 flex items-center gap-3">
-            <DollarSign className="w-4 h-4 text-muted-foreground shrink-0" />
+          {/* Leading Metric */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 flex items-center gap-3">
+            <DollarSign className="w-4 h-4 text-primary shrink-0" />
             <div>
-              <div className="text-xs text-muted-foreground">Identified Savings Pool</div>
-              <div className="text-sm font-semibold text-foreground">${totalAnnualSavings.toLocaleString()}/yr</div>
+              <div className="text-xs text-primary/80 font-medium">Identified Savings Pool</div>
+              <div className="text-sm font-bold text-primary">${totalAnnualSavings.toLocaleString()}/yr</div>
             </div>
           </div>
           <div className="bg-background border border-border rounded-lg p-3 flex items-center gap-3">
@@ -273,12 +303,18 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-border px-6 bg-background gap-6 text-xs font-medium">
+        <div
+          role="tablist"
+          aria-label="Displacement Studio Sections"
+          className="flex border-b border-border px-6 bg-background gap-6 text-xs font-medium overflow-x-auto scrollbar-none whitespace-nowrap shrink-0"
+        >
           <button
+            role="tab"
+            aria-selected={activeTab === 'radar'}
             onClick={() => setActiveTab('radar')}
-            className={`py-3 flex items-center gap-2 border-b-2 transition-colors ${
+            className={`py-3 flex items-center gap-2 border-b-2 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               activeTab === 'radar'
-                ? 'border-foreground text-foreground font-semibold'
+                ? 'border-primary text-primary font-semibold'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -286,10 +322,12 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
             Displacement Radar & Renewals ({displacements.length})
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'battlecards'}
             onClick={() => setActiveTab('battlecards')}
-            className={`py-3 flex items-center gap-2 border-b-2 transition-colors ${
+            className={`py-3 flex items-center gap-2 border-b-2 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               activeTab === 'battlecards'
-                ? 'border-foreground text-foreground font-semibold'
+                ? 'border-primary text-primary font-semibold'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -297,10 +335,12 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
             Vendor Battlecards & Buyout Calculator
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'pitch_studio'}
             onClick={() => setActiveTab('pitch_studio')}
-            className={`py-3 flex items-center gap-2 border-b-2 transition-colors ${
+            className={`py-3 flex items-center gap-2 border-b-2 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               activeTab === 'pitch_studio'
-                ? 'border-foreground text-foreground font-semibold'
+                ? 'border-primary text-primary font-semibold'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -322,7 +362,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     value={vendorFilter}
                     onValueChange={(val) => setVendorFilter(val)}
                   >
-                    <SelectTrigger size="sm" className="w-[150px] bg-background border-border text-xs">
+                    <SelectTrigger size="sm" className="w-[150px] bg-background border-border text-xs focus-visible:ring-2 focus-visible:ring-ring">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -333,6 +373,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       <SelectItem value="lemlist">Lemlist</SelectItem>
                       <SelectItem value="expandi">Expandi</SelectItem>
                       <SelectItem value="heyreach">HeyReach</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -340,14 +381,15 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => mutateOpps()}
-                    className="p-2 text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted border border-border rounded-lg transition-colors"
+                    aria-label="Refresh opportunities"
+                    className="p-2 text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title="Refresh Opportunities"
                   >
                     <RefreshCw className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setAddModalOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-colors"
+                    className="flex items-center gap-2 px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
                   >
                     <Plus className="w-4 h-4" />
                     Track Incumbent Target
@@ -599,7 +641,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                 </div>
 
                 {/* Slider and inputs */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-muted/40 p-4 rounded-lg border border-border">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-muted/60 p-4 rounded-lg border border-border">
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs font-medium">
                       <span className="text-muted-foreground">Sales Rep Seats</span>
@@ -611,9 +653,9 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       max={100}
                       value={calcSeats}
                       onChange={(e) => setCalcSeats(Number(e.target.value))}
-                      className="w-full accent-foreground cursor-pointer"
+                      className="w-full accent-primary cursor-pointer"
                     />
-                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <div className="flex justify-between text-xs text-muted-foreground">
                       <span>1 seat</span>
                       <span>50 seats</span>
                       <span>100 seats</span>
@@ -626,38 +668,39 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     </label>
                     <input
                       type="number"
+                      min={1}
                       placeholder={`$${incumbentRate}`}
                       value={customMonthlyCost}
                       onChange={(e) => setCustomMonthlyCost(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-foreground"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
 
                 {/* Savings Metrics Result Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-3.5 rounded-lg bg-muted/40 border border-border">
-                    <div className="text-[11px] text-muted-foreground">Current Tooling Spend</div>
+                  <div className="p-3.5 rounded-lg bg-muted/60 border border-border">
+                    <div className="text-xs text-muted-foreground">Current Tooling Spend</div>
                     <div className="text-base font-semibold text-foreground mt-1">${incumbentAnnual.toLocaleString()} / yr</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">${incumbentRate}/seat/mo</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">${incumbentRate}/seat/mo</div>
                   </div>
 
-                  <div className="p-3.5 rounded-lg bg-muted/40 border border-border">
-                    <div className="text-[11px] text-muted-foreground">Ele-in Consolidated Spend</div>
+                  <div className="p-3.5 rounded-lg bg-muted/60 border border-border">
+                    <div className="text-xs text-muted-foreground">Ele-in Consolidated Spend</div>
                     <div className="text-base font-semibold text-foreground mt-1">${eleinAnnual.toLocaleString()} / yr</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">$49/seat/mo Flat</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">$49/seat/mo Flat</div>
                   </div>
 
-                  <div className="p-3.5 rounded-lg bg-muted/40 border border-border">
-                    <div className="text-[11px] text-muted-foreground font-medium">Net Annual Cashflow Saved</div>
+                  <div className="p-3.5 rounded-lg bg-muted/60 border border-border">
+                    <div className="text-xs text-muted-foreground font-medium">Net Annual Cashflow Saved</div>
                     <div className="text-base font-semibold text-foreground mt-1">+${annualSavings.toLocaleString()} / yr</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">{savingsPct}% Budget Reduction</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{savingsPct}% Budget Reduction</div>
                   </div>
 
-                  <div className="p-3.5 rounded-lg bg-muted/40 border border-border">
-                    <div className="text-[11px] text-muted-foreground font-medium">Contract Buyout Value</div>
+                  <div className="p-3.5 rounded-lg bg-muted/60 border border-border">
+                    <div className="text-xs text-muted-foreground font-medium">Contract Buyout Value</div>
                     <div className="text-base font-semibold text-foreground mt-1">${(incumbentRate * calcSeats * 3).toLocaleString()}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">Up to 90 Days Free Credit</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Up to 90 Days Free Credit</div>
                   </div>
                 </div>
               </div>
@@ -674,7 +717,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     <MessageSquare className="w-4 h-4 text-muted-foreground" />
                     AI Diplomatic Displacement Copywriter
                   </h3>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium bg-muted/40 px-2.5 py-1 rounded-md border border-border">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium bg-muted/60 px-2.5 py-1 rounded-md border border-border">
                     <ShieldAlert className="w-3.5 h-3.5" />
                     Layer 2 Libel & Smear Guard Active
                   </div>
@@ -687,7 +730,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       type="text"
                       value={pitchCompany}
                       onChange={(e) => setPitchCompany(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -696,7 +739,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       type="text"
                       value={pitchContact}
                       onChange={(e) => setPitchContact(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -705,7 +748,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       type="text"
                       value={pitchTitle}
                       onChange={(e) => setPitchTitle(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -714,170 +757,7 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                       value={pitchVendor}
                       onValueChange={(val) => setPitchVendor(val)}
                     >
-                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="apollo">Apollo.io</SelectItem>
-                        <SelectItem value="outreach">Outreach.io</SelectItem>
-                        <SelectItem value="salesloft">Salesloft</SelectItem>
-                        <SelectItem value="lemlist">Lemlist</SelectItem>
-                        <SelectItem value="expandi">Expandi</SelectItem>
-                        <SelectItem value="heyreach">HeyReach</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-muted-foreground mb-1 block">Seat Count</label>
-                    <input
-                      type="number"
-                      value={pitchSeats}
-                      onChange={(e) => setPitchSeats(Number(e.target.value))}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-muted-foreground mb-1 block">Days to Contract Renewal</label>
-                    <input
-                      type="number"
-                      value={pitchDays}
-                      onChange={(e) => setPitchDays(Number(e.target.value))}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={handleGeneratePitch}
-                    disabled={isGeneratingPitch}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                  >
-                    {isGeneratingPitch ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <MessageSquare className="w-4 h-4" />
-                    )}
-                    Generate Diplomatic Pitch & Buyout Offer
-                  </button>
-                </div>
-              </div>
-
-              {/* Pitch Outputs */}
-              {generatedPitch && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* LinkedIn InMail / DM Pitch */}
-                  <div className="bg-card border border-border rounded-lg p-5 space-y-3 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                          <Target className="w-4 h-4 text-muted-foreground" />
-                          LinkedIn InMail / DM Sequence
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(generatedPitch.linkedin_pitch || '', 'pitch-li')}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                        >
-                          {copiedKey === 'pitch-li' ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
-                          Copy
-                        </button>
-                      </div>
-                      <div className="bg-background p-4 rounded-lg border border-border text-xs text-foreground leading-relaxed font-mono whitespace-pre-wrap">
-                        {generatedPitch.linkedin_pitch}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Executive Email & Proposal */}
-                  <div className="bg-card border border-border rounded-lg p-5 space-y-3 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                          <ShieldAlert className="w-4 h-4 text-muted-foreground" />
-                          Executive Buyout Proposal Email
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(generatedPitch.executive_email_pitch || '', 'pitch-email')}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                        >
-                          {copiedKey === 'pitch-email' ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
-                          Copy
-                        </button>
-                      </div>
-                      <div className="bg-background p-4 rounded-lg border border-border text-xs text-foreground leading-relaxed font-mono whitespace-pre-wrap">
-                        {generatedPitch.executive_email_pitch}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-        </div>
-
-        {/* ADD COMPETITOR TARGET MODAL */}
-        {addModalOpen && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-card border border-border rounded-lg max-w-md w-full p-6 text-card-foreground shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <Target className="w-4 h-4 text-muted-foreground" />
-                  Track Competitor Incumbent Target
-                </h3>
-                <button
-                  onClick={() => setAddModalOpen(false)}
-                  className="p-1 text-muted-foreground hover:text-foreground rounded-lg transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateDisplacement} className="space-y-3 text-xs">
-                <div>
-                  <label className="text-muted-foreground mb-1 block">Company Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ramp, Gusto, Notion"
-                    value={targetCompany}
-                    onChange={(e) => setTargetCompany(e.target.value)}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-muted-foreground mb-1 block">Contact Full Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Alex Morgan"
-                      value={targetContactName}
-                      onChange={(e) => setTargetContactName(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-muted-foreground mb-1 block">Job Title</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. VP Sales, RevOps"
-                      value={targetContactTitle}
-                      onChange={(e) => setTargetContactTitle(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-muted-foreground mb-1 block">Incumbent Vendor</label>
-                    <Select
-                      value={incumbentVendor}
-                      onValueChange={(val) => setIncumbentVendor(val)}
-                    >
-                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs focus-visible:ring-2 focus-visible:ring-ring">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -892,27 +772,13 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     </Select>
                   </div>
                   <div>
-                    <label className="text-muted-foreground mb-1 block">Domain</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. company.com"
-                      value={domain}
-                      onChange={(e) => setDomain(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
                     <label className="text-muted-foreground mb-1 block">Seat Count</label>
                     <input
                       type="number"
                       min={1}
-                      max={5000}
-                      value={seatCount}
-                      onChange={(e) => setSeatCount(Number(e.target.value))}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      value={pitchSeats}
+                      onChange={(e) => setPitchSeats(Number(e.target.value) || 1)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                   <div>
@@ -920,10 +786,226 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                     <input
                       type="number"
                       min={1}
+                      value={pitchDays}
+                      onChange={(e) => setPitchDays(Number(e.target.value) || 1)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={handleGeneratePitch}
+                    disabled={isGeneratingPitch}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                  >
+                    {isGeneratingPitch ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <MessageSquare className="w-4 h-4" />
+                    )}
+                    Generate Diplomatic Pitch & Buyout Offer
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-foreground/20 text-primary-foreground font-semibold">2 Credits</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Pitch Outputs */}
+              {generatedPitch && (() => {
+                const liPitch = generatedPitch.linkedin_pitch || generatedPitch.displacement_hook || '';
+                const emailPitch = generatedPitch.executive_email_pitch || (
+                  generatedPitch.subject
+                    ? `Subject: ${generatedPitch.subject}\n\n${generatedPitch.body || ''}`
+                    : generatedPitch.body || ''
+                );
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* LinkedIn InMail / DM Pitch */}
+                    <div className="bg-card border border-border rounded-lg p-5 space-y-3 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <Target className="w-4 h-4 text-muted-foreground" />
+                            LinkedIn InMail / DM Sequence
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${
+                              liPitch.length > 300
+                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                                : 'bg-muted/60 text-muted-foreground border-border'
+                            }`}>
+                              {liPitch.length} chars (InMail/DM)
+                            </span>
+                            <button
+                              onClick={() => copyToClipboard(liPitch, 'pitch-li')}
+                              aria-label="Copy LinkedIn pitch"
+                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors p-1 rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {copiedKey === 'pitch-li' ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                        <div className="bg-background p-4 rounded-lg border border-border text-xs text-foreground leading-relaxed whitespace-pre-wrap font-sans">
+                          {liPitch || 'Generating targeted LinkedIn displacement hook...'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Executive Email & Proposal */}
+                    <div className="bg-card border border-border rounded-lg p-5 space-y-3 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <ShieldAlert className="w-4 h-4 text-muted-foreground" />
+                            Executive Buyout Proposal Email
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border">
+                              {emailPitch.split(/\s+/).filter(Boolean).length} words
+                            </span>
+                            <button
+                              onClick={() => copyToClipboard(emailPitch, 'pitch-email')}
+                              aria-label="Copy executive proposal email"
+                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors p-1 rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {copiedKey === 'pitch-email' ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                        <div className="bg-background p-4 rounded-lg border border-border text-xs text-foreground leading-relaxed whitespace-pre-wrap font-sans">
+                          {emailPitch || 'Generating executive buyout proposal email...'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+        </div>
+
+        {/* ADD COMPETITOR TARGET MODAL */}
+        {addModalOpen && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm overflow-y-auto"
+            onClick={() => setAddModalOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="track-target-title"
+              className="bg-card border border-border rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 text-foreground shadow-2xl space-y-4 my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <h3 id="track-target-title" className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <Target className="w-4 h-4 text-muted-foreground" />
+                  Track Competitor Incumbent Target
+                </h3>
+                <button
+                  onClick={() => setAddModalOpen(false)}
+                  aria-label="Close track target dialog"
+                  className="p-1.5 text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted border border-border rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateDisplacement} className="space-y-3 text-xs">
+                <div>
+                  <label className="text-muted-foreground mb-1 block font-medium">Company Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Ramp, Gusto, Notion"
+                    value={targetCompany}
+                    onChange={(e) => setTargetCompany(e.target.value)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-muted-foreground mb-1 block font-medium">Contact Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Alex Morgan"
+                      value={targetContactName}
+                      onChange={(e) => setTargetContactName(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-muted-foreground mb-1 block font-medium">Job Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. VP Sales, RevOps"
+                      value={targetContactTitle}
+                      onChange={(e) => setTargetContactTitle(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-muted-foreground mb-1 block font-medium">Incumbent Vendor</label>
+                    <Select
+                      value={incumbentVendor}
+                      onValueChange={(val) => setIncumbentVendor(val)}
+                    >
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-xs focus-visible:ring-2 focus-visible:ring-ring">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="apollo">Apollo.io</SelectItem>
+                        <SelectItem value="outreach">Outreach.io</SelectItem>
+                        <SelectItem value="salesloft">Salesloft</SelectItem>
+                        <SelectItem value="lemlist">Lemlist</SelectItem>
+                        <SelectItem value="expandi">Expandi</SelectItem>
+                        <SelectItem value="heyreach">HeyReach</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-muted-foreground mb-1 block font-medium">Domain</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. company.com"
+                      value={domain}
+                      onChange={(e) => setDomain(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-muted-foreground mb-1 block font-medium">Seat Count</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={5000}
+                      value={seatCount}
+                      onChange={(e) => setSeatCount(Number(e.target.value) || 1)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-muted-foreground mb-1 block font-medium">Days to Contract Renewal</label>
+                    <input
+                      type="number"
+                      min={1}
                       max={365}
                       value={renewalDays}
-                      onChange={(e) => setRenewalDays(Number(e.target.value))}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:border-foreground"
+                      onChange={(e) => setRenewalDays(Number(e.target.value) || 1)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
                 </div>
@@ -932,14 +1014,14 @@ export function DisplacementStudioModal({ onClose, campaignId }: DisplacementStu
                   <button
                     type="button"
                     onClick={() => setAddModalOpen(false)}
-                    className="px-4 py-2 bg-muted/40 hover:bg-muted border border-border text-muted-foreground rounded-lg transition-colors"
+                    className="px-4 py-2 bg-muted/60 hover:bg-muted border border-border text-muted-foreground hover:text-foreground rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isCreating}
-                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
                   >
                     {isCreating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                     Track Target

@@ -866,6 +866,27 @@ class EleInOrchestrator:
             logger.error(f"[Orchestrator] sweep_completed_campaigns error: {e}", exc_info=True)
             return []
 
+    def sweep_stale_outbox_events(self, timeout_minutes: int = 10) -> int:
+        """
+        Paranoia Layer 1 & 2 (ENG-13): Auto-reaps outbox events marooned in 'processing' status
+        due to worker crashes, pod terminations, or unhandled exceptions.
+        Resets events to 'pending' with audit trail note so the outbox poller can deliver them.
+        """
+        try:
+            now_dt = datetime.now(timezone.utc)
+            cutoff = (now_dt - timedelta(minutes=timeout_minutes)).isoformat()
+            res = self.supabase.table("outbox_events").update({
+                "status": "pending",
+                "last_error": f"Worker timed out during processing (auto-reaped after {timeout_minutes}m)"
+            }).eq("status", "processing").lt("updated_at", cutoff).execute()
+            count = len(res.data) if res.data else 0
+            if count > 0:
+                logger.warning(f"[Orchestrator] Reaped {count} stuck outbox events older than {timeout_minutes}m")
+            return count
+        except Exception as e:
+            logger.debug(f"[Orchestrator] sweep_stale_outbox_events skipped/failed: {e}")
+            return 0
+
     def process_pending_leads(self, stop_checker=None):
         import time
         from collections import defaultdict
@@ -929,6 +950,18 @@ class EleInOrchestrator:
                             }).eq("id", row["execution_state_id"]).execute()
             except Exception as e_4:
                 logger.debug(f"[Orchestrator] Expired AI reply approval cleanup skipped/failed: {e_4}")
+
+            # 5. Layer 1 Paranoia (ENG-13): Auto-recover orphaned outbox events stuck in 'processing'
+            try:
+                outbox_cutoff = (now_dt - timedelta(minutes=10)).isoformat()
+                stale_outbox = self.supabase.table("outbox_events").update({
+                    "status": "pending",
+                    "last_error": "Worker timed out during processing (auto-reaped by orchestrator recovery sweep)"
+                }).eq("status", "processing").lt("updated_at", outbox_cutoff).execute()
+                if stale_outbox.data:
+                    logger.warning(f"[Orchestrator] Recovered {len(stale_outbox.data)} orphaned outbox events (stuck >10m in 'processing')")
+            except Exception as e_outbox:
+                logger.debug(f"[Orchestrator] Outbox stale event cleanup skipped/failed: {e_outbox}")
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator", "stage": "stale_recovery"})
 

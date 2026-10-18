@@ -6,6 +6,71 @@
     "version": "3.0.0"
   },
   "paths": {
+    "/api/elein/media/{folder}/{filename}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Media File",
+        "operationId": "get_media_file_api_elein_media__folder___filename__get",
+        "parameters": [
+          {
+            "name": "folder",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Folder"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/admin/api-keys": {
       "get": {
         "tags": [
@@ -2438,6 +2503,294 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Public Verify Certificate Endpoint Api Public Verify Certificate  Token  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/unsubscribe": {
+      "post": {
+        "tags": [
+          "unsubscribe"
+        ],
+        "summary": "RFC 8058 One-Click Unsubscribe (POST)",
+        "description": "RFC 8058 One-Click Unsubscribe POST endpoint.\nInvoked by Mail User Agents (Gmail, Yahoo, Apple Mail) upon clicking Unsubscribe.\nMUA sends POST with form data 'List-Unsubscribe=One-Click'.\nValidates cryptographic token and executes immediate unsubscription with zero confirmation friction.",
+        "operationId": "rfc8058_unsubscribe_post_api_elein_unsubscribe_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "unsubscribe"
+        ],
+        "summary": "RFC 8058 Unsubscribe Confirmation (GET)",
+        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nValidates cryptographic token, processes unsubscription, and displays an accessible,\nresponsive confirmation card.",
+        "operationId": "rfc8058_unsubscribe_get_api_elein_unsubscribe_get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/unsubscribe": {
+      "post": {
+        "tags": [
+          "unsubscribe"
+        ],
+        "summary": "RFC 8058 One-Click Unsubscribe (POST)",
+        "description": "RFC 8058 One-Click Unsubscribe POST endpoint.\nInvoked by Mail User Agents (Gmail, Yahoo, Apple Mail) upon clicking Unsubscribe.\nMUA sends POST with form data 'List-Unsubscribe=One-Click'.\nValidates cryptographic token and executes immediate unsubscription with zero confirmation friction.",
+        "operationId": "rfc8058_unsubscribe_post_api_unsubscribe_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "unsubscribe"
+        ],
+        "summary": "RFC 8058 Unsubscribe Confirmation (GET)",
+        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nValidates cryptographic token, processes unsubscription, and displays an accessible,\nresponsive confirmation card.",
+        "operationId": "rfc8058_unsubscribe_get_api_unsubscribe_get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unsubscribe": {
+      "post": {
+        "tags": [
+          "unsubscribe"
+        ],
+        "summary": "RFC 8058 One-Click Unsubscribe (POST)",
+        "description": "RFC 8058 One-Click Unsubscribe POST endpoint.\nInvoked by Mail User Agents (Gmail, Yahoo, Apple Mail) upon clicking Unsubscribe.\nMUA sends POST with form data 'List-Unsubscribe=One-Click'.\nValidates cryptographic token and executes immediate unsubscription with zero confirmation friction.",
+        "operationId": "rfc8058_unsubscribe_post_unsubscribe_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "unsubscribe"
+        ],
+        "summary": "RFC 8058 Unsubscribe Confirmation (GET)",
+        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nValidates cryptographic token, processes unsubscription, and displays an accessible,\nresponsive confirmation card.",
+        "operationId": "rfc8058_unsubscribe_get_unsubscribe_get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -6741,19 +7094,69 @@
           "elein"
         ],
         "summary": "Get Lists",
+        "description": "Paranoia Layer 0 & Layer 1 (API-09): Paginated lead list retrieval.\nEnforces safe default limit=50 and hard ceiling max=200 to protect memory and PostgREST bandwidth.",
         "operationId": "get_lists_api_elein_leads_lists_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 200,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
                   "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
                   "title": "Response Get Lists Api Elein Leads Lists Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
