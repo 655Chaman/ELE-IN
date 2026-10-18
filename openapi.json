@@ -10923,6 +10923,94 @@
         }
       }
     },
+    "/api/elein/deliverability/audit-spam-score": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Audit Spam Score",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 39):\nWorkspace-scoped algorithmic content spam score classifier.\nSimulates SpamAssassin and Microsoft EOP pre-flight heuristics,\nreturning comprehensive spam audit, heuristic breakdown, and recommendations.",
+        "operationId": "api_audit_spam_score_api_elein_deliverability_audit_spam_score_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpamScoreAuditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Audit Spam Score Api Elein Deliverability Audit Spam Score Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/sanitize-copy": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Sanitize Copy",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 39):\nWorkspace-scoped copy remediation and trigger word sanitizer.\nReturns sanitized copy and replacements table.",
+        "operationId": "api_sanitize_copy_api_elein_deliverability_sanitize_copy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopySanitizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Sanitize Copy Api Elein Deliverability Sanitize Copy Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -19916,6 +20004,19 @@
         ],
         "title": "CookieRefreshRequest"
       },
+      "CopySanitizeRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "CopySanitizeRequest"
+      },
       "CreateAccountPayload": {
         "properties": {
           "company_name": {
@@ -24946,6 +25047,48 @@
         },
         "type": "object",
         "title": "SocialRadarScanRequest"
+      },
+      "SpamScoreAuditRequest": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "is_reply": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Reply",
+            "default": false
+          },
+          "has_unsubscribe": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Unsubscribe",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "body"
+        ],
+        "title": "SpamScoreAuditRequest"
       },
       "SpintaxAnalyzeRequest": {
         "properties": {

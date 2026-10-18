@@ -222,3 +222,15 @@
     - Enriches output telemetry with `recipient_esp`, `is_catch_all_domain`, and `mx_record_count`.
     - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/verify-mx`, `POST /api/elein/deliverability/check-catch-all`, and `POST /api/elein/deliverability/evaluate-smtp-deferral`.
   - **Verification**: 73/73 automated tests passing across `test_mx_catchall_and_greylisting_guard.py` (47/47) and `test_mx_and_catchall_guard.py` (26/26), 226/226 trilogy regression tests green, clean TypeScript validation and sub-second frontend production build.
+
+- [x] **Phase 39: Spam Trigger Words & Algorithmic Content Spam Score Classifier (SpamAssassin & Microsoft EOP Pre-Flight) (100% Operational):**
+  - **Spam Score Core Engine (`core/backend/services/spam_score_service.py`)**:
+    - `SpamRiskLevel`: `SAFE` (<2.0), `LOW_RISK` (2.0-3.99), `HIGH_SPAM_RISK` (4.0-5.99), `CRITICAL_SPAM_REJECT` (>=6.0).
+    - 628 calibrated trigger keywords and regex patterns spanning 6 categories: `URGENCY_PRESSURE`, `FINANCIAL_HYPE`, `SHADY_MARKETING`, `DECEPTIVE_PREFIXES`, `SENSITIVE_PHARMACEUTICAL_CRYPTO`, and `URL_SHORTENER_DOMAINS` with 1.5x subject weighting.
+    - Algorithmic SpamAssassin / Microsoft Exchange Online Protection heuristics: all-caps subject/body penalties, excessive punctuation (`?!` combos), excessive currency symbols, deceptive `Re:`/`Fwd:` prefixes on cold emails, link density thresholds, raw IP URLs (`http://192.168.1.1/`), and missing unsubscribe penalties.
+    - `suggest_copy_remediations`: Context-preserving B2B consultative copy substitutions (preserving Title Case, UPPERCASE, and lowercase formats).
+    - Hardened with ReDoS regex bounds, zero-width character evasion cleansing (`\u200B` - `\u200D`, `\uFEFF`, `\u00AD`), and 100,000-character payload clamping.
+  - **Campaign Executor & Router Integration (`campaigns/backend/services/elein_executor.py`, `campaigns/backend/routers/elein.py`)**:
+    - `EleInExecutor.handle_send_email`: Pre-flight content heuristic gate aborts dispatch on critical spam scores (`>= 6.0`) with `status="skipped"`, `reason="critical_spam_score"`, burning 0 SendGrid credits and preserving domain sender reputation. Enriches telemetry with `spam_score`, `spam_risk_level`, and `flagged_triggers_count`.
+    - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/audit-spam-score` and `POST /api/elein/deliverability/sanitize-copy`.
+  - **Verification**: 93/93 automated tests passing across `test_spam_score_service.py` (38/38), `test_spam_score_and_eop_guard.py` (20/20), `test_spam_score_executor_and_router.py` (10/10), and unit tests (25/25); 239/239 regression deliverability suite green; sub-second production build (688ms).

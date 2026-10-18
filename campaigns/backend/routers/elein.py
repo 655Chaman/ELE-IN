@@ -7794,9 +7794,78 @@ def api_evaluate_smtp_deferral(
     return res
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 39: Spam Trigger Words & Algorithmic Content Spam Score Classifier
+# (SpamAssassin & Microsoft EOP Pre-Flight)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SpamScoreAuditRequest(BaseModel):
+    subject: str
+    body: str
+    is_reply: Optional[bool] = False
+    has_unsubscribe: Optional[bool] = True
 
 
+class CopySanitizeRequest(BaseModel):
+    text: str
 
 
+@router.post("/deliverability/audit-spam-score", response_model=dict)
+def api_audit_spam_score(
+    req: SpamScoreAuditRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 39):
+    Workspace-scoped algorithmic content spam score classifier.
+    Simulates SpamAssassin and Microsoft EOP pre-flight heuristics,
+    returning comprehensive spam audit, heuristic breakdown, and recommendations.
+    """
+    try:
+        from core.backend.services.spam_score_service import SpamScoreService
+    except ImportError:
+        try:
+            from campaigns.backend.services.spam_score_service import SpamScoreService
+        except ImportError:
+            raise HTTPException(status_code=500, detail="SpamScoreService is not available")
+
+    res = SpamScoreService.audit_email_content(
+        subject=req.subject or "",
+        body=req.body or "",
+        is_reply=bool(req.is_reply),
+        has_unsubscribe=bool(req.has_unsubscribe),
+    )
+    if isinstance(res, dict):
+        res["workspace_id"] = workspace_id
+    return res
 
 
+@router.post("/deliverability/sanitize-copy", response_model=dict)
+def api_sanitize_copy(
+    req: CopySanitizeRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 39):
+    Workspace-scoped copy remediation and trigger word sanitizer.
+    Returns sanitized copy and replacements table.
+    """
+    try:
+        from core.backend.services.spam_score_service import SpamScoreService
+    except ImportError:
+        try:
+            from campaigns.backend.services.spam_score_service import SpamScoreService
+        except ImportError:
+            raise HTTPException(status_code=500, detail="SpamScoreService is not available")
+
+    try:
+        res = SpamScoreService.suggest_copy_remediations(
+            text=req.text or "",
+        )
+    except TypeError:
+        res = SpamScoreService.suggest_copy_remediations(
+            req.text or "",
+        )
+    if isinstance(res, dict):
+        res["workspace_id"] = workspace_id
+    return res

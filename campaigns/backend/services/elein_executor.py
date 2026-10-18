@@ -17,6 +17,13 @@ except ImportError:
     generate_rfc8058_headers = None
 
 from core.backend.services.email_shield_service import EmailShieldService
+try:
+    from core.backend.services.spam_score_service import SpamScoreService
+except ImportError:
+    try:
+        from campaigns.backend.services.spam_score_service import SpamScoreService
+    except ImportError:
+        SpamScoreService = None
 
 logger = logging.getLogger(__name__)
 
@@ -4657,6 +4664,46 @@ Respond ONLY with valid JSON."""
             if len(body) > 50000:
                 body = body[:49997] + "..."
 
+            # Phase 39: Pre-flight Spam Trigger Words & Algorithmic Content Spam Score Classifier
+            spam_audit: Dict[str, Any] = {}
+            target_spam_service = SpamScoreService
+            if target_spam_service is None:
+                try:
+                    from core.backend.services.spam_score_service import SpamScoreService as _svc
+                    target_spam_service = _svc
+                except ImportError:
+                    try:
+                        from campaigns.backend.services.spam_score_service import SpamScoreService as _svc
+                        target_spam_service = _svc
+                    except ImportError:
+                        target_spam_service = None
+
+            if target_spam_service is not None:
+                unsub_url = data.get("unsub_url") or data.get("unsubscribe_url")
+                has_unsubscribe = bool(unsub_url or "unsubscribe" in body.lower())
+                spam_audit = target_spam_service.audit_email_content(
+                    subject=subject,
+                    body=body,
+                    is_reply=data.get("is_reply", False),
+                    has_unsubscribe=has_unsubscribe,
+                )
+
+                # Paranoia Layer 1 & 2 Pre-flight Content Guard:
+                if not spam_audit.get("can_safely_send", True):
+                    logger.warning(
+                        f"[DeliverabilityGuard] ABORT: Outbound email content failed spam score threshold (score {spam_audit.get('spam_score')}/10). Rejection reason: {spam_audit.get('rejection_reason')}"
+                    )
+                    return {
+                        "status": "skipped",
+                        "reason": "critical_spam_score",
+                        "error": f"Email content rejected by spam heuristic guard (score {spam_audit.get('spam_score')}/10). Top triggers: {[t.get('phrase') for t in spam_audit.get('flagged_triggers', [])[:3]]}. Please revise copy before sending.",
+                        "branch": Branch.FAILED.value,
+                    }
+                if spam_audit.get("risk_level") == "HIGH_SPAM_RISK":
+                    logger.info(
+                        f"[DeliverabilityGuard] Notice: Email has elevated spam score ({spam_audit.get('spam_score')}/10). Sending with telemetry flag."
+                    )
+
             # Credit deduction
             deducted = False
             idem_key = None
@@ -4819,6 +4866,10 @@ Respond ONLY with valid JSON."""
                     res_dict["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
                     res_dict["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy") or dmarc_audit.get("alignment", {}).get("policy", "none")
                     res_dict["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
+                if spam_audit:
+                    res_dict["spam_score"] = spam_audit.get("spam_score")
+                    res_dict["spam_risk_level"] = spam_audit.get("risk_level")
+                    res_dict["flagged_triggers_count"] = len(spam_audit.get("flagged_triggers", []))
                 if selected_inbox:
                     res_dict["sender_domain"] = selected_inbox.get("sender_domain") or (
                         selected_inbox.get("email", "").split("@")[-1] if "@" in str(selected_inbox.get("email", "")) else None
@@ -4959,6 +5010,10 @@ Respond ONLY with valid JSON."""
                         out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
                         out["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy", "none")
                         out["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
+                    if spam_audit:
+                        out["spam_score"] = spam_audit.get("spam_score")
+                        out["spam_risk_level"] = spam_audit.get("risk_level")
+                        out["flagged_triggers_count"] = len(spam_audit.get("flagged_triggers", []))
                     if selected_inbox:
                         out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
                         out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
@@ -5029,6 +5084,10 @@ Respond ONLY with valid JSON."""
                             out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
                             out["dmarc_policy"] = dmarc_audit.get("alignment", {}).get("dmarc_policy", "none")
                             out["dmarc_score"] = dmarc_audit.get("deliverability_score", 100)
+                        if spam_audit:
+                            out["spam_score"] = spam_audit.get("spam_score")
+                            out["spam_risk_level"] = spam_audit.get("risk_level")
+                            out["flagged_triggers_count"] = len(spam_audit.get("flagged_triggers", []))
                         if selected_inbox:
                             out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
                             out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
