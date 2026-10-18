@@ -16,6 +16,8 @@ try:
 except ImportError:
     generate_rfc8058_headers = None
 
+from core.backend.services.email_shield_service import EmailShieldService
+
 logger = logging.getLogger(__name__)
 
 
@@ -4603,6 +4605,21 @@ Respond ONLY with valid JSON."""
             if not re.match(r"[^@]+@[^@]+\.[^@]+", to_email):
                 return {"status": "error", "branch": Branch.FAILED.value, "error": f"Invalid recipient email syntax: {to_email}"}
 
+            # Issue 9: Pre-flight deliverability check (Spam traps, Disposable, Role-based)
+            allow_role_based = bool(data.get("allow_role_based", False) or data.get("send_to_role_inboxes", False))
+            audit = EmailShieldService.audit_email_address(to_email, allow_role_based=allow_role_based)
+            if not audit.get("can_safely_send"):
+                if audit.get("is_spam_trap"):
+                    logger.error(f"[DeliverabilityGuard] ABORT: Spam trap honeypot detected: {to_email}")
+                    return {"status": "skipped", "reason": "spam_trap_detected", "error": "Prospect email matches known ESP spam trap or honeypot."}
+                if audit.get("is_disposable"):
+                    logger.warning(f"[DeliverabilityGuard] ABORT: Disposable email rejected: {to_email}")
+                    return {"status": "skipped", "reason": "disposable_email_rejected", "error": "Recipient uses a disposable/ephemeral email provider."}
+                if audit.get("is_role_based") and not allow_role_based:
+                    logger.warning(f"[DeliverabilityGuard] Role-based email blocked: {to_email}")
+                    return {"status": "skipped", "reason": "role_based_email_blocked", "error": f"Role-based mailbox '{audit.get('role_category')}' blocked by deliverability policy."}
+                return {"status": "skipped", "reason": audit.get("rejection_reason", "deliverability_check_failed"), "error": audit.get("rejection_reason", "Deliverability check failed")}
+
             subject = data.get("subject") or data.get("subject_template") or "Hello"
             body = data.get("body") or data.get("body_template") or data.get("message", "")
 
@@ -4775,6 +4792,10 @@ Respond ONLY with valid JSON."""
                 if ssl_tracking_bypassed:
                     res_dict["ssl_tracking_bypassed"] = True
 
+                if audit:
+                    res_dict["email_classification"] = audit.get("classification")
+                    res_dict["deliverability_risk"] = audit.get("deliverability_risk")
+
                 if selected_inbox_id:
                     try:
                         from integrations.backend.services.email_sender_service import record_inbox_delivery_outcome
@@ -4853,6 +4874,9 @@ Respond ONLY with valid JSON."""
                         out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
                         out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
                         out["warmup_days_active"] = selected_inbox.get("warmup_days_active")
+                    if audit:
+                        out["email_classification"] = audit.get("classification")
+                        out["deliverability_risk"] = audit.get("deliverability_risk")
                     if ssl_tracking_bypassed:
                         out["ssl_tracking_bypassed"] = True
                     if bandit_meta.get("enabled"):
@@ -4913,6 +4937,9 @@ Respond ONLY with valid JSON."""
                             out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
                             out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
                             out["warmup_days_active"] = selected_inbox.get("warmup_days_active")
+                        if audit:
+                            out["email_classification"] = audit.get("classification")
+                            out["deliverability_risk"] = audit.get("deliverability_risk")
                         if ssl_tracking_bypassed:
                             out["ssl_tracking_bypassed"] = True
                         if bandit_meta.get("enabled"):
@@ -4948,6 +4975,9 @@ Respond ONLY with valid JSON."""
             }
             if ssl_tracking_bypassed:
                 out["ssl_tracking_bypassed"] = True
+            if audit:
+                out["email_classification"] = audit.get("classification")
+                out["deliverability_risk"] = audit.get("deliverability_risk")
             if data.get("spintax_applied"):
                 out["spintax_resolved"] = True
             if rfc_headers:

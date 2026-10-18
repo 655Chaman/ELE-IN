@@ -170,5 +170,21 @@
     - Exposed endpoints `POST /api/elein/warmup/calculate-ramp`, `POST /api/elein/warmup/health`, `POST /api/elein/warmup/simulate-tick`, and `GET /api/elein/warmup/inbox/{inbox_id}` with tenant IDOR protection.
   - **Verification**: 69/69 automated tests passing across `test_smart_mailbox_warmup_engine.py` (39/39), `test_mailbox_warmup_service.py` (17/17), and `test_horizon29_cold_email_deliverability_pool.py` (13/13) with sub-second production build (783ms).
 
+- [x] **Phase 35: ESP Spam Trap, Role-Based Mailbox & Disposable Domain Shield (100% Operational):**
+  - **Email Shield Core & Classification Engine (`core/backend/services/email_shield_service.py`)**:
+    - `EmailClassification`: `CORPORATE`, `FREE_WEBMAIL`, `ROLE_BASED`, `DISPOSABLE`, `SPAM_TRAP`, `INVALID`.
+    - `SPAM_TRAP_PREFIXES`: Pristine honeypots and spam trap prefixes (`abuse`, `postmaster`, `spam`, `trap`, `honeypot`, `spamtrap`, `uce`, `fbl`, `noc`, `security`, `phish`, `anti-spam`) with composite/trailing-digit matching (`spamtrap12`, `honeypot99`, `spamtrap_marketing`).
+    - `ROLE_BASED_PREFIXES` & `ROLE_CATEGORY_MAP`: 31+ functional role-based mailboxes (`info`, `admin`, `support`, `billing`, `sales`, `jobs`, `careers`, `hr`, `legal`, `contact`, etc.) mapped to organizational departments (`ADMINISTRATION`, `SUPPORT`, `FINANCE_BILLING`, `SALES`, `HUMAN_RESOURCES`, `LEGAL_COMPLIANCE`, `GENERAL_INQUIRY`, etc.).
+    - `DISPOSABLE_DOMAINS`: 150+ ephemeral mailbox domains (`mailinator.com`, `guerrillamail.com`, `10minutemail.com`, `yopmail.com`, `trashmail.com`, etc.) with hierarchical subdomain stripping.
+    - `FREE_WEBMAIL_DOMAINS`: Major global and regional consumer webmail providers (`gmail.com`, `yahoo.com`, `outlook.com`, `hotmail.com`, `icloud.com`, `proton.me`, `yandex.ru`, `gmx.de`, etc.).
+    - `clean_and_parse_email`: RFC 5321 length validation, mailto: and display angle bracket stripping, NUL-byte and control character cleansing, and subaddressing / plus-tag normalization (`abuse+marketing@target.com` -> `abuse`).
+    - `audit_email_address` & `audit_email_batch`: Single and batch auditing (clamped to 10,000 items to defend against worker OOM) returning risk tiers (`SAFE`, `LOW_RISK`, `HIGH_RISK`, `CRITICAL_SPAM_TRAP`) and policy-gated sending clearance (`can_safely_send`).
+  - **Lead Ingestion & Campaign Executor Integration (`leads/backend/services/lead_ingestion_service.py`, `campaigns/backend/services/elein_executor.py`)**:
+    - `execute_bulk_import_leads`: Automatically audits incoming emails, enriches metadata (`email_classification`, `is_role_based`, `is_disposable`, `deliverability_risk`), and automatically quarantines detected spam traps (`status="QUARANTINED"`, `quarantine_reason="SPAM_TRAP_DETECTED"`) with zero-migration database resilience.
+    - `EleInExecutor.handle_send_email`: Pre-flight deliverability check aborts sends to spam traps (`spam_trap_detected`), disposable domains (`disposable_email_rejected`), and unauthorized role-based inboxes (`role_based_email_blocked` unless `allow_role_based=True` is explicitly configured). Enriches dispatch telemetry with classification metrics.
+  - **Router Endpoints (`campaigns/backend/routers/elein.py`)**:
+    - Exposed `POST /api/elein/deliverability/audit-email` and `POST /api/elein/deliverability/audit-batch` with workspace IDOR scoping.
+  - **Verification**: 63/63 automated tests passing across `test_email_shield_service.py` (30/30) and `test_email_shield_and_spam_trap_guard.py` (33/33), 225/225 deliverability regression suite green, sub-second frontend production build (624ms).
+
 
 

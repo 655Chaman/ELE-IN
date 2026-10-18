@@ -2,6 +2,8 @@ import logging
 import uuid
 from typing import Dict, List, Any, Optional, Tuple
 
+from core.backend.services.email_shield_service import EmailShieldService
+
 logger = logging.getLogger(__name__)
 
 # Paranoia Layer 1: In-memory fallback stores for zero-migration resilience
@@ -181,6 +183,26 @@ def execute_bulk_import_leads(
         processed_lead["domain"] = lead_domain
         processed_lead["timezone"] = final_tz
         processed_lead["is_open_profile"] = is_open_profile_bool
+
+        # Issue 9: Cold Outreach Email Shield, Spam Trap & Role-Based Hygiene Audit
+        if email:
+            try:
+                audit = EmailShieldService.audit_email_address(email)
+                processed_lead["email_classification"] = audit.get("classification", "CORPORATE")
+                processed_lead["is_role_based"] = audit.get("is_role_based", False)
+                processed_lead["is_disposable"] = audit.get("is_disposable", False)
+                processed_lead["deliverability_risk"] = audit.get("deliverability_risk", "SAFE")
+                # Paranoia Layer 1: Pristine & recycled spam traps must NEVER be queued into active outreach
+                if audit.get("is_spam_trap"):
+                    processed_lead["status"] = "QUARANTINED"
+                    processed_lead["quarantine_reason"] = "SPAM_TRAP_DETECTED"
+            except Exception as shield_err:
+                logger.warning(f"EmailShield audit failed for {email}: {shield_err}")
+                processed_lead["email_classification"] = "CORPORATE"
+                processed_lead["is_role_based"] = False
+                processed_lead["is_disposable"] = False
+                processed_lead["deliverability_risk"] = "SAFE"
+
         deduped_leads.append(processed_lead)
 
     if not deduped_leads:
@@ -202,8 +224,15 @@ def execute_bulk_import_leads(
                         "job_title": l.get("job_title"),
                         "location": l.get("location"),
                         "domain": l.get("domain"),
-                        "timezone": l.get("timezone")
-                    }.items() if v
+                        "timezone": l.get("timezone"),
+                        "is_open_profile": l.get("is_open_profile"),
+                        "status": l.get("status"),
+                        "quarantine_reason": l.get("quarantine_reason"),
+                        "email_classification": l.get("email_classification"),
+                        "is_role_based": l.get("is_role_based"),
+                        "is_disposable": l.get("is_disposable"),
+                        "deliverability_risk": l.get("deliverability_risk"),
+                    }.items() if v is not None
                 }
                 for l in deduped_leads
             ],
@@ -303,7 +332,7 @@ def execute_bulk_import_leads(
                     updates_to_perform.append(lead)
                 else:
                     new_id = existing_id or str(uuid.uuid4())
-                    to_insert_leads.append({
+                    insert_lead_dict = {
                         "id": new_id,
                         "workspace_id": workspace_id,
                         "linkedin_url": lead.get("norm_url") or lead.get("linkedin_url"),
@@ -316,7 +345,20 @@ def execute_bulk_import_leads(
                         "domain": lead.get("domain"),
                         "timezone": lead.get("timezone") or timezone or "UTC",
                         "is_open_profile": lead.get("is_open_profile", False)
-                    })
+                    }
+                    if lead.get("status"):
+                        insert_lead_dict["status"] = lead["status"]
+                    if lead.get("quarantine_reason"):
+                        insert_lead_dict["quarantine_reason"] = lead["quarantine_reason"]
+                    if lead.get("email_classification"):
+                        insert_lead_dict["email_classification"] = lead["email_classification"]
+                    if lead.get("is_role_based") is not None:
+                        insert_lead_dict["is_role_based"] = lead["is_role_based"]
+                    if lead.get("is_disposable") is not None:
+                        insert_lead_dict["is_disposable"] = lead["is_disposable"]
+                    if lead.get("deliverability_risk"):
+                        insert_lead_dict["deliverability_risk"] = lead["deliverability_risk"]
+                    to_insert_leads.append(insert_lead_dict)
                     lead["assigned_id"] = new_id
 
             inserted_lead_ids = []
@@ -339,7 +381,17 @@ def execute_bulk_import_leads(
                             inserted_lead_ids.append(l_item["id"])
                         except Exception:
                             try:
-                                fallback_item = {k: v for k, v in l_item.items() if k != "is_open_profile"}
+                                fallback_item = {
+                                    k: v for k, v in l_item.items()
+                                    if k not in (
+                                        "is_open_profile",
+                                        "quarantine_reason",
+                                        "email_classification",
+                                        "is_role_based",
+                                        "is_disposable",
+                                        "deliverability_risk",
+                                    )
+                                }
                                 supabase.table("leads").upsert(fallback_item).execute()
                                 inserted_lead_ids.append(l_item["id"])
                             except Exception:
@@ -357,6 +409,12 @@ def execute_bulk_import_leads(
                         if lead.get("location"): update_payload["location"] = lead["location"]
                         if lead.get("timezone"): update_payload["timezone"] = lead["timezone"]
                         if "is_open_profile" in lead: update_payload["is_open_profile"] = lead["is_open_profile"]
+                        if lead.get("status"): update_payload["status"] = lead["status"]
+                        if lead.get("quarantine_reason"): update_payload["quarantine_reason"] = lead["quarantine_reason"]
+                        if lead.get("email_classification"): update_payload["email_classification"] = lead["email_classification"]
+                        if lead.get("is_role_based") is not None: update_payload["is_role_based"] = lead["is_role_based"]
+                        if lead.get("is_disposable") is not None: update_payload["is_disposable"] = lead["is_disposable"]
+                        if lead.get("deliverability_risk"): update_payload["deliverability_risk"] = lead["deliverability_risk"]
                         if update_payload:
                             supabase.table("leads").update(update_payload).eq("id", eid).eq("workspace_id", workspace_id).execute()
                         inserted_lead_ids.append(eid)

@@ -9936,6 +9936,94 @@
         }
       }
     },
+    "/api/elein/deliverability/audit-email": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Audit Email Endpoint",
+        "description": "Issue 9 (ESP Spam Trap, Role-Based Mailbox & Disposable Domain Shield):\nWorkspace-scoped deliverability shield audit for a single email address.\nDetects pristine spam traps, disposable domains, and role-based mailboxes.",
+        "operationId": "audit_email_endpoint_api_elein_deliverability_audit_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailAuditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Audit Email Endpoint Api Elein Deliverability Audit Email Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/audit-batch": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Audit Email Batch Endpoint",
+        "description": "Issue 9 (ESP Spam Trap, Role-Based Mailbox & Disposable Domain Shield):\nWorkspace-scoped batch deliverability shield audit for cold email prospect lists.\nClamps batch size to max 10,000 items and returns aggregate statistics.",
+        "operationId": "audit_email_batch_endpoint_api_elein_deliverability_audit_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailBatchAuditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Audit Email Batch Endpoint Api Elein Deliverability Audit Batch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/classify-reply": {
       "post": {
         "tags": [
@@ -20327,6 +20415,59 @@
           "data"
         ],
         "title": "EleInNode"
+      },
+      "EmailAuditRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "allow_role_based": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Role Based",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "EmailAuditRequest"
+      },
+      "EmailBatchAuditRequest": {
+        "properties": {
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emails"
+          },
+          "allow_role_based": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Role Based",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "emails"
+        ],
+        "title": "EmailBatchAuditRequest"
       },
       "EnrichBatchPayload": {
         "properties": {

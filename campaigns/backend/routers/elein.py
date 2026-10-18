@@ -26,6 +26,7 @@ from core.backend.services.job_queue import enqueue_job
 from core.backend.services import storage_service
 from campaigns.backend.schemas.elein import CampaignCreate, CampaignResponse, AccountCreate, AccountResponse
 from campaigns.backend.services.collision_guard import get_conflicting_active_leads
+from core.backend.services.email_shield_service import EmailShieldService
 
 
 from fastapi import Request
@@ -6671,6 +6672,56 @@ def get_tracking_domain_status_endpoint(
         "cname_target": check_res.get("cname_target"),
         "details": check_res.get("ssl_details") or check_res,
     }
+
+
+# ==============================================================================
+# Issue 9: ESP Spam Trap, Role-Based Mailbox & Disposable Domain Shield
+# ==============================================================================
+
+class EmailAuditRequest(BaseModel):
+    email: str
+    allow_role_based: Optional[bool] = False
+
+
+class EmailBatchAuditRequest(BaseModel):
+    emails: List[str]
+    allow_role_based: Optional[bool] = False
+
+
+@router.post("/deliverability/audit-email", response_model=dict)
+def audit_email_endpoint(
+    req: EmailAuditRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Issue 9 (ESP Spam Trap, Role-Based Mailbox & Disposable Domain Shield):
+    Workspace-scoped deliverability shield audit for a single email address.
+    Detects pristine spam traps, disposable domains, and role-based mailboxes.
+    """
+    audit = EmailShieldService.audit_email_address(
+        email=req.email,
+        allow_role_based=bool(req.allow_role_based),
+    )
+    audit["workspace_id"] = workspace_id
+    return audit
+
+
+@router.post("/deliverability/audit-batch", response_model=dict)
+def audit_email_batch_endpoint(
+    req: EmailBatchAuditRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Issue 9 (ESP Spam Trap, Role-Based Mailbox & Disposable Domain Shield):
+    Workspace-scoped batch deliverability shield audit for cold email prospect lists.
+    Clamps batch size to max 10,000 items and returns aggregate statistics.
+    """
+    batch_result = EmailShieldService.audit_email_batch(
+        emails=req.emails,
+        allow_role_based=bool(req.allow_role_based),
+    )
+    batch_result["workspace_id"] = workspace_id
+    return batch_result
 
 
 class ClassifyInboundReplyRequest(BaseModel):
