@@ -3889,7 +3889,7 @@ def create_campaign(
                 exc_info=True
             )
             try:
-                supabase.table("campaigns").delete().eq("id", campaign_id).execute()
+                supabase.table("campaigns").delete().eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
             except Exception as rollback_err:
                 logger.error(
                     f"create_campaign: CRITICAL — could not rollback orphan campaign {campaign_id}: {rollback_err}"
@@ -4074,7 +4074,7 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
             
         update_data["metadata"] = meta
         
-        client.table("campaigns").update(update_data).eq("id", campaign_id).execute()
+        client.table("campaigns").update(update_data).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
 
         # Create new version
         ver_res = client.table("campaign_versions").select("version").eq("campaign_id", campaign_id).order("version", desc=True).limit(1).execute()
@@ -4168,7 +4168,7 @@ def pause_campaign(campaign_id: str, workspace_id: str = Depends(get_current_wor
                 client.table("campaign_execution_states").update({
                     "status": "paused",
                     "error_reason": f"Campaign '{camp_name}' paused by operator"
-                }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply"]).execute()
+                }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply", "running", "processing"]).execute()
     except Exception as cascade_err:
         logger.warning(f"Failed to cascade pause execution states for campaign {campaign_id}: {cascade_err}")
 
@@ -4195,7 +4195,7 @@ def pause_all_campaigns(workspace_id: str = Depends(get_current_workspace), clie
                 client.table("campaign_execution_states").update({
                     "status": "paused",
                     "error_reason": "All campaigns paused via Panic Button"
-                }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply"]).execute()
+                }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply", "running", "processing"]).execute()
     except Exception as cascade_err:
         logger.warning(f"Failed to cascade pause-all execution states: {cascade_err}")
 
@@ -5475,6 +5475,7 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
                 execution_data.append({
                     "id": str(uuid.uuid5(uuid.NAMESPACE_OID, f"exec_{enrollment_id}")),
                     "workspace_id": workspace_id,
+                    "campaign_id": campaign_id,
                     "enrollment_id": enrollment_id,
                     "status": "pending",
                     "variables": {}
@@ -5488,12 +5489,32 @@ def enroll_list_leads(campaign_id: str, body: EnrollListRequest, supabase: Clien
                     "metadata": {"campaign_id": campaign_id, "lead_id": opp_id}
                 })
 
-            # Execute bulk inserts
+            # Execute bulk inserts in batched chunks to avoid payload limits and HTTP timeouts
             from core.backend.api.auth_dep import get_service_client
             svc = get_service_client()
-            svc.table("campaign_enrollments").upsert(enrollment_data, ignore_duplicates=True, on_conflict="campaign_id,lead_id").execute()
-            svc.table("campaign_execution_states").upsert(execution_data, ignore_duplicates=True).execute()
-            supabase.table("action_log").insert(action_log_data).execute()
+            batch_size = 200
+            for b_idx in range(0, len(enrollment_data), batch_size):
+                enr_chunk = enrollment_data[b_idx:b_idx + batch_size]
+                exec_chunk = execution_data[b_idx:b_idx + batch_size]
+                act_chunk = action_log_data[b_idx:b_idx + batch_size]
+
+                svc.table("campaign_enrollments").upsert(enr_chunk, ignore_duplicates=True, on_conflict="campaign_id,lead_id").execute()
+                try:
+                    svc.table("campaign_execution_states").upsert(exec_chunk, ignore_duplicates=True).execute()
+                except Exception as exec_err:
+                    logger.error(f"[BulkEnrollment] Failed to insert execution states for chunk {b_idx}: {exec_err}. Rolling back orphaned enrollments.")
+                    # Roll back unbacked enrollments to eliminate ghost leads
+                    chunk_enr_ids = [e["id"] for e in enr_chunk]
+                    try:
+                        svc.table("campaign_enrollments").delete().in_("id", chunk_enr_ids).eq("workspace_id", workspace_id).execute()
+                    except Exception as rb_err:
+                        logger.error(f"[BulkEnrollment] Rollback failed: {rb_err}")
+                    raise HTTPException(status_code=500, detail="Failed to initialize lead execution states. Please try enrolling again.")
+
+                try:
+                    supabase.table("action_log").insert(act_chunk).execute()
+                except Exception as act_err:
+                    logger.warning(f"[BulkEnrollment] Non-fatal action_log insert error: {act_err}")
 
         return {"status": "success", "enrolled": enrolled, "skipped": skipped, "collisions": collision_count}
     except HTTPException:
@@ -5867,83 +5888,33 @@ def get_current_user_id(request: Request) -> str:
 @router.get("/campaigns/{campaign_id}/enrollments/{enrollment_id}/trace", response_model=List[dict])
 def get_enrollment_trace(campaign_id: str, enrollment_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     """
-    Paranoia Layer 0 & 1: Fetches execution DAG trace with zero-migration resilience.
+    Paranoia Layer 0 & 1: Fetches real execution DAG traces for an enrollment.
+    Enforces tenant workspace isolation and never fabricates mock trace telemetry.
     """
     try:
-        if supabase:
-            try:
-                enr_res = supabase.table("campaign_enrollments").select("id, campaign_id").eq("id", enrollment_id).execute()
-                if enr_res.data and enr_res.data[0]["campaign_id"] == campaign_id:
-                    res = supabase.table("campaign_node_executions").select("*").eq("enrollment_id", enrollment_id).eq("workspace_id", workspace_id).order("created_at", desc=False).execute()
-                    if res.data:
-                        return res.data
-            except Exception as db_err:
-                logger.warning(f"Database query failed for enrollment trace (falling back gracefully): {db_err}")
-                
-        # Zero-migration resilient fallback: provide contextual execution trace
-        now = datetime.now(timezone.utc)
-        return [
-            {
-                "id": f"trace-{enrollment_id}-1",
-                "enrollment_id": enrollment_id,
-                "workspace_id": workspace_id,
-                "node_id": "trigger-entry",
-                "node_type": "campaign_trigger",
-                "status": "success",
-                "error_code": None,
-                "output_payload": {
-                    "event": "lead_enrolled",
-                    "channel": "linkedin",
-                    "source": "event_harvester"
-                },
-                "created_at": (now - timedelta(hours=2)).isoformat()
-            },
-            {
-                "id": f"trace-{enrollment_id}-2",
-                "enrollment_id": enrollment_id,
-                "workspace_id": workspace_id,
-                "node_id": "profile-prewarm",
-                "node_type": "view_profile",
-                "status": "success",
-                "error_code": None,
-                "output_payload": {
-                    "action": "profile_view",
-                    "ai_reasoning": "Detected high-intent hiring expansion signal in recent prospect activity; executed initial touchpoint."
-                },
-                "created_at": (now - timedelta(hours=1, minutes=45)).isoformat()
-            },
-            {
-                "id": f"trace-{enrollment_id}-3",
-                "enrollment_id": enrollment_id,
-                "workspace_id": workspace_id,
-                "node_id": "connection-invite",
-                "node_type": "connection_request",
-                "status": "success",
-                "error_code": None,
-                "output_payload": {
-                    "branch": "invite_sent",
-                    "template": "event_icebreaker",
-                    "ai_reasoning": "Crafted personalized opening referencing target company pain point."
-                },
-                "created_at": (now - timedelta(minutes=50)).isoformat()
-            },
-            {
-                "id": f"trace-{enrollment_id}-4",
-                "enrollment_id": enrollment_id,
-                "workspace_id": workspace_id,
-                "node_id": "wait-for-acceptance",
-                "node_type": "wait_condition",
-                "status": "pending",
-                "error_code": None,
-                "output_payload": {
-                    "condition": "wait_48h_or_acceptance",
-                    "state": "active_monitoring"
-                },
-                "created_at": (now - timedelta(minutes=10)).isoformat()
-            }
-        ]
+        # 1. Verify campaign exists and belongs to caller's workspace
+        camp_res = supabase.table("campaigns").select("id").eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+        if not camp_res.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+        # 2. Verify enrollment belongs to campaign
+        enr_res = supabase.table("campaign_enrollments").select("id, campaign_id").eq("id", enrollment_id).eq("campaign_id", campaign_id).execute()
+        if not enr_res.data:
+            raise HTTPException(status_code=404, detail="Enrollment not found")
+
+        # 3. Query real execution traces from campaign_node_executions scoped by workspace
+        res = supabase.table("campaign_node_executions") \
+            .select("*") \
+            .eq("enrollment_id", enrollment_id) \
+            .eq("workspace_id", workspace_id) \
+            .order("created_at", desc=False) \
+            .execute()
+
+        return res.data or []
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching trace: {e}", exc_info=True)
+        logger.error(f"Error fetching trace for enrollment {enrollment_id}: {e}", exc_info=True)
         return []
 
 

@@ -1,4 +1,4 @@
-import type { EINodeType } from "@/lib/eiNodeDefs";
+import { HR_NODE_DEFS, type EINodeType } from "@/lib/eiNodeDefs";
 import { create } from "zustand"
 import { v4 as uuidv4 } from "uuid"
 
@@ -51,7 +51,8 @@ export interface EITreeStore {
 }
 
 function makeNode(type: EINodeType | "sequence_end", data?: Record<string, any>): SeqTreeNode {
-  const outputs = data?.outputs as string[] | undefined
+  const def = (HR_NODE_DEFS as any)?.[type]
+  const outputs = (data?.outputs as string[] | undefined) || (def?.outputs as string[] | undefined)
   const labels = outputs && outputs.length > 0 ? outputs : (type === "sequence_end" ? [] : ["output"])
   const branches: Record<string, SeqTreeNode[]> = {}
   for (const label of labels) branches[label] = []
@@ -350,8 +351,9 @@ export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
       return null;
     }
 
-    const outputs = n.data?.outputs as string[] | undefined;
-    const labels = outputs && outputs.length > 1 ? outputs : (n.type === "sequence_end" ? [] : ["output"]);
+    const def = (HR_NODE_DEFS as any)?.[n.type];
+    const outputs = (n.data?.outputs as string[] | undefined) || (def?.outputs as string[] | undefined);
+    const labels = outputs && outputs.length > 0 ? outputs : (n.type === "sequence_end" ? [] : ["output"]);
     const children: Record<string, SeqTreeNode[]> = {};
     labels.forEach(label => {
       children[label] = [];
@@ -359,10 +361,21 @@ export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
 
     const targets = childrenMap.get(nodeId) || [];
     targets.forEach(t => {
-      if (!children[t.handle]) children[t.handle] = [];
+      let targetHandle = t.handle;
+      // Normalization: handle mismatch between "output" and "then"
+      if (!children[targetHandle]) {
+        if (labels.length === 1) {
+          targetHandle = labels[0];
+        } else if (targetHandle === "output" && children["then"]) {
+          targetHandle = "then";
+        } else if (targetHandle === "then" && children["output"]) {
+          targetHandle = "output";
+        }
+      }
+      if (!children[targetHandle]) children[targetHandle] = [];
       const childNode = buildTree(t.target, visited);
       if (childNode) {
-        children[t.handle].push(childNode);
+        children[targetHandle].push(childNode);
       }
     });
 
@@ -376,14 +389,61 @@ export function dagToTree(nodes: any[], edges: any[]): SeqTreeNode[] {
     };
   }
 
-  const rootIds = nodes.filter(n => inDegree.get(n.id) === 0).map(n => n.id);
+  // Find nodes with inDegree 0
+  let rootIds = nodes.filter(n => (inDegree.get(n.id) || 0) === 0).map(n => n.id);
+
+  // Paranoia Layer 1: If graph has a cycle such that every node has inDegree > 0,
+  // do NOT wipe out the entire sequence! Pick the most likely entry node (e.g. trigger node,
+  // or node with lowest inDegree, or nodes[0]).
+  if (rootIds.length === 0 && nodes.length > 0) {
+    const triggerNode = nodes.find(n => n.type === "trigger" || n.type === "sequence_start");
+    if (triggerNode) {
+      rootIds = [triggerNode.id];
+    } else {
+      let minNode = nodes[0];
+      let minIn = inDegree.get(minNode.id) ?? 999;
+      for (const n of nodes) {
+        const d = inDegree.get(n.id) ?? 0;
+        if (d < minIn) {
+          minIn = d;
+          minNode = n;
+        }
+      }
+      rootIds = [minNode.id];
+    }
+  }
+
   const roots: SeqTreeNode[] = [];
-  
+  const processedNodeIds = new Set<string>();
+
   rootIds.forEach(id => {
     const root = buildTree(id, new Set<string>());
-    if (root) roots.push(root);
+    if (root) {
+      roots.push(root);
+      const markVisited = (node: SeqTreeNode) => {
+        processedNodeIds.add(node.id);
+        Object.values(node.children || {}).forEach(branch => branch.forEach(markVisited));
+      };
+      markVisited(root);
+    }
   });
-  
+
+  // Layer 1 Environmental Paranoia: If any disconnected nodes or unattached island nodes remain,
+  // recover them as roots instead of silently dropping them!
+  nodes.forEach(n => {
+    if (!processedNodeIds.has(n.id)) {
+      const recovered = buildTree(n.id, new Set<string>());
+      if (recovered) {
+        roots.push(recovered);
+        const markVisited = (node: SeqTreeNode) => {
+          processedNodeIds.add(node.id);
+          Object.values(node.children || {}).forEach(branch => branch.forEach(markVisited));
+        };
+        markVisited(recovered);
+      }
+    }
+  });
+
   return roots;
 }
 
@@ -426,6 +486,10 @@ export function saveDraftToLocalStorage(state: EITreeStore) {
   if (typeof window === "undefined") return
   try {
     const { nodes, edges } = treeToDag(state.rootNodes)
+    // Paranoia Layer 2: Guard against saving an empty skeleton over an existing meaningful draft
+    if (nodes.length === 0 && (!state.formState?.campaignName || state.formState?.campaignName === 'New Campaign') && !state.formState?.leadListId) {
+      return
+    }
     const draft = {
       nodes,
       edges,

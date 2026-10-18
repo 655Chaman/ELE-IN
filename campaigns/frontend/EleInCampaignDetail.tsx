@@ -11,7 +11,7 @@ import {
   Brain, Flame, Mic, Building2, Layers, Repeat, X
 } from "lucide-react"
 import { toast } from "sonner"
-import { useHRTreeStore, dagToTree } from "@campaigns/eiTreeStore"
+import { dagToTree } from "@campaigns/eiTreeStore"
 import { EISequenceTree } from "@/components/elein/EISequenceTree"
 import { LeadTraceDrawer } from "@/components/leads/LeadTraceDrawer"
 import { cn } from "@/lib/utils"
@@ -77,18 +77,17 @@ export function EleInCampaignDetail() {
     return () => { supabase.removeChannel(channel); };
   }, [id, mutate]);
 
-  useEffect(() => {
-    if (campaign) {
-      try {
-        let nodes = campaign.nodes || (campaign.nodes_json ? (typeof campaign.nodes_json === "string" ? JSON.parse(campaign.nodes_json) : campaign.nodes_json) : []);
-        let edges = campaign.edges || (campaign.edges_json ? (typeof campaign.edges_json === "string" ? JSON.parse(campaign.edges_json) : campaign.edges_json) : []);
-        
-        useHRTreeStore.getState().loadTree(dagToTree(nodes, edges))
-      } catch (e) {
-        console.error("Failed to parse campaign graph", e)
-      }
+  const campaignTreeNodes = useMemo(() => {
+    if (!campaign) return [];
+    try {
+      const nodes = campaign.nodes || (campaign.nodes_json ? (typeof campaign.nodes_json === "string" ? JSON.parse(campaign.nodes_json) : campaign.nodes_json) : []);
+      const edges = campaign.edges || (campaign.edges_json ? (typeof campaign.edges_json === "string" ? JSON.parse(campaign.edges_json) : campaign.edges_json) : []);
+      return dagToTree(nodes, edges);
+    } catch (e) {
+      console.error("Failed to parse campaign graph", e);
+      return [];
     }
-  }, [campaign?.id, typeof campaign?.nodes_json === "string" ? campaign.nodes_json : JSON.stringify(campaign?.nodes_json), typeof campaign?.edges_json === "string" ? campaign.edges_json : JSON.stringify(campaign?.edges_json)])
+  }, [campaign?.id, typeof campaign?.nodes_json === "string" ? campaign.nodes_json : JSON.stringify(campaign?.nodes_json), typeof campaign?.edges_json === "string" ? campaign.edges_json : JSON.stringify(campaign?.edges_json)]);
 
   const { openPaywall } = usePaywall()
   const { data: billingData } = useSWR<{ tier?: string }>(
@@ -853,7 +852,7 @@ export function EleInCampaignDetail() {
         </div>
         <div className="border border-border/80 rounded-lg overflow-hidden relative h-[460px] shadow-sm bg-card">
           <div className="absolute inset-0 pointer-events-auto">
-            <EISequenceTree readOnly={true} nodeAnalytics={nodeAnalytics} />
+            <EISequenceTree readOnly={true} initialNodes={campaignTreeNodes} nodeAnalytics={nodeAnalytics} />
           </div>
         </div>
       </div>

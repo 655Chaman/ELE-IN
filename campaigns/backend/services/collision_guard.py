@@ -97,7 +97,11 @@ def get_conflicting_active_leads(
                         colliding_lead_ids.add(lid)
 
         except Exception as e:
-            logger.error(f"[CollisionGuard] Error checking conflicting active leads: {e}")
+            logger.error(f"[CollisionGuard] Error checking conflicting active leads (failing closed): {e}", exc_info=True)
+            # Paranoia Layer 1: Fail closed on DB/network error.
+            # Mark all queried leads in chunk as potentially colliding to prevent duplicate outreach.
+            for lid in chunk:
+                colliding_lead_ids.add(lid)
 
     return colliding_lead_ids
 
@@ -112,15 +116,20 @@ def is_lead_active_in_other_campaign(
     """
     Runtime preflight helper used by the orchestrator to check if a single lead
     has an active in-flight state in another campaign.
+    Fails closed (returns True) if the database query fails.
     """
     if not lead_id:
         return False
     clean_lid = str(lead_id).strip()
-    colliding = get_conflicting_active_leads(
-        supabase_client,
-        workspace_id,
-        [clean_lid],
-        exclude_campaign_id=exclude_campaign_id,
-        active_statuses=active_statuses
-    )
-    return clean_lid in colliding
+    try:
+        colliding = get_conflicting_active_leads(
+            supabase_client,
+            workspace_id,
+            [clean_lid],
+            exclude_campaign_id=exclude_campaign_id,
+            active_statuses=active_statuses
+        )
+        return clean_lid in colliding
+    except Exception as e:
+        logger.error(f"[CollisionGuard] Preflight query failed for lead {clean_lid}: {e}. Failing closed.", exc_info=True)
+        return True

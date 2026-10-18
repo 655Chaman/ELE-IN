@@ -9087,7 +9087,7 @@
           "elein"
         ],
         "summary": "Get Enrollment Trace",
-        "description": "Paranoia Layer 0 & 1: Fetches execution DAG trace with zero-migration resilience.",
+        "description": "Paranoia Layer 0 & 1: Fetches real execution DAG traces for an enrollment.\nEnforces tenant workspace isolation and never fabricates mock trace telemetry.",
         "operationId": "get_enrollment_trace_api_elein_campaigns__campaign_id__enrollments__enrollment_id__trace_get",
         "parameters": [
           {

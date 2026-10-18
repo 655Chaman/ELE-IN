@@ -570,10 +570,11 @@ class EleInOrchestrator:
             self._credit_cache[workspace_id] = (now, has_credits)
             return has_credits
         except Exception as e:
-            logger.warning(f"[CreditPreflight] Credit check failed for {workspace_id}: {e} — failing open")
-            # Fail open on transient DB errors so a temporary Supabase hiccup doesn't stall all campaigns
-            self._credit_cache[workspace_id] = (now, True)
-            return True
+            logger.error(f"[CreditPreflight] Credit check failed for {workspace_id}: {e} — failing closed", exc_info=True)
+            # Paranoia Layer 1: If we have a previously cached verdict, honor it; otherwise fail closed (False)
+            if workspace_id in self._credit_cache:
+                return self._credit_cache[workspace_id][1]
+            return False
 
     def requeue_waiting_for_reply_leads(self):
         """
@@ -767,6 +768,64 @@ class EleInOrchestrator:
             capture_error(e, context={"service": "elein_orchestrator", "stage": "requeue_waiting_for_reply"})
             return []
 
+    def sweep_completed_campaigns(self):
+        """
+        ENG-01: Background completion sweeper.
+        Checks ACTIVE campaigns to see if all enrollments have reached terminal states
+        ('completed', 'exited', 'failed', 'converted', 'opted_out', 'bounced').
+        If a campaign has enrollments and zero non-terminal enrollments or execution states,
+        transition status to 'COMPLETED'.
+        """
+        try:
+            active_camps = self.supabase.table("campaigns").select("id, name, workspace_id").eq("status", "ACTIVE").limit(20).execute()
+            if not active_camps.data:
+                return []
+
+            completed_ids = []
+            for camp in active_camps.data:
+                cid = camp["id"]
+                # 1. Verify campaign has had at least one lead enrolled
+                total_enr = self.supabase.table("campaign_enrollments").select("id", count="exact").eq("campaign_id", cid).limit(1).execute()
+                total_count = total_enr.count or 0
+                if total_count == 0:
+                    continue
+
+                # 2. Check for any non-terminal enrollments
+                non_terminal_enr = self.supabase.table("campaign_enrollments") \
+                    .select("id", count="exact") \
+                    .eq("campaign_id", cid) \
+                    .not_.in_("status", ["completed", "exited", "failed", "converted", "opted_out", "bounced"]) \
+                    .limit(1) \
+                    .execute()
+                
+                if (non_terminal_enr.count or 0) > 0:
+                    continue
+
+                # 3. Check for any active or pending execution states
+                in_flight_states = self.supabase.table("campaign_execution_states") \
+                    .select("id", count="exact") \
+                    .eq("campaign_id", cid) \
+                    .in_("status", ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing"]) \
+                    .limit(1) \
+                    .execute()
+
+                if (in_flight_states.count or 0) > 0:
+                    continue
+
+                # Transition to COMPLETED
+                logger.info(f"[Orchestrator] All {total_count} leads finished for campaign {cid} ('{camp.get('name')}'). Transitioning status to COMPLETED.")
+                upd = self.supabase.table("campaigns").update({
+                    "status": "COMPLETED",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", cid).eq("status", "ACTIVE").execute()
+                if upd.data:
+                    completed_ids.append(cid)
+
+            return completed_ids
+        except Exception as e:
+            logger.error(f"[Orchestrator] sweep_completed_campaigns error: {e}", exc_info=True)
+            return []
+
     def process_pending_leads(self, stop_checker=None):
         import time
         from collections import defaultdict
@@ -838,6 +897,12 @@ class EleInOrchestrator:
             self.requeue_waiting_for_reply_leads()
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator", "stage": "requeue_waiting_for_reply"})
+
+        # PARANOIA LAYER 0 + 1 (ENG-01): Sweep finished campaigns and transition to COMPLETED
+        try:
+            self.sweep_completed_campaigns()
+        except Exception as e:
+            capture_error(e, context={"service": "elein_orchestrator", "stage": "sweep_completed_campaigns"})
 
         campaigns_res = self.supabase.table("campaigns").select("id, metadata, workspace_id").eq("status", "ACTIVE").execute()
         if not campaigns_res.data:
@@ -1351,7 +1416,15 @@ class EleInOrchestrator:
             out_vars = dict(state.get("variables") or {}) if isinstance(state.get("variables"), dict) else {}
             if not self._validate_and_prepare_hop(state, current_node["id"], next_node_id, nodes, lease_token, out_vars):
                 return
-            self.update_state(state["id"], next_node_id, "pending", next_run, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'))
+
+            # ENG-03: Check if campaign was paused during execution before scheduling next step
+            next_status = "pending"
+            camp_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
+            if camp_check.data and camp_check.data[0].get("status") != "ACTIVE":
+                logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE ({camp_check.data[0].get('status')}). Setting lead state to paused instead of pending.")
+                next_status = "paused"
+
+            self.update_state(state["id"], next_node_id, next_status, next_run, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'))
             return
 
         # Live check to prevent ghost execution after Panic Pause
@@ -1817,7 +1890,14 @@ class EleInOrchestrator:
         if not self._validate_and_prepare_hop(state, current_node_id, next_node_id, nodes, lease_token, out_vars):
             return
 
-        self.update_state(state["id"], next_node_id, "pending", datetime.utcnow() + jitter, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'))
+        # ENG-03: Campaign pause check during execution to prevent running leads from re-entering pending
+        next_status = "pending"
+        camp_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
+        if camp_check.data and camp_check.data[0].get("status") != "ACTIVE":
+            logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE ({camp_check.data[0].get('status')}). Setting lead state to paused instead of pending.")
+            next_status = "paused"
+
+        self.update_state(state["id"], next_node_id, next_status, datetime.utcnow() + jitter, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'))
 
     def execute_node_action(
         self, action: str, data: dict, opportunity_id: str, account_id: str, state: dict, lease_token: str, current_node_id: str
@@ -2074,8 +2154,13 @@ class EleInOrchestrator:
                                 logger.info(f"Idempotency hit ({idemp_key}): Retrying previously failed action ({col_err}).")
                                 pass 
                             elif col_status == "running":
-                                # UNKNOWN outcome. A worker crashed mid-execution. Halt campaign for safety.
-                                return {"status": "error", "error": "UNKNOWN: Previous worker crashed mid-execution. Safe resume requires manual verification.", "requires_approval": True}
+                                # ENG-02: Incremental crash recovery instead of immediate 5/5 retry exhaustion.
+                                # Reclaim the node execution lock and allow retry with attempts tracked incrementally.
+                                upd_res = self.supabase.table("campaign_node_executions").update({"status": "running"}).eq("idempotency_key", idemp_key).eq("status", "running").execute()
+                                if not upd_res.data:
+                                    return {"status": "error", "error": "Concurrent worker collision during crash recovery.", "requires_approval": False}
+                                logger.warning(f"Idempotency hit ({idemp_key}): Recovering from previous worker crash mid-execution. Retrying incrementally.")
+                                pass
                         else:
                             logger.error(f"Idempotency INSERT failed, but no collision exists. DB error: {e}")
                             return {"status": "error", "error": f"Database failed to create idempotency lock: {e}"}
@@ -2130,12 +2215,12 @@ class EleInOrchestrator:
                     res = {"status": "error", "error": err_str}
             
             # Coerce unhandled statuses to error so process_lead doesn't silently advance the graph
-            if res.get("status") not in ("success", "waiting", "waiting_for_reply", "rate_limited", "account_disconnected", "security_challenge", "error", "skipped", "suppressed", "awaiting_approval", "not_implemented"):
+            if res.get("status") not in ("success", "waiting", "waiting_for_reply", "rate_limited", "account_disconnected", "session_expired", "security_challenge", "error", "skipped", "suppressed", "awaiting_approval", "not_implemented"):
                 res = {"status": "error", "error": f"DEFINITIVE_EXTERNAL_FAILURE: Unhandled executor status '{res.get('status')}'"}
             
             # --- 6. Durable Result Update ---
             if requires_linkedin and chosen_sender_id:
-                if res.get("status") == "account_disconnected":
+                if res.get("status") in ("account_disconnected", "session_expired"):
                     self.supabase.table("accounts").update({
                         "status": "DISCONNECTED",
                         "status_changed_at": datetime.utcnow().isoformat()

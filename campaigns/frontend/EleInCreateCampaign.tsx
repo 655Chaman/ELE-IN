@@ -10,7 +10,6 @@ import { usePaywall } from "@/contexts/PaywallContext"
 import { cn } from "@/lib/utils"
 import { useHRTreeStore, dagToTree, treeToDag, saveDraftToLocalStorage } from "@campaigns/eiTreeStore"
 import { validateTree } from "@/lib/treeValidator"
-import { useHRCampaignBuilderStore } from "@campaigns/eiCampaignBuilderStore"
 import { useTemplatesStore } from "@campaigns/eiTemplatesStore"
 import { HR_TEMPLATES, TEMPLATE_TAGS, TEMPLATE_TAG_LABELS } from "@/lib/eiTemplates"
 import { EITreeNodeConfigPanel } from "@/components/elein/EINodeConfigPanel"
@@ -180,8 +179,8 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
             ) : (
             <>
             <Select
-              value={state.leadListId || ""}
-              onValueChange={val => onChange("leadListId", val)}
+              value={state.leadListId || "none"}
+              onValueChange={val => onChange("leadListId", val === "none" ? "" : val)}
               disabled={isLoading || lists.length === 0}
             >
               <SelectTrigger className="w-full bg-background/50 border-border/50 py-2.5 text-sm h-10">
@@ -194,7 +193,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
                 } />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Choose a lead list (or add later)...</SelectItem>
+                <SelectItem value="none">Choose a lead list (or add later)...</SelectItem>
                 {lists.map((list: any) => (
                   <SelectItem key={list.id} value={list.id} disabled={list.row_count === 0}>
                     {list.name} ({list.row_count} leads{list.row_count === 0 ? " - Empty" : ""})
@@ -232,8 +231,8 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
           <label className="block text-xs font-semibold text-foreground mb-1">Exclude list</label>
           <p className="text-[10px] text-muted-foreground mb-2">Block contacts who've already heard from you (optional).</p>
           <Select
-            value={state.excludeListId || ""}
-            onValueChange={val => onChange("excludeListId", val)}
+            value={state.excludeListId || "none"}
+            onValueChange={val => onChange("excludeListId", val === "none" ? "" : val)}
             disabled={isLoading || hasError || lists.length === 0}
           >
             <SelectTrigger className="w-full bg-muted/30 border-border py-2.5 text-sm h-10">
@@ -248,7 +247,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
               } />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Select an exclusion list (optional)</SelectItem>
+              <SelectItem value="none">Select an exclusion list (optional)</SelectItem>
               {lists.map((list: any) => (
                 <SelectItem key={list.id} value={list.id}>
                   {list.name} ({list.row_count} leads)
@@ -1761,6 +1760,7 @@ function EleInCreateCampaignInner() {
   const [isLoadingCampaign, setIsLoadingCampaign] = useState<boolean>(Boolean(initialEditId))
   const isLoadingCampaignRef = React.useRef<boolean>(Boolean(initialEditId))
   const isSavingRef = React.useRef<boolean>(false)
+  const isRestoringRef = React.useRef<boolean>(true)
 
   useEffect(() => {
     isLoadingCampaignRef.current = isLoadingCampaign
@@ -1769,8 +1769,8 @@ function EleInCreateCampaignInner() {
   // R5: Scoped autosave subscription  -  active ONLY while EleInCreateCampaign is mounted
   useEffect(() => {
     const unsubscribe = useHRTreeStore.subscribe((storeState) => {
-      // Paranoia Layer 1: Do not overwrite draft if save/launch is executing or campaign is loading
-      if (isSavingRef.current || isLoadingCampaignRef.current) return
+      // Paranoia Layer 1: Do not overwrite draft if restoring, saving/launching, or campaign is loading
+      if (isRestoringRef.current || isSavingRef.current || isLoadingCampaignRef.current) return
       saveDraftToLocalStorage(storeState)
     })
 
@@ -1805,6 +1805,7 @@ function EleInCreateCampaignInner() {
       try {
         localStorage.removeItem("elein_unsaved_draft")
       } catch (_) {}
+      isRestoringRef.current = false
       window.history.replaceState({}, '', '/elein/campaigns/new')
       return
     }
@@ -1818,6 +1819,7 @@ function EleInCreateCampaignInner() {
         useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges), [])
         setState((prev: any) => ({ ...prev, campaignName: template.name }))
       }
+      isRestoringRef.current = false
       // clear url without reload
       window.history.replaceState({}, '', '/elein/campaigns/new')
       return
@@ -1840,6 +1842,7 @@ function EleInCreateCampaignInner() {
             toast.error("Campaign not found. It may have been deleted.")
             setIsLoadingCampaign(false)
             isLoadingCampaignRef.current = false
+            isRestoringRef.current = false
             navigate("/elein/campaigns")
             return
           }
@@ -1871,12 +1874,14 @@ function EleInCreateCampaignInner() {
           setStep(0)
           setIsLoadingCampaign(false)
           isLoadingCampaignRef.current = false
+          isRestoringRef.current = false
         })
         .catch(err => {
           console.error("Failed to load campaign:", err)
           toast.error("Campaign not found. It may have been deleted.")
           setIsLoadingCampaign(false)
           isLoadingCampaignRef.current = false
+          isRestoringRef.current = false
           navigate("/elein/campaigns")
         })
       return
@@ -1885,7 +1890,10 @@ function EleInCreateCampaignInner() {
     setIsLoadingCampaign(false)
     isLoadingCampaignRef.current = false
 
-    if (params.get("resume") !== "true") return
+    if (params.get("resume") !== "true") {
+      isRestoringRef.current = false
+      return
+    }
     
     // LAYER 0 + LAYER 2 Paranoia: Actually implement the Draft Restore that was missing
     const draftStr = localStorage.getItem("elein_unsaved_draft")
@@ -1906,9 +1914,12 @@ function EleInCreateCampaignInner() {
       } catch (e) {
         console.error("Failed to parse or restore draft:", e)
         setStep(0)
+      } finally {
+        isRestoringRef.current = false
       }
     } else {
       setStep(0)
+      isRestoringRef.current = false
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, routeId])

@@ -1034,18 +1034,22 @@ const QUICK_PRESETS = [
 
 export function EISequenceTree({ 
   readOnly = false, 
+  initialNodes,
   nodeAnalytics,
   onSave,
   onTemplatesClick
 }: { 
   readOnly?: boolean
+  initialNodes?: SeqTreeNode[]
   treeErrors?: Record<string, string[]>
   treeWarnings?: Record<string, string[]>, 
   nodeAnalytics?: Record<string, {sent: number, replied: number, reply_rate: number}>,
   onSave?: (nodes: SeqTreeNode[]) => void | Promise<void>,
   onTemplatesClick?: () => void
 }) {
-  const { rootNodes, addRoot, addChild, stickyNotes, addStickyNote, loadTree } = useHRTreeStore()
+  const storeRootNodes = useHRTreeStore(s => s.rootNodes)
+  const rootNodes = (readOnly && initialNodes !== undefined) ? initialNodes : storeRootNodes
+  const { addRoot, addChild, stickyNotes, addStickyNote, loadTree } = useHRTreeStore()
   const updateNodeData = useHRTreeStore(s => s.updateNodeData)
   const picker = usePickerStore()
   const [zoom, setZoom] = useState(1)
