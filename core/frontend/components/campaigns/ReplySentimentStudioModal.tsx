@@ -18,9 +18,14 @@ import {
   Layers,
   Download,
   Save,
+  History,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchWithAuth as apiFetch } from "../../lib/apiClient";
+import useSWR from "swr";
+import { fetcher, fetchWithAuth as apiFetch } from "../../lib/apiClient";
 import { usePaywall } from "../../contexts/PaywallContext";
 
 export interface ClassificationResult {
@@ -32,6 +37,7 @@ export interface ClassificationResult {
     | "not_interested"
     | "objection"
     | "wrong_contact"
+    | "neutral_question"
     | string;
   confidence: number;
   auto_action: string;
@@ -58,6 +64,15 @@ interface ReplySentimentStudioModalProps {
 
 const STORAGE_KEY_RULES = "elein_reply_sentiment_rules_v1";
 
+const ACTION_LABELS: Record<string, { label: string; desc: string }> = {
+  PAUSE_AND_SNOOZE_LEAD: { label: "Snooze Campaign until Return Date", desc: "Lead will pause in sequence until the detected return date." },
+  AUTO_OPT_OUT_SUPPRESS: { label: "Halt Outreach & Add to DNC Suppression", desc: "Outreach stops immediately and contact is added to suppression." },
+  AUTO_CALENDAR_DISPATCH: { label: "Propose Calendar Slots", desc: "Suggests matching slots from connected calendar." },
+  TAG_HOT_LEAD: { label: "Tag Hot Lead & Notify Sales Pod", desc: "Flags lead as urgent and triggers alert." },
+  AUTO_GENERATE_BATTLECARD: { label: "Generate Competitive Battlecard", desc: "Prepares talking points countering named competitor." },
+  ROUTINE_INBOX_QUEUE: { label: "Standard Inbound Queue", desc: "Awaiting sales rep review in inbox." }
+};
+
 function sanitizeCsvCell(val: any): string {
   if (val === null || val === undefined) return '""';
   let s = String(val).trim();
@@ -73,6 +88,9 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
   campaignId,
 }) => {
   const { openPaywall } = usePaywall();
+  const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
+  const isPro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE';
+
   const [activeTab, setActiveTab] = useState<"classifier" | "ooo_rules" | "actions">("classifier");
 
   // Classifier state
@@ -83,6 +101,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
   const [isClassifying, setIsClassifying] = useState(false);
   const [classification, setClassification] = useState<ClassificationResult | null>(null);
   const [classifyError, setClassifyError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(true);
   const [history, setHistory] = useState<
     Array<{
       subject: string;
@@ -94,8 +113,8 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
 
   // OOO Settings State
   const [autoSnoozeEnabled, setAutoSnoozeEnabled] = useState(true);
-  const [fallbackSnoozeDays, setFallbackSnoozeDays] = useState(7);
-  const [maxSnoozeDays, setMaxSnoozeDays] = useState(90);
+  const [fallbackSnoozeDays, setFallbackSnoozeDays] = useState<number | string>(7);
+  const [maxSnoozeDays, setMaxSnoozeDays] = useState<number | string>(90);
   const [autoResumeWhenElapsed, setAutoResumeWhenElapsed] = useState(true);
 
   // Pipeline Action Rules
@@ -442,10 +461,20 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                 </p>
                 <button
                   type="button"
-                  onClick={handleRunClassification}
+                  onClick={() => {
+                    if (!isPro) {
+                      openPaywall({
+                        featureName: "Inbound AI Reply Sentiment & Intent Classifier",
+                        minTier: "PRO",
+                      });
+                      return;
+                    }
+                    handleRunClassification();
+                  }}
                   disabled={isClassifying || !testText.trim()}
-                  className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground flex items-center gap-2 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
                 >
+                  {!isPro && <Lock size={13} className="text-amber-300" />}
                   {isClassifying ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" /> Classifying Inbound Intent...
@@ -483,7 +512,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       >
                         {classification.sentiment}
                       </span>
-                      <span className="text-border">|</span>
+                      <div className="h-3 w-px bg-border" aria-hidden="true" />
                       <span className="text-muted-foreground">Confidence:</span>
                       <span className="font-mono font-semibold text-foreground">
                         {Math.round(classification.confidence * 100)}%
@@ -494,9 +523,15 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div className="p-3.5 rounded-lg bg-card border border-border space-y-2">
                       <span className="text-xs font-semibold text-muted-foreground block">Suggested Autonomous Action</span>
-                      <div className="font-mono text-primary bg-primary/10 px-2.5 py-1.5 rounded-md">
-                        {classification.auto_action}
+                      <div className="text-xs text-primary bg-primary/10 border border-primary/20 px-2.5 py-1.5 rounded-md">
+                        <span className="font-semibold">{ACTION_LABELS[classification.auto_action]?.label || classification.auto_action}</span>
+                        {ACTION_LABELS[classification.auto_action] && (
+                          <span className="font-mono text-[10px] text-muted-foreground block mt-0.5">({classification.auto_action})</span>
+                        )}
                       </div>
+                      {ACTION_LABELS[classification.auto_action]?.desc && (
+                        <p className="text-[11px] text-muted-foreground">{ACTION_LABELS[classification.auto_action].desc}</p>
+                      )}
                       <div className="flex items-center gap-2 pt-1 text-muted-foreground text-xs">
                         <UserCheck size={12} className="text-muted-foreground" />
                         <span>Requires Human Rep Attention: <strong className="text-foreground">{classification.requires_human_attention ? "YES" : "NO"}</strong></span>
@@ -526,6 +561,98 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                   </div>
                 </div>
               )}
+
+              {/* Classification Audit Log / History */}
+              {history.length > 0 && (
+                <div className="rounded-lg border border-border bg-card/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <History size={14} className="text-muted-foreground" />
+                      <span className="text-xs font-semibold text-foreground">Recent Classification Audit Log</span>
+                      <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border">
+                        {history.length} {history.length === 1 ? "entry" : "entries"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleExportCsv}
+                        className="px-2.5 py-1 text-[11px] font-medium rounded-md border border-border bg-background hover:bg-muted text-foreground flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Export history to CSV"
+                      >
+                        <Download size={12} /> Export CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistory([])}
+                        className="px-2 py-1 text-[11px] font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Clear history"
+                      >
+                        <Trash2 size={12} /> Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowHistory(!showHistory)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        aria-label={showHistory ? "Collapse history" : "Expand history"}
+                      >
+                        {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showHistory && (
+                    <div className="overflow-x-auto max-h-60 rounded border border-border">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="bg-muted/50 border-b border-border text-muted-foreground font-medium">
+                          <tr>
+                            <th className="py-2 px-3">Time</th>
+                            <th className="py-2 px-3">Snippet</th>
+                            <th className="py-2 px-3">Intent</th>
+                            <th className="py-2 px-3">Sentiment</th>
+                            <th className="py-2 px-3">Autonomous Action</th>
+                            <th className="py-2 px-3">Attention</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {history.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-muted/20 transition-colors">
+                              <td className="py-2 px-3 font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                                {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </td>
+                              <td className="py-2 px-3 max-w-[200px] truncate text-foreground font-mono" title={item.text}>
+                                {item.text.slice(0, 60)}...
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap">
+                                {getIntentBadge(item.result.intent)}
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                  item.result.sentiment === "positive"
+                                    ? "bg-primary/10 text-primary"
+                                    : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {item.result.sentiment}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap text-foreground font-medium">
+                                {ACTION_LABELS[item.result.auto_action]?.label || item.result.auto_action}
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap font-mono text-[10px]">
+                                {item.result.requires_human_attention ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold">YES</span>
+                                ) : (
+                                  <span className="text-muted-foreground">NO</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -544,7 +671,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       onChange={(e) => setAutoSnoozeEnabled(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    <div className="w-11 h-6 bg-muted peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 ring-offset-background rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                   </label>
                 </div>
 
@@ -556,8 +683,9 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       min={1}
                       max={30}
                       value={fallbackSnoozeDays}
-                      onChange={(e) => setFallbackSnoozeDays(parseInt(e.target.value) || 7)}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono"
+                      onChange={(e) => setFallbackSnoozeDays(e.target.value === "" ? "" : parseInt(e.target.value) || 0)}
+                      onBlur={() => setFallbackSnoozeDays(Math.max(1, Math.min(30, Number(fallbackSnoozeDays) || 7)))}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors"
                     />
                     <span className="text-xs text-muted-foreground block mt-1">Used when autoreply does not state an explicit return date.</span>
                   </div>
@@ -568,14 +696,15 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       min={14}
                       max={90}
                       value={maxSnoozeDays}
-                      onChange={(e) => setMaxSnoozeDays(parseInt(e.target.value) || 90)}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono"
+                      onChange={(e) => setMaxSnoozeDays(e.target.value === "" ? "" : parseInt(e.target.value) || 0)}
+                      onBlur={() => setMaxSnoozeDays(Math.max(14, Math.min(90, Number(maxSnoozeDays) || 90)))}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground font-mono focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors"
                     />
                     <span className="text-xs text-muted-foreground block mt-1">Safety ceiling: clamps outlier replies ("out until 2099").</span>
                   </div>
                 </div>
 
-                <div className="border-t border-border pt-4 flex items-center justify-between">
+                <label className="border-t border-border pt-4 flex items-center justify-between cursor-pointer">
                   <div>
                     <span className="font-medium text-foreground block">Automatic Sequence Resume</span>
                     <span className="text-muted-foreground text-xs">Orchestrator worker automatically wakes snoozed lead when date elapses.</span>
@@ -584,15 +713,15 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                     type="checkbox"
                     checked={autoResumeWhenElapsed}
                     onChange={(e) => setAutoResumeWhenElapsed(e.target.checked)}
-                    className="rounded bg-background border-border text-primary focus:ring-0"
+                    className="rounded bg-background border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 ring-offset-background cursor-pointer h-4 w-4"
                   />
-                </div>
+                </label>
 
                 <div className="border-t border-border pt-4 flex justify-end">
                   <button
                     type="button"
                     onClick={handleSaveRules}
-                    className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <Save size={13} /> Save OOO Snooze Policy
                   </button>
@@ -607,7 +736,7 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                 <h3 className="font-semibold text-foreground text-sm">Autonomous Inbound Dispatch Triggers</h3>
                 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-card border border-border">
+                  <label className="flex items-center justify-between p-3 rounded-lg bg-card border border-border hover:border-border/80 transition-colors cursor-pointer">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-md bg-muted text-muted-foreground border border-border">
                         <Ban size={16} />
@@ -621,11 +750,11 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       type="checkbox"
                       checked={autoHaltOnOptOut}
                       onChange={(e) => setAutoHaltOnOptOut(e.target.checked)}
-                      className="rounded bg-background border-border text-primary focus:ring-0"
+                      className="rounded bg-background border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 ring-offset-background cursor-pointer h-4 w-4"
                     />
-                  </div>
+                  </label>
 
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-card border border-border">
+                  <label className="flex items-center justify-between p-3 rounded-lg bg-card border border-border hover:border-border/80 transition-colors cursor-pointer">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-md bg-muted text-muted-foreground border border-border">
                         <Calendar size={16} />
@@ -639,11 +768,11 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       type="checkbox"
                       checked={tagHotOnMeetingRequest}
                       onChange={(e) => setTagHotOnMeetingRequest(e.target.checked)}
-                      className="rounded bg-background border-border text-primary focus:ring-0"
+                      className="rounded bg-background border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 ring-offset-background cursor-pointer h-4 w-4"
                     />
-                  </div>
+                  </label>
 
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-card border border-border">
+                  <label className="flex items-center justify-between p-3 rounded-lg bg-card border border-border hover:border-border/80 transition-colors cursor-pointer">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-md bg-muted text-muted-foreground border border-border">
                         <ShieldCheck size={16} />
@@ -657,16 +786,16 @@ export const ReplySentimentStudioModal: React.FC<ReplySentimentStudioModalProps>
                       type="checkbox"
                       checked={generateBattlecardOnObjection}
                       onChange={(e) => setGenerateBattlecardOnObjection(e.target.checked)}
-                      className="rounded bg-background border-border text-primary focus:ring-0"
+                      className="rounded bg-background border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 ring-offset-background cursor-pointer h-4 w-4"
                     />
-                  </div>
+                  </label>
                 </div>
 
                 <div className="border-t border-border pt-4 flex justify-end">
                   <button
                     type="button"
                     onClick={handleSaveRules}
-                    className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <Save size={13} /> Save Trigger Policy
                   </button>

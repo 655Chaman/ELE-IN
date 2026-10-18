@@ -37,7 +37,7 @@ function StepCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        "relative p-8 rounded-2xl border transition-all duration-300",
+        "relative p-8 rounded-xl border transition-all duration-300",
         done
           ? "border-border bg-muted/20"
           : locked
@@ -199,7 +199,7 @@ export function EleInWelcome() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="border border-border rounded-2xl p-8 mb-12 bg-muted/5"
+            className="border border-border rounded-xl p-8 mb-12 bg-muted/5 shadow-xs"
           >
             <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-muted-foreground mb-8">
               How it works
@@ -238,10 +238,8 @@ export function EleInWelcome() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.35 }}
-            className="relative p-8 md:p-10 rounded-3xl border border-primary/30 bg-gradient-to-b from-primary/10 via-card to-card shadow-[0_0_50px_rgba(var(--primary),0.12)] mb-12 overflow-hidden"
+            className="relative p-8 md:p-10 rounded-xl border border-border bg-card shadow-xs mb-12 overflow-hidden"
           >
-            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 relative z-10">
               <div>
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest mb-3 border border-primary/30">
@@ -265,19 +263,19 @@ export function EleInWelcome() {
 
             {/* Feature Pillars Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 relative z-10 text-xs">
-              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+              <div className="p-3.5 rounded-lg bg-background/60 border border-border/50">
                 <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Active Campaigns</span>
                 <span className="text-foreground font-bold text-sm mt-1 block">20 Active <span className="text-[10px] text-muted-foreground font-normal">(vs 1)</span></span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+              <div className="p-3.5 rounded-lg bg-background/60 border border-border/50">
                 <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Monthly Credits</span>
                 <span className="text-foreground font-bold text-sm mt-1 block">5,000 Credits <span className="text-[10px] text-muted-foreground font-normal">(vs 500)</span></span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+              <div className="p-3.5 rounded-lg bg-background/60 border border-border/50">
                 <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Sending Accounts</span>
                 <span className="text-foreground font-bold text-sm mt-1 block">Up to 5 Accounts <span className="text-[10px] text-muted-foreground font-normal">(vs 1)</span></span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-background/60 border border-border/50">
+              <div className="p-3.5 rounded-lg bg-background/60 border border-border/50">
                 <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Enrichment Tools</span>
                 <span className="text-emerald-400 font-bold text-sm mt-1 block">Apollo & Apify</span>
               </div>
@@ -308,10 +306,10 @@ export function EleInWelcome() {
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-6 rounded-3xl border border-primary/20 bg-primary/5 flex items-center justify-between mb-12"
+            className="p-6 rounded-xl border border-primary/20 bg-primary/5 flex items-center justify-between mb-12 shadow-xs"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 text-primary rounded-xl">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
                 <ShieldCheck size={20} />
               </div>
               <div>
@@ -345,7 +343,7 @@ export function EleInWelcome() {
                 <Link
                   key={stat.label}
                   to={stat.href}
-                  className="p-6 rounded-2xl border border-border bg-background hover:bg-muted/30 hover:-translate-y-0.5 transition-all group"
+                  className="p-6 rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors shadow-xs group"
                 >
                   <p className="text-4xl font-light tracking-tighter text-foreground tabular-nums mb-1">
                     {stat.value}

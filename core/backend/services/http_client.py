@@ -157,3 +157,60 @@ async def async_external_request(
                 status_code=502,
                 detail="An unexpected error occurred while communicating with a third-party API."
             )
+
+
+def validate_outbound_url_for_ssrf(url: str) -> tuple[bool, str]:
+    """
+    Security Hardening (VULN-11 & VULN-12):
+    Validates that an outbound URL does not resolve to loopback, link-local,
+    private RFC1918, cloud metadata IPs, or invalid protocols to prevent SSRF.
+    """
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import ipaddress
+
+        if not url or not isinstance(url, str):
+            return False, "Invalid or empty URL"
+
+        clean_url = url.strip().strip("\"'<>")
+        parsed = urlparse(clean_url)
+        if parsed.scheme not in ("http", "https"):
+            return False, f"Protocol '{parsed.scheme}' not allowed. Only HTTP and HTTPS are permitted."
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False, "Missing destination hostname"
+
+        lower_host = hostname.lower()
+        blocked_hosts = {
+            "localhost", "127.0.0.1", "::1", "0.0.0.0",
+            "metadata.google.internal", "metadata.internal",
+            "169.254.169.254", "169.254.169.253", "instance-data",
+        }
+        if lower_host in blocked_hosts or lower_host.endswith(".internal") or lower_host.endswith(".local"):
+            return False, f"Access to internal host '{hostname}' is strictly prohibited"
+
+        # Check for direct IP address literal
+        try:
+            direct_ip = ipaddress.ip_address(hostname)
+            if direct_ip.is_private or direct_ip.is_loopback or direct_ip.is_link_local or direct_ip.is_reserved or direct_ip.is_multicast:
+                return False, f"Direct access to private or internal IP ({direct_ip}) is strictly prohibited"
+        except ValueError:
+            pass
+
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try:
+            addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+        except Exception as dns_err:
+            return False, f"DNS resolution failed for '{hostname}': {dns_err}"
+
+        for family, socktype, proto, canonname, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False, f"Access to private or internal IP ({ip_str}) is strictly prohibited (SSRF defense)"
+
+        return True, ""
+    except Exception as e:
+        return False, f"SSRF security validation error: {e}"

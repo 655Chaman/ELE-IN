@@ -246,7 +246,7 @@ export function EleInAccounts() {
       {/* Fleet Capacity & Vital Statistics Station */}
       {accounts.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="p-4 rounded-2xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold mb-2">
               <span className="flex items-center gap-1.5"><Linkedin size={13} className="text-primary" /> Active Senders</span>
               <span className="text-foreground">{fleetStats.active}/{fleetStats.total}</span>
@@ -263,7 +263,7 @@ export function EleInAccounts() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold mb-2">
               <span className="flex items-center gap-1.5"><UserPlus size={13} className="text-emerald-500" /> Daily Connects</span>
               <span className="text-foreground">{fleetStats.totalConnectsToday} sent</span>
@@ -280,7 +280,7 @@ export function EleInAccounts() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold mb-2">
               <span className="flex items-center gap-1.5"><MessageSquare size={13} className="text-sky-500" /> Daily Messages</span>
               <span className="text-foreground">{fleetStats.totalMessagesToday} sent</span>
@@ -294,7 +294,7 @@ export function EleInAccounts() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-card/60 border border-border/50 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold mb-2">
               <span className="flex items-center gap-1.5"><Shield size={13} className="text-indigo-500" /> Fleet Health</span>
               <span className={fleetStats.expired > 0 ? "text-destructive font-bold" : "text-emerald-500 font-bold"}>
@@ -320,20 +320,20 @@ export function EleInAccounts() {
       )}
       {/* Autonomous Fleet Health Guard & Self-Healing Control Deck (Phase 7 Enterprise Moat) */}
       {accounts.length > 0 && (
-        <div className="mb-6 p-4 rounded-2xl bg-zinc-900/60 border border-white/10 shadow-md backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="mb-6 p-4 rounded-xl bg-card border border-border/60 shadow-xs backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary">
               <ShieldCheck size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">Autonomous Fleet Health Guard & Auto-Healing</h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                <h3 className="text-sm font-bold text-foreground">Autonomous Fleet Health Guard & Auto-Healing</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold">
                   {fleetSummary?.fleet_health_score || fleetStats.healthScore}% Fleet Health
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Real-time residential proxy ping: <strong className="text-zinc-200 font-mono">{fleetSummary?.avg_proxy_latency_ms ? `${fleetSummary.avg_proxy_latency_ms}ms` : '142ms'}</strong> · Expiring cookies: <strong className={cn(fleetSummary?.expiring_cookies_count > 0 ? "text-amber-400" : "text-emerald-400")}>{fleetSummary?.expiring_cookies_count || 0} needing renewal</strong>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Real-time residential proxy ping: <strong className="text-foreground font-mono">{fleetSummary?.avg_proxy_latency_ms ? `${fleetSummary.avg_proxy_latency_ms}ms` : '142ms'}</strong> · Expiring cookies: <strong className={cn(fleetSummary?.expiring_cookies_count > 0 ? "text-amber-500" : "text-emerald-600 dark:text-emerald-400")}>{fleetSummary?.expiring_cookies_count || 0} needing renewal</strong>
               </p>
             </div>
           </div>
@@ -352,10 +352,10 @@ export function EleInAccounts() {
             <button
               type="button"
               onClick={() => setShowProxyModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-muted/60 hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Manage and benchmark residential proxy pool"
             >
-              <Server size={13} className="text-zinc-400" />
+              <Server size={13} className="text-muted-foreground" />
               <span>Proxy Studio</span>
             </button>
 
@@ -383,7 +383,7 @@ export function EleInAccounts() {
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-destructive/30 bg-destructive/10 mb-6 shadow-sm"
+          className="flex items-center justify-between gap-4 p-4 rounded-xl border border-destructive/30 bg-destructive/10 mb-6 shadow-sm"
         >
           <div className="flex items-center gap-3">
             <AlertCircle size={18} className="text-destructive shrink-0" />
@@ -401,7 +401,7 @@ export function EleInAccounts() {
               const firstExpired = accounts.find(a => a.accountStatus === 'DISCONNECTED')
               if (firstExpired) setRefreshAccountId(firstExpired.id)
             }}
-            className="px-3.5 py-1.5 rounded-xl bg-destructive text-white text-xs font-bold hover:bg-destructive/90 transition-all shrink-0 shadow-sm"
+            className="px-3.5 py-1.5 rounded-lg bg-destructive text-white text-xs font-bold hover:bg-destructive/90 transition-all shrink-0 shadow-sm"
           >
             Reconnect Now &rarr;
           </button>
@@ -413,10 +413,10 @@ export function EleInAccounts() {
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          className="mb-6 p-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
         >
           <div className="flex items-start gap-3.5">
-            <div className="p-2.5 bg-primary/15 rounded-xl text-primary mt-0.5 shrink-0">
+            <div className="p-2.5 bg-primary/15 rounded-lg text-primary mt-0.5 shrink-0">
               <Zap size={20} />
             </div>
             <div>
@@ -435,7 +435,7 @@ export function EleInAccounts() {
           </div>
           <button
             onClick={() => openPaywall({ featureName: "Multi-Account Sender Pool" })}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all shadow-sm shrink-0 whitespace-nowrap active:scale-95"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors shadow-xs shrink-0 whitespace-nowrap"
           >
             <span>Unlock 5 Senders</span>
             <ArrowRight size={14} />
@@ -512,10 +512,10 @@ export function EleInAccounts() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="flex flex-col items-center justify-center py-24 rounded-2xl border border-border/50 bg-muted/30 dark:bg-background/50 backdrop-blur-md shadow-sm text-center px-8"
+          className="flex flex-col items-center justify-center py-24 rounded-xl border border-border/50 bg-muted/30 dark:bg-background/50 backdrop-blur-md shadow-sm text-center px-8"
         >
           <div className="relative mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-muted border border-border flex items-center justify-center">
+            <div className="w-16 h-16 rounded-xl bg-muted border border-border flex items-center justify-center">
               <Linkedin size={24} className="text-primary" />
             </div>
             <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-primary flex items-center justify-center border-2 border-background">
@@ -534,14 +534,14 @@ export function EleInAccounts() {
           <StarBorder
             as="button"
             onClick={() => setShowModal(true)}
-            innerClassName="flex items-center gap-2 px-6 py-3 rounded-[18px] bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-all"
+            innerClassName="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary hover:bg-primary/90 text-sm font-bold text-primary-foreground transition-all"
           >
             <Linkedin size={14} />
             Connect my LinkedIn account
           </StarBorder>
         </motion.div>
       ) : filteredAccounts.length === 0 ? (
-        <div className="text-center py-16 bg-card/30 rounded-2xl border border-border/40">
+        <div className="text-center py-16 bg-card/30 rounded-xl border border-border/40">
           <p className="text-sm text-muted-foreground">No accounts match the current filter or search criteria.</p>
           <button
             onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
@@ -567,7 +567,7 @@ export function EleInAccounts() {
                 className="group"
               >
                 <SpotlightCard className={cn(
-                  "p-5 rounded-2xl border backdrop-blur-md transition-all shadow-sm",
+                  "p-5 rounded-xl border backdrop-blur-md transition-all shadow-sm",
                   isDisconnected
                     ? "border-destructive/40 bg-destructive/5"
                     : isSelected 
@@ -603,7 +603,7 @@ export function EleInAccounts() {
                     />
 
                     <div className="relative">
-                      <div className="w-11 h-11 rounded-2xl bg-muted/60 border border-border flex items-center justify-center shrink-0">
+                      <div className="w-11 h-11 rounded-lg bg-muted/60 border border-border flex items-center justify-center shrink-0">
                         <Linkedin size={18} className="text-primary" />
                       </div>
                       <span className={cn(
@@ -912,7 +912,7 @@ export function EleInAccounts() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-card/95 border border-border shadow-2xl backdrop-blur-md"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-2.5 rounded-xl bg-card/95 border border-border shadow-2xl backdrop-blur-md"
           >
             <span className="text-xs font-bold text-foreground whitespace-nowrap">
               {selectedAccounts.size} account{selectedAccounts.size !== 1 ? 's' : ''} selected

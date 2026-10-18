@@ -1761,6 +1761,11 @@ function EleInCreateCampaignInner() {
   const isLoadingCampaignRef = React.useRef<boolean>(Boolean(initialEditId))
   const isSavingRef = React.useRef<boolean>(false)
   const isRestoringRef = React.useRef<boolean>(true)
+  const idempotencyKeyRef = React.useRef<string>(
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `idemp_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  )
 
   useEffect(() => {
     isLoadingCampaignRef.current = isLoadingCampaign
@@ -1995,7 +2000,10 @@ function EleInCreateCampaignInner() {
       const method = state.campaignId ? "PUT" : "POST";
       const res = await fetchWithAuth(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKeyRef.current
+        },
         body: JSON.stringify({
           name: campaignName,
           nodes,
@@ -2016,8 +2024,18 @@ function EleInCreateCampaignInner() {
         })
       });
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API Error ${res.status}: ${text}`);
+        let errorDetail = `API Error ${res.status}`;
+        try {
+          const jsonBody = await res.json();
+          errorDetail = jsonBody.detail || jsonBody.error || jsonBody.message || JSON.stringify(jsonBody);
+        } catch (_) {
+          const rawText = await res.text().catch(() => "");
+          if (rawText) errorDetail = rawText;
+        }
+        if (res.status === 502 || res.status === 503) {
+          errorDetail = "Backend server is temporarily unreachable (HTTP 502/503). Ensure backend service is running.";
+        }
+        throw new Error(errorDetail);
       }
       const data = await res.json();
       
@@ -2114,6 +2132,7 @@ function EleInCreateCampaignInner() {
       }
     } finally {
       setIsSaving(false);
+      isSavingRef.current = false;
     }
   }
 

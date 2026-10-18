@@ -23,7 +23,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
 
   return (
     <div className="animate-in fade-in w-full text-center pb-4 pt-2">
-      <div className="mx-auto w-16 h-16 bg-[#ff7a59]/10 rounded-full flex items-center justify-center mb-4 shadow-sm">
+      <div className="mx-auto w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mb-4 shadow-xs">
         <img src="https://cdn.simpleicons.org/hubspot/ff7a59" alt="HubSpot" className="w-8 h-8" />
       </div>
       <div className="flex items-center justify-center gap-2 mb-2">
@@ -77,7 +77,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
                     openPaywall({ featureName: "HubSpot CRM Integration" });
                     toast.info("HubSpot CRM integration requires Growth Pro.");
                   }}
-                  className="w-full h-11 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-medium rounded-lg transition-all shadow-sm active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg transition-colors shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Lock size={14} />
                   <span>Unlock with Growth Pro</span>
@@ -113,7 +113,7 @@ export function HubSpotImport({ onClose, mode = "import" }: { onClose: () => voi
                     }
                   }}
                   disabled={hubspotConnecting || !hubspotToken}
-                  className="w-full h-11 bg-foreground text-background font-medium rounded-lg hover:bg-foreground/90 transition-all shadow-sm active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full h-11 bg-foreground text-background font-medium rounded-lg hover:bg-foreground/90 transition-colors shadow-xs disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {hubspotConnecting ? "Verifying..." : "Connect Workspace"}
                 </button>

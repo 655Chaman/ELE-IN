@@ -779,6 +779,25 @@ class EleInNodeExecutor:
             return False
         return any(token in val_str for token in tokens)
 
+    @staticmethod
+    def _to_bool(val: Any) -> bool:
+        """
+        Paranoia Layer 0 & 1 (ENG-12): Strict boolean coercion for condition node branches.
+        Distinguishes explicit false strings ("false", "0", "no", "off", "disabled") from truthy values.
+        """
+        if val is None or val is False:
+            return False
+        if val is True:
+            return True
+        if isinstance(val, (int, float)):
+            return val > 0
+        s = str(val).strip().lower()
+        if s in ("true", "1", "yes", "t", "y", "on", "enabled", "connected", "accepted", "hiring"):
+            return True
+        if s in ("false", "0", "no", "f", "n", "off", "disabled", "none", "null", "not connected", "not_connected", "not hiring", "not_hiring"):
+            return False
+        return False
+
     def _format_field_val(self, val: Any) -> Optional[str]:
         if val is None:
             return None
@@ -3186,8 +3205,8 @@ class EleInNodeExecutor:
         return res
 
     def handle_send_voice_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        audio_url = (data.get("audio_url") or "").strip()
-        if not audio_url or not (audio_url.startswith("https://") or audio_url.startswith("http://") or audio_url.startswith("/api/")):
+        audio_url = (data.get("audio_url") or "").strip().strip("\"'<>")
+        if not audio_url or not (audio_url.startswith("https://") or audio_url.startswith("http://") or audio_url.startswith("/api/") or audio_url.startswith("/static/")):
             logger.error(f"Voice note node has invalid audio_url: {audio_url!r}")
             return {
                 "status": "error",
@@ -3195,6 +3214,29 @@ class EleInNodeExecutor:
                 "requires_approval": True,
                 "branch": Branch.FAILED.value
             }
+
+        # Security Hardening (VULN-12 - Paranoia Framework):
+        # Layer 1 & 2: SSRF defense for external URLs and path traversal defense for internal asset paths
+        if audio_url.startswith(("http://", "https://")):
+            is_safe, ssrf_err = validate_outbound_url_for_ssrf(audio_url)
+            if not is_safe:
+                logger.warning(f"Voice note audio_url blocked by SSRF policy: {ssrf_err} (URL: {audio_url})")
+                return {
+                    "status": "error",
+                    "error": f"Voice note audio URL blocked by security policy: {ssrf_err}",
+                    "requires_approval": True,
+                    "branch": Branch.FAILED.value
+                }
+        elif audio_url.startswith("/"):
+            clean_path = audio_url.split("?")[0].lower()
+            if ".." in clean_path or "%2e" in clean_path or not (clean_path.startswith("/api/elein/assets/") or clean_path.startswith("/api/storage/") or clean_path.startswith("/static/")):
+                logger.warning(f"Voice note local audio_url blocked (disallowed path): {audio_url}")
+                return {
+                    "status": "error",
+                    "error": f"Disallowed local audio path: {audio_url}. Voice notes must be stored in approved asset paths.",
+                    "requires_approval": True,
+                    "branch": Branch.FAILED.value
+                }
             
         declared_dur_raw = data.get("duration") or data.get("audio_duration")
         if declared_dur_raw is not None:
@@ -5158,11 +5200,14 @@ Respond ONLY with valid JSON."""
             role_filter = data.get("role_filter", "") or data.get("role_keywords", "")
             hiring_info = self._get_lead_field(data, linkedin_url, "is_hiring", "open_roles", "job_postings")
             if hiring_info:
-                if role_filter:
+                clean_info = str(hiring_info).strip().lower()
+                if clean_info in ("false", "0", "no", "none", "null", "not hiring", "not_hiring"):
+                    branch = Branch.NOT_HIRING.value
+                elif role_filter:
                     matched = self._match_keywords(str(hiring_info), role_filter)
                     branch = Branch.HIRING.value if matched else Branch.NOT_HIRING.value
                 else:
-                    is_hiring = str(hiring_info).strip().lower() in ("true", "1", "yes", "hiring")
+                    is_hiring = self._to_bool(hiring_info)
                     branch = Branch.HIRING.value if is_hiring else Branch.NOT_HIRING.value
                 return {"status": "success", "branch": branch, "variables": {"is_hiring": branch == Branch.HIRING.value, "open_roles": str(hiring_info)}}
 

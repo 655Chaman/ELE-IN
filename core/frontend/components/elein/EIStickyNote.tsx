@@ -14,13 +14,13 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
   const noteRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   
-  // Vibrant classic sticky note colors
+  // Theme-aware, subtle sticky note colors
   const colorMap: Record<string, string> = {
-    "yellow": "bg-[#FEF08A] border-[#FDE047] text-slate-800 shadow-[0_8px_30px_-4px_rgba(253,224,71,0.3)]",
-    "blue": "bg-[#BAE6FD] border-[#7DD3FC] text-slate-800 shadow-[0_8px_30px_-4px_rgba(125,211,252,0.3)]",
-    "pink": "bg-[#FECDD3] border-[#FDA4AF] text-slate-800 shadow-[0_8px_30px_-4px_rgba(253,164,175,0.3)]",
-    "green": "bg-[#A7F3D0] border-[#6EE7B7] text-slate-800 shadow-[0_8px_30px_-4px_rgba(110,231,183,0.3)]",
-    "cyan": "bg-[#CFFAFE] border-[#67E8F9] text-slate-800 shadow-[0_8px_30px_-4px_rgba(103,232,249,0.3)]"
+    "yellow": "bg-amber-100 dark:bg-amber-950/70 border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-100 shadow-sm",
+    "blue": "bg-sky-100 dark:bg-sky-950/70 border-sky-300 dark:border-sky-700/80 text-sky-950 dark:text-sky-100 shadow-sm",
+    "pink": "bg-rose-100 dark:bg-rose-950/70 border-rose-300 dark:border-rose-700/80 text-rose-950 dark:text-rose-100 shadow-sm",
+    "green": "bg-emerald-100 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700/80 text-emerald-950 dark:text-emerald-100 shadow-sm",
+    "cyan": "bg-cyan-100 dark:bg-cyan-950/70 border-cyan-300 dark:border-cyan-700/80 text-cyan-950 dark:text-cyan-100 shadow-sm"
   }
   
   // Default to yellow if old color format or undefined
@@ -122,7 +122,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
                 key={c}
                 aria-label={`Change color to ${c}`}
                 onClick={(e) => { e.stopPropagation(); changeStickyNoteColor(note.id, c) }}
-                className={`w-5 h-5 rounded-full transition-transform hover:scale-110 ${c === 'yellow' ? 'bg-primary/80' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-cyan-400'} ${baseColorKey === c ? 'ring-2 ring-white ring-offset-1 ring-offset-background' : ''}`}
+                className={`w-5 h-5 rounded-full transition-opacity hover:opacity-80 cursor-pointer ${c === 'yellow' ? 'bg-amber-400' : c === 'blue' ? 'bg-sky-400' : c === 'pink' ? 'bg-rose-400' : c === 'green' ? 'bg-emerald-400' : 'bg-cyan-400'} ${baseColorKey === c ? 'ring-2 ring-foreground ring-offset-1 ring-offset-background' : ''}`}
               />
             ))}
             <div className="w-px h-4 bg-border mx-1" />

@@ -93,8 +93,20 @@ def get_conflicting_active_leads(
                     eid = state.get("enrollment_id")
                     st = str(state.get("status", "")).lower()
                     if eid in enrollment_map and st in in_flight_statuses:
-                        _, lid = enrollment_map[eid]
-                        colliding_lead_ids.add(lid)
+                        cid, lid = enrollment_map[eid]
+                        # ENG-07 Paranoia Layer 1: Deterministic priority ordering to eliminate mutual livelock.
+                        # If the other campaign is actively engaging (running, waiting_for_reply, etc.), yield unconditionally.
+                        if st in ("running", "waiting_for_reply", "awaiting_approval", "processing"):
+                            colliding_lead_ids.add(lid)
+                        elif st == "pending":
+                            # Both campaigns have the lead in pending state.
+                            # Deterministic tie-breaker: lower-priority campaign (lexicographically greater UUID) yields,
+                            # allowing higher-priority campaign to execute without mutual standoff.
+                            if clean_exclude:
+                                if str(clean_exclude) > str(cid):
+                                    colliding_lead_ids.add(lid)
+                            else:
+                                colliding_lead_ids.add(lid)
 
         except Exception as e:
             logger.error(f"[CollisionGuard] Error checking conflicting active leads (failing closed): {e}", exc_info=True)

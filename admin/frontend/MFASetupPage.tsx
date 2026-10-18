@@ -66,7 +66,7 @@ export function MFASetupPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 shadow-xl">
+      <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 shadow-xl">
         <h1 className="text-2xl font-bold text-foreground mb-2">Set Up 2FA</h1>
         <p className="text-sm text-muted-foreground mb-6">
           Your workspace administrator requires two-factor authentication. Set up an authenticator app to continue.

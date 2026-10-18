@@ -13,7 +13,7 @@ export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivEl
 
 export function PipelineCardSkeleton() {
   return (
-    <div className="brutal-border bg-[#0f0f0f] p-6 flex flex-col h-full opacity-50 pointer-events-none" aria-busy="true">
+    <div className="rounded-xl border border-border bg-card p-6 flex flex-col h-full opacity-50 pointer-events-none shadow-xs" aria-busy="true">
       <div className="flex justify-between items-start mb-4">
         <div>
           <Skeleton className="h-8 w-48 mb-2" />

@@ -307,6 +307,46 @@ def try_consume_action(supabase, account_id: str, action: str, account: Optional
         return False
 
 
+def release_consumed_action(supabase, account_id: str, action: str, tz_str: Optional[str] = None) -> None:
+    """
+    Paranoia Layer 1 & 2 (ENG-04): Safely releases/refunds a consumed daily action count
+    if the external action failed before execution (e.g. network timeout, proxy failure,
+    worker crash, suppression list hit, or fatal API error).
+    Prevents burning the user's daily quota on phantom or un-executed attempts.
+    """
+    action_type = ACTION_TYPE_MAP.get(action)
+    if not action_type or not supabase or not account_id:
+        return
+
+    usage_date = get_effective_usage_date(tz_str)
+    try:
+        supabase.rpc(
+            "release_consumed_daily_action",
+            {"p_account_id": account_id, "p_action_type": action_type, "p_usage_date": usage_date}
+        ).execute()
+        logger.info(f"Released consumed daily action '{action_type}' for account {account_id} on {usage_date}")
+    except Exception as e:
+        # Fallback to direct decrement if RPC is temporarily unavailable
+        try:
+            res = supabase.table("account_daily_action_counts") \
+                .select("count") \
+                .eq("account_id", account_id) \
+                .eq("action_type", action_type) \
+                .eq("usage_date", usage_date) \
+                .execute()
+            if res.data and res.data[0].get("count", 0) > 0:
+                new_count = max(0, res.data[0]["count"] - 1)
+                supabase.table("account_daily_action_counts") \
+                    .update({"count": new_count}) \
+                    .eq("account_id", account_id) \
+                    .eq("action_type", action_type) \
+                    .eq("usage_date", usage_date) \
+                    .execute()
+                logger.info(f"Fallback released consumed daily action '{action_type}' to count {new_count} for {account_id}")
+        except Exception as fallback_e:
+            logger.warning(f"Failed to compensate/release daily action limit for {account_id}: {fallback_e}")
+
+
 def try_acquire_session_lock(supabase, account_id: str, lock_duration_seconds: int = 120, worker_id: str = None) -> bool:
     """
     Tries to acquire a distributed session lock for a LinkedIn account.
@@ -1424,7 +1464,7 @@ class EleInOrchestrator:
                 logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE ({camp_check.data[0].get('status')}). Setting lead state to paused instead of pending.")
                 next_status = "paused"
 
-            self.update_state(state["id"], next_node_id, next_status, next_run, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'))
+            self.update_state(state["id"], next_node_id, next_status, next_run, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'), use_sto=False)
             return
 
         # Live check to prevent ghost execution after Panic Pause
@@ -1936,6 +1976,8 @@ class EleInOrchestrator:
         heartbeat_event = threading.Event()
         lease_revoked = threading.Event()
         heartbeat_thread = None
+        tz_str = state.get("tz_str") or "UTC"
+        action_consumed = False
         
         def heartbeat_worker():
             while not heartbeat_event.is_set():
@@ -2064,6 +2106,7 @@ class EleInOrchestrator:
                 allowed = try_consume_action(self.supabase, chosen_sender_id, action, account=account_row, tz_str=tz_str)
                 if not allowed:
                     return {"status": "rate_limited"}
+                action_consumed = True
                     
                 if not account_row.get("proxy_id") and not account_row.get("proxies"):
                     logger.warning(f"Account {chosen_sender_id} has no proxy assigned — running without proxy (raw IP risk)")
@@ -2323,6 +2366,10 @@ class EleInOrchestrator:
                     
                 self.supabase.table("campaign_node_executions").update(upd).eq("idempotency_key", idemp_key).execute()
                 
+            if res.get("status") in ("success", "waiting", "waiting_for_reply", "awaiting_approval"):
+                # Action executed successfully or reached a valid pending state; retain consumed quota
+                action_consumed = False
+
             return res
             
         finally:
@@ -2331,6 +2378,12 @@ class EleInOrchestrator:
                 heartbeat_thread.join(timeout=2.0)
             if requires_linkedin and chosen_sender_id:
                 release_session_lock(self.supabase, chosen_sender_id, worker_id)
+            # Paranoia Layer 1 & 2 (ENG-04): Auto-refund un-executed action quotas on crash/failure/early exit
+            if action_consumed and chosen_sender_id:
+                try:
+                    release_consumed_action(self.supabase, chosen_sender_id, action, tz_str=tz_str)
+                except Exception as rel_err:
+                    logger.warning(f"Failed to release un-executed action quota: {rel_err}")
 
     def update_state(self, state_id: str, node_id: str, status: str, next_run_at: Optional[datetime], lease_token: str, error_reason: str = None, attempts: int = None, variables: dict = None, tz_str: str = "UTC", enforce_working_hours: bool = True, schedule: dict = None, lead_id: Optional[str] = None, use_sto: bool = False):
         # PARANOIA LAYER 2: Prevent developers from adding un-requeuable waiting statuses
@@ -2340,7 +2393,9 @@ class EleInOrchestrator:
             
         if next_run_at and enforce_working_hours:
             from campaigns.backend.services.sto_service import should_use_sto, calculate_sto_next_run
-            if use_sto or should_use_sto(schedule=schedule):
+            # ENG-08 Paranoia Layer 1: Apply STO strictly when explicitly requested (use_sto=True)
+            # and enabled in schedule. Never inflate tactical delay nodes or jitter transitions with STO windows.
+            if use_sto and should_use_sto(schedule=schedule):
                 next_run_at = calculate_sto_next_run(next_run_at, tz_str, lead_id=lead_id, schedule=schedule, supabase=self.supabase).replace(tzinfo=None)
             else:
                 next_run_at = adjust_to_working_hours(next_run_at, tz_str, schedule=schedule)

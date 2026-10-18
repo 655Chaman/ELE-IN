@@ -31,6 +31,11 @@ POISON_ENRICHMENT_VALUES: Set[str] = {
 }
 
 MAX_SPINTAX_DEPTH = 5
+MAX_TEMPLATE_CHARS = 10000
+MAX_SPINTAX_COMBINATIONS = 10000
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 def clean_enrichment_value(val: Any) -> str:
@@ -58,12 +63,18 @@ def validate_template_and_spintax_syntax(text: str, allowed_vars: Optional[Set[s
     2. Disallowed template variable names (supports 'lead.<var>' and '{{var | fallback}}').
     3. Self-referencing fallback loops (e.g. '{{company | {{company}}}}').
     4. Unbalanced single-brace spintax '{opt1|opt2' or empty spintax '{}'.
+    5. Combinatorial spintax bombs and excessive nesting depth (ENG-11).
     """
     if not text or not isinstance(text, str):
         return {"valid": True, "errors": [], "variables": []}
 
     errors: List[str] = []
     extracted_vars: List[str] = []
+
+    # Paranoia Layer 1: Guard against massive inputs causing ReDoS / event-loop stalls
+    if len(text) > MAX_TEMPLATE_CHARS:
+        errors.append(f"Template text exceeds maximum allowed length of {MAX_TEMPLATE_CHARS} characters (received {len(text)}).")
+        return {"valid": False, "errors": errors, "variables": []}
 
     # 1. Check for nested '{{' inside '{{ ... }}' before masking
     for raw_match in re.finditer(r"\{\{([\s\S]*?)\}\}", text):
@@ -124,7 +135,8 @@ def validate_template_and_spintax_syntax(text: str, allowed_vars: Optional[Set[s
     if depth > 0:
         errors.append("Unclosed opening brace '{' found in template spintax.")
 
-    # Check for empty spintax blocks '{}' or blocks with only pipes '{|}'
+    # Check for empty spintax blocks '{}' or blocks with only pipes '{|}' and count combinatorial variants
+    total_combinations = 1
     for spin_match in re.finditer(r"\{([^{}]*)\}", masked):
         spin_inner = spin_match.group(1)
         if not spin_inner.strip():
@@ -133,6 +145,15 @@ def validate_template_and_spintax_syntax(text: str, allowed_vars: Optional[Set[s
             options = [opt.strip() for opt in spin_inner.split("|")]
             if not any(options):
                 errors.append(f"Spintax block '{{{spin_inner}}}' has no non-empty options.")
+            else:
+                non_empty_count = sum(1 for o in options if o)
+                if non_empty_count > 1:
+                    total_combinations *= non_empty_count
+                    if total_combinations > MAX_SPINTAX_COMBINATIONS:
+                        errors.append(
+                            f"Spintax combinatorial possibilities exceed maximum safety cap of {MAX_SPINTAX_COMBINATIONS} variants."
+                        )
+                        break
 
     return {
         "valid": len(errors) == 0,
@@ -146,9 +167,14 @@ def resolve_spintax(text: str, seed: Optional[str] = None) -> str:
     Paranoia Layer 0 & 1: Evaluates single-brace spintax '{Hi|Hello|Hey}' (including nested spintax)
     while leaving double-brace '{{variable}}' placeholders completely untouched.
     Uses a deterministic RNG when `seed` is provided so retries produce consistent phrasing.
+    Bounded to MAX_SPINTAX_DEPTH and MAX_TEMPLATE_CHARS to prevent ReDoS / event loop hangs.
     """
     if not text or not isinstance(text, str) or "{" not in text:
         return text or ""
+
+    if len(text) > MAX_TEMPLATE_CHARS:
+        logger.warning(f"Template length ({len(text)}) exceeds safety cap ({MAX_TEMPLATE_CHARS}). Truncating for resolution.")
+        text = text[:MAX_TEMPLATE_CHARS]
 
     rng = random.Random(seed) if seed is not None else random
 

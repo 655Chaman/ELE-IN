@@ -9,9 +9,11 @@ import json
 import uuid
 import csv
 import asyncio
+import threading
+import time
 from io import StringIO
 from datetime import date, datetime, timezone, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 import os
@@ -2124,10 +2126,13 @@ def get_dashboard_stats(supabase: Client = Depends(get_supabase_client), workspa
             enroll_ids = [r["id"] for r in (enr_res.data or [])]
             state_counts = {}
             if enroll_ids:
-                state_res = supabase.table("campaign_execution_states").select("status").in_("enrollment_id", enroll_ids).execute()
-                for r in (state_res.data or []):
-                    s = r["status"]
-                    state_counts[s] = state_counts.get(s, 0) + 1
+                chunk_size = 200
+                for i in range(0, len(enroll_ids), chunk_size):
+                    chunk = enroll_ids[i:i + chunk_size]
+                    state_res = supabase.table("campaign_execution_states").select("status").in_("enrollment_id", chunk).execute()
+                    for r in (state_res.data or []):
+                        s = r["status"]
+                        state_counts[s] = state_counts.get(s, 0) + 1
                 
             leads_enrolled = sum(state_counts.values())
             leads_running  = state_counts.get("running", 0)
@@ -2158,12 +2163,16 @@ def get_dashboard_stats(supabase: Client = Depends(get_supabase_client), workspa
         enr_res = supabase.table("campaign_enrollments").select("id, campaign_id").in_("campaign_id", camp_ids).execute()
         enroll_map = {r["id"]: r["campaign_id"] for r in (enr_res.data or [])}
         if enroll_map:
-            st_res = supabase.table("campaign_execution_states").select("status, enrollment_id").in_("enrollment_id", list(enroll_map.keys())).execute()
-            for r in (st_res.data or []):
-                c_id = enroll_map[r["enrollment_id"]]
-                if c_id not in camp_states:
-                    camp_states[c_id] = {}
-                camp_states[c_id][r["status"]] = camp_states[c_id].get(r["status"], 0) + 1
+            enroll_keys = list(enroll_map.keys())
+            chunk_size = 200
+            for i in range(0, len(enroll_keys), chunk_size):
+                chunk = enroll_keys[i:i + chunk_size]
+                st_res = supabase.table("campaign_execution_states").select("status, enrollment_id").in_("enrollment_id", chunk).execute()
+                for r in (st_res.data or []):
+                    c_id = enroll_map[r["enrollment_id"]]
+                    if c_id not in camp_states:
+                        camp_states[c_id] = {}
+                    camp_states[c_id][r["status"]] = camp_states[c_id].get(r["status"], 0) + 1
 
     campaigns_stats = []
     for camp in camps_data:
@@ -2200,8 +2209,12 @@ def get_dashboard_stats(supabase: Client = Depends(get_supabase_client), workspa
             
             enr_ids = [r["id"] for r in enr_data]
             if enr_ids:
-                st_res2 = supabase.table("campaign_execution_states").select("enrollment_id").in_("enrollment_id", enr_ids).in_("status", ["running","completed","exited"]).execute()
-                conn_enr_ids = set(r["enrollment_id"] for r in (st_res2.data or []))
+                conn_enr_ids = set()
+                chunk_size = 200
+                for i in range(0, len(enr_ids), chunk_size):
+                    chunk = enr_ids[i:i + chunk_size]
+                    st_res2 = supabase.table("campaign_execution_states").select("enrollment_id").in_("enrollment_id", chunk).in_("status", ["running","completed","exited"]).execute()
+                    conn_enr_ids.update(r["enrollment_id"] for r in (st_res2.data or []))
                 funnel_connected = len(set(r["lead_id"] for r in enr_data if r["id"] in conn_enr_ids and r.get("lead_id")))
             else:
                 funnel_connected = 0
@@ -2285,14 +2298,17 @@ def get_engine_status(supabase: Client = Depends(get_supabase_client), workspace
             enr = supabase.table("campaign_enrollments").select("id").in_("campaign_id", camp_ids).execute()
             enr_ids = [r["id"] for r in (enr.data or [])]
             if enr_ids:
-                leads_due_res = supabase.table("campaign_execution_states").select("id", count="exact").in_("enrollment_id", enr_ids).in_("status", ["pending", "running"]).lte("next_run_at", datetime.utcnow().isoformat()).execute()
-                leads_due = leads_due_res.count or 0
+                chunk_size = 200
+                for i in range(0, len(enr_ids), chunk_size):
+                    chunk = enr_ids[i:i + chunk_size]
+                    leads_due_res = supabase.table("campaign_execution_states").select("id", count="exact").in_("enrollment_id", chunk).in_("status", ["pending", "running"]).lte("next_run_at", datetime.utcnow().isoformat()).execute()
+                    leads_due += (leads_due_res.count or 0)
 
-                processed_res = supabase.table("campaign_execution_states").select("id", count="exact").in_("enrollment_id", enr_ids).gte("updated_at", today).execute()
-                processed_today = processed_res.count or 0
+                    processed_res = supabase.table("campaign_execution_states").select("id", count="exact").in_("enrollment_id", chunk).gte("updated_at", today).execute()
+                    processed_today += (processed_res.count or 0)
 
-                err_res = supabase.table("campaign_execution_states").select("id", count="exact").in_("enrollment_id", enr_ids).eq("status", "error").gte("updated_at", today).execute()
-                errors_today = err_res.count or 0
+                    err_res = supabase.table("campaign_execution_states").select("id", count="exact").in_("enrollment_id", chunk).eq("status", "error").gte("updated_at", today).execute()
+                    errors_today += (err_res.count or 0)
 
         acc_res = supabase.table("accounts").select("id", count="exact").eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
         active_accounts = acc_res.count or 0
@@ -3700,14 +3716,50 @@ async def upload_campaign_attachment(
 
 # --- Merged from campaigns.py ---
 
+_CAMPAIGN_MUTATIONS_LOCK = threading.Lock()
+_PROCESSED_CAMPAIGN_MUTATIONS: Dict[str, Tuple[float, dict]] = {}
+
+def _check_and_store_campaign_idempotency(dedupe_key: str, result: Optional[dict] = None) -> Optional[dict]:
+    """
+    Paranoia Layer 1 & 2 (API-20): In-memory idempotency deduplication with 120-second TTL.
+    Prevents duplicate campaign creation upon rapid double-clicks, network retransmits, or client retries.
+    """
+    now = time.time()
+    with _CAMPAIGN_MUTATIONS_LOCK:
+        expired_keys = [k for k, (ts, _) in _PROCESSED_CAMPAIGN_MUTATIONS.items() if now - ts > 120.0]
+        for k in expired_keys:
+            _PROCESSED_CAMPAIGN_MUTATIONS.pop(k, None)
+
+        if result is None:
+            if dedupe_key in _PROCESSED_CAMPAIGN_MUTATIONS:
+                _, cached = _PROCESSED_CAMPAIGN_MUTATIONS[dedupe_key]
+                return cached
+            return None
+        else:
+            _PROCESSED_CAMPAIGN_MUTATIONS[dedupe_key] = (now, result)
+            return result
+
+
 @router.post("/campaigns", response_model=CampaignResponse)
 def create_campaign(
     campaign: CampaignCreate,
+    request: Request,
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace),
     user_id: str = Depends(get_current_user_id)
 ):
     try:
+        raw_idemp = request.headers.get("Idempotency-Key") or request.headers.get("X-Idempotency-Key")
+        idemp_key = None
+        if raw_idemp:
+            clean_idemp = str(raw_idemp).strip().strip("\"'")
+            if clean_idemp and len(clean_idemp) <= 128:
+                idemp_key = f"{workspace_id}:{clean_idemp}"
+                cached_result = _check_and_store_campaign_idempotency(idemp_key)
+                if cached_result:
+                    logger.info(f"[CreateCampaign] Idempotency hit for key {idemp_key}. Returning cached campaign response.")
+                    return CampaignResponse(**cached_result)
+
         campaign_id = str(uuid.uuid4())
         nodes_raw = [n.dict() for n in campaign.nodes]
         edges_raw = [e.dict() for e in campaign.edges]
@@ -3899,13 +3951,16 @@ def create_campaign(
                 detail="Campaign was created but the workflow graph failed to save. Please try again."
             )
 
-        return CampaignResponse(
+        resp = CampaignResponse(
             id=campaign_id,
             name=name,
             status=campaign.status or "DRAFT",
             nodes_json=json.dumps(nodes_raw),
             edges_json=json.dumps(edges_raw)
         )
+        if idemp_key:
+            _check_and_store_campaign_idempotency(idemp_key, resp.dict())
+        return resp
     except HTTPException:
         raise  # re-raise 422 directly without wrapping in 500
     except Exception as e:
@@ -4337,8 +4392,14 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
     Raises HTTPException(402) with structured metadata if locked on current tier.
     Permits test workspaces and unconfigured mocks for resilient automated testing.
     """
-    if not workspace_id or workspace_id in ("ws-test", "test-workspace", "my_ws") or workspace_id.startswith(("ws_test", "test", "ws-")) or not supabase:
+    # Paranoia Layer 1 & 2 (API-27): Fail closed. Never allow arbitrary prefix bypasses (e.g. ws-) in production.
+    if not workspace_id or not supabase:
         return
+
+    import os
+    if os.environ.get("PYTEST_CURRENT_TEST") and workspace_id in ("ws-test", "test-workspace", "my_ws", "test"):
+        return
+
     try:
         rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
         raw_data = getattr(rpc_result, "data", None)
@@ -5288,8 +5349,12 @@ def get_campaign_detail(campaign_id: str, supabase: Client = Depends(get_supabas
             enrolls = _fetch_all_enrollments(supabase, campaign_id)
             enr_ids = [r["id"] for r in enrolls]
             if enr_ids:
-                states_res = supabase.table("campaign_execution_states").select("status").in_("enrollment_id", enr_ids).execute()
-                states_res_data = states_res.data or []
+                chunk_size = 200
+                states_res_data = []
+                for i in range(0, len(enr_ids), chunk_size):
+                    chunk = enr_ids[i:i + chunk_size]
+                    states_res = supabase.table("campaign_execution_states").select("status").in_("enrollment_id", chunk).execute()
+                    states_res_data.extend(states_res.data or [])
         except Exception as e:
             logger.warning(f"[get_campaign_detail] Stats query fallback: {e}")
             states_res_data = []

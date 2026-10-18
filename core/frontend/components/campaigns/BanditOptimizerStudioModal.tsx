@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import useSWR from 'swr';
 import { 
   Brain, RefreshCw, TrendingUp, Award, 
   ArrowRight, CheckCircle2, Copy, Check, Radio, Target, 
   Layers, Rocket, Briefcase, DollarSign, Users, X,
   Plus, Download, Filter, MessageSquare, Mail,
-  CheckCheck, AlertCircle, ExternalLink, Sparkles, Eye, ShieldAlert, GitBranch
+  CheckCheck, AlertCircle, ExternalLink, Sparkles, Eye, ShieldAlert, GitBranch, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -279,27 +279,34 @@ export function BanditOptimizerStudioModal({ onClose, campaignId }: BanditOptimi
 
   const [activeTab, setActiveTab] = useState<'variations' | 'triggers' | 'evolution'>('variations');
 
-  // Tab 1: Copy Variations State
-  const [arms, setArms] = useState<any[]>(TOUCHPOINT_COPY_PRESETS.step_1_connect);
+  // Tab 1: Copy Variations State (Stored by touchpoint step id to prevent wiping custom variants on tab switch)
+  const [armsByStep, setArmsByStep] = useState<Record<string, any[]>>(() => ({
+    ...TOUCHPOINT_COPY_PRESETS,
+  }));
+  const arms = useMemo(() => {
+    return armsByStep[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || TOUCHPOINT_COPY_PRESETS.step_1_connect;
+  }, [armsByStep, selectedStepId]);
+
   const [selectedArmId, setSelectedArmId] = useState<string>("var-conn-consultative");
   const [isDrawingSample, setIsDrawingSample] = useState(false);
   const [isMutatingArmId, setIsMutatingArmId] = useState<string | null>(null);
   const [appliedArmId, setAppliedArmId] = useState<string | null>(null);
   const [copiedArmId, setCopiedArmId] = useState<string | null>(null);
+  const [expandedArmIds, setExpandedArmIds] = useState<Record<string, boolean>>({});
 
-  // Update arms when touchpoint changes
+  // Sync selectedArmId when touchpoint changes
   useEffect(() => {
-    const presets = TOUCHPOINT_COPY_PRESETS[selectedStepId] || TOUCHPOINT_COPY_PRESETS.step_1_connect;
-    setArms(presets);
-    const win = presets.find(p => p.is_winner) || presets[0];
+    const currentArms = armsByStep[selectedStepId] || TOUCHPOINT_COPY_PRESETS[selectedStepId] || [];
+    const win = currentArms.find((p: any) => p.is_winner) || currentArms[0];
     if (win) setSelectedArmId(win.id);
-  }, [selectedStepId]);
+  }, [selectedStepId, armsByStep]);
 
   // Custom Variant Form Modal State
   const [showAddArmModal, setShowAddArmModal] = useState(false);
   const [newArmName, setNewArmName] = useState("");
   const [newArmTemplate, setNewArmTemplate] = useState("");
   const [isSubmittingNewArm, setIsSubmittingNewArm] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Tab 2: Trigger Radar State
   const [isLoadingTriggers, setIsLoadingTriggers] = useState(false);

@@ -301,7 +301,7 @@ export function BayesianIcpView() {
       case "INTENT":
         return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       default:
-        return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        return "bg-muted text-muted-foreground border-border/60";
     }
   };
 
@@ -480,7 +480,7 @@ export function BayesianIcpView() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-xs font-bold text-foreground">{warn.label}</h4>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                         warn.severity === "POSITIVE_ACCELERATION" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
                       }`}>
                         {warn.severity === "POSITIVE_ACCELERATION" ? "High-Yield Catalyst" : "Negative Divergence"}
@@ -839,7 +839,7 @@ export function BayesianIcpView() {
                 )}
                 <span>Run Bayesian Evaluation</span>
                 {isIcpLocked && (
-                  <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 text-[9px] font-black tracking-wide">
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[9px] font-bold tracking-wide">
                     PRO
                   </span>
                 )}

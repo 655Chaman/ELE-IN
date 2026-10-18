@@ -456,10 +456,16 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
     if (visited.has(node.id)) return
     visited.add(node.id)
 
+    const cleanData = { ...(node.data || {}) }
+    if ("delay" in cleanData) {
+      const num = Number(cleanData.delay)
+      cleanData.delay = (!isNaN(num) && num > 0) ? Math.ceil(num) : 1
+    }
+
     nodes.push({
       id: node.id,
       type: node.type,
-      data: node.data,
+      data: cleanData,
       position: { x: 0, y: 0 }
     })
 

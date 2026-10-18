@@ -164,7 +164,12 @@ def trigger_pod_failover_endpoint(
         )
         if result.get("status") == "FAILOVER_REJECTED":
             msg = result.get("message", "Failover rejected")
-            code = 403 if "workspace" in msg.lower() else 400
+            if "not found" in msg.lower():
+                code = 404
+            elif "workspace" in msg.lower():
+                code = 403
+            else:
+                code = 400
             raise HTTPException(status_code=code, detail=msg)
         return {"status": "success", "data": result}
     except HTTPException:

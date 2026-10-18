@@ -364,3 +364,19 @@ BEGIN
     RETURN v_count;
 END; 
 $$;
+
+-- ------------------------------------------------------------------------------
+-- 9. Multi-Tenant Workspace Resolution & Processing Jobs RLS (VULN-20)
+-- Replaces single-workspace pinning with multi-workspace access check
+-- ------------------------------------------------------------------------------
+ALTER TABLE public.processing_jobs ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+    DROP POLICY IF EXISTS processing_jobs_tenant_isolation ON public.processing_jobs;
+    CREATE POLICY processing_jobs_tenant_isolation ON public.processing_jobs
+    FOR ALL USING (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    )
+    WITH CHECK (
+        workspace_id IN (SELECT public.my_workspace_ids())
+    );
+END $$;

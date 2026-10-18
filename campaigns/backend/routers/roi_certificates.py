@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from supabase import Client
 
 from core.backend.api.auth_dep import get_supabase_client, get_current_workspace, get_service_client
+from core.backend.api.rate_limit import sliding_window_rate_limit
 from campaigns.backend.services.roi_certificate_service import (
     mint_campaign_roi_certificate,
     get_campaign_roi_certificate,
@@ -159,7 +160,11 @@ def export_roi_certificate_csv_endpoint(
 # Public Unauthenticated Verification Endpoint
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.get("/api/public/verify-certificate/{token}", response_model=Dict[str, Any])
+@router.get(
+    "/api/public/verify-certificate/{token}",
+    response_model=Dict[str, Any],
+    dependencies=[Depends(sliding_window_rate_limit(max_requests=10, window_seconds=60, scope="ip", tier_aware=False))]
+)
 def public_verify_certificate_endpoint(
     token: str = Path(..., description="Cryptographic certificate verification token e.g. ELEIN-CERT-A3F9-82E1"),
     supabase: Client = Depends(get_service_client)

@@ -216,7 +216,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                     disabled={!m.active && !isLocked}
                     className={`group relative flex items-center gap-5 p-4 rounded-lg border transition-all duration-150 text-left overflow-hidden ${
                       m.active || isLocked
-                      ? "border-border/60 hover:border-foreground/30 hover:shadow-xs bg-gradient-to-br from-background to-muted/30 active:scale-[0.99] active:bg-muted/50 cursor-pointer" 
+                      ? "border-border/60 hover:border-foreground/30 hover:shadow-xs bg-card hover:bg-muted/50 transition-colors cursor-pointer" 
                       : "opacity-60 cursor-not-allowed bg-muted/20 border-transparent"
                     }`}
                   >

@@ -930,10 +930,10 @@ export function EleInIntegrations() {
         <motion.div
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8 p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-indigo-950/40 via-blue-950/30 to-background border border-indigo-500/20 shadow-xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-5"
+          className="mb-8 p-5 sm:p-6 rounded-xl bg-gradient-to-r from-indigo-950/40 via-blue-950/30 to-background border border-indigo-500/20 shadow-xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-5"
         >
           <div className="flex items-start sm:items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 text-indigo-400">
+            <div className="w-12 h-12 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 text-indigo-400">
               <Cpu className="w-6 h-6" />
             </div>
             <div>
@@ -1017,9 +1017,9 @@ export function EleInIntegrations() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
           >
-            <SpotlightCard className="h-full flex flex-col p-6 rounded-2xl border border-border/50 bg-muted/10 backdrop-blur-md hover:border-border transition-all">
+            <SpotlightCard className="h-full flex flex-col p-6 rounded-xl border border-border/50 bg-muted/10 backdrop-blur-md hover:border-border transition-all">
               <div className="flex justify-between items-start mb-4">
-                <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center ${
+                <div className={`w-12 h-12 rounded-lg border flex items-center justify-center ${
                   app.id === "mcp" 
                     ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400" 
                     : app.id === "webhook"
@@ -1123,7 +1123,7 @@ export function EleInIntegrations() {
       {/* ── HubSpot Modal ── */}
       {showHubspotModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-card w-full max-w-md rounded-2xl border shadow-xl p-6 relative">
+          <div className="bg-card w-full max-w-md rounded-xl border shadow-xl p-6 relative">
             <button 
               onClick={() => setShowHubspotModal(false)}
               className="absolute top-4 right-4 text-muted-foreground hover:text-foreground z-10"
@@ -1140,7 +1140,7 @@ export function EleInIntegrations() {
       {/* ── MCP Configuration Modal (Paranoia Layer 2) ── */}
       {showMcpModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
-          <div className="bg-card w-full max-w-2xl rounded-3xl border border-indigo-500/20 shadow-2xl p-8 relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-card w-full max-w-2xl rounded-xl border border-indigo-500/20 shadow-2xl p-8 relative max-h-[90vh] overflow-y-auto">
             <button 
               onClick={() => setShowMcpModal(false)}
               className="absolute top-6 right-6 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
@@ -1149,7 +1149,7 @@ export function EleInIntegrations() {
             </button>
 
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <div className="w-12 h-12 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
                 <ElesiumLogo size={24} />
               </div>
               <div>
@@ -1163,7 +1163,7 @@ export function EleInIntegrations() {
 
             <div className="space-y-6">
               {/* Tool list */}
-              <div className="p-4 rounded-2xl bg-muted/20 border border-border/50">
+              <div className="p-4 rounded-xl bg-muted/20 border border-border/50">
                 <h4 className="text-xs font-bold text-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <Terminal size={14} className="text-indigo-400" />
                   9 Registered Native MCP Tools
@@ -1189,7 +1189,7 @@ export function EleInIntegrations() {
               </div>
 
               {/* API Key Generation */}
-              <div className="p-5 rounded-2xl border border-border/60 bg-background/50">
+              <div className="p-5 rounded-xl border border-border/60 bg-background/50">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                     <Key size={14} className="text-amber-400" />
@@ -1262,7 +1262,7 @@ export function EleInIntegrations() {
                     {copiedJson ? "Copied JSON" : "Copy JSON"}
                   </button>
                 </div>
-                <pre className="p-4 rounded-2xl bg-slate-950 text-slate-200 text-xs font-mono overflow-x-auto border border-border/40">
+                <pre className="p-4 rounded-xl bg-slate-950 text-slate-200 text-xs font-mono overflow-x-auto border border-border/40">
                   {mcpConfigSnippet}
                 </pre>
               </div>
@@ -1283,7 +1283,7 @@ export function EleInIntegrations() {
       {/* ── Webhook & Inbound Intent Studio Modal (Paranoia Layer 0-2) ── */}
       {showWebhookModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/85 backdrop-blur-md">
-          <div className="bg-card w-full max-w-3xl rounded-3xl border border-emerald-500/20 shadow-2xl p-6 sm:p-8 relative max-h-[92vh] overflow-y-auto">
+          <div className="bg-card w-full max-w-3xl rounded-xl border border-emerald-500/20 shadow-2xl p-6 sm:p-8 relative max-h-[92vh] overflow-y-auto">
             <button 
               onClick={() => setShowWebhookModal(false)}
               className="absolute top-6 right-6 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
@@ -1292,7 +1292,7 @@ export function EleInIntegrations() {
             </button>
 
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <div className="w-12 h-12 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                 <Terminal size={24} />
               </div>
               <div>
@@ -1310,7 +1310,7 @@ export function EleInIntegrations() {
 
             <div className="space-y-6">
               {/* Target Campaign & Token Selectors */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-muted/20 border border-border/50">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-muted/20 border border-border/50">
                 <div>
                   <label className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1.5">
                     <Layers size={13} className="text-emerald-400" />
@@ -1359,7 +1359,7 @@ export function EleInIntegrations() {
               </div>
 
               {/* Endpoint URL Presentation */}
-              <div className="p-4 rounded-2xl border border-border/60 bg-background/50">
+              <div className="p-4 rounded-xl border border-border/60 bg-background/50">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                     <Globe size={13} className="text-emerald-400" />
@@ -1450,7 +1450,7 @@ export function EleInIntegrations() {
                     rows={7}
                     value={webhookPayloadJson}
                     onChange={(e) => handleJsonChange(e.target.value)}
-                    className={`w-full p-3 rounded-2xl bg-slate-950 text-slate-200 text-xs font-mono border focus:outline-none transition-colors ${
+                    className={`w-full p-3 rounded-xl bg-slate-950 text-slate-200 text-xs font-mono border focus:outline-none transition-colors ${
                       jsonValidationError ? "border-rose-500/60 focus:border-rose-500" : "border-border/40 focus:border-emerald-500/50"
                     }`}
                   />
@@ -1464,7 +1464,7 @@ export function EleInIntegrations() {
               </div>
 
               {/* Live Test Fire Action Dock & Response Console */}
-              <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 space-y-4">
+              <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
@@ -1557,7 +1557,7 @@ export function EleInIntegrations() {
       {/* ── Calendly & Cal.com Auto-Halt Modal with Live Verification Simulator ── */}
       {showCalendlyModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
-          <div className="bg-card w-full max-w-2xl rounded-3xl border border-sky-500/20 shadow-2xl p-8 relative max-h-[90vh] overflow-y-auto">
+          <div className="bg-card w-full max-w-2xl rounded-xl border border-sky-500/20 shadow-2xl p-8 relative max-h-[90vh] overflow-y-auto">
             <button 
               onClick={() => setShowCalendlyModal(false)}
               className="absolute top-6 right-6 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
@@ -1566,7 +1566,7 @@ export function EleInIntegrations() {
             </button>
 
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+              <div className="w-12 h-12 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
                 <Calendar size={24} />
               </div>
               <div>
@@ -1582,13 +1582,13 @@ export function EleInIntegrations() {
 
             <div className="space-y-6">
               {/* How it works banner */}
-              <div className="p-4 rounded-2xl bg-sky-500/5 border border-sky-500/20 text-xs text-muted-foreground leading-relaxed">
+              <div className="p-4 rounded-xl bg-sky-500/5 border border-sky-500/20 text-xs text-muted-foreground leading-relaxed">
                 <span className="font-semibold text-sky-400 block mb-1">Instant Outreach Protection (Paranoia Guard)</span>
                 When a prospect books a meeting via your scheduling link, this webhook matches their email, marks them as <strong className="text-foreground">Meeting Booked</strong>, and immediately halts all active in-flight LinkedIn messages and follow-up sequences across your campaigns.
               </div>
 
               {/* Webhook Endpoint */}
-              <div className="p-5 rounded-2xl border border-border/60 bg-background/50">
+              <div className="p-5 rounded-xl border border-border/60 bg-background/50">
                 <span className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-2">
                   <Terminal size={14} className="text-sky-400" />
                   Your Workspace Calendar Webhook URL
@@ -1618,7 +1618,7 @@ export function EleInIntegrations() {
               </div>
 
               {/* Live Auto-Halt Verification Simulator (Paranoia Layer 0-2) */}
-              <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 space-y-3">
+              <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-3">
                 <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <PlayCircle size={14} className="text-sky-400" />
                   Live Auto-Halt Verification Simulator
@@ -1682,7 +1682,7 @@ export function EleInIntegrations() {
               </div>
 
               {/* Setup steps */}
-              <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 space-y-3">
+              <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-3">
                 <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
                   Quick 3-Step Setup
                 </h4>
@@ -1715,7 +1715,7 @@ export function EleInIntegrations() {
       {/* ── API Keys & Developer Tokens Vault Modal (Paranoia Layer 0-2) ── */}
       {showApiKeysModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/85 backdrop-blur-md">
-          <div className="bg-card w-full max-w-3xl rounded-3xl border border-blue-500/20 shadow-2xl p-6 sm:p-8 relative max-h-[92vh] overflow-y-auto">
+          <div className="bg-card w-full max-w-3xl rounded-xl border border-blue-500/20 shadow-2xl p-6 sm:p-8 relative max-h-[92vh] overflow-y-auto">
             <button 
               onClick={() => {
                 setShowApiKeysModal(false);
@@ -1728,7 +1728,7 @@ export function EleInIntegrations() {
             </button>
 
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+              <div className="w-12 h-12 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
                 <Key size={24} />
               </div>
               <div>
@@ -1744,7 +1744,7 @@ export function EleInIntegrations() {
 
             <div className="space-y-6">
               {/* Generate New Key Box */}
-              <div className="p-5 rounded-2xl border border-border/60 bg-background/50 space-y-4">
+              <div className="p-5 rounded-xl border border-border/60 bg-background/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                     <Sparkles size={13} className="text-amber-400" />
@@ -1830,7 +1830,7 @@ export function EleInIntegrations() {
 
                 {/* Newly Generated Key Alert Box */}
                 {vaultGeneratedKey && (
-                  <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-2">
+                  <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 space-y-2">
                     <div className="flex items-center gap-1.5 text-amber-300 text-xs font-bold">
                       <AlertTriangle size={14} /> One-Time Secret Key Token Display
                     </div>
@@ -1857,7 +1857,7 @@ export function EleInIntegrations() {
               </div>
 
               {/* Active Keys Table */}
-              <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 space-y-3">
+              <div className="p-4 rounded-xl bg-muted/20 border border-border/50 space-y-3">
                 <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center justify-between">
                   <span>Registered Workspace Keys</span>
                   <span className="text-[10px] text-muted-foreground font-mono">
@@ -1957,11 +1957,11 @@ export function EleInIntegrations() {
       {/* ── Modal 6: Outbound Webhook Streaming & Observability (Layer 0, 1, 2) ── */}
       {showOutboundWebhooksModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
-          <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-card border border-border/80 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-card border border-border/80 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-border/60 bg-muted/20">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/20 via-teal-500/20 to-indigo-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-emerald-500/20 via-teal-500/20 to-indigo-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                   <Radio size={20} className="animate-pulse" />
                 </div>
                 <div>
@@ -2041,7 +2041,7 @@ export function EleInIntegrations() {
                 <div className="space-y-6 animate-in fade-in">
                   {/* Newly Created Secret One-Time Banner */}
                   {newlyCreatedSecret && (
-                    <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in slide-in-from-top-2">
                       <div className="flex items-center gap-2 text-amber-400 text-xs font-bold">
                         <ShieldCheck size={16} />
                         <span>Signing Secret Generated — Copy Now</span>
@@ -2068,7 +2068,7 @@ export function EleInIntegrations() {
                   )}
 
                   {/* Endpoint Registration Form (Paranoia Layer 0 & 1) */}
-                  <div className="p-5 rounded-2xl border border-border/70 bg-muted/20 space-y-4">
+                  <div className="p-5 rounded-xl border border-border/70 bg-muted/20 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Plus size={16} className="text-emerald-400" />
@@ -2203,7 +2203,7 @@ export function EleInIntegrations() {
                     </div>
 
                     {(!webhooksData?.data || webhooksData.data.length === 0) ? (
-                      <div className="p-8 text-center rounded-2xl border border-dashed border-border/60 bg-muted/10 space-y-2">
+                      <div className="p-8 text-center rounded-xl border border-dashed border-border/60 bg-muted/10 space-y-2">
                         <Radio size={24} className="mx-auto text-muted-foreground/60" />
                         <p className="text-xs font-medium text-foreground">No Webhook Endpoints Configured</p>
                         <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
@@ -2220,7 +2220,7 @@ export function EleInIntegrations() {
                           return (
                             <div
                               key={ep.id}
-                              className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                              className={`p-4 rounded-xl border transition-all space-y-3 ${
                                 ep.is_active
                                   ? "bg-background/80 border-border/80 shadow-sm"
                                   : "bg-muted/10 border-border/40 opacity-75"
@@ -2410,7 +2410,7 @@ export function EleInIntegrations() {
               {/* ── TAB 2: HMAC-SHA256 Signature Diagnostic Verifier ── */}
               {webhookStudioTab === "verifier" && (
                 <div className="space-y-6 animate-in fade-in">
-                  <div className="p-5 rounded-2xl border border-indigo-500/30 bg-indigo-500/5 space-y-4">
+                  <div className="p-5 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <ShieldCheck size={18} className="text-indigo-400" />
@@ -2580,7 +2580,7 @@ export function EleInIntegrations() {
                   </div>
 
                   {/* Reference Verification Implementation */}
-                  <div className="p-4 rounded-2xl border border-border/60 bg-muted/10 space-y-2">
+                  <div className="p-4 rounded-xl border border-border/60 bg-muted/10 space-y-2">
                     <div className="flex items-center gap-2">
                       <Code2 size={15} className="text-indigo-400" />
                       <h4 className="text-xs font-bold text-foreground">Verified Consumer Code Snippets</h4>
@@ -2627,7 +2627,7 @@ valid = hmac.compare_digest(sig, expected)`}
               {/* ── TAB 3: Zapier, Make.com, & HubSpot Workflow Automation Hub ── */}
               {webhookStudioTab === "schemas" && (
                 <div className="space-y-6 animate-in fade-in">
-                  <div className="p-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-4">
+                  <div className="p-5 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Zap size={18} className="text-amber-400" />

@@ -365,6 +365,12 @@ export function EleInCampaigns() {
       const origCamp = detail.campaign || {};
       const newName = `${originalName} (Copy)`;
 
+      // UI-08 Paranoia Layer 0 & 2: Explicitly preserve sender accounts and audience lead_list_id
+      const senders = (Array.isArray(detail.accounts) && detail.accounts.length > 0)
+        ? detail.accounts.map((a: any) => a.id || a.account_id).filter(Boolean)
+        : (origCamp.senders || origCamp.sender_account_ids_json || []);
+      const leadListId = origCamp.lead_list_id || origCamp.metadata?.lead_list_id || null;
+
       const createRes = await fetchWithAuth('/api/elein/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -372,11 +378,15 @@ export function EleInCampaigns() {
           name: newName,
           nodes: detail.nodes || [],
           edges: detail.edges || [],
-          senders: origCamp.senders || [],
+          senders: senders,
+          lead_list_id: leadListId,
           timezone: origCamp.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           status: "DRAFT",
           schedule: origCamp.schedule,
-          metadata: origCamp.metadata || { stop_on_reply: true }
+          metadata: {
+            ...(origCamp.metadata || { stop_on_reply: true }),
+            ...(leadListId ? { lead_list_id: leadListId } : {})
+          }
         })
       });
 
@@ -462,30 +472,35 @@ export function EleInCampaigns() {
     });
   };
 
-  // ─── Batch Operations (Layer 0, 1 & 2) ───
+  // ─── Batch Operations (Layer 0, 1 & 2 - UI-07) ───
   const handleBatchPause = async () => {
     if (selectedIds.size === 0 || isBatchOperating) return;
     setIsBatchOperating(true);
     setBatchActionType("pause");
 
-    const targets = Array.from(selectedIds).filter(id => {
-      const camp = campaigns.find(c => c.id === id);
-      return camp && camp.status === 'ACTIVE';
-    });
+    try {
+      const targets = Array.from(selectedIds).filter(id => {
+        const camp = campaigns.find(c => c.id === id);
+        return camp && camp.status === 'ACTIVE';
+      });
 
-    const results = await Promise.allSettled(
-      targets.map(async (id) => {
-        const res = await fetchWithAuth(`/api/elein/campaigns/${id}/pause`, { method: 'PATCH' });
-        if (!res.ok) throw new Error("Failed to pause campaign");
-        return id;
-      })
-    );
-    const successCount = results.filter(r => r.status === "fulfilled").length;
+      const results = await Promise.allSettled(
+        targets.map(async (id) => {
+          const res = await fetchWithAuth(`/api/elein/campaigns/${id}/pause`, { method: 'PATCH' });
+          if (!res.ok) throw new Error("Failed to pause campaign");
+          return id;
+        })
+      );
+      const successCount = results.filter(r => r.status === "fulfilled").length;
 
-    toast.success(`Paused ${successCount} campaign${successCount === 1 ? '' : 's'}`);
-    setIsBatchOperating(false);
-    setBatchActionType(null);
-    mutate();
+      toast.success(`Paused ${successCount} campaign${successCount === 1 ? '' : 's'}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Encountered an error pausing campaigns.");
+    } finally {
+      setIsBatchOperating(false);
+      setBatchActionType(null);
+      mutate();
+    }
   };
 
   const handleBatchResume = async () => {
@@ -505,28 +520,32 @@ export function EleInCampaigns() {
     }
 
     setIsBatchOperating(true);
-    setBatchActionType("activate");
+    setBatchActionType("resume");
 
-    const results = await Promise.allSettled(
-      candidates.map(async (id) => {
-        const res = await fetchWithAuth(`/api/elein/campaigns/${id}/activate`, { method: 'PATCH' });
-        if (!res.ok) throw new Error("Failed to activate campaign");
-        return id;
-      })
-    );
-    const successCount = results.filter(r => r.status === "fulfilled").length;
-    const failedCount = results.filter(r => r.status === "rejected").length;
+    try {
+      const results = await Promise.allSettled(
+        candidates.map(async (id) => {
+          const res = await fetchWithAuth(`/api/elein/campaigns/${id}/activate`, { method: 'PATCH' });
+          if (!res.ok) throw new Error("Failed to activate campaign");
+          return id;
+        })
+      );
+      const successCount = results.filter(r => r.status === "fulfilled").length;
+      const failedCount = results.filter(r => r.status === "rejected").length;
 
-    if (successCount > 0) {
-      toast.success(`Activated ${successCount} campaign${successCount === 1 ? '' : 's'}`);
+      if (successCount > 0) {
+        toast.success(`Activated ${successCount} campaign${successCount === 1 ? '' : 's'}`);
+      }
+      if (failedCount > 0) {
+        toast.warning(`${failedCount} campaign${failedCount === 1 ? '' : 's'} could not be activated (check sender assignments or credits).`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Encountered an error activating campaigns.");
+    } finally {
+      setIsBatchOperating(false);
+      setBatchActionType(null);
+      mutate();
     }
-    if (failedCount > 0) {
-      toast.warning(`${failedCount} campaign${failedCount === 1 ? '' : 's'} could not be activated (check sender assignments or credits).`);
-    }
-
-    setIsBatchOperating(false);
-    setBatchActionType(null);
-    mutate();
   };
 
   const handleBatchDelete = () => {

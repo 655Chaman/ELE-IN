@@ -336,7 +336,7 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
               <button
                 type="button"
                 onClick={() => setShowShieldModal(true)}
-                className="min-h-[36px] px-3.5 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="min-h-[36px] px-3.5 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 title="Open 5-pillar security inspection and keystroke simulator"
               >
                 <ShieldCheck size={14} className="shrink-0" aria-hidden="true" />
@@ -348,7 +348,7 @@ export function Day1OutreachHealthRadar({ accountId }: { accountId?: string | nu
                 onClick={handleRunDiagnostic}
                 disabled={isRunningDiagnostic}
                 aria-busy={isRunningDiagnostic}
-                className="min-h-[36px] px-3.5 py-2 rounded-md bg-secondary hover:bg-secondary/80 active:scale-[0.99] border border-border text-secondary-foreground text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="min-h-[36px] px-3.5 py-2 rounded-md bg-secondary hover:bg-secondary/80 border border-border text-secondary-foreground text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 title="Run real-time session cookie, proxy latency, and jitter diagnostic"
               >
                 <RefreshCw size={13} className={isRunningDiagnostic ? "animate-spin text-emerald-500 dark:text-emerald-400 shrink-0" : "text-muted-foreground shrink-0"} aria-hidden="true" />

@@ -212,9 +212,9 @@ export function TestDriveSimulator() {
       <button
         type="button"
         onClick={() => setIsTestOpen(true)}
-        className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-all shadow-xs cursor-pointer shrink-0"
+        className="h-9 flex items-center gap-2 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-all shadow-xs cursor-pointer shrink-0"
       >
-        <ElesiumLogo size={14} />
+        <MessageSquare size={14} />
         <span>Simulate AI Reply</span>
       </button>
 
@@ -233,28 +233,20 @@ export function TestDriveSimulator() {
               initial={{ opacity: 0, scale: 0.96, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              className="relative w-full max-w-[660px] bg-white dark:bg-card border border-slate-200 dark:border-border/50 shadow-[0_16px_50px_rgb(0,0,0,0.2)] dark:shadow-2xl rounded-xl flex flex-col overflow-hidden h-[660px] max-h-[92vh]"
+              className="relative w-full max-w-[660px] bg-card border border-border/60 shadow-2xl rounded-xl flex flex-col overflow-hidden h-[660px] max-h-[92vh]"
             >
               {/* Header */}
-              <div className="p-5 border-b border-slate-100 dark:border-border/40 flex justify-between items-center bg-slate-50 dark:bg-muted/10 shrink-0">
+              <div className="p-5 border-b border-border/60 flex justify-between items-center bg-muted/20 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs">
-                    <ElesiumLogo size={20} />
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
+                    <MessageSquare size={18} />
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
-                      <span>Elesium Objection Battle Simulator</span>
-                      <a
-                        href="https://elesium.online"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:underline"
-                      >
-                        elesium.online
-                      </a>
+                      <span>AI Objection &amp; Reply Simulator</span>
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Stress-test your knowledge base and playbooks against adversarial prospect pushbacks with Elesium AI.
+                      Stress-test your knowledge base and playbooks against real adversarial pushbacks.
                     </p>
                   </div>
                 </div>
@@ -265,7 +257,7 @@ export function TestDriveSimulator() {
                       type="button"
                       onClick={handleClearHistory}
                       title="Clear chat history"
-                      className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-slate-200 dark:hover:bg-muted transition-colors cursor-pointer"
+                      className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors cursor-pointer"
                     >
                       <RotateCcw size={15} />
                     </button>
@@ -273,7 +265,7 @@ export function TestDriveSimulator() {
                   <button 
                     type="button"
                     onClick={() => setIsTestOpen(false)} 
-                    className="text-muted-foreground hover:text-foreground p-2 rounded-md hover:bg-slate-200 dark:hover:bg-muted transition-colors cursor-pointer"
+                    className="text-muted-foreground hover:text-foreground p-2 rounded-md hover:bg-muted transition-colors cursor-pointer"
                   >
                     <X size={16} />
                   </button>
@@ -281,16 +273,16 @@ export function TestDriveSimulator() {
               </div>
 
               {/* Chat Feed */}
-              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 bg-white dark:bg-background/50">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 bg-card">
                 {/* Intro greeting */}
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-muted border border-slate-200 dark:border-border/50 flex items-center justify-center shrink-0 mt-1">
-                    <ElesiumLogo size={16} />
+                  <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 mt-1">
+                    <BrainCircuit size={16} />
                   </div>
-                  <div className="bg-slate-50 dark:bg-muted/30 rounded-lg rounded-tl-xs p-4 text-xs sm:text-sm text-foreground max-w-[88%] border border-slate-200 dark:border-border/40 shadow-xs leading-relaxed space-y-2">
+                  <div className="bg-muted/20 rounded-lg rounded-tl-xs p-4 text-xs sm:text-sm text-foreground max-w-[88%] border border-border/60 shadow-xs leading-relaxed space-y-2">
                     <p className="font-semibold text-foreground flex items-center gap-1.5">
-                      <ElesiumLogo size={14} />
-                      <span>Welcome to the AI Battleground.</span>
+                      <BrainCircuit size={14} className="text-primary" />
+                      <span>Welcome to the AI Rebuttal Simulator.</span>
                     </p>
                     <p className="text-muted-foreground">
                       Type any real objection your prospects throw at you, or click one of the battle-tested adversarial challenges below to test our rebuttal engine.
@@ -313,7 +305,7 @@ export function TestDriveSimulator() {
                             type="button"
                             disabled={isTesting}
                             onClick={() => handleTestDrive(ch.objection)}
-                            className="p-3 text-left rounded-lg border border-slate-200 dark:border-border/60 bg-slate-50/50 dark:bg-card/40 hover:bg-slate-100 dark:hover:bg-card hover:border-primary/40 transition-all group flex flex-col justify-between cursor-pointer shadow-2xs"
+                            className="p-3 text-left rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all group flex flex-col justify-between cursor-pointer shadow-2xs"
                           >
                             <div className="flex items-center justify-between w-full mb-1">
                               <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
@@ -345,11 +337,11 @@ export function TestDriveSimulator() {
                     
                     <div className={`max-w-[85%] ${
                       msg.role === 'user'
-                        ? 'bg-primary text-white rounded-lg rounded-tr-xs p-3.5 shadow-xs'
-                        : 'bg-slate-50 dark:bg-muted/30 text-foreground border border-slate-200 dark:border-border/40 rounded-lg rounded-tl-xs p-4 shadow-xs'
+                        ? 'bg-primary text-primary-foreground rounded-lg rounded-tr-xs p-3.5 shadow-xs'
+                        : 'bg-muted/20 text-foreground border border-border/60 rounded-lg rounded-tl-xs p-4 shadow-xs'
                     }`}>
                       {msg.role === 'user' && (
-                        <div className="text-[10px] text-white/70 uppercase tracking-wider font-bold mb-1">
+                        <div className="text-[10px] text-primary-foreground/70 uppercase tracking-wider font-bold mb-1">
                           Prospect Objection
                         </div>
                       )}
@@ -360,7 +352,7 @@ export function TestDriveSimulator() {
 
                       {/* AI Response Metadata & Action Bar */}
                       {msg.role === 'ai' && (
-                        <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-border/40 flex items-center justify-between text-[11px] text-muted-foreground gap-2 flex-wrap">
+                        <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground gap-2 flex-wrap">
                           <div className="flex items-center gap-2">
                             {msg.matchedStrategy && (
                               <span className="inline-flex items-center gap-1 font-medium text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
@@ -378,7 +370,7 @@ export function TestDriveSimulator() {
                           <button
                             type="button"
                             onClick={() => handleCopy(msg.content, idx)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-200 dark:hover:bg-muted transition-colors font-medium text-[11px] cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-muted transition-colors font-medium text-[11px] cursor-pointer"
                           >
                             {copiedIndex === idx ? (
                               <>
@@ -404,7 +396,7 @@ export function TestDriveSimulator() {
                     <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-1">
                       <ElesiumLogo size={18} className="animate-pulse" />
                     </div>
-                    <div className="bg-slate-50 dark:bg-muted/30 rounded-lg rounded-tl-xs p-4 text-xs text-muted-foreground border border-slate-200 dark:border-border/40 shadow-xs flex items-center gap-2">
+                    <div className="bg-muted/20 rounded-lg rounded-tl-xs p-4 text-xs text-muted-foreground border border-border/60 shadow-xs flex items-center gap-2">
                       <Loader2 size={13} className="animate-spin text-primary" />
                       <span>Retrieving knowledge base differentiators & synthesizing rebuttal...</span>
                     </div>
@@ -416,7 +408,7 @@ export function TestDriveSimulator() {
 
               {/* Bottom Challenge Chips Bar (when conversation is active) */}
               {testResponses.length > 0 && (
-                <div className="px-5 py-2 border-t border-slate-100 dark:border-border/40 bg-slate-50/50 dark:bg-muted/5 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+                <div className="px-5 py-2 border-t border-border/60 bg-muted/20 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
                   <span className="text-[10px] uppercase font-bold text-muted-foreground shrink-0 mr-1">
                     Quick Test:
                   </span>
@@ -426,7 +418,7 @@ export function TestDriveSimulator() {
                       type="button"
                       disabled={isTesting}
                       onClick={() => handleTestDrive(ch.objection)}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-white dark:bg-card border border-slate-200 dark:border-border/50 text-foreground hover:border-primary/40 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-card border border-border/60 text-foreground hover:border-primary/40 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
                     >
                       {ch.title}
                     </button>
@@ -435,7 +427,7 @@ export function TestDriveSimulator() {
               )}
 
               {/* Composer Input */}
-              <div className="p-4 border-t border-slate-100 dark:border-border/40 bg-slate-50 dark:bg-muted/10 shrink-0 relative z-10">
+              <div className="p-4 border-t border-border/60 bg-muted/20 shrink-0 relative z-10">
                 <div className="relative flex items-center">
                   <input 
                     type="text" 
@@ -450,7 +442,7 @@ export function TestDriveSimulator() {
                     placeholder="Type a prospect objection (e.g. 'We don't have budget right now')..." 
                     maxLength={1000}
                     disabled={isTesting}
-                    className="w-full bg-white dark:bg-background border border-slate-200 dark:border-border/60 rounded-xl pl-4 pr-24 py-3 text-xs sm:text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all shadow-xs disabled:opacity-60" 
+                    className="w-full bg-background border border-border/60 rounded-xl pl-4 pr-24 py-3 text-xs sm:text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all shadow-xs disabled:opacity-60" 
                   />
                   
                   <div className="absolute right-2 flex items-center gap-1">

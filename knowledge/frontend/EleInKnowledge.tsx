@@ -331,9 +331,9 @@ export default function EleInKnowledge() {
   const isPersonaCapped = !isPro && personaCount >= maxPersonas;
 
   const tabs = [
-    { id: 'assets', label: "Company Info", icon: <Database size={14} />, count: `${assetCount}${!isPro ? `/${maxAssets}` : ''}` },
-    { id: 'personas', label: "Buyer Personas", icon: <Users size={14} />, count: `${personaCount}${!isPro ? `/${maxPersonas}` : ''}` },
-    { id: 'objections', label: "Objection Playbook", icon: <ShieldAlert size={14} />, count: objectionCount },
+    { id: 'assets', label: "Company Info", icon: <Database size={14} />, count: `${assetCount}/${maxAssets}` },
+    { id: 'personas', label: "Buyer Personas", icon: <Users size={14} />, count: `${personaCount}/${maxPersonas}` },
+    { id: 'objections', label: "Objection Playbook", icon: <ShieldAlert size={14} />, count: `${objectionCount}` },
     { id: 'bayesian_icp', label: "Bayesian ICP", icon: <Sparkles size={14} className="text-indigo-400" />, count: isPro ? "Active" : "Pro" },
     { id: 'ai_gateway', label: "AI Gateway & BYOK", icon: <ElesiumLogo size={14} />, count: isPro ? "Active" : "Pro" },
   ];
@@ -446,7 +446,7 @@ export default function EleInKnowledge() {
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {/* Knowledge Readiness Badge (Transcript 2: Goal Gradient Feedback) */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 backdrop-blur-md shadow-2xs">
+            <div className="h-9 flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 backdrop-blur-md shadow-2xs">
               <span className={`w-2 h-2 rounded-full ${
                 assetCount > 0 && personaCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
               }`} />
@@ -459,7 +459,7 @@ export default function EleInKnowledge() {
             <button
               type="button"
               onClick={() => setIsDocOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-muted/30 border border-border/60 rounded-lg text-xs font-semibold hover:bg-muted/50 text-foreground transition-colors"
+              className="h-9 flex items-center gap-2 px-4 py-2 bg-muted/30 border border-border/60 rounded-lg text-xs font-semibold hover:bg-muted/50 text-foreground transition-colors cursor-pointer"
             >
               <FileText size={14} /> How it works
             </button>

@@ -501,7 +501,7 @@ export function EleInBilling() {
 
       {/* Churn Reactivation & Health Alert Banners */}
       {churnHealth?.cancel_at_period_end && (
-        <div className="mb-8 p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+        <div className="mb-8 p-5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
           <div className="flex items-center gap-3.5">
             <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
               <AlertCircle size={20} />
@@ -526,7 +526,7 @@ export function EleInBilling() {
       )}
 
       {churnHealth && !churnHealth.cancel_at_period_end && churnHealth.churn_risk !== 'LOW' && (
-        <div className="mb-8 p-5 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="mb-8 p-5 rounded-xl bg-indigo-500/5 border border-indigo-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs">
           <div className="flex items-start gap-3.5">
             <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500 shrink-0 mt-0.5">
               <Activity size={20} />
@@ -598,7 +598,7 @@ export function EleInBilling() {
             >
               {/* Left Column: Usage Limits */}
               <div className="lg:col-span-7 space-y-6">
-                <SpotlightCard className="p-8 rounded-3xl border border-border/50 bg-muted/10 shadow-sm relative overflow-hidden">
+                <SpotlightCard className="p-8 rounded-xl border border-border/50 bg-muted/10 shadow-sm relative overflow-hidden">
                   <div className="flex justify-between items-start mb-8">
                     <div>
                       <h2 className="text-xl font-bold mb-1">Workspace Limits</h2>
@@ -708,7 +708,7 @@ export function EleInBilling() {
                       </div>
 
                       {/* Auto-Recharge & In-Flight Overdraft Replenishment Panel */}
-                      <div className="mt-4 p-5 rounded-2xl bg-background border border-border/60 shadow-sm space-y-4">
+                      <div className="mt-4 p-5 rounded-xl bg-background border border-border/60 shadow-sm space-y-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-start gap-3">
                             <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0 mt-0.5">
@@ -936,7 +936,7 @@ export function EleInBilling() {
 
               {/* Right Column: Pricing / Upsell */}
               <div className="lg:col-span-5">
-                <SpotlightCard className={`p-8 rounded-3xl border ${isPro ? 'border-border/50 bg-muted/10' : 'border-primary/30 bg-gradient-to-b from-primary/5 to-background shadow-[0_8px_30px_rgba(var(--primary),0.08)]'} h-full flex flex-col`}>
+                <SpotlightCard className={`p-8 rounded-xl border ${isPro ? 'border-border/60 bg-card' : 'border-primary/30 bg-card shadow-xs'} h-full flex flex-col`}>
                   {isPro ? (
                     <div className="flex flex-col h-full">
                       <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center mb-6">
@@ -1015,12 +1015,12 @@ export function EleInBilling() {
                       </ul>
 
                       <button 
+                        type="button"
                         onClick={() => setShowPaywallModal(true)}
-                        className="w-full relative group overflow-hidden rounded-xl bg-foreground text-background font-bold shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 py-4"
+                        className="w-full relative group overflow-hidden rounded-xl bg-foreground text-background font-bold shadow-xs hover:bg-foreground/90 transition-colors flex items-center justify-center gap-2 py-4 cursor-pointer"
                       >
-                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
-                        <Zap size={18} className="fill-current" />
-                        Upgrade Now
+                        <Zap size={18} className="fill-current text-primary" />
+                        <span>Upgrade Now</span>
                       </button>
                       <p className="text-center text-xs text-muted-foreground mt-4 flex items-center justify-center gap-1">
                         <ShieldCheck size={12} /> Secure encrypted payment
@@ -1040,7 +1040,7 @@ export function EleInBilling() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
             >
-              <div className="bg-background border border-border/50 rounded-3xl overflow-hidden shadow-sm">
+              <div className="bg-background border border-border/50 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-border/40 flex items-center justify-between flex-wrap gap-4">
                   <div>
                     <h4 className="text-base font-bold text-foreground">Transaction & Invoice Archive</h4>
@@ -1135,7 +1135,7 @@ export function EleInBilling() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
             >
-              <div className="bg-background border border-border/50 rounded-3xl overflow-hidden shadow-sm">
+              <div className="bg-background border border-border/50 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-border/40 flex items-center justify-between flex-wrap gap-4">
                   <div>
                     <h4 className="text-base font-bold text-foreground">Credit Consumption Audit Trail</h4>
@@ -1217,12 +1217,12 @@ export function EleInBilling() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card border border-border rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden text-foreground flex flex-col max-h-[90vh]"
+              className="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden text-foreground flex flex-col max-h-[90vh]"
             >
               {/* Header */}
               <div className="p-6 border-b border-border flex items-center justify-between bg-muted/20">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                  <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
                     <Receipt size={22} />
                   </div>
                   <div>
@@ -1260,7 +1260,7 @@ export function EleInBilling() {
                 ) : receiptData ? (
                   <>
                     {/* Invoice Meta Bar */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-muted/40 border border-border/60 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-muted/40 border border-border/60 text-xs">
                       <div>
                         <span className="text-muted-foreground block text-[11px]">Invoice No</span>
                         <div className="flex items-center gap-1 font-mono font-bold mt-0.5">
@@ -1294,7 +1294,7 @@ export function EleInBilling() {
 
                     {/* Parties */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
-                      <div className="p-4 rounded-2xl border border-border bg-card">
+                      <div className="p-4 rounded-xl border border-border bg-card">
                         <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider block mb-2">Issued By</span>
                         <p className="font-bold text-foreground text-sm">{receiptData.seller?.company_name}</p>
                         <p className="text-muted-foreground mt-0.5">{receiptData.seller?.legal_address}</p>
@@ -1302,7 +1302,7 @@ export function EleInBilling() {
                         <p className="text-muted-foreground mt-0.5">Contact: {receiptData.seller?.billing_email}</p>
                       </div>
 
-                      <div className="p-4 rounded-2xl border border-border bg-card">
+                      <div className="p-4 rounded-xl border border-border bg-card">
                         <span className="text-muted-foreground font-semibold uppercase text-[10px] tracking-wider block mb-2">Billed To</span>
                         <p className="font-bold text-foreground text-sm">{receiptData.workspace_name}</p>
                         <p className="font-mono text-muted-foreground text-[11px] mt-0.5">Workspace ID: {receiptData.workspace_id}</p>
@@ -1311,7 +1311,7 @@ export function EleInBilling() {
                     </div>
 
                     {/* Line Items Table */}
-                    <div className="rounded-2xl border border-border overflow-hidden">
+                    <div className="rounded-xl border border-border overflow-hidden">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-muted/40 border-b border-border text-muted-foreground font-semibold">
                           <tr>
@@ -1338,7 +1338,7 @@ export function EleInBilling() {
                     </div>
 
                     {/* Breakdown */}
-                    <div className="p-4 rounded-2xl bg-muted/20 border border-border/60 flex flex-col gap-2 text-xs">
+                    <div className="p-4 rounded-xl bg-muted/20 border border-border/60 flex flex-col gap-2 text-xs">
                       <div className="flex justify-between items-center text-muted-foreground">
                         <span>Subtotal</span>
                         <span className="font-mono font-semibold text-foreground">

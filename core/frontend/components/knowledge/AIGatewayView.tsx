@@ -336,7 +336,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
   return (
     <div className="space-y-8">
       {/* ─── SECTION 1: HEADER & LIVE KPI METER ──────────────────────────────── */}
-      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-xl p-6 lg:p-8 relative overflow-hidden shadow-sm">
+      <div className="bg-card border border-border/60 rounded-xl p-6 lg:p-8 relative overflow-hidden shadow-xs">
         <div className="absolute top-0 right-0 w-80 h-80 -mr-20 -mt-20 rounded-full bg-indigo-500/10 blur-[80px] pointer-events-none" />
 
         <div className="relative z-10 space-y-6">
@@ -382,7 +382,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
           {/* ─── 4 KPI METERS ─── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {/* KPI 1: Tokens */}
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-muted/20 border border-border/60 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Tokens Consumed</span>
                 <Coins size={14} className="text-indigo-500" />
@@ -405,7 +405,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             </div>
 
             {/* KPI 2: Compute Cost */}
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-muted/20 border border-border/60 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Compute Cost</span>
                 <Activity size={14} className="text-emerald-500" />
@@ -419,7 +419,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             </div>
 
             {/* KPI 3: Invocations */}
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-muted/20 border border-border/60 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Invocations</span>
                 <Gauge size={14} className="text-orange-500" />
@@ -433,7 +433,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
             </div>
 
             {/* KPI 4: Active Engine */}
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-muted/20 border border-border/50 relative overflow-hidden">
+            <div className="p-4 rounded-lg bg-muted/20 border border-border/60 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Active Engine</span>
                 <Server size={14} className="text-blue-500" />
@@ -521,7 +521,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                 className={`p-5 rounded-lg border transition-all cursor-pointer relative flex flex-col justify-between ${
                   isSelected
                     ? "bg-indigo-500/5 border-indigo-600 dark:border-indigo-500 ring-2 ring-indigo-500/20 shadow-md"
-                    : "bg-white dark:bg-card/40 border-slate-200 dark:border-border/60 hover:border-slate-300 dark:hover:border-border hover:shadow-sm"
+                    : "bg-card border-border/60 hover:border-border hover:shadow-xs"
                 }`}
               >
                 <div>
@@ -558,15 +558,15 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
                 <div className="pt-3 border-t border-border/40 space-y-2">
                   <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground font-mono">
-                    <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-muted/30">
+                    <div className="p-1.5 rounded-lg bg-muted/30">
                       <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/80">In / 1M</span>
                       <span className="font-semibold text-foreground">{m.cost_in}</span>
                     </div>
-                    <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-muted/30">
+                    <div className="p-1.5 rounded-lg bg-muted/30">
                       <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/80">Out / 1M</span>
                       <span className="font-semibold text-foreground">{m.cost_out}</span>
                     </div>
-                    <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-muted/30">
+                    <div className="p-1.5 rounded-lg bg-muted/30">
                       <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/80">Latency</span>
                       <span className="font-semibold text-foreground">{m.latency}</span>
                     </div>
@@ -579,12 +579,12 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                     <button
                       type="button"
                       disabled={isUpdating}
-                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors ${
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
                         isSelected
                           ? "bg-indigo-600 text-white"
                           : isLocked
                           ? "bg-muted text-muted-foreground hover:bg-muted/80"
-                          : "bg-slate-100 dark:bg-muted hover:bg-slate-200 dark:hover:bg-muted/80 text-foreground"
+                          : "bg-muted hover:bg-muted/80 text-foreground"
                       }`}
                     >
                       {isUpdating ? "Switching..." : isSelected ? "Selected" : isLocked ? "Unlock Pro" : "Select"}
@@ -598,11 +598,11 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
       </div>
 
       {/* ─── SECTION 3: BYOK (BRING YOUR OWN KEY) VAULT ─────────────────────── */}
-      <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-xl p-6 lg:p-8 relative overflow-hidden shadow-sm">
+      <div className="bg-card border border-border/60 rounded-xl p-6 lg:p-8 relative overflow-hidden shadow-xs">
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-md bg-blue-50 dark:bg-blue-500/20 border border-blue-100 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <div className="w-10 h-10 rounded-md bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
                 <Key className="w-5 h-5" />
               </div>
               <div>
@@ -628,7 +628,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
           {!canByok ? (
             /* Free Tier Locked Overlay Card */
-            <div className="p-6 rounded-lg bg-slate-50 dark:bg-muted/10 border border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="p-6 rounded-lg bg-muted/20 border border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="space-y-1 text-center sm:text-left">
                 <h4 className="text-sm font-bold text-foreground">
                   Connect Direct LLM Provider Keys
@@ -659,7 +659,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                     <div>
                       <span className="text-xs font-bold text-foreground flex items-center gap-2">
                         Connected: {settings.byok_provider?.toUpperCase()}
-                        <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                           Active
                         </span>
                       </span>
@@ -695,7 +695,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
                       className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                         selectedProvider === p.id
                           ? "bg-blue-500/10 border-blue-500 text-blue-900 dark:text-blue-200 shadow-xs"
-                          : "bg-slate-50 dark:bg-muted/20 border-border/50 hover:bg-slate-100 dark:hover:bg-muted/40 text-foreground"
+                          : "bg-muted/20 border-border/60 hover:bg-muted/40 text-foreground"
                       }`}
                     >
                       <span className="block text-xs font-bold">{p.name}</span>
@@ -756,7 +756,7 @@ export function AIGatewayView({ isPro }: { isPro: boolean }) {
 
       {/* ─── SECTION 4: RECENT GENERATION AUDIT LOG (Pro) ────────────────────── */}
       {canViewTelemetry && telemetry?.recent_generations && telemetry.recent_generations.length > 0 && (
-        <div className="bg-white dark:bg-card/40 backdrop-blur-xl border border-slate-200 dark:border-border/50 rounded-xl p-6 lg:p-8 shadow-sm">
+        <div className="bg-card border border-border/60 rounded-xl p-6 lg:p-8 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">

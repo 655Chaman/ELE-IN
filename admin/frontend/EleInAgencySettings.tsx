@@ -619,8 +619,8 @@ export function EleInAgencySettings() {
     return (
       <div className="flex-1 overflow-y-auto p-6 sm:p-10 bg-background font-sans">
         <div className="max-w-3xl mx-auto py-12">
-          <SpotlightCard className="p-8 sm:p-10 rounded-[28px] border border-border/80 bg-card shadow-lg text-center flex flex-col items-center">
-            <div className="w-16 h-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-6 shadow-xs">
+          <SpotlightCard className="p-8 sm:p-10 rounded-xl border border-border/80 bg-card shadow-lg text-center flex flex-col items-center">
+            <div className="w-16 h-16 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-6 shadow-xs">
               <Building2 size={32} />
             </div>
 
@@ -646,7 +646,7 @@ export function EleInAgencySettings() {
               <button
                 type="submit"
                 disabled={isCreatingAgency || !newAgencyName.trim()}
-                className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 transition-all shadow-md shadow-primary/20 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 transition-colors shadow-xs disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
               >
                 {isCreatingAgency ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
                 <span>Create Agency & Initialize Clients</span>
@@ -730,7 +730,7 @@ export function EleInAgencySettings() {
 
         {/* ─── AGENCY VITAL STATISTICS RIBBON (Layer 0) ─────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-          <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Managed Clients</p>
               <div className="flex items-baseline gap-2 mt-1">
@@ -738,12 +738,12 @@ export function EleInAgencySettings() {
                 <span className="text-[10px] text-primary font-bold">Workspaces</span>
               </div>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <Briefcase size={18} />
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Agency Team</p>
               <div className="flex items-baseline gap-2 mt-1">
@@ -751,12 +751,12 @@ export function EleInAgencySettings() {
                 <span className="text-[10px] text-emerald-600 font-bold">Operators</span>
               </div>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
               <Users size={18} />
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Data Boundary</p>
               <div className="flex items-baseline gap-2 mt-1">
@@ -766,12 +766,12 @@ export function EleInAgencySettings() {
               </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">Strict client zero-collision</p>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0">
               <Shield size={18} />
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Branding Mode</p>
               <div className="flex items-baseline gap-2 mt-1">
@@ -854,7 +854,7 @@ export function EleInAgencySettings() {
         {activeTab === 'clients' && (
           <div className="space-y-6">
             {/* Create Client Form */}
-            <div className="p-6 rounded-2xl border border-border/60 bg-card shadow-xs">
+            <div className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
               <h3 className="text-sm font-bold text-foreground mb-1 flex items-center gap-2">
                 <Plus size={16} className="text-primary" />
                 Add New Client Brand Workspace
@@ -874,7 +874,7 @@ export function EleInAgencySettings() {
                 <button 
                   type="submit"
                   disabled={isCreatingClient || !newClientName.trim()}
-                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 shadow-md shadow-primary/20 cursor-pointer active:scale-95 whitespace-nowrap"
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-xs cursor-pointer whitespace-nowrap"
                 >
                   {isCreatingClient ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   <span>Create Client Workspace</span>
@@ -910,11 +910,11 @@ export function EleInAgencySettings() {
                     const assignedMembers = members.filter(m => m.role === 'owner' || m.role === 'admin' || m.access.includes(c.id));
 
                     return (
-                      <div key={c.id} className="p-5 rounded-2xl border border-border/60 bg-card hover:border-primary/40 transition-all shadow-xs flex flex-col justify-between group">
+                      <div key={c.id} className="p-5 rounded-xl border border-border/60 bg-card hover:border-primary/40 transition-all shadow-xs flex flex-col justify-between group">
                         <div>
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center font-bold text-xs shadow-xs">
+                              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center font-bold text-xs shadow-xs">
                                 {c.name.substring(0, 2).toUpperCase()}
                               </div>
                               <div>
@@ -1014,7 +1014,7 @@ export function EleInAgencySettings() {
                   })}
                 </div>
               ) : (
-                <div className="py-12 text-center flex flex-col items-center bg-card rounded-2xl border border-dashed border-border/60">
+                <div className="py-12 text-center flex flex-col items-center bg-card rounded-xl border border-dashed border-border/60">
                   <Briefcase size={28} className="text-muted-foreground/40 mb-2" />
                   <h4 className="text-sm font-bold text-foreground mb-1">
                     {clientSearch ? "No matching clients found" : "No client workspaces created yet"}
@@ -1032,7 +1032,7 @@ export function EleInAgencySettings() {
         {activeTab === 'team' && (
           <div className="space-y-6">
             {/* Invite Form */}
-            <div className="p-6 rounded-2xl border border-border/60 bg-card shadow-xs">
+            <div className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
               <h3 className="text-sm font-bold text-foreground mb-1 flex items-center gap-2">
                 <UserPlus size={16} className="text-primary" />
                 Invite Agency Operator or Account Manager
@@ -1063,7 +1063,7 @@ export function EleInAgencySettings() {
                 <button 
                   type="submit"
                   disabled={isInvitingMember || !newMemberEmail.trim()}
-                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50 shadow-md shadow-primary/20 cursor-pointer whitespace-nowrap active:scale-95"
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-xs cursor-pointer whitespace-nowrap"
                 >
                   {isInvitingMember ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
                   <span>Invite to Agency</span>
@@ -1090,7 +1090,7 @@ export function EleInAgencySettings() {
             <div className="space-y-3">
               <h3 className="text-sm font-bold text-foreground">Agency Team Members ({members.length})</h3>
 
-              <div className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-card overflow-hidden shadow-xs">
+              <div className="divide-y divide-border/60 rounded-xl border border-border/60 bg-card overflow-hidden shadow-xs">
                 {members.map(m => {
                   const isOwnerOrAdmin = m.role === 'owner' || m.role === 'admin';
 
@@ -1144,7 +1144,7 @@ export function EleInAgencySettings() {
         {/* ─── TAB 3: WHITE-LABEL BRANDING & PORTAL CONFIGURATION ────────────── */}
         {activeTab === 'whitelabel' && (
           <div className="space-y-6">
-            <div className="p-6 rounded-2xl border border-border/60 bg-card shadow-xs">
+            <div className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
               <div className="flex items-center gap-2.5 mb-2">
                 <Palette size={20} className="text-primary" />
                 <h3 className="text-base font-bold text-foreground">Agency White-Label Branding Studio</h3>
@@ -1204,7 +1204,7 @@ export function EleInAgencySettings() {
                 </div>
 
                 {/* Live Client Portal Preview Card */}
-                <div className="p-5 rounded-2xl bg-muted/30 border border-border/60 flex flex-col justify-between">
+                <div className="p-5 rounded-xl bg-muted/30 border border-border/60 flex flex-col justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-3">
                       Live Client Portal Mockup Preview
@@ -1257,10 +1257,10 @@ export function EleInAgencySettings() {
           <div className="space-y-6">
             {/* 4-KPI Overview Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <SpotlightCard className="p-5 rounded-2xl border border-border/70 bg-card shadow-xs">
+              <SpotlightCard className="p-5 rounded-xl border border-border/70 bg-card shadow-xs">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Master Credit Pool</span>
-                  <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl">
+                  <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg">
                     <Coins size={16} />
                   </div>
                 </div>
@@ -1283,10 +1283,10 @@ export function EleInAgencySettings() {
                 </div>
               </SpotlightCard>
 
-              <SpotlightCard className="p-5 rounded-2xl border border-border/70 bg-card shadow-xs">
+              <SpotlightCard className="p-5 rounded-xl border border-border/70 bg-card shadow-xs">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Delegated</span>
-                  <div className="p-2 bg-primary/10 text-primary rounded-xl">
+                  <div className="p-2 bg-primary/10 text-primary rounded-lg">
                     <ArrowUpRight size={16} />
                   </div>
                 </div>
@@ -1299,10 +1299,10 @@ export function EleInAgencySettings() {
                 <p className="text-[11px] text-muted-foreground mt-1">Distributed across {clients.length} clients</p>
               </SpotlightCard>
 
-              <SpotlightCard className="p-5 rounded-2xl border border-border/70 bg-card shadow-xs">
+              <SpotlightCard className="p-5 rounded-xl border border-border/70 bg-card shadow-xs">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Consumed</span>
-                  <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl">
+                  <div className="p-2 bg-purple-500/10 text-purple-500 rounded-lg">
                     <Sparkles size={16} />
                   </div>
                 </div>
@@ -1315,10 +1315,10 @@ export function EleInAgencySettings() {
                 <p className="text-[11px] text-muted-foreground mt-1">Consumed in outreach & AI tasks</p>
               </SpotlightCard>
 
-              <SpotlightCard className="p-5 rounded-2xl border border-border/70 bg-card shadow-xs">
+              <SpotlightCard className="p-5 rounded-xl border border-border/70 bg-card shadow-xs">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Exhaustion Alerts</span>
-                  <div className={`p-2 rounded-xl ${
+                  <div className={`p-2 rounded-lg ${
                     (creditsOverview?.clients.filter(c => c.status !== 'healthy').length ?? 0) > 0
                       ? 'bg-destructive/10 text-destructive'
                       : 'bg-emerald-500/10 text-emerald-500'
@@ -1341,7 +1341,7 @@ export function EleInAgencySettings() {
             </div>
 
             {/* Sub-Accounts Allocation & Quota Table */}
-            <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-xs">
+            <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-xs">
               <div className="p-5 border-b border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -1477,7 +1477,7 @@ export function EleInAgencySettings() {
 
             {/* Recent Delegations Audit Ledger */}
             {creditsOverview?.recent_allocations && creditsOverview.recent_allocations.length > 0 && (
-              <div className="bg-card border border-border/60 rounded-2xl p-5 shadow-xs space-y-3">
+              <div className="bg-card border border-border/60 rounded-xl p-5 shadow-xs space-y-3">
                 <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <Sliders size={15} className="text-primary" />
                   Recent Delegations Audit Ledger
@@ -1529,7 +1529,7 @@ export function EleInAgencySettings() {
         {activeTab === 'statements' && (
           <div className="space-y-6">
             {/* Header & Generate Button */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-card via-card to-primary/5 border border-border/60 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-xl bg-gradient-to-r from-card via-card to-primary/5 border border-border/60 shadow-xs">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
@@ -1547,7 +1547,7 @@ export function EleInAgencySettings() {
               <button
                 type="button"
                 onClick={() => setGenerateModal(prev => ({ ...prev, isOpen: true }))}
-                className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-sm shadow-primary/20 shrink-0"
+                className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-xs shrink-0"
               >
                 <Plus size={14} />
                 Generate Statement
@@ -1556,7 +1556,7 @@ export function EleInAgencySettings() {
 
             {/* 4-KPI Metric Ribbon */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs">
+              <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Invoiced</p>
                 <div className="text-xl font-bold font-mono text-foreground mt-1">
                   ₹{((statements.reduce((acc, s) => acc + (s.total_cents || 0), 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1564,7 +1564,7 @@ export function EleInAgencySettings() {
                 <p className="text-[10px] text-muted-foreground mt-0.5">Cumulative billing gross</p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs">
+              <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Paid / Settled</p>
                 <div className="text-xl font-bold font-mono text-emerald-600 mt-1">
                   ₹{((statements.filter(s => s.status === 'paid').reduce((acc, s) => acc + (s.total_cents || 0), 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1572,7 +1572,7 @@ export function EleInAgencySettings() {
                 <p className="text-[10px] text-muted-foreground mt-0.5">Reconciled payments</p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs">
+              <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Outstanding (Issued)</p>
                 <div className="text-xl font-bold font-mono text-indigo-600 mt-1">
                   ₹{((statements.filter(s => s.status === 'issued').reduce((acc, s) => acc + (s.total_cents || 0), 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1580,7 +1580,7 @@ export function EleInAgencySettings() {
                 <p className="text-[10px] text-muted-foreground mt-0.5">Pending client remittance</p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs">
+              <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Statements Drafted</p>
                 <div className="text-xl font-bold font-mono text-foreground mt-1">
                   {statements.length}
@@ -1635,8 +1635,8 @@ export function EleInAgencySettings() {
 
               if (filteredStatements.length === 0) {
                 return (
-                  <div className="p-12 text-center rounded-2xl bg-card border border-border/60 space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                  <div className="p-12 text-center rounded-xl bg-card border border-border/60 space-y-3">
+                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center mx-auto text-muted-foreground">
                       <Receipt size={22} />
                     </div>
                     <h4 className="text-sm font-bold text-foreground">No Billing Statements Found</h4>
@@ -1660,7 +1660,7 @@ export function EleInAgencySettings() {
               }
 
               return (
-                <div className="rounded-2xl bg-card border border-border/60 shadow-xs overflow-hidden">
+                <div className="rounded-xl bg-card border border-border/60 shadow-xs overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs text-left">
                       <thead className="bg-muted/40 text-muted-foreground font-semibold border-b border-border/60">
@@ -1775,7 +1775,7 @@ export function EleInAgencySettings() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-card rounded-2xl shadow-2xl border border-border p-6 flex flex-col max-h-[85vh] overflow-hidden"
+              className="w-full max-w-lg bg-card rounded-xl shadow-2xl border border-border p-6 flex flex-col max-h-[85vh] overflow-hidden"
             >
               <div className="flex items-start justify-between pb-4 border-b border-border/60 mb-4">
                 <div>
@@ -1863,11 +1863,11 @@ export function EleInAgencySettings() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-card rounded-2xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
+              className="w-full max-w-lg bg-card rounded-xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
             >
               <div className="flex items-start justify-between pb-4 border-b border-border/60 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
                     allocationModal.type === 'allocate' 
                       ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
                       : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
@@ -2059,11 +2059,11 @@ export function EleInAgencySettings() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
+              className="w-full max-w-md bg-card rounded-xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
             >
               <div className="flex items-start justify-between pb-4 border-b border-border/60 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary/10 text-primary border border-primary/20">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary border border-primary/20">
                     <Sliders size={18} />
                   </div>
                   <div>
@@ -2165,11 +2165,11 @@ export function EleInAgencySettings() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xl bg-card rounded-2xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
+              className="w-full max-w-xl bg-card rounded-xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
             >
               <div className="flex items-start justify-between pb-4 border-b border-border/60 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary/10 text-primary border border-primary/20">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary border border-primary/20">
                     <Receipt size={18} />
                   </div>
                   <div>
@@ -2350,7 +2350,7 @@ export function EleInAgencySettings() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-2xl bg-card rounded-2xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
+              className="w-full max-w-2xl bg-card rounded-xl shadow-2xl border border-border p-6 flex flex-col max-h-[90vh] overflow-hidden"
             >
               {/* Header */}
               <div className="flex items-start justify-between pb-4 border-b border-border/60 mb-4">

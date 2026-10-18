@@ -317,7 +317,7 @@ export function EleInLeads() {
           </button>
 
           {isStudiosOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl border border-border/80 bg-popover/95 backdrop-blur-xl shadow-xl z-50 p-2.5 animate-in fade-in-0 zoom-in-95 duration-150">
+            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-xl border border-border/80 bg-popover/95 backdrop-blur-xl shadow-xl z-50 p-2.5 animate-in fade-in-0 zoom-in-95 duration-150">
               <div className="px-2.5 py-2 border-b border-border/40 mb-1 flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-semibold text-foreground">Lead Intelligence & Growth Studios</h4>
@@ -446,10 +446,10 @@ export function EleInLeads() {
             <motion.div
               initial={{ opacity: 0, scale: 0.98, y: -4 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm"
+              className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                   <AlertTriangle size={16} />
                 </div>
                 <div>
@@ -464,7 +464,7 @@ export function EleInLeads() {
               <button
                 type="button"
                 onClick={() => setShowModal(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition-all shrink-0 flex items-center gap-1.5 self-start sm:self-auto shadow-xs"
+                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold transition-all shrink-0 flex items-center gap-1.5 self-start sm:self-auto shadow-xs"
               >
                 <span>Re-Import / Fix</span>
                 <ArrowRight size={13} />

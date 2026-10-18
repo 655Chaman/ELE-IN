@@ -8,7 +8,7 @@ Three-Layer Paranoia Framework: Campaign Sequence DAG Validator & Loop Guard
 """
 import json
 from collections import deque
-from typing import List, Dict, Any, Set, Optional
+from typing import List, Dict, Any, Set, Optional, Tuple
 
 TOUCHPOINT_KEYWORDS = ("message", "connection", "inmail", "followup", "invite", "voice_note")
 BRANCH_NODE_TYPES = {"if_connected", "if_replied", "if_icp_score", "ab_split", "icp_score_gate"}
@@ -63,6 +63,7 @@ def has_cycle(nodes: list, edges: list) -> bool:
     adj: Dict[str, List[str]] = {nid: [] for nid in node_ids}
     in_degree: Dict[str, int] = {nid: 0 for nid in node_ids}
 
+    seen_edges: Set[Tuple[str, str]] = set()
     for e in (edges or []):
         src, tgt = _extract_edge_endpoints(e)
         if not src or not tgt:
@@ -70,6 +71,10 @@ def has_cycle(nodes: list, edges: list) -> bool:
         # Direct self-loop on a valid node
         if src == tgt and src in seen_ids:
             return True
+        edge_pair = (src, tgt)
+        if edge_pair in seen_edges:
+            continue
+        seen_edges.add(edge_pair)
         if src in seen_ids and tgt in seen_ids:
             adj[src].append(tgt)
             in_degree[tgt] += 1
@@ -120,6 +125,7 @@ def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
     out_degree: Dict[str, int] = {nid: 0 for nid in node_order}
     dangling_edges: List[Dict[str, str]] = []
 
+    seen_edges: Set[Tuple[str, str]] = set()
     for e in safe_edges:
         src, tgt = _extract_edge_endpoints(e)
         if not src or not tgt:
@@ -127,6 +133,10 @@ def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
         if src not in node_map or tgt not in node_map:
             dangling_edges.append({"source": src, "target": tgt})
             continue
+        edge_pair = (src, tgt)
+        if edge_pair in seen_edges:
+            continue
+        seen_edges.add(edge_pair)
         adj[src].append(tgt)
         out_degree[src] += 1
         in_degree[tgt] += 1

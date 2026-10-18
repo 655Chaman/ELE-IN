@@ -132,10 +132,10 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-[#0A0A0B] text-foreground font-sans">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-background text-foreground font-sans">
       
       {/* Left Column: Product Showcase */}
-      <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col justify-between p-12 border-r border-white/5">
+      <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col justify-between p-12 border-r border-border/40">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(var(--primary),0.08),transparent_50%)]" />
         <div className="absolute inset-0 bg-[url('/noise.png')] opacity-[0.03] mix-blend-overlay" />
         
@@ -153,7 +153,7 @@ export function Login() {
         </div>
 
         {/* Sequence Preview Card */}
-        <div className="relative z-10 w-full max-w-md bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+        <div className="relative z-10 w-full max-w-md bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-2xl">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
               <Zap size={18} className="text-primary" />
@@ -290,7 +290,7 @@ export function Login() {
               )}
             </AnimatePresence>
 
-            <button disabled={isLoading} className="w-full py-3.5 mt-4 bg-primary text-primary-foreground font-black rounded-xl hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(var(--primary),0.3)] flex items-center justify-center gap-2 disabled:opacity-50">
+            <button disabled={isLoading} className="w-full py-3.5 mt-4 bg-primary text-primary-foreground font-black rounded-xl hover:bg-primary/90 transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50">
               {isLoading ? <Loader2 size={18} className="animate-spin" /> : (isSignUp ? "Create Workspace" : "Sign In to Pipeline")}
             </button>
           </form>

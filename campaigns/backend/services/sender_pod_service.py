@@ -549,52 +549,70 @@ def trigger_pod_failover(
     Quarantines the failing account, isolates it from active rotation, and seamlessly
     reassigns its in-flight lead enrollments to the next healthiest backup in the pod.
     """
-    # 0. Layer 1 Paranoia: Tenant ownership check for failed account
-    if failed_account_id:
-        acc_chk = supabase.table("accounts").select("id, workspace_id").eq("id", failed_account_id).execute()
-        if acc_chk.data and isinstance(acc_chk.data, list) and len(acc_chk.data) > 0:
-            a_row = acc_chk.data[0]
-            if a_row.get("workspace_id") and workspace_id and str(a_row["workspace_id"]) != str(workspace_id):
-                return {
-                    "status": "FAILOVER_REJECTED",
-                    "failed_account_id": failed_account_id,
-                    "message": "Failed account does not belong to the requested workspace."
-                }
+    # 0. Layer 0 & Layer 1 Paranoia (VULN-05): Fail closed on missing parameters
+    if not failed_account_id or not campaign_id or not workspace_id:
+        return {
+            "status": "FAILOVER_REJECTED",
+            "failed_account_id": failed_account_id,
+            "message": "Missing required parameters (failed_account_id, campaign_id, workspace_id)."
+        }
+
+    clean_ws = str(workspace_id).strip()
+    clean_aid = str(failed_account_id).strip()
+    clean_cid = str(campaign_id).strip()
+
+    # Layer 1 Paranoia (VULN-05): Strict tenant verification for both account and campaign
+    acc_chk = supabase.table("accounts").select("id, workspace_id").eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
+    if not acc_chk.data or not isinstance(acc_chk.data, list) or len(acc_chk.data) == 0:
+        return {
+            "status": "FAILOVER_REJECTED",
+            "failed_account_id": clean_aid,
+            "message": "Failed account not found or does not belong to the requested workspace."
+        }
+
+    cmp_chk = supabase.table("campaigns").select("id, workspace_id").eq("id", clean_cid).eq("workspace_id", clean_ws).execute()
+    if not cmp_chk.data or not isinstance(cmp_chk.data, list) or len(cmp_chk.data) == 0:
+        return {
+            "status": "FAILOVER_REJECTED",
+            "failed_account_id": clean_aid,
+            "message": "Campaign not found or does not belong to the requested workspace."
+        }
 
     now_iso = _get_utc_now().isoformat()
     quarantine_until = (_get_utc_now() + timedelta(hours=24)).isoformat()
 
-    # 1. Quarantine failing account
+    # 1. Quarantine failing account (scoped strictly to workspace)
     try:
         supabase.table("accounts").update({
             "status": "QUARANTINED",
             "quarantined_until": quarantine_until,
             "quarantine_reason": failure_reason,
             "status_changed_at": now_iso
-        }).eq("id", failed_account_id).execute()
+        }).eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
     except Exception as ex:
-        logger.error(f"Failed to quarantine account {failed_account_id}: {ex}")
+        logger.error(f"Failed to quarantine account {clean_aid}: {ex}")
 
     # 2. Find healthiest backup account in the campaign pod
     backup_result = select_pod_sender(
-        campaign_id=campaign_id,
-        workspace_id=workspace_id,
+        campaign_id=clean_cid,
+        workspace_id=clean_ws,
         action_type="connection_request",
         supabase=supabase,
-        exclude_account_ids=[failed_account_id]
+        exclude_account_ids=[clean_aid]
     )
 
     backup_account_id = backup_result.get("account_id")
 
-    # 3. Reassign active/pending enrollments
+    # 3. Reassign active/pending enrollments strictly scoped to workspace
     reassigned_count = 0
     if backup_account_id:
         try:
             # Query enrollments currently assigned to failed account in this campaign
             enr_res = supabase.table("campaign_enrollments") \
                 .select("id") \
-                .eq("campaign_id", campaign_id) \
-                .eq("account_id", failed_account_id) \
+                .eq("campaign_id", clean_cid) \
+                .eq("workspace_id", clean_ws) \
+                .eq("account_id", clean_aid) \
                 .in_("status", ["pending", "in_progress", "active"]) \
                 .execute()
             enrollment_ids = [e["id"] for e in (enr_res.data or [])]
@@ -603,6 +621,7 @@ def trigger_pod_failover(
                 supabase.table("campaign_enrollments") \
                     .update({"account_id": backup_account_id}) \
                     .in_("id", enrollment_ids) \
+                    .eq("workspace_id", clean_ws) \
                     .execute()
                 reassigned_count = len(enrollment_ids)
 
@@ -610,6 +629,7 @@ def trigger_pod_failover(
                 supabase.table("lead_states") \
                     .update({"account_id": backup_account_id}) \
                     .in_("enrollment_id", enrollment_ids) \
+                    .eq("workspace_id", clean_ws) \
                     .execute()
         except Exception as ex:
             logger.error(f"Failed to reassign enrollments during failover: {ex}")

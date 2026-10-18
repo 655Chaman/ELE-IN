@@ -304,6 +304,13 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
 
     workspace_data = None
     if requested_workspace_id:
+        # Layer 2 Paranoia: Validate UUID format to prevent malformed queries
+        import uuid
+        try:
+            uuid.UUID(str(requested_workspace_id))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid X-Workspace-Id format (must be a valid UUID)")
+
         # Layer 1 Paranoia: Prevent Cross-Tenant Impersonation / IDOR
         try:
             res = await supabase.table("workspaces").select("id, status, require_2fa, owner_id").eq("id", requested_workspace_id).execute()
@@ -331,10 +338,21 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
 
         workspace_data = candidate_ws
     else:
-        # No workspace specified in header - resolve user's primary/default workspace
+        # Security Hardening (VULN-20 & API-24 - Paranoia Framework):
+        # Layer 1 & 2: For mutating requests (POST, PUT, PATCH, DELETE), if user belongs to >1 workspace,
+        # never guess or silently default to workspace 1 — fail closed to prevent cross-workspace contamination.
         try:
-            mem_res = await supabase.table("workspace_members").select("workspace_id").eq("user_id", user_id).order("created_at", desc=False).limit(1).execute()
-            default_ws_id = mem_res.data[0]["workspace_id"] if mem_res.data else None
+            mem_res = await supabase.table("workspace_members").select("workspace_id").eq("user_id", user_id).order("created_at", desc=False).limit(2).execute()
+            member_workspaces = mem_res.data or []
+            
+            if request.method in ("POST", "PUT", "PATCH", "DELETE") and len(member_workspaces) > 1:
+                # User belongs to multiple workspaces but omitted X-Workspace-Id on a mutating operation
+                raise HTTPException(
+                    status_code=400,
+                    detail="Explicit 'X-Workspace-Id' header is required for this operation because your account has access to multiple workspaces. Please specify the active workspace."
+                )
+
+            default_ws_id = member_workspaces[0]["workspace_id"] if member_workspaces else None
             
             if default_ws_id:
                 ws_res = await supabase.table("workspaces").select("id, status, require_2fa, owner_id").eq("id", default_ws_id).execute()
@@ -342,9 +360,17 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
                     workspace_data = ws_res.data[0]
             else:
                 # Fallback: check if user owns any workspace directly
-                owned_res = await supabase.table("workspaces").select("id, status, require_2fa, owner_id").eq("owner_id", user_id).order("created_at", desc=False).limit(1).execute()
-                if owned_res.data:
-                    workspace_data = owned_res.data[0]
+                owned_res = await supabase.table("workspaces").select("id, status, require_2fa, owner_id").eq("owner_id", user_id).order("created_at", desc=False).limit(2).execute()
+                owned_workspaces = owned_res.data or []
+                if request.method in ("POST", "PUT", "PATCH", "DELETE") and len(owned_workspaces) > 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Explicit 'X-Workspace-Id' header is required for this operation because your account owns multiple workspaces."
+                    )
+                if owned_workspaces:
+                    workspace_data = owned_workspaces[0]
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Database error retrieving default workspace for user {user_id}: {e}")
             raise HTTPException(status_code=500, detail="Database error retrieving workspace")

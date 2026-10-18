@@ -1227,9 +1227,20 @@ class LinkedInWorker:
         audio_url = str(audio_url).strip().strip("\"'<>")
         if not (audio_url.startswith("http://") or audio_url.startswith("https://")):
             if audio_url.startswith("/"):
+                clean_path = audio_url.split("?")[0].lower()
+                if ".." in clean_path or "%2e" in clean_path or not (clean_path.startswith("/api/elein/assets/") or clean_path.startswith("/api/storage/") or clean_path.startswith("/static/")):
+                    return {"status": "error", "error": f"Invalid or disallowed relative audio path: {audio_url}"}
                 audio_url = f"http://127.0.0.1:8000{audio_url}"
             else:
                 return {"status": "error", "error": f"Invalid audio URL: {audio_url}"}
+
+        # Security Hardening (VULN-12): Validate external audio URL against SSRF
+        if not audio_url.startswith("http://127.0.0.1:8000/"):
+            from core.backend.services.http_client import validate_outbound_url_for_ssrf
+            is_safe, ssrf_err = validate_outbound_url_for_ssrf(audio_url)
+            if not is_safe:
+                logger.warning(f"Voice note audio_url blocked by SSRF policy in worker: {ssrf_err} (URL: {audio_url})")
+                return {"status": "error", "error": f"Audio URL blocked by security policy: {ssrf_err}"}
 
         companion_note = (note or "").strip()
         temp_audio_path = None

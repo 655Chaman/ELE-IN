@@ -777,7 +777,7 @@ export function EleInApprovals({ onGoToConversations }: EleInApprovalsProps = {}
           </>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center flex-1 p-8 text-center max-w-lg mx-auto">
-            <div className="w-14 h-14 rounded-2xl bg-muted border border-border flex items-center justify-center text-muted-foreground mb-4 shadow-2xs">
+            <div className="w-14 h-14 rounded-xl bg-muted border border-border flex items-center justify-center text-muted-foreground mb-4 shadow-2xs">
               <ElesiumLogo size={28} />
             </div>
             <h3 className="text-base font-bold text-foreground mb-1.5 flex items-center justify-center gap-2">

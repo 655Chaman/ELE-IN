@@ -73,24 +73,24 @@ export function AcceptInvite() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[#070809] flex flex-col items-center justify-center p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-zinc-500 mb-4" />
-        <p className="text-zinc-400">Accepting invite...</p>
+      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+        <p className="text-muted-foreground text-sm font-medium">Accepting invite...</p>
       </div>
     )
   }
 
   if (status === "invalid") {
     return (
-      <div className="min-h-screen bg-[#070809] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 max-w-md w-full text-center"
+          className="bg-card border border-border rounded-xl p-8 max-w-md w-full text-center shadow-xl"
         >
           <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-medium text-white mb-2">Invalid Invite Link</h2>
-          <p className="text-zinc-400 mb-6">This invite link is missing or malformed.</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">Invalid Invite Link</h2>
+          <p className="text-muted-foreground text-sm mb-6">This invite link is missing or malformed.</p>
           <Button onClick={() => navigate("/")} className="w-full">
             Go to Homepage <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -101,15 +101,15 @@ export function AcceptInvite() {
 
   if (status === "error") {
     return (
-      <div className="min-h-screen bg-[#070809] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 max-w-md w-full text-center"
+          className="bg-card border border-border rounded-xl p-8 max-w-md w-full text-center shadow-xl"
         >
           <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-medium text-white mb-2">Invite Failed</h2>
-          <p className="text-zinc-400 mb-6">{errorMessage}</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">Invite Failed</h2>
+          <p className="text-muted-foreground text-sm mb-6">{errorMessage}</p>
           <Button onClick={() => navigate("/")} className="w-full">
             Go to Homepage <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -119,11 +119,11 @@ export function AcceptInvite() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070809] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 max-w-md w-full text-center"
+        className="bg-card border border-border rounded-xl p-8 max-w-md w-full text-center shadow-xl"
       >
         <motion.div
           initial={{ scale: 0 }}
@@ -132,8 +132,8 @@ export function AcceptInvite() {
         >
           <CheckCircle2 className="h-16 w-16 text-success mx-auto mb-6" />
         </motion.div>
-        <h2 className="text-2xl font-semibold text-white mb-2">You're In!</h2>
-        <p className="text-zinc-400">You've joined the workspace successfully. Redirecting...</p>
+        <h2 className="text-2xl font-bold text-foreground mb-2">You're In!</h2>
+        <p className="text-muted-foreground text-sm">You've joined the workspace successfully. Redirecting...</p>
       </motion.div>
     </div>
   )

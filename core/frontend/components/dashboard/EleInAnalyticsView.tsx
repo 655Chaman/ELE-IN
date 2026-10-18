@@ -548,7 +548,7 @@ export function EleInAnalyticsView({
                 type="button"
                 onClick={onExportPdf}
                 disabled={isExportingPdf}
-                className={`inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-xs active:scale-[0.98] ${
+                className={`inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-xs ${
                   isPdfLocked
                     ? "text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/15"
                     : "text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20"

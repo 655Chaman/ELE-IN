@@ -300,9 +300,19 @@ function DelaySelector({ value, unit = "days", onChange }: { value: number; unit
           step="1"
           value={displayVal}
           onChange={e => {
-            const val = parseFloat(e.target.value);
-            const clamped = isNaN(val) ? 1 : Math.max(1, Math.ceil(val));
+            const raw = e.target.value;
+            if (raw === "") {
+              // User cleared field while typing; avoid emitting NaN to store
+              return;
+            }
+            const val = parseFloat(raw);
+            const clamped = isNaN(val) || val < 1 ? 1 : Math.ceil(val);
             onChange(clamped, unit);
+          }}
+          onBlur={e => {
+            if (e.target.value === "" || isNaN(parseFloat(e.target.value)) || parseFloat(e.target.value) < 1) {
+              onChange(1, unit);
+            }
           }}
           className="w-16 rounded-lg bg-card border border-border px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary text-center font-mono"
         />
@@ -423,7 +433,7 @@ function MessageEditor({
                 key={hook.id}
                 type="button"
                 onClick={() => handleApplyHook(hook)}
-                className="px-2 py-1 rounded-md text-[11px] font-medium bg-muted/40 hover:bg-muted border border-border/40 text-foreground transition-all hover:scale-[1.02] text-left"
+                className="px-2 py-1 rounded-md text-[11px] font-medium bg-muted/40 hover:bg-muted border border-border/40 text-foreground transition-colors text-left cursor-pointer"
               >
                 {hook.title}
               </button>
@@ -1233,7 +1243,7 @@ function ConnectionRequestConfig({ data, onChange }: { data: any; onChange: (k: 
                   key={s.id}
                   type="button"
                   onClick={() => handleApplyStarter(s)}
-                  className="px-2.5 py-1.5 rounded-lg text-left border border-border/50 bg-muted/30 hover:bg-muted transition-all hover:scale-[1.01] flex flex-col gap-0.5"
+                  className="px-2.5 py-1.5 rounded-lg text-left border border-border/50 bg-muted/30 hover:bg-muted transition-colors flex flex-col gap-0.5 cursor-pointer"
                 >
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-[11px] font-semibold text-foreground truncate">{s.title}</span>

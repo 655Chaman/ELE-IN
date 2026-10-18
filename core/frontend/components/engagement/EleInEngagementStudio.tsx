@@ -31,49 +31,49 @@ const HOOK_FRAMEWORKS = [
     id: "CONTRARIAN_TRUTH",
     name: "Contrarian Truth",
     tag: "High Engagement",
-    badgeClass: "bg-red-500/10 text-red-400 border-red-500/20",
+    badgeClass: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20",
     description: "Challenge an accepted B2B industry dogma with real data or counter-intuitive findings.",
     example: "Unpopular opinion: Cold email isn't dead, but 90% of SDR sequences deserve to bounce..."
   },
   {
-    id: "BEFORE_AFTER_BRIDGE",
-    name: "Before-After Bridge",
+    id: "CASE_STUDY_METRIC",
+    name: "Case Study Metric Breakdown",
     tag: "Case Proof",
-    badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    badgeClass: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     description: "Highlight a painful operational bottleneck, the turning point, and the resulting revenue transformation.",
-    example: "60 days ago: 32% bounce rate and burnt domains. Today: 4.8x reply conversion. Here is what changed..."
+    example: "How a 3-person sales pod generated $280k pipeline in 45 days (without cold calling)..."
   },
   {
-    id: "TEARDOWN_ANALYSIS",
-    name: "Tactical Teardown",
+    id: "UNPOPULAR_OPINION",
+    name: "Unpopular Industry Opinion",
+    tag: "Debate Driver",
+    badgeClass: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
+    description: "Bold, polarizing perspective that drives comments, conversation, and network shares.",
+    example: "Buying static contact lists for outbound is wasting 15+ hours a week of your SDRs' time..."
+  },
+  {
+    id: "MISTAKE_AUDIT",
+    name: "The 3 Subtle Mistakes",
     tag: "Actionable",
-    badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    description: "Deconstruct 50-100 outreach campaigns or cold messages to uncover winning vs losing patterns.",
-    example: "I analyzed 250 outbound pitches sent to VPs of Engineering last month. 3 patterns stood out..."
+    badgeClass: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/20",
+    description: "Diagnose silent conversion killers prospects didn't realize they had in their outbound pipeline.",
+    example: "The 3 subtle mistakes killing your team's conversion before prospects even open your message:"
   },
   {
-    id: "DATA_REVEAL",
-    name: "Proprietary Data Reveal",
-    tag: "Authority",
-    badgeClass: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-    description: "Share benchmark deliverability, reply conversion, or pipeline statistics across thousands of touches.",
-    example: "We ran 40,000 cold touches through residential IP jitter vs cloud servers. The deliverability gap was staggering..."
-  },
-  {
-    id: "TACTICAL_HOW_TO",
+    id: "FRAMEWORK_TEARDOWN",
     name: "Step-by-Step Playbook",
     tag: "Save Worthy",
-    badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    badgeClass: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
     description: "Clear, sequential SOP that prospects can screenshot, save, and implement immediately.",
-    example: "How to warm up a fresh secondary outbound domain without getting blacklisted (5-step checklist):"
+    example: "The exact 3-layer architecture modern revenue teams use to turn cold prospects into confirmed meetings:"
   },
   {
-    id: "FOUNDER_VULNERABILITY",
-    name: "Hard-Learned Lesson",
-    tag: "Authentic",
-    badgeClass: "bg-teal-500/10 text-teal-400 border-teal-500/20",
-    description: "Candid breakdown of an expensive early mistake and the hard-won framework that solved it.",
-    example: "The $15,000 mistake we made when scaling our first outbound SDR fleet..."
+    id: "BEHIND_THE_CURTAIN",
+    name: "Behind the Curtain Experiment",
+    tag: "Empirical Proof",
+    badgeClass: "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/20",
+    description: "Firsthand laboratory experiment comparing two outbound methods across real touches.",
+    example: "We tested 1,000 cold outreach invites with standard cloud scrapers vs residential IP jitter..."
   }
 ];
 
@@ -147,6 +147,9 @@ export function EleInEngagementStudio() {
   };
 
   const handleDeletePost = async (postId: string) => {
+    if (!window.confirm("Are you sure you want to remove this scheduled post from the queue?")) {
+      return;
+    }
     setDeletingPostId(postId);
     try {
       const res = await fetchWithAuth(`/api/elein/content/posts/${encodeURIComponent(postId)}`, {
@@ -348,20 +351,24 @@ export function EleInEngagementStudio() {
     }
 
     setIsSchedulingPrewarm(true);
+    const generatedId = `lead-${Date.now().toString().slice(-4)}`;
     try {
       const res = await fetchWithAuth('/api/elein/prewarm/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lead_id: `lead-${Date.now().toString().slice(-4)}`,
+          lead_id: generatedId,
           lead_url: cleanUrl,
+          lead_name: prewarmLeadName.trim() || undefined,
           account_id: selectedAccountId || undefined,
+          generated_comment: generatedComment.trim() || undefined,
           post_snippet: prospectPostText.slice(0, 120)
         })
       });
 
       if (res.ok) {
-        toast.success("Enqueued 3-touch prewarm sequence for " + (prewarmLeadName || "prospect") + "!");
+        toast.success(`Enqueued 3-touch prewarm sequence for ${prewarmLeadName || "prospect"} (ID: ${generatedId})!`);
+        setPrewarmLeadIdInput(generatedId);
         mutatePrewarmQueue();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -418,10 +425,8 @@ export function EleInEngagementStudio() {
       if (res.ok) {
         const json = await res.json();
         const leads = json.stuck_leads || [];
-        if (leads.length > 0) {
-          setEvaluatedLeads(leads);
-        }
-        toast.success(`Evaluated invitations! Found ${leads.length || evaluatedLeads.length} stuck prospect connections.`);
+        setEvaluatedLeads(leads);
+        toast.success(`Evaluated invitations! Found ${leads.length} stuck prospect connection${leads.length === 1 ? '' : 's'}.`);
       } else {
         throw new Error("Failed to evaluate fallback");
       }
@@ -442,29 +447,30 @@ export function EleInEngagementStudio() {
       return;
     }
 
+    const displayName = lead.name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Prospect';
     setExecutingFallbackId(lead.lead_id);
     try {
+      const targetChannel = lead.recommended_channel || 'email';
       const res = await fetchWithAuth('/api/elein/omnichannel/execute-fallback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_id: lead.lead_id,
-          target_channel: lead.recommended_channel || 'email',
-          lead_name: lead.name,
+          target_channel: targetChannel,
+          lead_name: displayName,
           company: lead.company
         })
       });
 
       if (res.ok) {
-        const json = await res.json();
-        toast.success(`Dispatched fallback bridge message to ${lead.name} via ${lead.recommended_channel.toUpperCase()}!`);
+        toast.success(`Dispatched fallback bridge message to ${displayName} via ${targetChannel.toUpperCase()}!`);
         setEvaluatedLeads(prev => prev.filter(l => l.lead_id !== lead.lead_id));
         setExecutedLogs(prev => [
           {
             id: 'log-' + Date.now(),
-            lead_name: lead.name,
+            lead_name: displayName,
             original_channel: 'linkedin',
-            target_channel: lead.recommended_channel || 'email',
+            target_channel: targetChannel,
             trigger_reason: `linkedin_pending_timeout_${fallbackDaysThreshold}d`,
             status: 'completed',
             timestamp: new Date().toLocaleTimeString()
@@ -528,23 +534,18 @@ export function EleInEngagementStudio() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border/50">
         <div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <img src="/elesium-icon.png" alt="Elesium" className="w-4 h-4 object-contain" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+              <ElesiumLogo size={18} />
             </div>
             <h1 className="text-xl font-bold text-foreground">
               Elesium Engagement Multiplier Studio
             </h1>
-            <a
-              href="https://elesium.online"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:underline"
-            >
-              elesium.online
-            </a>
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+              Enterprise AI
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Powered by Elesium Automation. Social feed pre-warming, non-slop thought leadership publishing, and omnichannel fallback cascades.
+            Powered by Elesium Automation. Social feed pre-warming, high-signal thought leadership publishing, and omnichannel fallback cascades.
           </p>
         </div>
 
@@ -561,6 +562,7 @@ export function EleInEngagementStudio() {
           >
             <MessageSquare size={13} />
             <span>Thought Leadership</span>
+            {!isPro && <Lock size={10} className="text-amber-500 ml-0.5" />}
           </button>
 
           <button
@@ -574,6 +576,7 @@ export function EleInEngagementStudio() {
           >
             <Flame size={13} />
             <span>Social Pre-Warmer</span>
+            {!isPro && <Lock size={10} className="text-amber-500 ml-0.5" />}
           </button>
 
           <button
@@ -587,63 +590,97 @@ export function EleInEngagementStudio() {
           >
             <Radio size={13} />
             <span>Omnichannel Fallback</span>
+            {!isPro && <Lock size={10} className="text-amber-500 ml-0.5" />}
           </button>
         </div>
       </div>
 
-      {/* ── KPI METRICS RIBBON ── */}
+      {/* ── IN-SITU PAY RAMP (Preview Mode for Free Users) ── */}
+      {!isPro && (
+        <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+              <Sparkles size={18} />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-foreground">Free Plan: Engagement Studio Preview Mode</h4>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Upgrade to Growth Pro to automate LinkedIn post scheduling, 3-touch social pre-warming, and omnichannel fallback cascades.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => openPaywall({ featureName: "AI Engagement Studio", minTier: "PRO" })}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shrink-0 cursor-pointer shadow-xs"
+          >
+            <span>Unlock Full Studio</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* ── KPI METRICS RIBBON (Faithful Live Telemetry) ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SpotlightCard className="p-4 rounded-xl bg-card/40 border border-border/50">
+        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Scheduled Posts</span>
             <Calendar size={14} className="text-primary" />
           </div>
           <div className="text-xl font-bold text-foreground">
-            {scheduledPosts.length || 3}
+            {scheduledPosts.length}
           </div>
-          <span className="text-[10px] text-emerald-400 font-medium">B2B Content Queue Active</span>
+          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+            {scheduledPosts.length > 0 ? "B2B Content Queue Active" : "Queue Empty"}
+          </span>
         </SpotlightCard>
 
-        <SpotlightCard className="p-4 rounded-xl bg-card/40 border border-border/50">
+        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Pre-Warm Touches</span>
-            <Flame size={14} className="text-amber-400" />
+            <Flame size={14} className="text-amber-500" />
           </div>
           <div className="text-xl font-bold text-foreground">
-            18
+            {prewarmEvents.length}
           </div>
-          <span className="text-[10px] text-amber-400 font-medium">Profile Views & Likes</span>
+          <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+            {prewarmEvents.length > 0 ? `${prewarmEvents.length} Touches Staged` : "No Touches Staged"}
+          </span>
         </SpotlightCard>
 
-        <SpotlightCard className="p-4 rounded-xl bg-card/40 border border-border/50">
+        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Fallback Bridges</span>
-            <Mail size={14} className="text-blue-400" />
+            <Mail size={14} className="text-blue-500" />
           </div>
           <div className="text-xl font-bold text-foreground">
-            {executedLogs.length + 5}
+            {executedLogs.length}
           </div>
-          <span className="text-[10px] text-blue-400 font-medium">Stuck Invites Saved</span>
+          <span className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+            {executedLogs.length > 0 ? `${executedLogs.length} Stuck Invites Saved` : "Awaiting Fallback Trigger"}
+          </span>
         </SpotlightCard>
 
-        <SpotlightCard className="p-4 rounded-xl bg-card/40 border border-border/50">
+        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
-            <span>Slop Rejection Rate</span>
-            <ShieldCheck size={14} className="text-emerald-400" />
+            <span>Connected Senders</span>
+            <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
           </div>
           <div className="text-xl font-bold text-foreground">
-            100%
+            {accounts.length}
           </div>
-          <span className="text-[10px] text-emerald-400 font-medium">Bayesian Anti-Slop Vetted</span>
+          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+            {accounts.length > 0 ? `${accounts.length} Sender${accounts.length === 1 ? '' : 's'} Configured` : "No Senders Connected"}
+          </span>
         </SpotlightCard>
       </div>
 
       {/* ── TAB 1: THOUGHT LEADERSHIP CONTENT STUDIO ── */}
       {activeTab === 'content' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Left Column: Framework & Prompt Form (5 cols) */}
-            <div className="lg:col-span-5 space-y-4">
+            <div className="md:col-span-5 space-y-4">
               <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -668,7 +705,7 @@ export function EleInEngagementStudio() {
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-foreground">{fw.name}</span>
-                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border ${fw.badgeClass}`}>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold border ${fw.badgeClass}`}>
                             {fw.tag}
                           </span>
                         </div>
@@ -730,7 +767,7 @@ export function EleInEngagementStudio() {
                       <RefreshCw size={14} className="animate-spin" />
                     ) : (
                       <>
-                        <img src="/elesium-icon.png" alt="Elesium" className="w-3.5 h-3.5 object-contain" />
+                        <ElesiumLogo size={14} />
                         <span>Generate Elesium Post</span>
                         {!isPro && <Lock size={12} className="text-amber-400" />}
                       </>
@@ -741,7 +778,7 @@ export function EleInEngagementStudio() {
             </div>
 
             {/* Right Column: LinkedIn Post Preview & Scheduler (7 cols) */}
-            <div className="lg:col-span-7 space-y-4">
+            <div className="md:col-span-7 space-y-4">
               <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -751,20 +788,26 @@ export function EleInEngagementStudio() {
                     <h3 className="text-sm font-bold text-foreground">LinkedIn Post Preview</h3>
                   </div>
 
-                  {wordCount > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-muted-foreground font-mono">
-                        {wordCount} words
+                  <div className="flex items-center gap-2">
+                    {generatedPost && (
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md border ${
+                        generatedPost.length > 2800 
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
+                          : 'bg-muted/40 text-muted-foreground border-border/40'
+                      }`}>
+                        {generatedPost.length.toLocaleString()}/3,000 chars
                       </span>
+                    )}
+                    {wordCount > 0 && (
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
                         wordCount < 120 ? 'bg-amber-500/10 text-amber-400' :
                         wordCount <= 350 ? 'bg-emerald-500/10 text-emerald-400' :
                         'bg-blue-500/10 text-blue-400'
                       }`}>
-                        {wordCount < 120 ? 'Concise' : wordCount <= 350 ? 'Optimal Read' : 'Deep Dive'}
+                        {wordCount} words • {wordCount < 120 ? 'Concise' : wordCount <= 350 ? 'Optimal' : 'Deep Dive'}
                       </span>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 <div className="bg-muted/30 border border-border/70 rounded-xl p-4 min-h-[260px] flex flex-col justify-between">
@@ -773,13 +816,14 @@ export function EleInEngagementStudio() {
                       value={generatedPost}
                       onChange={(e) => setGeneratedPost(e.target.value)}
                       rows={12}
+                      maxLength={3000}
                       className="w-full bg-transparent text-xs text-foreground leading-relaxed resize-none focus:outline-none font-sans"
                     />
                   ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-muted-foreground space-y-2">
                       <MessageSquare size={32} className="opacity-30 text-primary" />
                       <p className="text-xs max-w-sm">
-                        Select a hook framework and click "Generate Non-Slop Post" to create high-converting thought leadership copy.
+                        Select a hook framework and click "Generate Elesium Post" to create high-converting thought leadership copy.
                       </p>
                     </div>
                   )}
@@ -843,6 +887,7 @@ export function EleInEngagementStudio() {
                       <input
                         type="datetime-local"
                         value={scheduledDate}
+                        min={new Date().toISOString().slice(0, 16)}
                         onChange={(e) => setScheduledDate(e.target.value)}
                         className="w-full bg-card border border-border/60 rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none"
                       />
@@ -960,9 +1005,9 @@ export function EleInEngagementStudio() {
       {/* ── TAB 2: SOCIAL FEED PRE-WARMER ── */}
       {activeTab === 'prewarm' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Post Analysis & Safety Radar (6 cols) */}
-            <div className="lg:col-span-6 space-y-4">
+            <div className="md:col-span-6 space-y-4">
               <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1004,9 +1049,15 @@ export function EleInEngagementStudio() {
                     disabled={isGeneratingComment}
                     className="px-4 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
                   >
-                    {isGeneratingComment ? <RefreshCw size={13} className="animate-spin" /> : <img src="/elesium-icon.png" alt="Elesium" className="w-3.5 h-3.5 object-contain" />}
-                    <span>Generate Elesium Comment</span>
-                    {!isPro && <Lock size={11} className="text-amber-400" />}
+                    {isGeneratingComment ? (
+                      <RefreshCw size={13} className="animate-spin" />
+                    ) : (
+                      <>
+                        <ElesiumLogo size={14} />
+                        <span>Generate Elesium Comment</span>
+                        {!isPro && <Lock size={11} className="text-amber-400" />}
+                      </>
+                    )}
                   </button>
                 </div>
 
@@ -1026,7 +1077,7 @@ export function EleInEngagementStudio() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] text-muted-foreground font-bold uppercase">Themes:</span>
                       {(postAnalysis.detected_themes || []).map((th: string, idx: number) => (
-                        <span key={idx} className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.2 rounded font-mono">
+                        <span key={idx} className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded font-mono">
                           {th}
                         </span>
                       ))}
@@ -1109,7 +1160,7 @@ export function EleInEngagementStudio() {
             </div>
 
             {/* 3-Touch Prewarm Cadence Enqueuer (6 cols) */}
-            <div className="lg:col-span-6 space-y-4">
+            <div className="md:col-span-6 space-y-4">
               <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1387,8 +1438,10 @@ export function EleInEngagementStudio() {
                     evaluatedLeads.map(lead => (
                       <tr key={lead.lead_id} className="hover:bg-muted/20 transition-colors">
                         <td className="p-3">
-                          <div className="font-semibold text-foreground">{lead.name}</div>
-                          <div className="text-[10px] text-muted-foreground">{lead.company}</div>
+                          <div className="font-semibold text-foreground">
+                            {lead.name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Prospect'}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">{lead.company || 'Unknown Company'}</div>
                         </td>
                         <td className="p-3">
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">

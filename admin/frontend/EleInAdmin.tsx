@@ -245,7 +245,7 @@ export function EleInAdmin() {
             type="button"
             onClick={handleTestProbe}
             disabled={isProbing}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-card hover:bg-muted border border-border/60 text-xs font-semibold rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-card hover:bg-muted border border-border/60 text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
           >
             {isProbing ? <Loader2 size={13} className="animate-spin" /> : <Radio size={13} className="text-primary" />}
             <span>Ping Backend ({probeLatencyMs !== null ? `${probeLatencyMs}ms` : "Test"})</span>
@@ -256,7 +256,7 @@ export function EleInAdmin() {
       {/* ─── SYSTEM VITAL STATISTICS RIBBON (Layer 0) ───────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-8">
         {/* Card 1: Worker Daemons */}
-        <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Worker Daemons</p>
             <div className="flex items-baseline gap-2 mt-1">
@@ -268,13 +268,13 @@ export function EleInAdmin() {
               </span>
             </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <Cpu size={18} />
           </div>
         </div>
 
         {/* Card 2: AI Key Pool */}
-        <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">AI Provider Pool</p>
             <div className="flex items-baseline gap-2 mt-1">
@@ -284,13 +284,13 @@ export function EleInAdmin() {
               </span>
             </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
             <Key size={18} />
           </div>
         </div>
 
         {/* Card 3: Residential Proxies */}
-        <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Residential Proxies</p>
             <div className="flex items-baseline gap-2 mt-1">
@@ -300,13 +300,13 @@ export function EleInAdmin() {
               <span className="text-[10px] text-emerald-600 font-bold">Operational</span>
             </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
             <ShieldCheck size={18} />
           </div>
         </div>
 
         {/* Card 4: Template Review Queue */}
-        <div className="p-4 rounded-2xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pending Playbooks</p>
             <div className="flex items-baseline gap-2 mt-1">
@@ -314,7 +314,7 @@ export function EleInAdmin() {
               <span className="text-[10px] text-muted-foreground">In Review</span>
             </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
             <Clock size={18} />
           </div>
         </div>
@@ -322,7 +322,7 @@ export function EleInAdmin() {
 
       {/* ─── ENVIRONMENTAL ALERT BANNER (Layer 1) ───────────────────────────── */}
       {staleWorkersCount > 0 && (
-        <div className="mb-6 p-4 rounded-2xl border border-destructive/30 bg-destructive/10 flex items-start gap-3 shadow-xs">
+        <div className="mb-6 p-4 rounded-xl border border-destructive/30 bg-destructive/10 flex items-start gap-3 shadow-xs">
           <AlertTriangle className="text-destructive shrink-0 mt-0.5" size={18} />
           <div>
             <h4 className="text-xs font-bold text-destructive">
@@ -389,7 +389,7 @@ export function EleInAdmin() {
       {/* ─── TAB 1: INFRASTRUCTURE & WORKERS (Layer 0 & 1) ───────────────────── */}
       {activeTab === "infrastructure" && (
         <div className="space-y-6">
-          <div className="p-6 rounded-2xl border border-border/60 bg-card shadow-xs">
+          <div className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-border/50">
               <div>
                 <h3 className="text-base font-bold text-foreground flex items-center gap-2">
@@ -472,7 +472,7 @@ export function EleInAdmin() {
       {/* ─── TAB 2: AI KEY POOL & FAILOVER ENGINE ───────────────────────────── */}
       {activeTab === "keys" && (
         <div className="space-y-6">
-          <SpotlightCard className="p-6 rounded-2xl border border-border/60 bg-card shadow-xs">
+          <SpotlightCard className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <Key size={16} className="text-primary" /> 
@@ -497,9 +497,10 @@ export function EleInAdmin() {
                 className="flex-1 bg-background border border-border/60 rounded-xl px-4 py-2.5 text-xs font-mono text-foreground focus:outline-none focus:border-primary focus:ring-1 ring-primary"
               />
               <button 
+                type="button"
                 onClick={handleAddKey}
                 disabled={isAddingKey || !newKey.trim()}
-                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shadow-xs"
               >
                 {isAddingKey ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                 <span>Add Key to Pool</span>
@@ -561,7 +562,7 @@ export function EleInAdmin() {
             ))}
 
             {safeKeys.length === 0 && (
-              <div className="py-12 text-center flex flex-col items-center bg-card rounded-2xl border border-dashed border-border/60">
+              <div className="py-12 text-center flex flex-col items-center bg-card rounded-xl border border-dashed border-border/60">
                 <AlertCircle size={24} className="text-muted-foreground/50 mb-2" />
                 <h4 className="text-sm font-bold text-foreground mb-1">AI Key Pool is Empty</h4>
                 <p className="text-xs text-muted-foreground max-w-sm mb-3">
@@ -576,7 +577,7 @@ export function EleInAdmin() {
       {/* ─── TAB 3: PROXY HEALTH & LATENCIES ─────────────────────────────────── */}
       {activeTab === "proxies" && (
         <div className="space-y-6">
-          <div className="p-6 rounded-2xl border border-border/60 bg-card shadow-xs">
+          <div className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-border/50">
               <div>
                 <h3 className="text-base font-bold text-foreground flex items-center gap-2">
@@ -646,9 +647,9 @@ export function EleInAdmin() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
               >
-                <SpotlightCard className="h-full flex flex-col p-6 rounded-2xl border border-border/60 bg-card shadow-xs hover:border-primary/40 transition-all">
+                <SpotlightCard className="h-full flex flex-col p-6 rounded-xl border border-border/60 bg-card shadow-xs hover:border-primary/40 transition-all">
                   <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                       <LayoutTemplate size={18} />
                     </div>
                     <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 text-[10px] font-bold border border-amber-500/20">
@@ -675,7 +676,7 @@ export function EleInAdmin() {
                       type="button"
                       onClick={() => handleTemplateAction(tpl.id, "approve")}
                       disabled={loadingTemplateId === tpl.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-success text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-xs active:scale-95"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-success text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
                     >
                       {loadingTemplateId === tpl.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                       <span>Approve</span>
@@ -684,7 +685,7 @@ export function EleInAdmin() {
                       type="button"
                       onClick={() => handleTemplateAction(tpl.id, "reject")}
                       disabled={loadingTemplateId === tpl.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 text-destructive rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 text-destructive rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <XCircle size={13} />
                       <span>Reject</span>
@@ -695,7 +696,7 @@ export function EleInAdmin() {
             ))}
 
             {safeTemplates.length === 0 && (
-              <div className="col-span-full py-16 text-center flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card p-8">
+              <div className="col-span-full py-16 text-center flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-card p-8">
                 <CheckCircle2 size={36} className="text-emerald-500/60 mb-3" />
                 <h3 className="text-sm font-bold text-foreground mb-1">Curation Queue Empty</h3>
                 <p className="text-xs text-muted-foreground max-w-sm">
@@ -715,7 +716,7 @@ export function EleInAdmin() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-card rounded-2xl shadow-2xl border border-border p-6 flex flex-col max-h-[85vh] overflow-hidden"
+              className="w-full max-w-lg bg-card rounded-xl shadow-2xl border border-border p-6 flex flex-col max-h-[85vh] overflow-hidden"
             >
               <div className="flex items-start justify-between pb-4 border-b border-border/60 mb-4">
                 <div>
