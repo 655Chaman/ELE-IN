@@ -7702,6 +7702,99 @@ def api_reschedule_ooo(
     }
 
 
+# ==============================================================================
+# PHASE 38: RECIPIENT MX RECORD VALIDATOR, CATCH-ALL PROBE & GREYLISTING DEFERRAL
+# ==============================================================================
+
+class MXVerifyRequest(BaseModel):
+    domain: str
+    mock_dns: Optional[Dict[str, Any]] = None
+
+
+class CatchAllCheckRequest(BaseModel):
+    domain: str
+    mock_is_catch_all: Optional[bool] = None
+
+
+class SMTPDeferralEvaluateRequest(BaseModel):
+    smtp_code: int
+    smtp_message: str
+    attempt_count: Optional[int] = 1
+
+
+@router.post("/deliverability/verify-mx", response_model=dict)
+def api_verify_mx(
+    req: MXVerifyRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 38):
+    Inspects recipient MX records, resolves mail exchanger hostnames,
+    and detects recipient ESP fingerprinting to prevent hard bounces.
+    """
+    if not req.domain or not str(req.domain).strip():
+        raise HTTPException(status_code=400, detail="Domain or email is required")
+    from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+
+    res = MXAndCatchAllGuard.resolve_domain_mx_records(
+        domain_or_email=req.domain,
+        mock_dns=req.mock_dns,
+    )
+    if isinstance(res, dict):
+        res["workspace_id"] = workspace_id
+    return res
+
+
+@router.post("/deliverability/check-catch-all", response_model=dict)
+def api_check_catch_all(
+    req: CatchAllCheckRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 38):
+    Evaluates Catch-All / Accept-All domain status and bounce risk.
+    """
+    if not req.domain or not str(req.domain).strip():
+        raise HTTPException(status_code=400, detail="Domain or email is required")
+    from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+
+    res = MXAndCatchAllGuard.detect_catch_all_domain(
+        domain_or_email=req.domain,
+        mock_is_catch_all=req.mock_is_catch_all,
+    )
+    if isinstance(res, dict):
+        res["workspace_id"] = workspace_id
+    return res
+
+
+@router.post("/deliverability/evaluate-smtp-deferral", response_model=dict)
+def api_evaluate_smtp_deferral(
+    req: SMTPDeferralEvaluateRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 38):
+    Evaluates SMTP deferral / greylisting codes and calculates optimal retry delay.
+    """
+    from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+
+    try:
+        res = MXAndCatchAllGuard.detect_smtp_deferral_or_greylist(
+            smtp_code=req.smtp_code,
+            smtp_message=req.smtp_message,
+            attempt_count=req.attempt_count or 1,
+        )
+    except TypeError:
+        res = MXAndCatchAllGuard.detect_smtp_deferral_or_greylist(
+            smtp_code=req.smtp_code,
+            smtp_message=req.smtp_message,
+        )
+    if isinstance(res, dict):
+        res["workspace_id"] = workspace_id
+    return res
+
+
+
 
 
 

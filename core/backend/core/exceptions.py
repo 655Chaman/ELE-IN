@@ -49,6 +49,7 @@ def setup_exception_handlers(app: FastAPI):
         return JSONResponse(
             status_code=exc.status_code,
             content={
+                "detail": str(exc.detail),
                 "error": {
                     "code": "HTTP_ERROR",
                     "message": str(exc.detail)

@@ -210,5 +210,15 @@
     - Exposed workspace-scoped endpoints `POST /api/elein/inbound/extract-referral`, `POST /api/elein/inbound/suppress-domain`, `GET /api/elein/inbound/suppressed-domains`, and `POST /api/elein/inbound/reschedule-ooo`.
   - **Verification**: 78/78 automated tests passing across `test_referral_discovery_and_domain_suppression_guard.py` (43/43), `test_referral_and_snooze_service.py` (21/21), and `test_horizon30_reply_sentiment_and_ooo_snooze.py` (14/14), sub-second frontend production build (659ms).
 
-
-
+- [x] **Phase 38: Recipient MX Record Validator, Catch-All / Accept-All Probe & Greylisting Deferral Engine (100% Operational):**
+  - **MX & Catch-All Core Guard (`core/backend/services/mx_and_catchall_guard.py`)**:
+    - `resolve_domain_mx_records`: Priority-sorted DNS MX record resolution, RFC 7505 Null MX rejection (`0 .`), RFC 5321 Section 5.1 implicit A/AAAA fallback, and ESP fingerprinting (`GOOGLE_WORKSPACE`, `MICROSOFT_365`, `PROOFPOINT`, `MIMECAST`, `BARRACUDA`, `ZOHO`, `PROTON`, `SELF_HOSTED`).
+    - `detect_catch_all_domain`: Random canary email generator (`f"elein_canary_{uuid}@{domain}"`) probing corporate Catch-All/Accept-All behavior while bypassing consumer webmail with in-memory TTL caching to avoid duplicate network probes.
+    - `detect_smtp_deferral_or_greylist`: Detects 4xx codes (`421`, `450`, `451`, `452`) and greylisting patterns (`greylist`, `try again later`, `temporarily deferred`), extracting suggested wait times.
+    - `calculate_greylist_retry_delay`: Truncated exponential backoff (`300s -> 600s -> 1200s -> 2400s -> 3600s`) preserving prospect leads and respecting MTA rate limits.
+  - **Campaign Executor & Router Integration (`campaigns/backend/services/elein_executor.py`, `campaigns/backend/routers/elein.py`)**:
+    - `EleInExecutor.handle_send_email`: Pre-flight MX record guard aborts send with `reason="no_mail_exchanger"` when recipient domain cannot receive mail, burning zero credits.
+    - Catches temporary SMTP greylisting deferrals, refunds allocated credits, and transitions execution to `status="deferred"`, `reason="smtp_greylisted"`, with `next_run_delta_seconds`.
+    - Enriches output telemetry with `recipient_esp`, `is_catch_all_domain`, and `mx_record_count`.
+    - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/verify-mx`, `POST /api/elein/deliverability/check-catch-all`, and `POST /api/elein/deliverability/evaluate-smtp-deferral`.
+  - **Verification**: 73/73 automated tests passing across `test_mx_catchall_and_greylisting_guard.py` (47/47) and `test_mx_and_catchall_guard.py` (26/26), 226/226 trilogy regression tests green, clean TypeScript validation and sub-second frontend production build.

@@ -10791,6 +10791,138 @@
         }
       }
     },
+    "/api/elein/deliverability/verify-mx": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Verify Mx",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 38):\nInspects recipient MX records, resolves mail exchanger hostnames,\nand detects recipient ESP fingerprinting to prevent hard bounces.",
+        "operationId": "api_verify_mx_api_elein_deliverability_verify_mx_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MXVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Verify Mx Api Elein Deliverability Verify Mx Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/check-catch-all": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Check Catch All",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 38):\nEvaluates Catch-All / Accept-All domain status and bounce risk.",
+        "operationId": "api_check_catch_all_api_elein_deliverability_check_catch_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatchAllCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Check Catch All Api Elein Deliverability Check Catch All Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/evaluate-smtp-deferral": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Evaluate Smtp Deferral",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 38):\nEvaluates SMTP deferral / greylisting codes and calculates optimal retry delay.",
+        "operationId": "api_evaluate_smtp_deferral_api_elein_deliverability_evaluate_smtp_deferral_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SMTPDeferralEvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Evaluate Smtp Deferral Api Elein Deliverability Evaluate Smtp Deferral Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -19556,6 +19688,30 @@
         "type": "object",
         "title": "CancelSubscriptionRequest"
       },
+      "CatchAllCheckRequest": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "mock_is_catch_all": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mock Is Catch All"
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "title": "CatchAllCheckRequest"
+      },
       "CheckoutRequest": {
         "properties": {
           "package_id": {
@@ -22466,6 +22622,31 @@
         ],
         "title": "LeadItem"
       },
+      "MXVerifyRequest": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "mock_dns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mock Dns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "title": "MXVerifyRequest"
+      },
       "MasterViewRequest": {
         "properties": {
           "senders": {
@@ -24183,6 +24364,36 @@
           "role"
         ],
         "title": "RoleUpdate"
+      },
+      "SMTPDeferralEvaluateRequest": {
+        "properties": {
+          "smtp_code": {
+            "type": "integer",
+            "title": "Smtp Code"
+          },
+          "smtp_message": {
+            "type": "string",
+            "title": "Smtp Message"
+          },
+          "attempt_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Count",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "smtp_code",
+          "smtp_message"
+        ],
+        "title": "SMTPDeferralEvaluateRequest"
       },
       "SalvageOfferRequest": {
         "properties": {

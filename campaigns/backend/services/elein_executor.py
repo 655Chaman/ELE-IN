@@ -4569,7 +4569,7 @@ Respond ONLY with valid JSON."""
         try:
             lead_dict = linkedin_url if isinstance(linkedin_url, dict) else {}
             lead_id = data.get("_lead_id") or data.get("lead_id") or lead_dict.get("id") or lead_dict.get("lead_id")
-            to_email = data.get("to_email") or data.get("to") or data.get("email") or lead_dict.get("email")
+            to_email = data.get("email") or data.get("to_email") or data.get("to") or lead_dict.get("email")
             if isinstance(linkedin_url, dict):
                 linkedin_url = linkedin_url.get("linkedin_url") or linkedin_url.get("url") or ""
             
@@ -4619,6 +4619,21 @@ Respond ONLY with valid JSON."""
                     logger.warning(f"[DeliverabilityGuard] Role-based email blocked: {to_email}")
                     return {"status": "skipped", "reason": "role_based_email_blocked", "error": f"Role-based mailbox '{audit.get('role_category')}' blocked by deliverability policy."}
                 return {"status": "skipped", "reason": audit.get("rejection_reason", "deliverability_check_failed"), "error": audit.get("rejection_reason", "Deliverability check failed")}
+
+            # Phase 38: Pre-flight Recipient MX Record Guard & Catch-All Probe
+            from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+            mx_res = MXAndCatchAllGuard.resolve_domain_mx_records(to_email, mock_dns=data.get("mock_dns"))
+            if not mx_res.get("can_receive_mail", True):
+                logger.warning(
+                    f"[DeliverabilityGuard] ABORT: Recipient domain {mx_res.get('domain')} has no valid mail exchanger ({mx_res.get('status')}). Aborting send to prevent hard bounce."
+                )
+                return {
+                    "status": "skipped",
+                    "reason": "no_mail_exchanger",
+                    "error": f"Recipient domain {mx_res.get('domain')} has no valid mail exchanger ({mx_res.get('status')}). Send aborted to prevent hard bounce.",
+                    "branch": Branch.FAILED.value,
+                }
+            catch_all_res = MXAndCatchAllGuard.detect_catch_all_domain(to_email, mock_is_catch_all=data.get("mock_is_catch_all"))
 
             subject = data.get("subject") or data.get("subject_template") or "Hello"
             body = data.get("body") or data.get("body_template") or data.get("message", "")
@@ -4832,6 +4847,18 @@ Respond ONLY with valid JSON."""
                 if ssl_tracking_bypassed:
                     res_dict["ssl_tracking_bypassed"] = True
 
+                # Phase 38: Recipient MX and Catch-All Deliverability Telemetry
+                if mx_res:
+                    res_dict["recipient_esp"] = mx_res.get("esp_provider", "UNKNOWN")
+                    res_dict["mx_record_count"] = len(mx_res.get("mx_records", []))
+                else:
+                    res_dict["recipient_esp"] = "UNKNOWN"
+                    res_dict["mx_record_count"] = 0
+                if catch_all_res:
+                    res_dict["is_catch_all_domain"] = catch_all_res.get("is_catch_all", False)
+                else:
+                    res_dict["is_catch_all_domain"] = False
+
                 if audit:
                     res_dict["email_classification"] = audit.get("classification")
                     res_dict["deliverability_risk"] = audit.get("deliverability_risk")
@@ -4898,6 +4925,21 @@ Respond ONLY with valid JSON."""
             if not api_key:
                 # Environmental fallback: If mock/test mode or dev, log and succeed
                 if os.environ.get("MOCK_EXTERNAL_SERVICES", "").lower() in ("true", "1") or os.environ.get("TEST_MODE") == "true" or not (os.environ.get("ENV") == "production"):
+                    if data.get("mock_smtp_error") or data.get("mock_smtp_code") or data.get("mock_deferral"):
+                        smtp_code = data.get("mock_smtp_code") or 451
+                        error_message = data.get("mock_smtp_error") or "451 4.7.1 Greylisted, please try again"
+                        from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+                        defer_info = MXAndCatchAllGuard.detect_smtp_deferral_or_greylist(smtp_code, error_message)
+                        if defer_info.get("is_deferred") and defer_info.get("retry_recommended"):
+                            logger.info(f"[DeliverabilityGuard] Greylisting/deferral detected for {to_email}. Deferring execution for {defer_info.get('retry_delay_seconds')}s.")
+                            _refund_sendgrid_credit(reason="smtp_greylisted")
+                            return {
+                                "status": "deferred",
+                                "reason": "smtp_greylisted",
+                                "next_run_delta_seconds": defer_info.get("retry_delay_seconds"),
+                                "error": f"SMTP temporary deferral: {error_message}",
+                                "branch": Branch.FAILED.value,
+                            }
                     logger.info(f"[Mock] SENDGRID_API_KEY not set, simulating email delivery to {to_email} from {from_email}")
                     out = {
                         "status": "success",
@@ -4909,6 +4951,9 @@ Respond ONLY with valid JSON."""
                         "subject": subject,
                         "body": body,
                         "tracking_rewritten": rewritten_count,
+                        "recipient_esp": mx_res.get("esp_provider", "UNKNOWN") if mx_res else "UNKNOWN",
+                        "is_catch_all_domain": catch_all_res.get("is_catch_all", False) if catch_all_res else False,
+                        "mx_record_count": len(mx_res.get("mx_records", [])) if mx_res else 0,
                     }
                     if dmarc_audit:
                         out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
@@ -4976,6 +5021,9 @@ Respond ONLY with valid JSON."""
                             "sender_inbox_id": selected_inbox_id,
                             "subject": subject,
                             "tracking_rewritten": rewritten_count,
+                            "recipient_esp": mx_res.get("esp_provider", "UNKNOWN") if mx_res else "UNKNOWN",
+                            "is_catch_all_domain": catch_all_res.get("is_catch_all", False) if catch_all_res else False,
+                            "mx_record_count": len(mx_res.get("mx_records", [])) if mx_res else 0,
                         }
                         if dmarc_audit:
                             out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
@@ -5005,10 +5053,42 @@ Respond ONLY with valid JSON."""
                         return _enrich_delivery_outcome(out)
                     else:
                         _refund_sendgrid_credit(reason=f"sendgrid_http_status_{response.status}")
-                        return {"status": "error", "branch": Branch.FAILED.value, "error": f"SendGrid returned unexpected status {response.status}"}
+                        error_message = f"SendGrid returned unexpected status {response.status}"
+                        from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+                        defer_info = MXAndCatchAllGuard.detect_smtp_deferral_or_greylist(response.status, error_message)
+                        if defer_info.get("is_deferred") and defer_info.get("retry_recommended"):
+                            logger.info(f"[DeliverabilityGuard] Greylisting/deferral detected for {to_email}. Deferring execution for {defer_info.get('retry_delay_seconds')}s.")
+                            return {
+                                "status": "deferred",
+                                "reason": "smtp_greylisted",
+                                "next_run_delta_seconds": defer_info.get("retry_delay_seconds"),
+                                "error": f"SMTP temporary deferral: {error_message}",
+                                "branch": Branch.FAILED.value,
+                            }
+                        return {"status": "error", "branch": Branch.FAILED.value, "error": error_message}
             except Exception as e:
                 logger.error(f"SendGrid API error: {e}")
                 _refund_sendgrid_credit(reason="sendgrid_api_error")
+                smtp_code = getattr(e, "code", None) or getattr(e, "status", None) or 0
+                error_message = str(e)
+                if not smtp_code:
+                    code_match = re.search(r"\b([45]\d\d)\b", error_message)
+                    if code_match:
+                        try:
+                            smtp_code = int(code_match.group(1))
+                        except Exception:
+                            smtp_code = 0
+                from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+                defer_info = MXAndCatchAllGuard.detect_smtp_deferral_or_greylist(smtp_code, error_message)
+                if defer_info.get("is_deferred") and defer_info.get("retry_recommended"):
+                    logger.info(f"[DeliverabilityGuard] Greylisting/deferral detected for {to_email}. Deferring execution for {defer_info.get('retry_delay_seconds')}s.")
+                    return {
+                        "status": "deferred",
+                        "reason": "smtp_greylisted",
+                        "next_run_delta_seconds": defer_info.get("retry_delay_seconds"),
+                        "error": f"SMTP temporary deferral: {error_message}",
+                        "branch": Branch.FAILED.value,
+                    }
                 return {"status": "error", "branch": Branch.FAILED.value, "error": f"SendGrid API error: {str(e)}"}
 
             out = {
@@ -5020,6 +5100,9 @@ Respond ONLY with valid JSON."""
                 "sender_inbox_id": selected_inbox_id,
                 "subject": subject,
                 "tracking_rewritten": rewritten_count,
+                "recipient_esp": mx_res.get("esp_provider", "UNKNOWN") if mx_res else "UNKNOWN",
+                "is_catch_all_domain": catch_all_res.get("is_catch_all", False) if catch_all_res else False,
+                "mx_record_count": len(mx_res.get("mx_records", [])) if mx_res else 0,
             }
             if dmarc_audit:
                 out["dmarc_aligned"] = dmarc_audit.get("alignment", {}).get("dmarc_aligned", True)
@@ -5043,6 +5126,29 @@ Respond ONLY with valid JSON."""
             logger.error(f"handle_send_email error: {e}")
             if 'deducted' in locals() and deducted:
                 _refund_sendgrid_credit(reason="handle_send_email_exception")
+            smtp_code = getattr(e, "code", None) or getattr(e, "status", None) or 0
+            error_message = str(e)
+            if not smtp_code:
+                code_match = re.search(r"\b([45]\d\d)\b", error_message)
+                if code_match:
+                    try:
+                        smtp_code = int(code_match.group(1))
+                    except Exception:
+                        smtp_code = 0
+            try:
+                from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
+                defer_info = MXAndCatchAllGuard.detect_smtp_deferral_or_greylist(smtp_code, error_message)
+                if defer_info.get("is_deferred") and defer_info.get("retry_recommended"):
+                    logger.info(f"[DeliverabilityGuard] Greylisting/deferral detected for {to_email}. Deferring execution for {defer_info.get('retry_delay_seconds')}s.")
+                    return {
+                        "status": "deferred",
+                        "reason": "smtp_greylisted",
+                        "next_run_delta_seconds": defer_info.get("retry_delay_seconds"),
+                        "error": f"SMTP temporary deferral: {error_message}",
+                        "branch": Branch.FAILED.value,
+                    }
+            except Exception:
+                pass
             return {"status": "error", "branch": Branch.FAILED.value, "error": str(e)}
 
     def handle_find_email(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
