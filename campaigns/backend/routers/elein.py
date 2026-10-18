@@ -3835,13 +3835,23 @@ def _check_and_store_campaign_idempotency(dedupe_key: str, result: Optional[dict
 @router.post("/campaigns", response_model=CampaignResponse)
 def create_campaign(
     campaign: CampaignCreate,
-    request: Request,
+    request: Request = None,
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace),
     user_id: str = Depends(get_current_user_id)
 ):
+    # Paranoia Layer 1: Backward-compatibility for legacy direct positional callers (campaign, supabase, workspace_id, user_id)
+    if hasattr(request, "table"):
+        legacy_supabase = request
+        legacy_ws = supabase if isinstance(supabase, str) else "default"
+        legacy_uid = workspace_id if isinstance(workspace_id, str) else "system"
+        request = None
+        supabase = legacy_supabase
+        workspace_id = legacy_ws
+        user_id = legacy_uid
+
     try:
-        raw_idemp = request.headers.get("Idempotency-Key") or request.headers.get("X-Idempotency-Key")
+        raw_idemp = (request.headers.get("Idempotency-Key") or request.headers.get("X-Idempotency-Key")) if request and hasattr(request, "headers") else None
         idemp_key = None
         if raw_idemp:
             clean_idemp = str(raw_idemp).strip().strip("\"'")
@@ -3992,9 +4002,9 @@ def create_campaign(
                 "p_metadata": meta,
                 "p_senders": campaign.senders or []
             }).execute()
-            if rpc_res and getattr(rpc_res, "data", None):
+            if rpc_res and isinstance(getattr(rpc_res, "data", None), dict) and rpc_res.data.get("status") == "success":
                 atomic_created = True
-                if isinstance(rpc_res.data, dict) and rpc_res.data.get("version_id"):
+                if rpc_res.data.get("version_id"):
                     version_id = rpc_res.data["version_id"]
         except Exception as rpc_err:
             logger.debug(f"[create_campaign] create_campaign_atomic RPC fallback: {rpc_err}")
@@ -4107,6 +4117,13 @@ def create_campaign(
 
 @router.put("/campaigns/{campaign_id}", response_model=CampaignResponse)
 def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str = Depends(get_current_workspace), client: Client = Depends(get_supabase_client)):
+    # Paranoia Layer 1: Backward-compatibility for legacy direct positional callers (campaign_id, payload, client, workspace_id)
+    if hasattr(workspace_id, "table"):
+        legacy_client = workspace_id
+        legacy_ws = client if isinstance(client, str) else "default"
+        workspace_id = legacy_ws
+        client = legacy_client
+
     try:
         # Verify ownership
         existing = client.table("campaigns").select("id, status, metadata, updated_at, nodes_json, edges_json").eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
@@ -4746,6 +4763,20 @@ def activate_campaign(
     workspace_id: str = Depends(get_current_workspace),
     client: Client = Depends(get_supabase_client)
 ):
+    # Paranoia Layer 1: Backward-compatibility for legacy direct positional callers
+    if hasattr(idempotency_key, "table"):
+        legacy_client = idempotency_key
+        legacy_ws = workspace_id if isinstance(workspace_id, str) else "default"
+        idempotency_key = None
+        client = legacy_client
+        workspace_id = legacy_ws
+    elif hasattr(workspace_id, "table"):
+        legacy_client = workspace_id
+        legacy_ws = idempotency_key if isinstance(idempotency_key, str) else "default"
+        idempotency_key = None
+        client = legacy_client
+        workspace_id = legacy_ws
+
     # Paranoia Layer 0 & 2 (API-20): Verify existence, ownership, and idempotency
     camp_res = client.table("campaigns").select("id, status, nodes_json, lead_list_id, metadata").eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
     if not camp_res.data:
