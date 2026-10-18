@@ -10254,6 +10254,204 @@
         }
       }
     },
+    "/api/elein/warmup/calculate-ramp": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Warmup Calculate Ramp",
+        "description": "Paranoia Layer 0, 1 & 2: Calculate adaptive warmup ramp projection.\nReturns full day-by-day projection and today's allocated caps.",
+        "operationId": "api_warmup_calculate_ramp_api_elein_warmup_calculate_ramp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WarmupCalculateRampRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Warmup Calculate Ramp Api Elein Warmup Calculate Ramp Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/warmup/health": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Warmup Health Check",
+        "description": "Paranoia Layer 0, 1 & 2: Evaluates inbox warmup health score, status\n(PEAK_HEALTH, RAMPING_OPTIMAL, NEEDS_RECOVERY, EMERGENCY_PAUSED), and recommendations.\nEnforces strict tenant IDOR scoping.",
+        "operationId": "api_warmup_health_check_api_elein_warmup_health_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WarmupHealthCheckRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Warmup Health Check Api Elein Warmup Health Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/warmup/simulate-tick": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Warmup Simulate Tick",
+        "description": "Paranoia Layer 0, 1 & 2: Executes warmup advancement tick for specified inboxes\nor caller's active pool.",
+        "operationId": "api_warmup_simulate_tick_api_elein_warmup_simulate_tick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WarmupSimulateTickRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Warmup Simulate Tick Api Elein Warmup Simulate Tick Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/warmup/inbox/{inbox_id}": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Warmup Get Inbox Status",
+        "description": "Paranoia Layer 0, 1 & 2: Returns current warmup status, curve projection,\ndays active, and health score for given inbox.\nEnforces strict tenant IDOR protection.",
+        "operationId": "api_warmup_get_inbox_status_api_elein_warmup_inbox__inbox_id__get",
+        "parameters": [
+          {
+            "name": "inbox_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Inbox Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Warmup Get Inbox Status Api Elein Warmup Inbox  Inbox Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -25104,6 +25302,72 @@
         ],
         "title": "VerifyTrackingDomainRequest"
       },
+      "WarmupCalculateRampRequest": {
+        "properties": {
+          "curve_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curve Type",
+            "default": "LOGARITHMIC"
+          },
+          "start_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Limit",
+            "default": 5
+          },
+          "target_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Limit",
+            "default": 50
+          },
+          "ramp_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ramp Days",
+            "default": 28
+          },
+          "current_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Day",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "WarmupCalculateRampRequest"
+      },
       "WarmupCurvePayload": {
         "properties": {
           "curve_days": {
@@ -25116,6 +25380,55 @@
           "curve_days"
         ],
         "title": "WarmupCurvePayload"
+      },
+      "WarmupHealthCheckRequest": {
+        "properties": {
+          "inbox_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbox Id"
+          },
+          "inbox_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbox Data"
+          }
+        },
+        "type": "object",
+        "title": "WarmupHealthCheckRequest"
+      },
+      "WarmupSimulateTickRequest": {
+        "properties": {
+          "inbox_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbox Ids"
+          }
+        },
+        "type": "object",
+        "title": "WarmupSimulateTickRequest"
       },
       "WorkspaceCreate": {
         "properties": {

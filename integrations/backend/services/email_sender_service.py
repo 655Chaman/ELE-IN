@@ -421,15 +421,25 @@ def calculate_warmup_daily_cap(inbox: Dict[str, Any]) -> int:
     except (ValueError, TypeError):
         days_active = 0
 
-    # Calculate ramp projection
-    projection_data = calculate_warmup_ramp_projection(
-        curve_type=str(curve_type),
-        start_limit=start_limit,
-        target_limit=target_limit,
-        ramp_days=ramp_days,
-        current_day=days_active,
-    )
-    cold_cap = int(projection_data.get("today_cold_cap", 0))
+    # Legacy linear increment support: if warmup_increment_per_day is explicitly provided
+    # and no adaptive warmup curve type is specified, maintain backward compatibility
+    if "warmup_increment_per_day" in inbox and "warmup_curve_type" not in inbox and "ramp_strategy" not in inbox:
+        try:
+            increment = max(1, min(100, int(inbox.get("warmup_increment_per_day", 5) or 5)))
+        except (ValueError, TypeError):
+            increment = 5
+        ramped_cap = start_limit + (days_active * increment)
+        cold_cap = max(0, min(safe_daily_limit, ramped_cap))
+    else:
+        # Calculate ramp projection
+        projection_data = calculate_warmup_ramp_projection(
+            curve_type=str(curve_type),
+            start_limit=start_limit,
+            target_limit=target_limit,
+            ramp_days=ramp_days,
+            current_day=days_active,
+        )
+        cold_cap = int(projection_data.get("today_cold_cap", 0))
 
     # Evaluate health score
     health = calculate_inbox_warmup_health_score(inbox)

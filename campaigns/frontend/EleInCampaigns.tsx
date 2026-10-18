@@ -2,7 +2,7 @@ import { useHRTreeStore } from "@campaigns/eiTreeStore";
 import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { 
@@ -120,15 +120,73 @@ export function EleInCampaigns() {
   const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null)
   const rowMenuRef = useRef<HTMLDivElement>(null)
 
-  // Auto-open Growth Tools if navigation linked here with ?tools=true
+  const openStudioByKey = useCallback((studioKey: string | null, openTools = false) => {
+    if (openTools) setShowGrowthHub(true)
+    if (!studioKey) return
+    switch (studioKey) {
+      case "sto":
+        setShowStoModal(true)
+        break
+      case "calendar":
+        setShowCalendarModal(true)
+        break
+      case "bandit":
+        setBanditCampaign({ id: "global-optimizer", name: "Global Multi-Armed Bandit Radar" })
+        break
+      case "sentiment":
+        setShowSentimentModal(true)
+        break
+      case "deliverability":
+        setShowDeliverabilityModal(true)
+        break
+      case "prewarm":
+        setShowPreWarmModal(true)
+        break
+      case "displacement":
+        setShowDisplacementModal(true)
+        break
+      case "boomerang":
+        setShowBoomerangModal(true)
+        break
+      case "event":
+        setShowEventModal(true)
+        break
+      case "abm":
+        setShowAbmModal(true)
+        break
+      case "retargeting":
+        setShowOmnichannelModal(true)
+        break
+      case "growth":
+        setShowGrowthHub(true)
+        break
+    }
+  }, [])
+
+  // Auto-open Growth Tools or AI Studios if navigation linked here with ?tools=true or ?studio=<key>
   useEffect(() => {
-    if (searchParams.get('tools') === 'true') {
-      setShowGrowthHub(true)
+    const toolsParam = searchParams.get('tools') === 'true'
+    const studioParam = searchParams.get('studio')
+    if (toolsParam || studioParam) {
+      openStudioByKey(studioParam, toolsParam)
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete('tools')
+      nextParams.delete('studio')
       setSearchParams(nextParams, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, openStudioByKey])
+
+  // Listen for instant CommandPalette open-ai-studio events
+  useEffect(() => {
+    const handleStudioEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ studio?: string; tools?: boolean }>
+      if (customEvent.detail) {
+        openStudioByKey(customEvent.detail.studio || null, !!customEvent.detail.tools)
+      }
+    }
+    window.addEventListener('open-ai-studio', handleStudioEvent)
+    return () => window.removeEventListener('open-ai-studio', handleStudioEvent)
+  }, [openStudioByKey])
 
   // Close row actions menu on outside click
   useEffect(() => {

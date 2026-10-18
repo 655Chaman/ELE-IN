@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Search, Zap, UserPlus, Inbox, BookOpen, LayoutDashboard,
-  Megaphone, Users, ShieldCheck, Settings, CreditCard, ArrowRight, CornerDownLeft
+  Megaphone, Users, ShieldCheck, Settings, CreditCard, ArrowRight, CornerDownLeft,
+  Clock, Calendar, Sparkles, Flame, Repeat, Video, UserCheck, Layers, Activity
 } from "lucide-react"
 import { Linkedin } from "./icons/Linkedin"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
@@ -12,7 +13,7 @@ interface PaletteItem {
   id: string
   title: string
   subtitle: string
-  category: "Actions" | "Navigation"
+  category: "Actions" | "AI Studios" | "Navigation"
   icon: any
   path: string
   color: string
@@ -92,6 +93,143 @@ const PALETTE_ITEMS: PaletteItem[] = [
     bg: "bg-blue-500/10",
     badge: "Official",
     useElesiumLogo: true
+  },
+
+  // AI Studios & Tactical Radar
+  {
+    id: "studio_sto",
+    title: "Send-Time Optimization Studio (STO)",
+    subtitle: "AI predictive send-time modeling, activity heatmaps & curfew safeguards",
+    category: "AI Studios",
+    icon: Clock,
+    path: "/elein/campaigns?studio=sto",
+    color: "text-amber-500 dark:text-amber-400",
+    bg: "bg-amber-500/10",
+    badge: "AI STO",
+    useElesiumLogo: true
+  },
+  {
+    id: "studio_calendar",
+    title: "Executive Calendar Concierge Studio",
+    subtitle: "Automated meeting booking, multi-slot inspection & scheduling buffers",
+    category: "AI Studios",
+    icon: Calendar,
+    path: "/elein/campaigns?studio=calendar",
+    color: "text-blue-500 dark:text-blue-400",
+    bg: "bg-blue-500/10",
+    badge: "Concierge"
+  },
+  {
+    id: "studio_bandit",
+    title: "Multi-Armed Bandit Copy Optimizer",
+    subtitle: "Thompson sampling variant allocation, hook radar & LinkedIn character limits",
+    category: "AI Studios",
+    icon: Sparkles,
+    path: "/elein/campaigns?studio=bandit",
+    color: "text-purple-500 dark:text-purple-400",
+    bg: "bg-purple-500/10",
+    badge: "Bandit AI",
+    useElesiumLogo: true
+  },
+  {
+    id: "studio_sentiment",
+    title: "Inbound Reply Sentiment & OOO Classifier",
+    subtitle: "Prospect objection routing, OOO auto-snooze & meeting intent triage",
+    category: "AI Studios",
+    icon: Activity,
+    path: "/elein/campaigns?studio=sentiment",
+    color: "text-emerald-500 dark:text-emerald-400",
+    bg: "bg-emerald-500/10",
+    badge: "NLP Triage"
+  },
+  {
+    id: "studio_deliverability",
+    title: "Deliverability Guard & Mailbox Reputation Studio",
+    subtitle: "SPF/DKIM/DMARC verification, custom tracking domains & warmup pacing",
+    category: "AI Studios",
+    icon: ShieldCheck,
+    path: "/elein/campaigns?studio=deliverability",
+    color: "text-emerald-500 dark:text-emerald-400",
+    bg: "bg-emerald-500/10",
+    badge: "Deliverability"
+  },
+  {
+    id: "studio_prewarm",
+    title: "Autonomous Social Pre-Warmer Studio",
+    subtitle: "2-touch warmup cascades (profile view, post like) before connection requests",
+    category: "AI Studios",
+    icon: Flame,
+    path: "/elein/campaigns?studio=prewarm",
+    color: "text-orange-500 dark:text-orange-400",
+    bg: "bg-orange-500/10",
+    badge: "Pre-Warm"
+  },
+  {
+    id: "studio_displacement",
+    title: "Competitive Tech Displacement Studio",
+    subtitle: "Battlecard synthesis, competitor trigger detection & contract renewal timing",
+    category: "AI Studios",
+    icon: Zap,
+    path: "/elein/campaigns?studio=displacement",
+    color: "text-cyan-500 dark:text-cyan-400",
+    bg: "bg-cyan-500/10",
+    badge: "Displace"
+  },
+  {
+    id: "studio_boomerang",
+    title: "Champion Job-Change & Closed-Lost Revival",
+    subtitle: "Track champions changing companies & trigger automated re-engagement",
+    category: "AI Studios",
+    icon: Repeat,
+    path: "/elein/campaigns?studio=boomerang",
+    color: "text-indigo-500 dark:text-indigo-400",
+    bg: "bg-indigo-500/10",
+    badge: "Boomerang"
+  },
+  {
+    id: "studio_event",
+    title: "LinkedIn Event Harvester & Multimodal Voice/Video",
+    subtitle: "Scrape event attendees & synthesize personalized AI voice/video scripts",
+    category: "AI Studios",
+    icon: Video,
+    path: "/elein/campaigns?studio=event",
+    color: "text-pink-500 dark:text-pink-400",
+    bg: "bg-pink-500/10",
+    badge: "Multimodal",
+    useElesiumLogo: true
+  },
+  {
+    id: "studio_abm",
+    title: "ABM Multithreading & Buying Committee Studio",
+    subtitle: "Map champions, decision makers & blockers across enterprise target accounts",
+    category: "AI Studios",
+    icon: UserCheck,
+    path: "/elein/campaigns?studio=abm",
+    color: "text-blue-500 dark:text-blue-400",
+    bg: "bg-blue-500/10",
+    badge: "ABM Matrix"
+  },
+  {
+    id: "studio_retargeting",
+    title: "AI Omnichannel Fallback & Retargeting Cascade",
+    subtitle: "Cross-channel failover (LinkedIn -> Verified Email -> InMail -> Webhook)",
+    category: "AI Studios",
+    icon: Layers,
+    path: "/elein/campaigns?studio=retargeting",
+    color: "text-teal-500 dark:text-teal-400",
+    bg: "bg-teal-500/10",
+    badge: "Cascade"
+  },
+  {
+    id: "studio_growth_hub",
+    title: "Viral ROI Certificate & Wrapped Performance Studio",
+    subtitle: "Generate enterprise-grade campaign ROI certificates & wrapped impact decks",
+    category: "AI Studios",
+    icon: Sparkles,
+    path: "/elein/campaigns?tools=true",
+    color: "text-amber-500 dark:text-amber-400",
+    bg: "bg-amber-500/10",
+    badge: "ROI Deck"
   },
 
   // Navigation
@@ -205,6 +343,19 @@ export function CommandPalette() {
     if (path.startsWith("http://") || path.startsWith("https://")) {
       window.open(path, "_blank", "noopener,noreferrer")
     } else {
+      try {
+        const url = new URL(path, window.location.origin)
+        const studioKey = url.searchParams.get("studio")
+        const toolsParam = url.searchParams.get("tools")
+        if (window.location.pathname.includes("/elein/campaigns") && (studioKey || toolsParam)) {
+          window.dispatchEvent(new CustomEvent("open-ai-studio", {
+            detail: { studio: studioKey, tools: toolsParam === "true" }
+          }))
+          return
+        }
+      } catch {
+        // Fallback to direct navigation
+      }
       navigate(path)
     }
   }

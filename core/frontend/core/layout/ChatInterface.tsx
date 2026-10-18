@@ -422,6 +422,19 @@ export function ChatInterface() {
                                   </>
                                 )}
                               </button>
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(msg.ai_draft);
+                                  toast.success("Draft copied to clipboard. Launching Bandit Copy Studio...");
+                                  window.dispatchEvent(new CustomEvent('open-ai-studio', { detail: { studio: 'bandit' } }));
+                                }}
+                                className="text-[10px] text-muted-foreground bg-muted hover:bg-primary/10 hover:text-primary px-2 py-0.5 rounded-md border border-border/60 uppercase transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 flex items-center gap-1 cursor-pointer"
+                                title="Copy draft and optimize variant in Bandit Copy Studio"
+                              >
+                                <Sparkles size={10} />
+                                <span>Test in Bandit AI</span>
+                              </button>
                             </div>
                           </div>
                         </div>

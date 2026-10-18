@@ -1028,7 +1028,8 @@ export function AbmMultithreadStudioModal({ onClose, campaignId }: AbmMultithrea
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    ))
+                  )}
                   </tbody>
                 </table>
               </div>

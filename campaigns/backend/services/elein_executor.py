@@ -4849,6 +4849,10 @@ Respond ONLY with valid JSON."""
                         "body": body,
                         "tracking_rewritten": rewritten_count,
                     }
+                    if selected_inbox:
+                        out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
+                        out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
+                        out["warmup_days_active"] = selected_inbox.get("warmup_days_active")
                     if ssl_tracking_bypassed:
                         out["ssl_tracking_bypassed"] = True
                     if bandit_meta.get("enabled"):
@@ -4905,6 +4909,10 @@ Respond ONLY with valid JSON."""
                             "subject": subject,
                             "tracking_rewritten": rewritten_count,
                         }
+                        if selected_inbox:
+                            out["warmup_health_score"] = selected_inbox.get("warmup_health_score")
+                            out["warmup_curve_type"] = selected_inbox.get("warmup_curve_type")
+                            out["warmup_days_active"] = selected_inbox.get("warmup_days_active")
                         if ssl_tracking_bypassed:
                             out["ssl_tracking_bypassed"] = True
                         if bandit_meta.get("enabled"):

@@ -466,14 +466,22 @@ def simulate_peer_warmup_exchange(
         or safe_sender.get("email_address")
         or "sender@warmup-pool.ele-in.internal"
     )
-    sender_name = safe_sender.get("sender_name") or safe_sender.get("name") or "Alex Taylor"
+    sender_name_raw = safe_sender.get("sender_name") or safe_sender.get("name") or "Alex Taylor"
+    cleaned_sender = str(sender_name_raw).strip()
+    while cleaned_sender and cleaned_sender[0] in ('=', '+', '-', '@', '\t', '\r'):
+        cleaned_sender = cleaned_sender[1:].strip()
+    sender_name = cleaned_sender or "Alex Taylor"
 
     peer_email = (
         safe_peer.get("email")
         or safe_peer.get("email_address")
         or "peer@warmup-pool.ele-in.internal"
     )
-    peer_name = safe_peer.get("sender_name") or safe_peer.get("name") or "Jordan Lee"
+    peer_name_raw = safe_peer.get("sender_name") or safe_peer.get("name") or "Jordan Lee"
+    cleaned_peer = str(peer_name_raw).strip()
+    while cleaned_peer and cleaned_peer[0] in ('=', '+', '-', '@', '\t', '\r'):
+        cleaned_peer = cleaned_peer[1:].strip()
+    peer_name = cleaned_peer or "Jordan Lee"
 
     safe_depth = max(1, min(10, int(thread_depth) if isinstance(thread_depth, (int, float)) else 1))
 

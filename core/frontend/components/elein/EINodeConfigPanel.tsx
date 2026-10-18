@@ -22,7 +22,7 @@ import { usePaywall } from "@/contexts/PaywallContext"
 import { toast } from "sonner"
 
 import { useHRTreeStore } from "@campaigns/eiTreeStore"
-import { HR_NODE_DEFS } from "@/lib/eiNodeDefs"
+import { HR_NODE_DEFS, type EINodeType } from "@/lib/eiNodeDefs"
 import { DeliverabilityStudioModal } from "@/components/campaigns/DeliverabilityStudioModal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -8269,6 +8269,25 @@ const NODAL_GUIDE: Record<string, string> = {
   "goal": "This is a terminal node. The sequence ends here."
 }
 
+// ─── Tactical Next-Step Recommendations ──────────────────────────────────────────
+const RECOMMENDED_NEXT_STEP_MAP: Record<string, { type: EINodeType; label: string }> = {
+  view_profile: { type: "connection_request", label: "Connection Request" },
+  like_post: { type: "connection_request", label: "Connection Request" },
+  comment_on_post: { type: "connection_request", label: "Connection Request" },
+  endorse_skill: { type: "connection_request", label: "Connection Request" },
+  connection_request: { type: "if_connected", label: "If Connected? Condition" },
+  if_connected: { type: "send_message", label: "Welcome Direct Message" },
+  send_message: { type: "if_replied", label: "If Replied? Condition" },
+  send_inmail: { type: "if_replied", label: "If Replied? Condition" },
+  find_email: { type: "if_email_found", label: "If Email Found? Condition" },
+  zero_cost_discovery: { type: "if_email_found", label: "If Email Found? Condition" },
+  if_email_found: { type: "send_email", label: "Send Cold Email" },
+  send_email: { type: "if_replied", label: "If Replied? Condition" },
+  if_replied: { type: "send_meeting_invite", label: "Send Meeting Invite" },
+  ai_personalize: { type: "send_message", label: "Send Personalized Message" },
+  ai_detect_competitor: { type: "send_message", label: "Send Battlecard Message" },
+};
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 export function EINodeConfigPanel() {
   const { selectedNodeId, rootNodes, updateNodeData, selectNode } = useHRTreeStore()
@@ -8558,7 +8577,7 @@ function DynamicNodeConfig({ data, onChange, def }: { data: any; onChange: (k: s
 // ─── Tree-store config panel ───────────────────────────────────────────────────
 
 export function EITreeNodeConfigPanel() {
-  const { selectedNodeId, rootNodes, updateNodeData, selectNode } = useHRTreeStore()
+  const { selectedNodeId, rootNodes, updateNodeData, selectNode, addChild } = useHRTreeStore()
   const isPickerOpen = usePickerStore(s => s.isOpen)
 
   if (isPickerOpen) return null
@@ -8682,6 +8701,25 @@ export function EITreeNodeConfigPanel() {
                     <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">
                       <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Pro Tip:</span> {NODAL_GUIDE[nodeType]}
                     </p>
+                  )}
+                  {RECOMMENDED_NEXT_STEP_MAP[nodeType] && (
+                    <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-muted-foreground font-medium">Recommended Action:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const rec = RECOMMENDED_NEXT_STEP_MAP[nodeType];
+                          const branchKeys = Object.keys(selectedNode.children || {});
+                          const branchLabel = branchKeys.length > 0 ? branchKeys[0] : "output";
+                          addChild(selectedNode.id, branchLabel, rec.type, { delay: 1 });
+                          toast.success(`Inserted ${rec.label} into sequence!`);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold transition-colors cursor-pointer shadow-xs"
+                      >
+                        <Plus size={12} className="shrink-0" />
+                        <span>Add {RECOMMENDED_NEXT_STEP_MAP[nodeType].label}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
