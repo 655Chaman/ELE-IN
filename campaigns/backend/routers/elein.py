@@ -7385,6 +7385,324 @@ def api_check_dns_drift(
     )
 
 
+# =============================================================================
+# PHASE 37: INBOUND REFERRAL DISCOVERY, OOO RESCHEDULER & DOMAIN SUPPRESSION
+# =============================================================================
+
+class ExtractReferralRequest(BaseModel):
+    text: Optional[str] = ""
+    referring_email: Optional[str] = None
+
+
+class SuppressDomainRequest(BaseModel):
+    domain: str
+    reason: Optional[str] = "Company-wide prospect opt-out"
+
+
+class OOORescheduleRequest(BaseModel):
+    lead_id: str
+    return_date: Optional[str] = None
+    campaign_id: Optional[str] = None
+
+
+@router.post("/inbound/extract-referral", response_model=dict)
+def api_extract_referral(
+    req: ExtractReferralRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 37):
+    Inbound Referral Contact Discovery Endpoint.
+    Extracts referred colleague's name, email, and job title from natural language text.
+    Validates deliverability (spam trap, disposable domain) and enforces self-referral defense.
+    """
+    from inbox.backend.services.referral_and_snooze_service import extract_referral_contact
+
+    clean_text = req.text if req.text is not None else ""
+    ref = extract_referral_contact(clean_text, referring_email=req.referring_email)
+    return {
+        "status": "success",
+        "workspace_id": workspace_id,
+        "referral": ref,
+        **ref,
+    }
+
+
+@router.post("/inbound/suppress-domain", response_model=dict)
+def api_suppress_domain(
+    req: SuppressDomainRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 37):
+    Workspace-scoped domain suppression and cascade endpoint.
+    - Blocks consumer freemail domains (gmail.com, etc.) from accidental company suppression.
+    - Records domain suppression in workspace DNC / suppression_list.
+    - Cascades cancellation across all leads with matching root domain in the caller's workspace.
+    """
+    from inbox.backend.services.referral_and_snooze_service import (
+        ALL_FREE_WEBMAIL_DOMAINS,
+        normalize_suppression_domain,
+    )
+
+    raw_domain = (req.domain or "").strip().lower()
+    clean_domain = normalize_suppression_domain(raw_domain) or raw_domain.lstrip("@*").strip()
+
+    if not clean_domain:
+        raise HTTPException(status_code=400, detail="Invalid domain provided")
+
+    # Paranoia Layer 2: Reject consumer webmail domains
+    if clean_domain in ALL_FREE_WEBMAIL_DOMAINS:
+        raise HTTPException(
+            status_code=400,
+            detail="FREE_WEBMAIL_DOMAIN_CANNOT_BE_COMPANY_SUPPRESSED",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # 1. Insert into suppression_list
+    if supabase:
+        try:
+            supabase.table("suppression_list").insert({
+                "workspace_id": workspace_id,
+                "domain": clean_domain,
+                "value": clean_domain,
+                "reason": req.reason or "Company-wide prospect opt-out",
+                "created_at": now_iso,
+            }).execute()
+        except Exception as exc:
+            logger.debug(f"[SuppressDomain] suppression_list insert notice: {exc}")
+
+        # 2. Try inserting into workspace_domain_suppressions if present
+        try:
+            supabase.table("workspace_domain_suppressions").insert({
+                "workspace_id": workspace_id,
+                "domain": clean_domain,
+                "reason": req.reason or "Company-wide prospect opt-out",
+                "created_at": now_iso,
+            }).execute()
+        except Exception:
+            pass
+
+    # 3. Cascade across all matching leads in the workspace
+    matched_lead_ids: List[str] = []
+    halted_states_count = 0
+
+    if supabase:
+        try:
+            leads_res = (
+                supabase.table("leads")
+                .select("id, email")
+                .eq("workspace_id", workspace_id)
+                .execute()
+            )
+            all_leads = getattr(leads_res, "data", []) or []
+            if isinstance(all_leads, list):
+                for row in all_leads:
+                    if isinstance(row, dict) and row.get("id"):
+                        row_email = str(row.get("email") or "").strip().lower()
+                        if "@" in row_email and row_email.rsplit("@", 1)[-1].strip() == clean_domain:
+                            matched_lead_ids.append(row["id"])
+
+            if matched_lead_ids:
+                # Update all matching leads to status="UNSUBSCRIBED"
+                supabase.table("leads").update({
+                    "status": "UNSUBSCRIBED",
+                    "updated_at": now_iso,
+                }).eq("workspace_id", workspace_id).in_("id", matched_lead_ids).execute()
+
+                # Update all active execution states for that root domain to status="unsubscribed"
+                upd_states = (
+                    supabase.table("campaign_execution_states")
+                    .update({
+                        "status": "unsubscribed",
+                        "error_reason": f"Retroactive domain suppression for {clean_domain}",
+                        "updated_at": now_iso,
+                    })
+                    .eq("workspace_id", workspace_id)
+                    .in_("opportunity_id", matched_lead_ids)
+                    .execute()
+                )
+                halted_states_count = len(getattr(upd_states, "data", []) or matched_lead_ids)
+        except Exception as cascade_exc:
+            logger.warning(f"[SuppressDomain] Cascade notice: {cascade_exc}")
+
+    return {
+        "status": "success",
+        "workspace_id": workspace_id,
+        "domain": clean_domain,
+        "reason": req.reason,
+        "cascaded_leads_count": len(matched_lead_ids),
+        "halted_states_count": halted_states_count,
+    }
+
+
+@router.get("/inbound/suppressed-domains", response_model=dict)
+def api_list_suppressed_domains(
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
+):
+    """
+    Paranoia Layer 0 & 2 (Phase 37):
+    Lists domain suppressions for caller's workspace.
+    Enforces tenant IDOR isolation via workspace_id.
+    """
+    suppressed_items: List[Dict[str, Any]] = []
+    seen_domains: Set[str] = set()
+
+    if supabase:
+        try:
+            res = (
+                supabase.table("suppression_list")
+                .select("*")
+                .eq("workspace_id", workspace_id)
+                .not_.is_("domain", "null")
+                .execute()
+            )
+            rows = getattr(res, "data", []) or []
+            if isinstance(rows, list):
+                for r in rows:
+                    if isinstance(r, dict):
+                        d = r.get("domain")
+                        if d and d not in seen_domains:
+                            seen_domains.add(d)
+                            suppressed_items.append(r)
+        except Exception as exc:
+            logger.debug(f"[ListSuppressedDomains] suppression_list query notice: {exc}")
+
+        try:
+            res2 = (
+                supabase.table("workspace_domain_suppressions")
+                .select("*")
+                .eq("workspace_id", workspace_id)
+                .execute()
+            )
+            rows2 = getattr(res2, "data", []) or []
+            if isinstance(rows2, list):
+                for r in rows2:
+                    if isinstance(r, dict):
+                        d = r.get("domain")
+                        if d and d not in seen_domains:
+                            seen_domains.add(d)
+                            suppressed_items.append(r)
+        except Exception:
+            pass
+
+    domains_list = sorted(list(seen_domains))
+    return {
+        "status": "success",
+        "workspace_id": workspace_id,
+        "suppressed_domains": suppressed_items,
+        "domains": domains_list,
+        "count": len(domains_list),
+    }
+
+
+def get_optional_supabase_client(request: Request) -> Optional[Client]:
+    """Helper allowing optional Supabase dependency for unit tests and unauthenticated validation."""
+    if get_supabase_client in getattr(request.app, "dependency_overrides", {}):
+        override = request.app.dependency_overrides[get_supabase_client]
+        return override() if callable(override) else override
+    try:
+        return get_supabase_client(request)
+    except Exception:
+        return None
+
+
+@router.post("/inbound/reschedule-ooo", response_model=dict)
+def api_reschedule_ooo(
+    req: OOORescheduleRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Optional[Client] = Depends(get_optional_supabase_client),
+):
+    """
+    Paranoia Layer 0, 1 & 2 (Phase 37):
+    Timezone-aware OOO rescheduling endpoint.
+    - Resolves recipient timezone from lead/campaign records.
+    - Schedules next touch for next working morning (09:xx AM with working-hours jitter)
+      in recipient's local timezone.
+    - Handles weekend rollover (Friday return rolls to Monday morning).
+    - Clamps snooze horizon to [1, 90] days to prevent stalling.
+    """
+    from inbox.backend.services.sentiment_classifier import snooze_campaign_for_ooo_lead
+    from inbox.backend.services.referral_and_snooze_service import calculate_timezone_aware_ooo_snooze
+
+    clean_lead = (req.lead_id or "").strip()
+    if not clean_lead:
+        raise HTTPException(status_code=400, detail="lead_id is required")
+
+    lead_rec: Dict[str, Any] = {"id": clean_lead, "workspace_id": workspace_id}
+    campaign_rec: Optional[Dict[str, Any]] = None
+
+    if supabase:
+        # IDOR tenant isolation check
+        try:
+            lead_res = (
+                supabase.table("leads")
+                .select("*")
+                .eq("id", clean_lead)
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(lead_res, "data", None)
+            if isinstance(rows, list) and len(rows) > 0 and isinstance(rows[0], dict):
+                row_ws = rows[0].get("workspace_id")
+                if row_ws and str(row_ws) != str(workspace_id):
+                    raise HTTPException(status_code=404, detail="Lead not found in workspace")
+                lead_rec = rows[0]
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.debug(f"[RescheduleOOO] Lead lookup notice: {exc}")
+
+        if req.campaign_id:
+            try:
+                camp_res = (
+                    supabase.table("campaigns")
+                    .select("*")
+                    .eq("id", str(req.campaign_id).strip())
+                    .eq("workspace_id", workspace_id)
+                    .limit(1)
+                    .execute()
+                )
+                c_rows = getattr(camp_res, "data", None)
+                if isinstance(c_rows, list) and len(c_rows) > 0 and isinstance(c_rows[0], dict):
+                    campaign_rec = c_rows[0]
+            except Exception as exc:
+                logger.debug(f"[RescheduleOOO] Campaign lookup notice: {exc}")
+
+    # Calculate timezone-aware schedule
+    tz_snooze = calculate_timezone_aware_ooo_snooze(
+        lead=lead_rec,
+        campaign=campaign_rec,
+        return_date_str=req.return_date,
+    )
+
+    # Perform campaign execution states update and lead status update
+    res = snooze_campaign_for_ooo_lead(
+        supabase=supabase,
+        workspace_id=workspace_id,
+        lead_id=clean_lead,
+        snooze_until=tz_snooze.get("snooze_until_iso"),
+        return_date_str=tz_snooze.get("return_date") or req.return_date,
+        campaign=campaign_rec,
+        campaign_id=req.campaign_id,
+        lead=lead_rec,
+    )
+
+    return {
+        **res,
+        "status": "success",
+        "workspace_id": workspace_id,
+        "lead_id": clean_lead,
+        "reschedule_details": res,
+        "timezone_details": tz_snooze,
+    }
+
+
+
 
 
 

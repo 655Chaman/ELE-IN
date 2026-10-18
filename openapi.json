@@ -10635,6 +10635,162 @@
         }
       }
     },
+    "/api/elein/inbound/extract-referral": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Extract Referral",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 37):\nInbound Referral Contact Discovery Endpoint.\nExtracts referred colleague's name, email, and job title from natural language text.\nValidates deliverability (spam trap, disposable domain) and enforces self-referral defense.",
+        "operationId": "api_extract_referral_api_elein_inbound_extract_referral_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractReferralRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Extract Referral Api Elein Inbound Extract Referral Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/inbound/suppress-domain": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Suppress Domain",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 37):\nWorkspace-scoped domain suppression and cascade endpoint.\n- Blocks consumer freemail domains (gmail.com, etc.) from accidental company suppression.\n- Records domain suppression in workspace DNC / suppression_list.\n- Cascades cancellation across all leads with matching root domain in the caller's workspace.",
+        "operationId": "api_suppress_domain_api_elein_inbound_suppress_domain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuppressDomainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Suppress Domain Api Elein Inbound Suppress Domain Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/inbound/suppressed-domains": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api List Suppressed Domains",
+        "description": "Paranoia Layer 0 & 2 (Phase 37):\nLists domain suppressions for caller's workspace.\nEnforces tenant IDOR isolation via workspace_id.",
+        "operationId": "api_list_suppressed_domains_api_elein_inbound_suppressed_domains_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api List Suppressed Domains Api Elein Inbound Suppressed Domains Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/inbound/reschedule-ooo": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Reschedule Ooo",
+        "description": "Paranoia Layer 0, 1 & 2 (Phase 37):\nTimezone-aware OOO rescheduling endpoint.\n- Resolves recipient timezone from lead/campaign records.\n- Schedules next touch for next working morning (09:xx AM with working-hours jitter)\n  in recipient's local timezone.\n- Handles weekend rollover (Friday return rolls to Monday morning).\n- Clamps snooze horizon to [1, 90] days to prevent stalling.",
+        "operationId": "api_reschedule_ooo_api_elein_inbound_reschedule_ooo_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OOORescheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Reschedule Ooo Api Elein Inbound Reschedule Ooo Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -21325,6 +21481,35 @@
         ],
         "title": "ExtractIntentPayload"
       },
+      "ExtractReferralRequest": {
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "default": ""
+          },
+          "referring_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referring Email"
+          }
+        },
+        "type": "object",
+        "title": "ExtractReferralRequest"
+      },
       "FunnelLeadsRequest": {
         "properties": {
           "senders": {
@@ -22419,6 +22604,41 @@
           "enabled"
         ],
         "title": "NotificationPreferenceUpdate"
+      },
+      "OOORescheduleRequest": {
+        "properties": {
+          "lead_id": {
+            "type": "string",
+            "title": "Lead Id"
+          },
+          "return_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Date"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lead_id"
+        ],
+        "title": "OOORescheduleRequest"
       },
       "ObjectionPayload": {
         "properties": {
@@ -24679,6 +24899,31 @@
           "post_url"
         ],
         "title": "SubmitPostBoostPayload"
+      },
+      "SuppressDomainRequest": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "default": "Company-wide prospect opt-out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "title": "SuppressDomainRequest"
       },
       "SuppressionBulkRequest": {
         "properties": {

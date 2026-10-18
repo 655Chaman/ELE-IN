@@ -301,7 +301,12 @@ def sync_inbox_messages(supabase, workspace_id: str, account_id: str, messages: 
                         classify_inbound_sentiment_and_intent,
                         apply_inbound_sentiment_actions,
                     )
-                    classification = classify_inbound_sentiment_and_intent(clean_text, subject=m.get("subject"))
+                    sender_email = m.get("sender_email") or m.get("from_address") or m.get("email")
+                    classification = classify_inbound_sentiment_and_intent(
+                        clean_text,
+                        subject=m.get("subject"),
+                        referring_email=sender_email,
+                    )
                     m["intent"] = m.get("intent") or classification.get("intent")
                     m["intent_confidence"] = m.get("intent_confidence") or classification.get("confidence")
                     record["intent"] = m["intent"]
@@ -311,7 +316,14 @@ def sync_inbox_messages(supabase, workspace_id: str, account_id: str, messages: 
                     # for NEW messages, NOT for existing/re-synced historical messages!
                     if not is_existing and record.get("lead_id"):
                         try:
-                            apply_inbound_sentiment_actions(supabase, workspace_id, record["lead_id"], classification, campaign_id=record.get("campaign_id"))
+                            apply_inbound_sentiment_actions(
+                                supabase,
+                                workspace_id,
+                                record["lead_id"],
+                                classification,
+                                campaign_id=record.get("campaign_id"),
+                                text=clean_text,
+                            )
                         except Exception as act_err:
                             logger.debug(f"Could not apply inbound sentiment actions: {act_err}")
 

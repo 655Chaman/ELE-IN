@@ -187,10 +187,25 @@ def extract_ooo_return_date(
     }
 
 
+# =============================================================================
+# PHASE 37: ADVANCED INBOUND REFERRAL & SNOOZE SERVICE BRIDGES
+# =============================================================================
+from inbox.backend.services.referral_and_snooze_service import (
+    extract_referral_contact,
+    detect_company_wide_opt_out,
+    calculate_timezone_aware_ooo_snooze,
+    process_advanced_inbound_reply,
+    ReferralAndSnoozeService,
+)
+
+
 def classify_inbound_sentiment_and_intent(
     text: Optional[str],
     subject: Optional[str] = None,
     reference_date: Optional[datetime] = None,
+    lead: Optional[Dict[str, Any]] = None,
+    campaign: Optional[Dict[str, Any]] = None,
+    referring_email: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Paranoia Layer 0, 1 & 2: Classifies inbound email/LinkedIn messages into 7 distinct intents.
@@ -202,6 +217,11 @@ def classify_inbound_sentiment_and_intent(
     clean_subj = sanitize_inbound_text(subject)
     combined = f"{clean_subj} {clean_body}".strip().lower()
 
+    # Pre-evaluate company-wide opt-out and referral discovery
+    eff_email = referring_email or (lead.get("email") if isinstance(lead, dict) else None)
+    comp_opt = detect_company_wide_opt_out(clean_body or clean_subj, email=eff_email)
+    ref_contact = extract_referral_contact(clean_body or clean_subj, referring_email=eff_email)
+
     if not combined:
         return {
             "intent": INTENT_NEUTRAL_QUESTION,
@@ -211,6 +231,8 @@ def classify_inbound_sentiment_and_intent(
             "requires_human_attention": False,
             "auto_action": "none",
             "ooo_details": None,
+            "company_wide_opt_out": comp_opt,
+            "referral_details": None,
         }
 
     matched_rules: List[str] = []
@@ -228,6 +250,19 @@ def classify_inbound_sentiment_and_intent(
 
     if matched_rules:
         ooo_info = extract_ooo_return_date(clean_body or clean_subj, reference_date=reference_date)
+        if lead and isinstance(lead, dict):
+            try:
+                ooo_tz = calculate_timezone_aware_ooo_snooze(
+                    lead=lead,
+                    campaign=campaign,
+                    return_date_str=ooo_info.get("return_date"),
+                    reference_date=reference_date,
+                )
+                ooo_info["timezone_aware_snooze"] = ooo_tz
+                ooo_info["snooze_until_iso"] = ooo_tz.get("snooze_until_iso")
+            except Exception as tz_err:
+                logger.debug(f"[SentimentClassifier] Timezone OOO snooze fallback: {tz_err}")
+
         return {
             "intent": INTENT_OUT_OF_OFFICE,
             "confidence": 0.95,
@@ -237,9 +272,24 @@ def classify_inbound_sentiment_and_intent(
             "auto_action": "snooze_sequence",
             "ooo_details": ooo_info,
             "ooo_data": ooo_info,
+            "company_wide_opt_out": comp_opt,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
         }
 
-    # 2. NOT INTERESTED / UNSUBSCRIBE / PASSIVE-AGGRESSIVE SARCASM CHECK (Highest priority to protect sender reputation)
+    # 2. NOT INTERESTED / UNSUBSCRIBE / PASSIVE-AGGRESSIVE SARCASM / COMPANY-WIDE OPT-OUT CHECK
+    if comp_opt.get("is_company_wide"):
+        return {
+            "intent": INTENT_NOT_INTERESTED,
+            "confidence": 0.99,
+            "sentiment": "negative",
+            "matched_rules": [f"company_wide_opt_out:{comp_opt.get('matched_phrase')}"],
+            "requires_human_attention": False,
+            "auto_action": "suppress_entire_domain",
+            "company_wide_opt_out": comp_opt,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
+            "ooo_details": None,
+        }
+
     neg_sarcasm_patterns = [
         r"\b(?:yeah\s+right|brilliant\s+idea|nice\s+try|sure\s+thing\s+buddy)\b.*\b(?:never|don't|unsubscribe|stop)\b",
         r"\b(?:take\s+me\s+off|remove\s+me|unsubscribe|do\s+not\s+contact|stop\s+(?:emailing|messaging)|spam)\b",
@@ -259,6 +309,8 @@ def classify_inbound_sentiment_and_intent(
             "requires_human_attention": False,
             "auto_action": "unsubscribe_and_halt_campaign",
             "ooo_details": None,
+            "company_wide_opt_out": comp_opt,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
         }
 
     # 3. MEETING REQUESTED (Calendar link, timeslot proposals)
@@ -281,6 +333,8 @@ def classify_inbound_sentiment_and_intent(
             "requires_human_attention": True,
             "auto_action": "pause_sequence_and_alert_sales",
             "ooo_details": None,
+            "company_wide_opt_out": comp_opt,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
         }
 
     # 4. WRONG CONTACT / REFERRAL CHECK
@@ -293,15 +347,21 @@ def classify_inbound_sentiment_and_intent(
         if re.search(pat, combined):
             matched_rules.append(f"wrong_contact:{pat}")
 
+    if ref_contact.get("has_referral") and ref_contact.get("is_valid_referral"):
+        matched_rules.append(f"referral_discovered:{ref_contact.get('referral_email')}")
+
     if matched_rules:
+        ref_conf = ref_contact.get("confidence", 0.88) if ref_contact.get("is_valid_referral") else 0.88
         return {
             "intent": INTENT_WRONG_CONTACT,
-            "confidence": 0.88,
+            "confidence": max(0.88, ref_conf),
             "sentiment": "neutral",
             "matched_rules": matched_rules,
             "requires_human_attention": True,
             "auto_action": "flag_referral",
             "ooo_details": None,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
+            "company_wide_opt_out": comp_opt,
         }
 
     # 5. POSITIVE INTEREST CHECK
@@ -324,6 +384,8 @@ def classify_inbound_sentiment_and_intent(
             "requires_human_attention": True,
             "auto_action": "pause_sequence_and_alert_sales",
             "ooo_details": None,
+            "company_wide_opt_out": comp_opt,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
         }
 
     # 6. OBJECTION PUSHBACK CHECK (Leveraging objection categories)
@@ -343,6 +405,8 @@ def classify_inbound_sentiment_and_intent(
             "requires_human_attention": True,
             "auto_action": "generate_objection_battlecard",
             "ooo_details": None,
+            "company_wide_opt_out": comp_opt,
+            "referral_details": ref_contact if ref_contact.get("has_referral") else None,
         }
 
     # 7. DEFAULT: NEUTRAL QUESTION OR INQUIRY
@@ -354,6 +418,8 @@ def classify_inbound_sentiment_and_intent(
         "requires_human_attention": True,
         "auto_action": "notify_inbox",
         "ooo_details": None,
+        "company_wide_opt_out": comp_opt,
+        "referral_details": ref_contact if ref_contact.get("has_referral") else None,
     }
 
 
@@ -361,31 +427,85 @@ def snooze_campaign_for_ooo_lead(
     supabase: Optional[Any],
     workspace_id: str,
     lead_id: str,
-    snooze_until: str,
+    snooze_until: Optional[str] = None,
     return_date_str: Optional[str] = None,
+    campaign: Optional[Dict[str, Any]] = None,
+    campaign_id: Optional[str] = None,
+    lead: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Paranoia Layer 0 & 1: Autonomous OOO Snooze & Reschedule Engine.
-    - Sets campaign_execution_states to 'snoozed_ooo' and updates next_run_at to snooze_until.
+    Paranoia Layer 0, 1 & 2 (Phase 37):
+    Autonomous Timezone-Aware OOO Snooze & Reschedule Engine.
+    - Fetches recipient lead record to extract location/timezone.
+    - Calls calculate_timezone_aware_ooo_snooze(lead, campaign, return_date_str=...)
+      so the sequence snoozes until 09:xx AM in the recipient's local timezone with jitter,
+      weekend rollover, and [1, 90] day horizon clamping.
+    - Sets campaign_execution_states to 'snoozed_ooo' and updates next_run_at.
     - Updates leads table status to 'SNOOZED_OOO' with ooo_return_date metadata.
-    - Emits an informational outbox alert.
     """
-    if not workspace_id or not lead_id or not snooze_until:
-        raise ValueError("workspace_id, lead_id, and snooze_until are required")
+    if not workspace_id or not lead_id:
+        raise ValueError("workspace_id and lead_id are required")
 
     clean_ws = str(workspace_id).strip()
     clean_lead = str(lead_id).strip()
 
+    # 1. Fetch lead record if not passed in
+    lead_rec: Dict[str, Any] = lead if isinstance(lead, dict) else {"id": clean_lead, "workspace_id": clean_ws}
+    if supabase and (not lead or not isinstance(lead, dict) or not lead.get("timezone")):
+        try:
+            l_res = (
+                supabase.table("leads")
+                .select("*")
+                .eq("id", clean_lead)
+                .eq("workspace_id", clean_ws)
+                .execute()
+            )
+            l_rows = getattr(l_res, "data", None)
+            if isinstance(l_rows, list) and len(l_rows) > 0 and isinstance(l_rows[0], dict):
+                lead_rec = l_rows[0]
+        except Exception as exc:
+            logger.debug(f"[OOOSnooze] Lead fetch notice: {exc}")
+
+    # 2. Fetch campaign if campaign_id is provided and campaign not passed
+    campaign_rec: Dict[str, Any] = campaign or {}
+    if not campaign_rec and campaign_id and supabase:
+        try:
+            c_res = (
+                supabase.table("campaigns")
+                .select("*")
+                .eq("id", str(campaign_id).strip())
+                .eq("workspace_id", clean_ws)
+                .execute()
+            )
+            c_rows = getattr(c_res, "data", None)
+            if isinstance(c_rows, list) and len(c_rows) > 0 and isinstance(c_rows[0], dict):
+                campaign_rec = c_rows[0]
+        except Exception as exc:
+            logger.debug(f"[OOOSnooze] Campaign fetch notice: {exc}")
+
+    # 3. Calculate timezone-aware OOO snooze
+    tz_snooze = calculate_timezone_aware_ooo_snooze(
+        lead=lead_rec,
+        campaign=campaign_rec,
+        return_date_str=return_date_str,
+    )
+
+    target_snooze_until = snooze_until or tz_snooze.get("snooze_until_iso") or (
+        datetime.now(timezone.utc) + timedelta(days=7)
+    ).isoformat()
+    target_return_date = return_date_str or tz_snooze.get("return_date")
+
     updates_made = 0
     if supabase:
+        now_iso = datetime.now(timezone.utc).isoformat()
         try:
             # 1. Update leads table
             lead_up = {
                 "status": "SNOOZED_OOO",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": now_iso,
             }
-            if return_date_str:
-                lead_up["ooo_return_date"] = return_date_str
+            if target_return_date:
+                lead_up["ooo_return_date"] = target_return_date
             supabase.table("leads").update(lead_up).eq("id", clean_lead).eq(
                 "workspace_id", clean_ws
             ).execute()
@@ -403,15 +523,17 @@ def snooze_campaign_for_ooo_lead(
                 .execute()
             )
             data = getattr(states_res, "data", []) or []
-            for st in data:
-                st_id = st.get("id")
-                if st_id:
-                    supabase.table("campaign_execution_states").update({
-                        "status": "snoozed_ooo",
-                        "next_run_at": snooze_until,
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                    }).eq("id", st_id).execute()
-                    updates_made += 1
+            if isinstance(data, list):
+                for st in data:
+                    if isinstance(st, dict):
+                        st_id = st.get("id")
+                        if st_id:
+                            supabase.table("campaign_execution_states").update({
+                                "status": "snoozed_ooo",
+                                "next_run_at": target_snooze_until,
+                                "updated_at": now_iso,
+                            }).eq("id", st_id).execute()
+                            updates_made += 1
         except Exception as exc:
             logger.debug(f"[OOOSnooze] Execution states snooze fallback: {exc}")
 
@@ -419,9 +541,13 @@ def snooze_campaign_for_ooo_lead(
         "status": "snoozed",
         "lead_id": clean_lead,
         "workspace_id": clean_ws,
-        "snoozed_until": snooze_until,
-        "return_date": return_date_str,
+        "snoozed_until": target_snooze_until,
+        "snooze_until_iso": target_snooze_until,
+        "return_date": target_return_date,
         "states_snoozed_count": updates_made,
+        "target_timezone": tz_snooze.get("target_timezone"),
+        "next_run_local": tz_snooze.get("next_run_local"),
+        "timezone_details": tz_snooze,
     }
 
 
@@ -431,12 +557,14 @@ def apply_inbound_sentiment_actions(
     lead_id: str,
     classification: Dict[str, Any],
     campaign_id: Optional[str] = None,
+    text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Paranoia Layer 0, 1 & 2: Autonomous Intent Action Dispatcher.
+    Paranoia Layer 0, 1 & 2 (Phase 37): Autonomous Intent Action Dispatcher.
     - POSITIVE_INTEREST / MEETING_REQUESTED: Pauses campaign sequence to stop cold spam, marks lead INTERESTED.
-    - NOT_INTERESTED: Halts sequence, marks lead UNSUBSCRIBED, adds to suppression list.
-    - OUT_OF_OFFICE: Executes snooze_campaign_for_ooo_lead.
+    - NOT_INTERESTED / COMPANY_WIDE_OPT_OUT: Halts sequence, unsubscribes and cascades suppression across corporate domain.
+    - OUT_OF_OFFICE: Executes timezone-aware snooze_campaign_for_ooo_lead.
+    - REFERRAL_DISCOVERED: Ingests new lead tagged with referral_source_lead_id and dispatches alert notification.
     """
     if not workspace_id or not lead_id:
         raise ValueError("workspace_id and lead_id are required")
@@ -444,9 +572,182 @@ def apply_inbound_sentiment_actions(
     intent = classification.get("intent")
     clean_ws = str(workspace_id).strip()
     clean_lead = str(lead_id).strip()
+    inbound_text = text or classification.get("raw_text") or ""
+    if not inbound_text:
+        ref_det = classification.get("referral_details") or {}
+        inbound_text = ref_det.get("raw_snippet") or ""
 
     action_summary = {"lead_id": clean_lead, "intent": intent, "action_taken": "none"}
 
+    # Fetch lead record for email and metadata
+    lead: Dict[str, Any] = {"id": clean_lead, "workspace_id": clean_ws}
+    if supabase:
+        try:
+            l_res = (
+                supabase.table("leads")
+                .select("*")
+                .eq("id", clean_lead)
+                .eq("workspace_id", clean_ws)
+                .execute()
+            )
+            l_data = getattr(l_res, "data", None)
+            if isinstance(l_data, list) and len(l_data) > 0 and isinstance(l_data[0], dict):
+                lead = l_data[0]
+        except Exception as exc:
+            logger.debug(f"[IntentAction] Lead lookup fallback: {exc}")
+
+    lead_email = lead.get("email")
+
+    # -------------------------------------------------------------------------
+    # 1. COMPANY-WIDE DOMAIN OPT-OUT CASCADE
+    # -------------------------------------------------------------------------
+    comp_opt = classification.get("company_wide_opt_out")
+    if not comp_opt or not comp_opt.get("is_company_wide"):
+        comp_opt = detect_company_wide_opt_out(inbound_text, email=lead_email)
+
+    if comp_opt.get("is_company_wide") and comp_opt.get("domain"):
+        corp_domain = comp_opt["domain"]
+        now_iso = datetime.now(timezone.utc).isoformat()
+        matched_lead_ids: List[str] = []
+        states_halted = 0
+
+        if supabase:
+            # 1. Insert into suppression_list (DNC table)
+            try:
+                supabase.table("suppression_list").insert({
+                    "workspace_id": clean_ws,
+                    "domain": corp_domain,
+                    "value": corp_domain,
+                    "reason": "Company-wide prospect opt-out",
+                    "created_at": now_iso,
+                }).execute()
+            except Exception as dnc_err:
+                logger.debug(f"[IntentAction] Suppression insert notice: {dnc_err}")
+
+            # 2. Try inserting into workspace_domain_suppressions
+            try:
+                supabase.table("workspace_domain_suppressions").insert({
+                    "workspace_id": clean_ws,
+                    "domain": corp_domain,
+                    "reason": "Company-wide prospect opt-out",
+                    "source_lead_id": clean_lead,
+                    "created_at": now_iso,
+                }).execute()
+            except Exception:
+                pass
+
+            # 3. Company-wide cascade across all leads sharing that corporate domain
+            try:
+                leads_res = (
+                    supabase.table("leads")
+                    .select("id, email")
+                    .eq("workspace_id", clean_ws)
+                    .execute()
+                )
+                all_ws_leads = getattr(leads_res, "data", []) or []
+                if isinstance(all_ws_leads, list):
+                    for l_row in all_ws_leads:
+                        if isinstance(l_row, dict) and l_row.get("id"):
+                            em = str(l_row.get("email") or "").strip().lower()
+                            if "@" in em and em.rsplit("@", 1)[-1].strip() == corp_domain:
+                                matched_lead_ids.append(l_row["id"])
+
+                if not matched_lead_ids and clean_lead:
+                    matched_lead_ids = [clean_lead]
+
+                if matched_lead_ids:
+                    # Update all matching leads to status="UNSUBSCRIBED"
+                    supabase.table("leads").update({
+                        "status": "UNSUBSCRIBED",
+                        "updated_at": now_iso,
+                    }).eq("workspace_id", clean_ws).in_("id", matched_lead_ids).execute()
+
+                    # Update all active execution states for that root domain to status="unsubscribed"
+                    upd_states = (
+                        supabase.table("campaign_execution_states")
+                        .update({
+                            "status": "unsubscribed",
+                            "updated_at": now_iso,
+                        })
+                        .eq("workspace_id", clean_ws)
+                        .in_("opportunity_id", matched_lead_ids)
+                        .execute()
+                    )
+                    states_halted = len(getattr(upd_states, "data", []) or matched_lead_ids)
+            except Exception as cascade_err:
+                logger.debug(f"[IntentAction] Cascade error: {cascade_err}")
+
+        return {
+            "lead_id": clean_lead,
+            "intent": INTENT_NOT_INTERESTED,
+            "action_taken": "company_wide_domain_suppressed",
+            "domain": corp_domain,
+            "company_wide_opt_out": comp_opt,
+            "cascaded_leads_count": len(matched_lead_ids),
+            "states_halted_count": states_halted,
+        }
+
+    # -------------------------------------------------------------------------
+    # 2. REFERRAL CONTACT DISCOVERY & AUTO-INGESTION
+    # -------------------------------------------------------------------------
+    ref_details = classification.get("referral_details")
+    if not ref_details and (intent == INTENT_WRONG_CONTACT or any(p in inbound_text.lower() for p in ["reach out to", "speak with", "talk to", "contact", "email", "try"])):
+        try:
+            ref_details = extract_referral_contact(inbound_text, referring_email=lead_email)
+        except Exception as ref_exc:
+            logger.debug(f"[IntentAction] Referral extraction fallback: {ref_exc}")
+
+    new_lead_id = None
+    existing_id = None
+    if ref_details and ref_details.get("has_referral") and ref_details.get("is_valid_referral"):
+        ref_email = ref_details.get("referral_email")
+        if ref_email and supabase:
+            adv_res = process_advanced_inbound_reply(
+                supabase=supabase,
+                workspace_id=clean_ws,
+                lead_id=clean_lead,
+                text=ref_details.get("raw_snippet") or inbound_text,
+                campaign_id=campaign_id,
+            )
+            new_lead_id = adv_res.get("new_lead_id")
+            for act in adv_res.get("actions_taken", []):
+                if act.startswith("referral_already_exists:"):
+                    existing_id = act.split(":", 1)[1]
+
+            # Dispatch alert notification: "New Referral Discovered: {referral_email} from {lead.get('email')}"
+            try:
+                from core.backend.services.notification_service import dispatch_notification
+                referring_disp = lead_email or "prospect"
+                notif_title = f"New Referral Discovered: {ref_email} from {referring_disp}"
+                dispatch_notification(
+                    svc=supabase,
+                    workspace_id=clean_ws,
+                    event_type="new_referral_discovered",
+                    payload={
+                        "title": notif_title,
+                        "body": notif_title,
+                        "referral_email": ref_email,
+                        "referring_email": referring_disp,
+                        "referral_source_lead_id": clean_lead,
+                        "new_lead_id": new_lead_id or existing_id,
+                        "campaign_id": campaign_id,
+                    }
+                )
+            except Exception as notif_err:
+                logger.debug(f"[IntentAction] Notification dispatch fallback: {notif_err}")
+
+        if intent == INTENT_WRONG_CONTACT:
+            return {
+                "lead_id": clean_lead,
+                "intent": INTENT_WRONG_CONTACT,
+                "action_taken": "referral_created_and_alerted",
+                "referral_details": ref_details,
+                "new_lead_id": new_lead_id or existing_id,
+            }
+
+    # -------------------------------------------------------------------------
+    # 3. EXISTING INTENT ROUTING
+    # -------------------------------------------------------------------------
     if intent in (INTENT_MEETING_REQUESTED, INTENT_POSITIVE_INTEREST):
         if supabase:
             try:
@@ -482,18 +783,23 @@ def apply_inbound_sentiment_actions(
         action_summary["action_taken"] = "unsubscribed_halted_sequence"
 
     elif intent == INTENT_OUT_OF_OFFICE:
-        ooo_info = classification.get("ooo_details") or extract_ooo_return_date("")
-        snooze_until = ooo_info.get("snooze_until_iso") or (
-            datetime.now(timezone.utc) + timedelta(days=7)
-        ).isoformat()
+        ooo_info = classification.get("ooo_details") or extract_ooo_return_date(inbound_text)
+        return_date_str = ooo_info.get("return_date")
+        snooze_until = ooo_info.get("snooze_until_iso")
         snooze_res = snooze_campaign_for_ooo_lead(
             supabase=supabase,
             workspace_id=clean_ws,
             lead_id=clean_lead,
             snooze_until=snooze_until,
-            return_date_str=ooo_info.get("return_date"),
+            return_date_str=return_date_str,
+            campaign_id=campaign_id,
+            lead=lead,
         )
         action_summary["action_taken"] = "snoozed_ooo"
         action_summary["snooze_details"] = snooze_res
 
+    elif intent == INTENT_WRONG_CONTACT:
+        action_summary["action_taken"] = "flagged_referral"
+
     return action_summary
+

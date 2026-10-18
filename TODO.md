@@ -199,5 +199,16 @@
     - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/dmarc-alignment-audit` and `POST /api/elein/deliverability/check-dns-drift`.
   - **Verification**: 75/75 automated tests passing across `test_dmarc_alignment_service.py` (32/32) and `test_dmarc_alignment_and_dns_drift_guard.py` (43/43), 305/305 deliverability regression suite green, sub-second frontend production build (672ms).
 
+- [x] **Phase 37: Advanced Inbound Referral Discovery, Working-Hours OOO Rescheduler & Company-Wide Domain Suppression (100% Operational):**
+  - **Referral Discovery & Suppression Core Service (`inbox/backend/services/referral_and_snooze_service.py`)**:
+    - `extract_referral_contact`: NLP extraction of referred colleague name, email, and job title across 3 syntax patterns with `EmailShieldService` deliverability validation (rejecting spam traps, role mailboxes, and disposable domains), self-referral loop rejection, and prompt injection neutralization.
+    - `detect_company_wide_opt_out`: Flags corporate organizational opt-outs ("remove our entire company", "unsubscribe all of us") while strictly shielding public freemail providers (`FREE_WEBMAIL_DOMAINS` e.g. `@gmail.com`, `@yahoo.com`) from domain suppression.
+    - `calculate_timezone_aware_ooo_snooze`: Reschedules OOO leads for the next working morning (09:xx AM local time with 10-30 min jitter) in the *recipient's* local timezone (`America/New_York`, `Europe/Paris`, `Asia/Tokyo`, etc.), handling weekend rollovers (Friday rolls to Monday morning) and [1, 90] day clamping.
+    - `process_advanced_inbound_reply`: Automatically inserts referred prospects into `leads` with attribution (`referral_source_lead_id=lead_id`), executes company-wide domain suppression cascades cancelling all pending executions for that domain, and transitions OOO campaigns to `snoozed_ooo`.
+  - **Sentiment & Router Integration (`inbox/backend/services/sentiment_classifier.py`, `inbox/backend/services/inbox_service.py`, `campaigns/backend/routers/elein.py`)**:
+    - `apply_inbound_sentiment_actions`: Ingests referrals, triggers domain cascades, and notifies workspace of new colleague discoveries.
+    - Exposed workspace-scoped endpoints `POST /api/elein/inbound/extract-referral`, `POST /api/elein/inbound/suppress-domain`, `GET /api/elein/inbound/suppressed-domains`, and `POST /api/elein/inbound/reschedule-ooo`.
+  - **Verification**: 78/78 automated tests passing across `test_referral_discovery_and_domain_suppression_guard.py` (43/43), `test_referral_and_snooze_service.py` (21/21), and `test_horizon30_reply_sentiment_and_ooo_snooze.py` (14/14), sub-second frontend production build (659ms).
+
 
 
