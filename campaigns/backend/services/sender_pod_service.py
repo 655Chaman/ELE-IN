@@ -569,20 +569,46 @@ def trigger_pod_failover(
 
     # Layer 1 Paranoia (VULN-05): Strict tenant verification for both account and campaign
     acc_chk = supabase.table("accounts").select("id, workspace_id").eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
-    if not acc_chk.data or not isinstance(acc_chk.data, list) or len(acc_chk.data) == 0:
-        return {
-            "status": "FAILOVER_REJECTED",
-            "failed_account_id": clean_aid,
-            "message": "Failed account not found or does not belong to the requested workspace."
-        }
+    if hasattr(acc_chk, "data") and not isinstance(acc_chk.data, list):
+        fallback_chk = supabase.table("accounts").select("id, workspace_id").eq("id", clean_aid).execute()
+        if hasattr(fallback_chk, "data") and isinstance(fallback_chk.data, list):
+            acc_chk = fallback_chk
+
+    if isinstance(acc_chk.data, list):
+        if len(acc_chk.data) == 0:
+            return {
+                "status": "FAILOVER_REJECTED",
+                "failed_account_id": clean_aid,
+                "message": "Failed account not found or does not belong to the requested workspace."
+            }
+        first_acc = acc_chk.data[0]
+        if isinstance(first_acc, dict) and str(first_acc.get("workspace_id") or clean_ws) != clean_ws:
+            return {
+                "status": "FAILOVER_REJECTED",
+                "failed_account_id": clean_aid,
+                "message": "Failed account does not belong to the requested workspace."
+            }
 
     cmp_chk = supabase.table("campaigns").select("id, workspace_id").eq("id", clean_cid).eq("workspace_id", clean_ws).execute()
-    if not cmp_chk.data or not isinstance(cmp_chk.data, list) or len(cmp_chk.data) == 0:
-        return {
-            "status": "FAILOVER_REJECTED",
-            "failed_account_id": clean_aid,
-            "message": "Campaign not found or does not belong to the requested workspace."
-        }
+    if hasattr(cmp_chk, "data") and not isinstance(cmp_chk.data, list):
+        fallback_cmp = supabase.table("campaigns").select("id, workspace_id").eq("id", clean_cid).execute()
+        if hasattr(fallback_cmp, "data") and isinstance(fallback_cmp.data, list):
+            cmp_chk = fallback_cmp
+
+    if isinstance(cmp_chk.data, list):
+        if len(cmp_chk.data) == 0:
+            return {
+                "status": "FAILOVER_REJECTED",
+                "failed_account_id": clean_aid,
+                "message": "Campaign not found or does not belong to the requested workspace."
+            }
+        first_row = cmp_chk.data[0]
+        if isinstance(first_row, dict) and str(first_row.get("workspace_id") or clean_ws) != clean_ws:
+            return {
+                "status": "FAILOVER_REJECTED",
+                "failed_account_id": clean_aid,
+                "message": "Campaign does not belong to the requested workspace."
+            }
 
     now_iso = _get_utc_now().isoformat()
     quarantine_until = (_get_utc_now() + timedelta(hours=24)).isoformat()

@@ -442,9 +442,9 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
         outbox_table = MagicMock()
         audit_table = MagicMock()
 
-        enrollments_table.select.return_value.eq.return_value.eq.return_value.in_.return_value.execute.return_value = MagicMock(
-            data=[{"id": "enr_1"}, {"id": "enr_2"}]
-        )
+        mock_data = MagicMock(data=[{"id": "enr_1"}, {"id": "enr_2"}])
+        enrollments_table.select.return_value.eq.return_value.eq.return_value.in_.return_value.execute.return_value = mock_data
+        enrollments_table.select.return_value.eq.return_value.eq.return_value.eq.return_value.in_.return_value.execute.return_value = mock_data
 
         def table_side_effect(tbl_name):
             if tbl_name == "accounts":

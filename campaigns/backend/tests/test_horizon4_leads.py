@@ -136,7 +136,7 @@ class TestHorizon4LeadsAndDeduplication(unittest.TestCase):
         mock_supabase.rpc.assert_called_with("bulk_import_leads", {
             "p_list_id": res["list_id"],
             "p_workspace_id": "ws_dedupe_test",
-            "p_leads": [{"linkedin_url": "https://www.linkedin.com/in/johndoe"}],
+            "p_leads": [{"linkedin_url": "https://www.linkedin.com/in/johndoe", "timezone": "UTC"}],
             "p_timezone": "UTC"
         })
 

@@ -109,7 +109,7 @@ class TestCampaignLifecycleAndCascadeCleanup(unittest.TestCase):
         })
         state_tbl.update_builder.in_.assert_has_calls([
             call("enrollment_id", ["enr_1", "enr_2"]),
-            call("status", ["pending", "waiting_for_reply"])
+            call("status", ["pending", "waiting_for_reply", "running", "processing"])
         ], any_order=True)
 
     def test_pause_campaign_not_found_raises_404(self):
@@ -163,7 +163,7 @@ class TestCampaignLifecycleAndCascadeCleanup(unittest.TestCase):
         })
         state_tbl.update_builder.in_.assert_has_calls([
             call("enrollment_id", ["enr_1", "enr_2", "enr_3"]),
-            call("status", ["pending", "waiting_for_reply"])
+            call("status", ["pending", "waiting_for_reply", "running", "processing"])
         ], any_order=True)
 
     def test_pause_all_campaigns_no_active_campaigns(self):

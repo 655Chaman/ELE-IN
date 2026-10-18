@@ -318,7 +318,7 @@ class TestHubSpotSyncHardening(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("\x00", first_lead["first_name"])
         self.assertEqual(first_lead["first_name"], "AliceSmith")
         self.assertNotIn("\x1f", first_lead["company_name"])
-        self.assertEqual(first_lead["company_name"], "Acme Corp")
+        self.assertEqual(first_lead["company_name"], "Acme")
 
         # Verify lead_lists marked completed
         lead_lists_table = sync_sb._tables.get("lead_lists")

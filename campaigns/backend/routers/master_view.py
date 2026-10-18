@@ -990,11 +990,60 @@ def get_master_view_stats(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[MasterView] Database error in get_master_view_stats: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Database error retrieving master view statistics. Please try again."
-        )
+        logger.error(f"[MasterView] Database error fallback: {e}", exc_info=True)
+        return {
+            "summary": {
+                "total_leads": 0,
+                "active_campaigns": 0,
+                "total_campaigns": 0,
+                "account_health": "Healthy",
+                "total_accounts": 0,
+                "throttled_accounts": 0,
+                "positive_sentiment": 0,
+                "auto_withdrawals": 0,
+                "api_syncs": 0,
+                "connections_today": 0,
+                "messages_today": 0,
+                "inmails_today": 0
+            },
+            "today": {
+                "connections_sent": 0,
+                "messages_sent": 0,
+                "steps_executed": 0
+            },
+            "funnel": {
+                "extracted": 0,
+                "enrolled": 0,
+                "connected": 0,
+                "replied": 0,
+                "booked": 0,
+                "failed": 0
+            },
+            "time_series": [],
+            "heatmap_data": [],
+            "time_of_day_data": [],
+            "multi_campaign_data": [],
+            "multi_campaign_labels": [],
+            "campaigns": [],
+            "sender_accounts": [],
+            "accounts": [],
+            "ai_insight": "Connect your first LinkedIn sender and launch an outreach campaign to view live performance radar telemetry.",
+            "lead_sources": [],
+            "radar_stats": {
+                "Acceptance Rate": 0.0,
+                "Reply Rate": 0.0,
+                "Booking Rate": 0.0,
+                "Sentiment (Pos)": 0.0,
+                "Deliverability": 100.0,
+                "Bounces": 0.0
+            },
+            "live_feed": [],
+            "error_feed": [],
+            "live_feed_error": True,
+            "last_rolled_up_at": None,
+            "historical_capped": False,
+            "degraded": True
+        }
 
 
 @router.post("/api/master-view/stats/export/pdf")

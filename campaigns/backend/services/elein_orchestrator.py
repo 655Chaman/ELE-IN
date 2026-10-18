@@ -611,11 +611,11 @@ class EleInOrchestrator:
             self._credit_cache[workspace_id] = (now, has_credits)
             return has_credits
         except Exception as e:
-            logger.error(f"[CreditPreflight] Credit check failed for {workspace_id}: {e} — failing closed", exc_info=True)
-            # Paranoia Layer 1: If we have a previously cached verdict, honor it; otherwise fail closed (False)
+            logger.error(f"[CreditPreflight] Credit check failed for {workspace_id}: {e} — failing open to avoid blocking campaigns", exc_info=True)
+            # Paranoia Layer 1: If we have a previously cached verdict, honor it; otherwise fail open (True) to prevent DB timeout from blocking campaigns
             if workspace_id in self._credit_cache:
                 return self._credit_cache[workspace_id][1]
-            return False
+            return True
 
     def requeue_waiting_for_reply_leads(self):
         """
@@ -1166,11 +1166,6 @@ class EleInOrchestrator:
                     continue
                 
                 lead = leads_map.get(enrollment["lead_id"], {})
-                from campaigns.backend.services.timezone_utils import (
-                    resolve_target_timezone,
-                    calculate_next_run_at,
-                    calculate_next_run_with_jitter,
-                )
                 import pytz
                 
                 tz_str = resolve_target_timezone(campaign, lead)
@@ -2462,8 +2457,8 @@ class EleInOrchestrator:
         if next_run_at and enforce_working_hours:
             from campaigns.backend.services.sto_service import should_use_sto, calculate_sto_next_run
             # ENG-08 Paranoia Layer 1: Apply STO strictly when explicitly requested (use_sto=True)
-            # and enabled in schedule. Never inflate tactical delay nodes or jitter transitions with STO windows.
-            if use_sto and should_use_sto(schedule=schedule):
+            # or when configured in schedule. Never inflate tactical delay nodes or jitter transitions with STO windows.
+            if use_sto or (use_sto is not False and should_use_sto(schedule=schedule)):
                 next_run_at = calculate_sto_next_run(next_run_at, tz_str, lead_id=lead_id, schedule=schedule, supabase=self.supabase).replace(tzinfo=None)
             else:
                 next_run_at = adjust_to_working_hours(next_run_at, tz_str, schedule=schedule)

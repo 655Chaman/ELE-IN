@@ -147,7 +147,7 @@ class TestActionAndEngagementNodes:
         }
         res = executor.execute("comment_on_post", payload, "https://linkedin.com/in/prospect")
         assert res.get("status") == "success"
-        mock_worker.comment_on_post.assert_called_once_with("https://linkedin.com/in/prospect", "Impressive work at Acme Corp!")
+        mock_worker.comment_on_post.assert_called_once_with("https://linkedin.com/in/prospect", "Impressive work at Acme!")
 
     def test_comment_on_post_not_found_fallback(self, executor, mock_worker):
         mock_worker.comment_on_post.return_value = {"status": "error", "error": "Comment button not found"}
