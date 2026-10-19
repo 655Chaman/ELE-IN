@@ -32,6 +32,11 @@ from integrations.backend.services.esp_webhook_processor import (
     ESPProvider,
     WebhookEventType,
 )
+from integrations.backend.services.linkedin_invitation_manager import (
+    LinkedInInvitationManager,
+    AccountHealthRisk,
+    CooldownReason,
+)
 
 
 from fastapi import Request
@@ -8305,3 +8310,192 @@ def api_evaluate_campaign_circuit_breaker(
         res["campaign_id"] = req.campaign_id
     return res
 
+
+
+# =============================================================================
+# Phase 41 — LinkedIn Pending Invitation GC & Algorithmic Safety Cooldown
+# =============================================================================
+
+class PendingInvitationsAuditRequest(BaseModel):
+    account_id: str
+    pending_invitations: Optional[List[Dict[str, Any]]] = None
+    pending_count: Optional[int] = None
+
+class WithdrawStaleInvitationsRequest(BaseModel):
+    account_id: str
+    max_age_days: int = 21
+    batch_limit: int = 25
+    pending_invitations: Optional[List[Dict[str, Any]]] = None
+
+class SetAccountCooldownRequest(BaseModel):
+    account_id: str
+    reason: str = "HIGH_PENDING_CEILING"
+    duration_hours: int = 48
+
+class AccountCooldownStatusRequest(BaseModel):
+    account_id: str
+    cooldown_until: Optional[str] = None
+    is_in_cooldown: Optional[bool] = None
+    in_cooldown: Optional[bool] = None
+    cooldown_reason: Optional[str] = None
+
+
+@router.post("/linkedin/pending-invitations/audit", response_model=dict)
+def api_linkedin_pending_invitations_audit(
+    req: PendingInvitationsAuditRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase 41 — Audit LinkedIn pending invitations and evaluate account health.
+    Workspace-scoped: verifies account belongs to this workspace before auditing.
+    """
+    account_id = (req.account_id or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=422, detail="account_id must not be empty")
+
+    # Workspace ownership check
+    if db:
+        try:
+            acc_res = db.table("accounts").select("id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            if not getattr(acc_res, "data", None):
+                raise HTTPException(status_code=404, detail="Account not found in workspace")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"[PendingInvitationsAudit] workspace check fallback: {e}")
+
+    pending_count = req.pending_count or len(req.pending_invitations or [])
+    account_health = LinkedInInvitationManager.evaluate_account_connection_health(pending_count)
+
+    stale = []
+    if req.pending_invitations:
+        stale = LinkedInInvitationManager.filter_stale_invitations(req.pending_invitations, max_age_days=21)
+
+    return {
+        "account_id": account_id,
+        "workspace_id": workspace_id,
+        "pending_count": pending_count,
+        "account_health": account_health,
+        "stale_count": len(stale),
+        "stale_invitations": stale,
+    }
+
+
+@router.post("/linkedin/pending-invitations/withdraw-stale", response_model=dict)
+def api_linkedin_withdraw_stale_invitations(
+    req: WithdrawStaleInvitationsRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase 41 — Withdraw stale LinkedIn pending invitations in a safe bounded batch.
+    Enforces LinkedIn 3-Week Rule: stamps 21-day cooldown on withdrawn leads.
+    """
+    account_id = (req.account_id or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=422, detail="account_id must not be empty")
+
+    # Workspace ownership check
+    if db:
+        try:
+            acc_res = db.table("accounts").select("id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            if not getattr(acc_res, "data", None):
+                raise HTTPException(status_code=404, detail="Account not found in workspace")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"[WithdrawStale] workspace check fallback: {e}")
+
+    account = {"id": account_id, "workspace_id": workspace_id}
+    result = LinkedInInvitationManager.withdraw_stale_invitations(
+        account=account,
+        max_age_days=req.max_age_days,
+        batch_limit=req.batch_limit,
+        mock_invitations=req.pending_invitations,
+        supabase=db,
+    )
+    result["workspace_id"] = workspace_id
+    return result
+
+
+@router.post("/linkedin/account-cooldown/set", response_model=dict)
+def api_linkedin_set_account_cooldown(
+    req: SetAccountCooldownRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase 41 — Trigger an algorithmic safety cooldown on a LinkedIn account.
+    Workspace-scoped: verifies account belongs to this workspace.
+    """
+    account_id = (req.account_id or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=422, detail="account_id must not be empty")
+
+    # Workspace ownership check
+    if db:
+        try:
+            acc_res = db.table("accounts").select("id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            if not getattr(acc_res, "data", None):
+                raise HTTPException(status_code=404, detail="Account not found in workspace")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"[SetCooldown] workspace check fallback: {e}")
+
+    result = LinkedInInvitationManager.trigger_account_cooldown(
+        account_id=account_id,
+        reason=req.reason,
+        duration_hours=req.duration_hours,
+        supabase=db,
+    )
+    result["workspace_id"] = workspace_id
+    return result
+
+
+@router.post("/linkedin/account-cooldown/status", response_model=dict)
+def api_linkedin_account_cooldown_status(
+    req: AccountCooldownStatusRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase 41 — Check whether a LinkedIn account is currently in a safety cooldown.
+    Workspace-scoped: verifies account belongs to this workspace.
+    """
+    account_id = (req.account_id or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=422, detail="account_id must not be empty")
+
+    account = {
+        "id": account_id,
+        "cooldown_until": req.cooldown_until,
+        "is_in_cooldown": req.is_in_cooldown,
+        "in_cooldown": req.in_cooldown,
+        "cooldown_reason": req.cooldown_reason,
+    }
+
+    # Workspace ownership check + DB fetch if no cooldown fields supplied
+    if db:
+        try:
+            acc_res = db.table("accounts").select("id, cooldown_until, is_in_cooldown, cooldown_reason").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            if not getattr(acc_res, "data", None):
+                raise HTTPException(status_code=404, detail="Account not found in workspace")
+            db_account = acc_res.data[0]
+            # Merge DB values but keep explicitly-supplied request values if present
+            for field in ("cooldown_until", "is_in_cooldown", "cooldown_reason"):
+                if account.get(field) is None and db_account.get(field) is not None:
+                    account[field] = db_account[field]
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"[CooldownStatus] workspace check fallback: {e}")
+
+    in_cooldown, reason = LinkedInInvitationManager.is_account_in_cooldown(account)
+    return {
+        "account_id": account_id,
+        "workspace_id": workspace_id,
+        "in_cooldown": in_cooldown,
+        "reason": reason,
+    }

@@ -11191,6 +11191,182 @@
         }
       }
     },
+    "/api/elein/linkedin/pending-invitations/audit": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Linkedin Pending Invitations Audit",
+        "description": "Phase 41 \u2014 Audit LinkedIn pending invitations and evaluate account health.\nWorkspace-scoped: verifies account belongs to this workspace before auditing.",
+        "operationId": "api_linkedin_pending_invitations_audit_api_elein_linkedin_pending_invitations_audit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PendingInvitationsAuditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Linkedin Pending Invitations Audit Api Elein Linkedin Pending Invitations Audit Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/linkedin/pending-invitations/withdraw-stale": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Linkedin Withdraw Stale Invitations",
+        "description": "Phase 41 \u2014 Withdraw stale LinkedIn pending invitations in a safe bounded batch.\nEnforces LinkedIn 3-Week Rule: stamps 21-day cooldown on withdrawn leads.",
+        "operationId": "api_linkedin_withdraw_stale_invitations_api_elein_linkedin_pending_invitations_withdraw_stale_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawStaleInvitationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Linkedin Withdraw Stale Invitations Api Elein Linkedin Pending Invitations Withdraw Stale Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/linkedin/account-cooldown/set": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Linkedin Set Account Cooldown",
+        "description": "Phase 41 \u2014 Trigger an algorithmic safety cooldown on a LinkedIn account.\nWorkspace-scoped: verifies account belongs to this workspace.",
+        "operationId": "api_linkedin_set_account_cooldown_api_elein_linkedin_account_cooldown_set_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAccountCooldownRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Linkedin Set Account Cooldown Api Elein Linkedin Account Cooldown Set Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/linkedin/account-cooldown/status": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Linkedin Account Cooldown Status",
+        "description": "Phase 41 \u2014 Check whether a LinkedIn account is currently in a safety cooldown.\nWorkspace-scoped: verifies account belongs to this workspace.",
+        "operationId": "api_linkedin_account_cooldown_status_api_elein_linkedin_account_cooldown_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCooldownStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Linkedin Account Cooldown Status Api Elein Linkedin Account Cooldown Status Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -18543,6 +18719,63 @@
         "type": "object",
         "title": "APISettings"
       },
+      "AccountCooldownStatusRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "cooldown_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Until"
+          },
+          "is_in_cooldown": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is In Cooldown"
+          },
+          "in_cooldown": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Cooldown"
+          },
+          "cooldown_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "AccountCooldownStatusRequest"
+      },
       "AccountCreate": {
         "properties": {
           "name": {
@@ -23317,6 +23550,45 @@
         ],
         "title": "ObjectionPayload"
       },
+      "PendingInvitationsAuditRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "pending_invitations": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Invitations"
+          },
+          "pending_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "PendingInvitationsAuditRequest"
+      },
       "PersonaCreate": {
         "properties": {
           "title": {
@@ -25278,6 +25550,29 @@
         ],
         "title": "SessionRenewalRequest"
       },
+      "SetAccountCooldownRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": "HIGH_PENDING_CEILING"
+          },
+          "duration_hours": {
+            "type": "integer",
+            "title": "Duration Hours",
+            "default": 48
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "SetAccountCooldownRequest"
+      },
       "SnoozeOOORequest": {
         "properties": {
           "lead_id": {
@@ -26771,6 +27066,44 @@
         },
         "type": "object",
         "title": "WarmupSimulateTickRequest"
+      },
+      "WithdrawStaleInvitationsRequest": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "max_age_days": {
+            "type": "integer",
+            "title": "Max Age Days",
+            "default": 21
+          },
+          "batch_limit": {
+            "type": "integer",
+            "title": "Batch Limit",
+            "default": 25
+          },
+          "pending_invitations": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Invitations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "WithdrawStaleInvitationsRequest"
       },
       "WorkspaceCreate": {
         "properties": {

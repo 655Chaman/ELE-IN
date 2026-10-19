@@ -21,6 +21,10 @@ class LinkedInActionOutcomeUnknown(Exception):
 
 
 from integrations.backend.services.linkedin_pool import global_browser_pool, BrowserPoolExhaustedError
+from integrations.backend.services.linkedin_invitation_manager import (
+    LinkedInInvitationManager,
+    CooldownReason,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -964,6 +968,79 @@ class LinkedInWorker:
 
         return None
 
+    def _detect_weekly_invitation_limit_and_captcha(self, page: Page) -> Optional[Dict[str, Any]]:
+        """
+        Layer 1 & Layer 2 Paranoia:
+        Detects LinkedIn Weekly Invitation Limit and Captcha banners during send_connection_request.
+        If DOM contains 'You've reached the weekly invitation limit', 'invitation limit reached', or HTTP 429:
+          - Flag limit_reached = True, cooldown_recommended = True
+          - Trigger automatic account cooldown (48h)
+          - Return clean structured result:
+            {"success": False, "reason": "WEEKLY_INVITATION_LIMIT_REACHED", "cooldown_hours": 48}
+        """
+        dom_text = ""
+        try:
+            raw_content = page.content()
+            if isinstance(raw_content, str):
+                dom_text = raw_content
+        except Exception:
+            pass
+
+        limit_phrases = (
+            "you've reached the weekly invitation limit",
+            "invitation limit reached",
+        )
+
+        limit_detected = False
+        lower_dom = dom_text.lower()
+        if any(phrase in lower_dom for phrase in limit_phrases):
+            limit_detected = True
+        elif "429" in lower_dom and ("too many requests" in lower_dom or "limit" in lower_dom or "rate" in lower_dom):
+            limit_detected = True
+
+        # Check for captcha banners in DOM content if string is present
+        captcha_phrases = ("quick security check", "unusual activity", "verify it's you", "captcha challenge")
+        captcha_detected = any(cp in lower_dom for cp in captcha_phrases)
+
+        if captcha_detected:
+            acc_id = getattr(self, "account_id", None) or "unknown_account"
+            try:
+                LinkedInInvitationManager.trigger_account_cooldown(
+                    account_id=str(acc_id),
+                    reason=CooldownReason.CAPTCHA_CHALLENGE,
+                    duration_hours=24,
+                    supabase=getattr(self, "supabase", None),
+                )
+            except Exception as e:
+                logger.warning(f"Failed triggering automatic CAPTCHA cooldown: {e}")
+            raise SecurityChallengeError("LinkedIn CAPTCHA/security challenge banner detected in DOM")
+
+        if limit_detected:
+            limit_reached = True
+            cooldown_recommended = True
+            acc_id = getattr(self, "account_id", None) or "unknown_account"
+            try:
+                LinkedInInvitationManager.trigger_account_cooldown(
+                    account_id=str(acc_id),
+                    reason=CooldownReason.INVITATION_LIMIT_REACHED,
+                    duration_hours=48,
+                    supabase=getattr(self, "supabase", None),
+                )
+            except Exception as e:
+                logger.warning(f"Failed triggering automatic weekly limit cooldown: {e}")
+
+            return {
+                "success": False,
+                "status": "rate_limited",
+                "reason": "WEEKLY_INVITATION_LIMIT_REACHED",
+                "error": "Weekly invitation limit reached",
+                "cooldown_hours": 48,
+                "limit_reached": limit_reached,
+                "cooldown_recommended": cooldown_recommended,
+            }
+
+        return None
+
     @linkedin_action_safe
     def send_connection_request(self, profile_url: str, note: Optional[str] = None, fallback: Optional[str] = None) -> Dict[str, Any]:
         with self._get_or_create_context() as page:
@@ -973,6 +1050,11 @@ class LinkedInWorker:
                 self._check_for_challenge(page)
                 self._human_delay(3, 6)
 
+                # Paranoia Layer 1 & 2: Pre-check DOM for weekly invitation limit and captcha
+                limit_res = self._detect_weekly_invitation_limit_and_captcha(page)
+                if limit_res:
+                    return limit_res
+
                 # Paranoia Layer 1: Profile already shows "Pending"
                 try:
                     pending_btn = page.locator("button").filter(has_text="Pending").first
@@ -981,7 +1063,7 @@ class LinkedInWorker:
                 except Exception:
                     pass
 
-                modal_res = self._check_connection_modals(page)
+                modal_res = self._detect_weekly_invitation_limit_and_captcha(page) or self._check_connection_modals(page)
                 if modal_res:
                     return modal_res
 
@@ -999,13 +1081,13 @@ class LinkedInWorker:
                             connect_clicked = True
 
                 if not connect_clicked:
-                    modal_res = self._check_connection_modals(page)
+                    modal_res = self._detect_weekly_invitation_limit_and_captcha(page) or self._check_connection_modals(page)
                     if modal_res:
                         return modal_res
                     return {"status": "error", "error": "Connect button not found on profile"}
 
                 self._human_delay(2, 4)
-                modal_res = self._check_connection_modals(page)
+                modal_res = self._detect_weekly_invitation_limit_and_captcha(page) or self._check_connection_modals(page)
                 if modal_res:
                     return modal_res
 
@@ -1026,20 +1108,43 @@ class LinkedInWorker:
                     with self._mutation_boundary():
                         send_btn.click(delay=random.randint(50, 150))
                         self._human_delay(1, 2)
-                        modal_res = self._check_connection_modals(page)
+                        modal_res = self._detect_weekly_invitation_limit_and_captcha(page) or self._check_connection_modals(page)
                         if modal_res:
                             return modal_res
                         logger.info(f"[LIVE] connection_request: {profile_url}")
                         return {"status": "success", "action": "connection_request"}
 
-                modal_res = self._check_connection_modals(page)
+                modal_res = self._detect_weekly_invitation_limit_and_captcha(page) or self._check_connection_modals(page)
                 if modal_res:
                     return modal_res
                 return {"status": "error", "error": "Send button not found"}
 
+            except SecurityChallengeError:
+                raise
             except LinkedInActionOutcomeUnknown:
                 raise
             except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "weekly invitation limit" in err_str or "invitation limit reached" in err_str:
+                    acc_id = getattr(self, "account_id", None) or "unknown_account"
+                    try:
+                        LinkedInInvitationManager.trigger_account_cooldown(
+                            account_id=str(acc_id),
+                            reason=CooldownReason.INVITATION_LIMIT_REACHED,
+                            duration_hours=48,
+                            supabase=getattr(self, "supabase", None),
+                        )
+                    except Exception:
+                        pass
+                    return {
+                        "success": False,
+                        "status": "rate_limited",
+                        "reason": "WEEKLY_INVITATION_LIMIT_REACHED",
+                        "error": f"Weekly invitation limit reached: {e}",
+                        "cooldown_hours": 48,
+                        "limit_reached": True,
+                        "cooldown_recommended": True,
+                    }
                 return {"status": "error", "error": str(e)}
 
     @linkedin_action_safe

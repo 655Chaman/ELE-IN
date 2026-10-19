@@ -10,6 +10,10 @@ from datetime import datetime, timezone
 from core.backend.services.limits import get_effective_usage_date
 
 from integrations.backend.services.linkedin_worker import LinkedInWorker, SessionExpiredError, LinkedInActionOutcomeUnknown
+from integrations.backend.services.linkedin_invitation_manager import (
+    LinkedInInvitationManager,
+    CooldownReason,
+)
 from knowledge.backend.services.ai_output_guard import sanitize_outbound_ai_message
 try:
     from campaigns.backend.services.unsubscribe_service import generate_rfc8058_headers
@@ -2145,7 +2149,97 @@ class EleInNodeExecutor:
             }
         return res
 
+    def _check_connection_safety_guards(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Layer 0, 1 & 2 Paranoia Pre-Flight Deliverability Guard:
+        Enforces LinkedIn account safety cooldown and recipient 21-day anti-resend lockout.
+        """
+        # 1. Check if selected LinkedIn account is in cooldown
+        selected_account = (
+            data.get("selected_account")
+            or data.get("account")
+            or getattr(self.worker, "selected_account", None)
+            or getattr(self.worker, "account", None)
+        )
+        acc_id = (
+            (selected_account.get("id") if isinstance(selected_account, dict) else None)
+            or getattr(self.worker, "account_id", None)
+            or data.get("account_id")
+            or data.get("_account_id")
+        )
+        if not selected_account or not isinstance(selected_account, dict) or (
+            "is_in_cooldown" not in selected_account
+            and "cooldown_until" not in selected_account
+            and "in_cooldown" not in selected_account
+        ):
+            base_acc = selected_account if isinstance(selected_account, dict) else ({"id": acc_id} if acc_id else {})
+            if self.supabase and acc_id:
+                try:
+                    acc_res = self.supabase.table("accounts").select("*").eq("id", acc_id).limit(1).execute()
+                    if acc_res and getattr(acc_res, "data", None):
+                        base_acc = {**acc_res.data[0], **base_acc}
+                except Exception as e:
+                    logger.debug(f"Failed to fetch account {acc_id} from Supabase: {e}")
+            selected_account = base_acc
+        elif acc_id and isinstance(selected_account, dict) and "id" not in selected_account:
+            selected_account["id"] = acc_id
+
+        in_cooldown, cooldown_reason = LinkedInInvitationManager.is_account_in_cooldown(selected_account)
+        if in_cooldown:
+            logger.warning(f"[DeliverabilityGuard] ABORT: LinkedIn account {selected_account.get('id')} in safety cooldown ({cooldown_reason}). Postponing send.")
+            return {
+                "status": "deferred",
+                "reason": "account_in_cooldown",
+                "error": f"LinkedIn sender account is in safety cooldown ({cooldown_reason}). Dispatches paused to protect account health.",
+                "next_run_delta_seconds": 14400,
+                "branch": Branch.FAILED.value,
+            }
+
+        # 2. Check if recipient lead is in LinkedIn 21-day anti-resend cooldown
+        lead = data.get("lead") or data.get("lead_profile")
+        to_lead_id = (
+            data.get("to_lead_id")
+            or data.get("lead_id")
+            or data.get("_lead_id")
+            or (lead.get("id") if isinstance(lead, dict) else None)
+            or "unknown"
+        )
+        if not lead or not isinstance(lead, dict) or (
+            "linkedin_reconnect_cooldown_until" not in lead
+            and "reconnect_cooldown_until" not in lead
+            and "cooldown_until" not in lead
+        ):
+            base_lead = lead if isinstance(lead, dict) else ({"id": to_lead_id} if to_lead_id != "unknown" else {})
+            if self.supabase and (to_lead_id != "unknown" or linkedin_url):
+                try:
+                    q = self.supabase.table("leads").select("*")
+                    if to_lead_id != "unknown":
+                        l_res = q.eq("id", to_lead_id).limit(1).execute()
+                    else:
+                        l_res = q.eq("linkedin_url", linkedin_url).limit(1).execute()
+                    if l_res and getattr(l_res, "data", None):
+                        base_lead = {**l_res.data[0], **base_lead}
+                except Exception as e:
+                    logger.debug(f"Failed to fetch lead {to_lead_id} from Supabase: {e}")
+            lead = base_lead
+
+        in_3wk_cooldown, cooldown_msg = LinkedInInvitationManager.check_linkedin_3week_resend_cooldown(lead)
+        if in_3wk_cooldown:
+            logger.warning(f"[DeliverabilityGuard] ABORT: Recipient in LinkedIn 21-day withdrawal cooldown: {to_lead_id}")
+            return {
+                "status": "skipped",
+                "reason": "linkedin_3week_withdrawal_cooldown",
+                "error": cooldown_msg,
+                "branch": Branch.FAILED.value,
+            }
+
+        return None
+
     def handle_connection_request(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        preflight_guard = self._check_connection_safety_guards(data, linkedin_url)
+        if preflight_guard:
+            return preflight_guard
+
         note_strategy = data.get("note_strategy")
         if note_strategy == "No note":
             return self.handle_connection_no_note(data, linkedin_url)
@@ -2206,6 +2300,10 @@ class EleInNodeExecutor:
             return {"status": "error", "error": str(e), "branch": Branch.FAILED.value}
 
     def handle_connection_no_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        preflight_guard = self._check_connection_safety_guards(data, linkedin_url)
+        if preflight_guard:
+            return preflight_guard
+
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
         
@@ -2230,6 +2328,9 @@ class EleInNodeExecutor:
             return {"status": "error", "error": str(e), "branch": Branch.FAILED.value}
 
     def handle_connection_ai_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        preflight_guard = self._check_connection_safety_guards(data, linkedin_url)
+        if preflight_guard:
+            return preflight_guard
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
         

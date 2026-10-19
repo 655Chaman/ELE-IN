@@ -246,3 +246,18 @@
     - Exposed public webhook endpoints `POST /api/elein/webhooks/esp/sendgrid` and `POST /api/elein/webhooks/esp/mailgun` with path-scoped JWT auth exemptions, and authenticated endpoints `POST /api/elein/webhooks/esp/simulate` and `POST /api/elein/deliverability/evaluate-campaign-circuit-breaker`.
     - Integrated circuit breaker pause gate into `EleInOrchestrator.process_lead` and `execute_node_action` to halt outbound dispatches immediately when a campaign is tripped.
   - **Verification**: 44/44 automated tests passing across `test_esp_webhook_processor.py` (29/29) and `test_esp_webhook_and_circuit_breaker.py` (15/15); 235/235 full deliverability regression suite green; sub-second production build (691ms).
+
+- [x] **Phase 41: LinkedIn Pending Invitation Garbage Collector & Algorithmic Connection Safety Cooldown (100% Operational):**
+  - **LinkedIn Invitation GC Core Engine (`integrations/backend/services/linkedin_invitation_manager.py`)**:
+    - `InvitationStatus`: `PENDING`, `WITHDRAWN`, `ACCEPTED`, `EXPIRED`.
+    - `AccountHealthRisk`: `OPTIMAL` (score 85-100, pending < 300), `APPROACHING_CEILING` (score 50-84, 300-499 pending, recommending GC > 14 days), `CRITICAL_RESTRICTION_RISK` (score 0-49, pending >= 500, aggressive GC required, invitations paused).
+    - `CooldownReason`: `INVITATION_LIMIT_REACHED`, `CAPTCHA_CHALLENGE`, `HIGH_PENDING_CEILING`, `RAPID_DISPATCH_RESTRICTION`.
+    - `filter_stale_invitations`: Clamps `max_age_days` safely in `[7, 90]`, filters terminal statuses, and computes pending age across direct fields and timestamps.
+    - `withdraw_stale_invitations`: Clamps `batch_limit` in `[1, 50]` to prevent bot detection triggers, executes bounded batch withdrawals, and enforces the LinkedIn 3-Week Rule by stamping `cooldown_until = now + 21 days` and updating `leads` with `linkedin_reconnect_cooldown_until`.
+    - `check_linkedin_3week_resend_cooldown`: Pre-flight check preventing premature reconnection to leads within the 21-day anti-resend window.
+    - `trigger_account_cooldown` & `is_account_in_cooldown`: Clamps duration in `[1, 720]` hours, managing account safety pause states in memory and database.
+  - **Worker Detection & Executor Pre-Flight Integration (`integrations/backend/services/linkedin_worker.py`, `campaigns/backend/services/elein_executor.py`, `campaigns/backend/routers/elein.py`)**:
+    - `LinkedInWorker.send_connection_request`: Detects "weekly invitation limit", "invitation limit reached", or HTTP 429 DOM errors, triggers automatic 48h account safety cooldown via `trigger_account_cooldown`, and halts further dispatches.
+    - `EleInExecutor.handle_connection_request`: Enforces pre-flight safety gates: defers dispatch with `status="deferred"`, `reason="account_in_cooldown"` if sender account is cooled down, and skips dispatch with `status="skipped"`, `reason="linkedin_3week_withdrawal_cooldown"` if prospect is under the 21-day withdrawal rule.
+    - Exposed workspace-scoped endpoints `POST /api/elein/linkedin/pending-invitations/audit`, `POST /api/elein/linkedin/pending-invitations/withdraw-stale`, `POST /api/elein/linkedin/account-cooldown/set`, and `POST /api/elein/linkedin/account-cooldown/status`.
+  - **Verification**: 85/85 automated tests passing across `test_linkedin_invitation_gc_and_cooldown.py` (65/65) and `test_linkedin_invitation_manager.py` (20/20); 168/168 regression deliverability suite green; sub-second production build (640ms).
