@@ -261,3 +261,18 @@
     - `EleInExecutor.handle_connection_request`: Enforces pre-flight safety gates: defers dispatch with `status="deferred"`, `reason="account_in_cooldown"` if sender account is cooled down, and skips dispatch with `status="skipped"`, `reason="linkedin_3week_withdrawal_cooldown"` if prospect is under the 21-day withdrawal rule.
     - Exposed workspace-scoped endpoints `POST /api/elein/linkedin/pending-invitations/audit`, `POST /api/elein/linkedin/pending-invitations/withdraw-stale`, `POST /api/elein/linkedin/account-cooldown/set`, and `POST /api/elein/linkedin/account-cooldown/status`.
   - **Verification**: 85/85 automated tests passing across `test_linkedin_invitation_gc_and_cooldown.py` (65/65) and `test_linkedin_invitation_manager.py` (20/20); 168/168 regression deliverability suite green; sub-second production build (640ms).
+
+- [x] **Phase 42: BIMI & VMC Certificate Validator with Google/Apple Verified Mark Audit (100% Operational):**
+  - **BIMI & VMC Core Engine (`core/backend/services/bimi_vmc_service.py`)**:
+    - `BIMIStatus`: `VERIFIED`, `LOGO_ONLY`, `VMC_INVALID`, `VMC_EXPIRED`, `DMARC_INSUFFICIENT`, `NOT_CONFIGURED`, `PARSE_ERROR`.
+    - `VerifiedMarkProvider`: `GOOGLE_GMAIL` (requires `VERIFIED` status), `APPLE_MAIL` (requires `VERIFIED`), `YAHOO_MAIL` (supports `LOGO_ONLY` with enforced DMARC).
+    - `parse_bimi_record`: RFC-compliant BIMI TXT tag parsing (`v=BIMI1; l=<logo_url>; a=<vmc_url>`) verifying `v=BIMI1` order and handling tag permutations.
+    - `lookup_bimi_record` & `lookup_dmarc_policy`: Resolves `{selector}._bimi.{domain}` and `_dmarc.{domain}` with mock DNS injection for offline testing, enforcing DMARC prerequisites (`p=quarantine` or `p=reject`).
+    - `validate_logo_url` & `validate_vmc_certificate`: Paranoia Layer 2 SSRF defense (blocking `localhost`, loopback `127.x`, private subnets `10.x`, `192.168.x`, `172.16-31.x`, and cloud metadata `169.254.x`), HTTPS enforcement, SVG MIME inspection, and VMC certificate chain validation against authorized CAs (`digicert`, `entrust`, `certum`, `globalsign`).
+    - `audit_domain_bimi` & `audit_sender_inbox_bimi`: End-to-end domain audit evaluating provider readiness (Google blue checkmark, Apple Mail business logo), deliverability open-rate uplift estimates, and step-by-step remediation guidance.
+    - `scan_workspace_bimi_health`: Multi-inbox workspace health scanner aggregating verified mark eligibility.
+  - **Executor Telemetry & Router Integration (`campaigns/backend/services/elein_executor.py`, `campaigns/backend/routers/elein.py`)**:
+    - `EleInExecutor.handle_send_email`: Non-blocking deliverability telemetry enrichment (`bimi_status`, `bimi_google_verified`, `bimi_apple_verified`) tracking verified mark visibility per dispatch without blocking sends.
+    - Exposed workspace-scoped endpoints `POST /api/elein/deliverability/verify-bimi` and `GET /api/elein/deliverability/bimi-status/{inbox_id}`.
+  - **Verification**: 44/44 automated tests passing in `test_bimi_vmc_auditor.py`; 254/254 full regression deliverability suite green; clean TypeScript validation and sub-second frontend production build (710ms).
+

@@ -11367,6 +11367,95 @@
         }
       }
     },
+    "/api/elein/deliverability/verify-bimi": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Verify Bimi",
+        "description": "Phase 42 \u2013 BIMI & VMC Verified Mark Auditor.\nAudits a domain's BIMI record, DMARC prerequisite, logo URL, and VMC certificate.\nAdvisory only \u2014 does not block sending.",
+        "operationId": "api_verify_bimi_api_elein_deliverability_verify_bimi_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BIMIVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Verify Bimi Api Elein Deliverability Verify Bimi Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/deliverability/bimi-status/{inbox_id}": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Get Inbox Bimi Status",
+        "description": "Phase 42 \u2013 Fetches BIMI/VMC status for a specific sender inbox by ID.\nWorkspace-scoped: verifies inbox belongs to caller's workspace.",
+        "operationId": "api_get_inbox_bimi_status_api_elein_deliverability_bimi_status__inbox_id__get",
+        "parameters": [
+          {
+            "name": "inbox_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Inbox Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Get Inbox Bimi Status Api Elein Deliverability Bimi Status  Inbox Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -19417,6 +19506,55 @@
           "enabled"
         ],
         "title": "AutoRechargeSettingsUpdate"
+      },
+      "BIMIVerifyRequest": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "check_logo": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Logo",
+            "default": false
+          },
+          "check_vmc": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Vmc",
+            "default": false
+          },
+          "mock_dns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mock Dns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "title": "BIMIVerifyRequest"
       },
       "BatchApprovalRequest": {
         "properties": {

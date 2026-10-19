@@ -8499,3 +8499,80 @@ def api_linkedin_account_cooldown_status(
         "in_cooldown": in_cooldown,
         "reason": reason,
     }
+
+
+# =============================================================================
+# Phase 42 — BIMI & VMC Certificate Validator with Google/Apple Verified Mark
+# =============================================================================
+
+class BIMIVerifyRequest(BaseModel):
+    domain: str
+    check_logo: Optional[bool] = False
+    check_vmc: Optional[bool] = False
+    mock_dns: Optional[Dict[str, Any]] = None
+
+
+@router.post("/deliverability/verify-bimi", response_model=dict)
+def api_verify_bimi(
+    req: BIMIVerifyRequest,
+    workspace_id: str = Depends(get_current_workspace),
+):
+    """
+    Phase 42 – BIMI & VMC Verified Mark Auditor.
+    Audits a domain's BIMI record, DMARC prerequisite, logo URL, and VMC certificate.
+    Advisory only — does not block sending.
+    """
+    try:
+        from core.backend.services.bimi_vmc_service import BIMIVMCService
+    except ImportError:
+        from campaigns.backend.services.bimi_vmc_service import BIMIVMCService
+
+    domain = (req.domain or "").strip()
+    if not domain:
+        raise HTTPException(status_code=422, detail="domain is required")
+
+    result = BIMIVMCService.audit_domain_bimi(
+        domain=domain,
+        mock_dns=req.mock_dns,
+        check_logo=req.check_logo,
+        check_vmc=req.check_vmc,
+    )
+    result["workspace_id"] = workspace_id
+    return result
+
+
+@router.get("/deliverability/bimi-status/{inbox_id}", response_model=dict)
+def api_get_inbox_bimi_status(
+    inbox_id: str,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase 42 – Fetches BIMI/VMC status for a specific sender inbox by ID.
+    Workspace-scoped: verifies inbox belongs to caller's workspace.
+    """
+    try:
+        from core.backend.services.bimi_vmc_service import BIMIVMCService
+    except ImportError:
+        from campaigns.backend.services.bimi_vmc_service import BIMIVMCService
+
+    inbox_id_clean = (inbox_id or "").strip()
+    if not inbox_id_clean:
+        raise HTTPException(status_code=422, detail="inbox_id is required")
+
+    inbox = {"id": inbox_id_clean, "workspace_id": workspace_id}
+    if db:
+        try:
+            res = db.table("email_sender_inboxes").select("*").eq("id", inbox_id_clean).eq("workspace_id", workspace_id).execute()
+            if not getattr(res, "data", None):
+                raise HTTPException(status_code=404, detail="Inbox not found in workspace")
+            inbox = res.data[0]
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.debug(f"[BIMI] Inbox fetch fallback: {e}")
+
+    result = BIMIVMCService.audit_sender_inbox_bimi(inbox)
+    result["workspace_id"] = workspace_id
+    return result
+

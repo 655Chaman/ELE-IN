@@ -5032,6 +5032,25 @@ Respond ONLY with valid JSON."""
                 except Exception as log_err:
                     logger.debug(f"[Executor] Non-fatal email log_outbound_message error: {log_err}")
 
+                # Phase 42 – BIMI/VMC Advisory (non-blocking telemetry)
+                try:
+                    try:
+                        from core.backend.services.bimi_vmc_service import BIMIVMCService
+                    except ImportError:
+                        from campaigns.backend.services.bimi_vmc_service import BIMIVMCService
+                    _sender_email = from_email or (selected_inbox.get("email") if selected_inbox else "")
+                    _sender_domain = (_sender_email or "").split("@")[-1] if "@" in (_sender_email or "") else ""
+                    if _sender_domain:
+                        _bimi_audit = BIMIVMCService.audit_domain_bimi(_sender_domain)
+                        res_dict["bimi_status"] = _bimi_audit.get("status", "NOT_CONFIGURED")
+                        res_dict["bimi_google_verified"] = "GOOGLE_GMAIL" in _bimi_audit.get("supported_providers", [])
+                        res_dict["bimi_apple_verified"] = "APPLE_MAIL" in _bimi_audit.get("supported_providers", [])
+                    else:
+                        res_dict["bimi_status"] = "NOT_CONFIGURED"
+                except Exception as _bimi_err:
+                    logger.debug(f"[BIMI] Non-blocking advisory check failed: {_bimi_err}")
+                    res_dict["bimi_status"] = "UNKNOWN"
+
                 return res_dict
 
             rewritten_count = 0
