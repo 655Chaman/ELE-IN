@@ -323,7 +323,7 @@ class TestInMailOpenProfileArbitrage(unittest.TestCase):
         mock_supabase = MagicMock()
         mock_supabase.rpc.return_value.execute.side_effect = Exception("RPC unavailable for test")
         mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[])
+        mock_supabase.table.return_value.insert.side_effect = Exception("DB insert unavailable for fallback test")
 
         test_leads = [
             {"email": "lead1@corp.com", "linkedin_url": "https://linkedin.com/in/lead1", "is_open_profile": "true"},
@@ -352,7 +352,7 @@ class TestInMailOpenProfileArbitrage(unittest.TestCase):
         mock_supabase = MagicMock()
         mock_supabase.rpc.return_value.execute.side_effect = Exception("RPC unavailable for test")
         mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[])
+        mock_supabase.table.return_value.insert.side_effect = Exception("DB insert unavailable for fallback test")
 
         test_leads = [
             {"email": "closed1@corp.com", "linkedin_url": "https://linkedin.com/in/closed1", "is_open_profile": "false"},

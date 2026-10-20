@@ -110,11 +110,8 @@ class TestPhase2LeadIngestionEngine(unittest.TestCase):
         # RPC raises exception simulating missing RPC in unmigrated database
         mock_supabase.rpc.side_effect = Exception("PGRST202: Could not find the function public.bulk_import_leads")
 
-        # Mock direct table operations
-        mock_select = MagicMock()
-        mock_select.execute.return_value = MagicMock(data=[])
-        mock_supabase.table().select().eq().eq().execute.return_value = MagicMock(data=[])
-        mock_supabase.table().insert().execute.return_value = MagicMock(data=[{"id": "lead-new"}])
+        # Mock direct table operations failing simulating completely unmigrated schema
+        mock_supabase.table.return_value.insert.side_effect = Exception("42P01 table does not exist")
 
         leads = [
             {"linkedin_url": "https://www.linkedin.com/in/lead-unmigrated", "first_name": "Elena", "last_name": "Rostova"}

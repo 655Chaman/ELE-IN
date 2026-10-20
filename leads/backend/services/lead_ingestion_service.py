@@ -382,7 +382,6 @@ def execute_bulk_import_leads(
                         existing_leads_map[el["email"].lower()] = el
                     if el.get("id"):
                         existing_leads_map[str(el["id"])] = el
-                any_table_succeeded = True
             except Exception as batch_query_err:
                 logger.debug(f"Batch query existing leads failed: {batch_query_err}")
 
@@ -408,6 +407,8 @@ def execute_bulk_import_leads(
                 processed_chunk.append(lead)
 
             if not processed_chunk:
+                if duplicate_count > 0 or colliding_count > 0:
+                    any_table_succeeded = True
                 continue
 
             to_insert_leads = []
@@ -525,6 +526,10 @@ def execute_bulk_import_leads(
                     except Exception:
                         inserted_lead_ids.append(eid)
 
+            if not to_insert_leads and not updates_to_perform and (duplicate_count > 0 or colliding_count > 0):
+                # Paranoia Layer 1 & 2: Candidates were intentionally skipped via collision policy; DB query was authoritative
+                any_table_succeeded = True
+
             if inserted_lead_ids:
                 list_member_rows = [
                     {"workspace_id": workspace_id, "list_id": list_id, "opportunity_id": lid}
@@ -551,7 +556,7 @@ def execute_bulk_import_leads(
             _record_in_memory_leads(workspace_id, list_id, deduped_leads)
 
         source = "direct_table" if any_table_succeeded else "in_memory"
-        final_inserted = inserted_count if any_table_succeeded else max(0, len(deduped_leads) - duplicate_count - colliding_count)
+        final_inserted = inserted_count if any_table_succeeded else max(0, len(deduped_leads) - colliding_count)
         return {
             "success": True,
             "inserted_count": final_inserted,
@@ -567,7 +572,7 @@ def execute_bulk_import_leads(
         _record_in_memory_leads(workspace_id, list_id, deduped_leads)
         return {
             "success": True,
-            "inserted_count": max(0, len(deduped_leads) - duplicate_count - colliding_count),
+            "inserted_count": max(0, len(deduped_leads) - colliding_count),
             "duplicate_count": duplicate_count,
             "colliding_count": colliding_count,
             "source": "in_memory"

@@ -87,12 +87,16 @@ class TestSuppressionDncAndRetroactivePurgeGuard(unittest.TestCase):
         mock_svc, tables = self._setup_multi_table_mock()
 
         # Mock leads matching domain 'competitor.com'
+        leads_mock_data = [
+            {"id": "lead_comp_1", "email": "ceo@competitor.com"},
+            {"id": "lead_comp_2", "email": "vp@competitor.com"},
+            {"id": "lead_safe_3", "email": "vp@friendly.com"},
+        ]
         tables["leads"].select.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[
-                {"id": "lead_comp_1", "email": "ceo@competitor.com"},
-                {"id": "lead_comp_2", "email": "vp@competitor.com"},
-                {"id": "lead_safe_3", "email": "vp@friendly.com"},
-            ]
+            data=leads_mock_data
+        )
+        tables["leads"].select.return_value.eq.return_value.range.return_value.execute.return_value = MagicMock(
+            data=leads_mock_data
         )
         # Mock enrollments for matched leads
         tables["campaign_enrollments"].select.return_value.eq.return_value.in_.return_value.execute.return_value = MagicMock(
@@ -124,11 +128,16 @@ class TestSuppressionDncAndRetroactivePurgeGuard(unittest.TestCase):
     def test_add_suppression_entries_bulk_deduplicates_and_purges(self):
         """Paranoia Layer 1 & 2: Deduplicates intra-batch entries, blocks freemail wildcard, and runs purge."""
         mock_svc, tables = self._setup_multi_table_mock()
+        inserted_mock_data = [{"id": "s1"}, {"id": "s2"}]
         tables["suppression_list"].insert.return_value.execute.return_value = MagicMock(
-            data=[{"id": "s1"}, {"id": "s2"}]
+            data=inserted_mock_data
+        )
+        tables["suppression_list"].upsert.return_value.execute.return_value = MagicMock(
+            data=inserted_mock_data
         )
         tables["leads"].select.return_value.eq.return_value.in_.return_value.execute.return_value = MagicMock(data=[])
         tables["leads"].select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        tables["leads"].select.return_value.eq.return_value.range.return_value.execute.return_value = MagicMock(data=[])
 
         entries = [
             "https://www.linkedin.com/in/John-Doe/",
