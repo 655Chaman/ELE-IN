@@ -31,6 +31,8 @@ class MockTable:
             b.neq.return_value = b
             b.in_.return_value = b
             b.or_.return_value = b
+            b.limit.return_value = b
+            b.order.return_value = b
             b.execute.return_value = MagicMock(data=[], count=0)
 
     def select(self, *args, **kwargs):
@@ -319,7 +321,7 @@ class TestCampaignLifecycleAndCascadeCleanup(unittest.TestCase):
         state_tbl.delete_builder.in_.assert_called_with("enrollment_id", ["enr_1", "enr_2"])
 
         enr_tbl.delete_builder.delete.assert_called()
-        enr_tbl.delete_builder.eq.assert_called_with("campaign_id", "camp_1")
+        enr_tbl.delete_builder.eq.assert_any_call("campaign_id", "camp_1")
 
         # Verify accounts and nodes deleted
         self.get_table("campaign_accounts").delete_builder.delete.assert_called()

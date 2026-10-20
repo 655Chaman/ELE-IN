@@ -278,6 +278,7 @@ class TestZeroMigrationResilienceAndEndpoints:
                 "id": "camp-boom-free",
                 "workspace_id": "00000000-0000-0000-0000-000000000001",
                 "metadata": {"boomerang_revival_enabled": True},
+                "nodes_json": [{"type": "message", "data": {}}],
             }
         ]
         mock_sb.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = mock_data

@@ -276,7 +276,7 @@
           "leads"
         ],
         "summary": "Export Leads In List",
-        "description": "Exports leads with tier-based quota enforcement and privacy masking (Paranoia Layer 1).\n- FREE tier: capped to 25 leads, emails masked.\n- PRO / ENTERPRISE tier: unlimited leads up to list capacity, full unmasked contacts.",
+        "description": "Exports leads with tier-based quota enforcement and privacy masking (Paranoia Layer 1).\n- FREE tier: capped to 25 leads, emails and phones masked.\n- PRO / ENTERPRISE tier: unlimited leads up to list capacity, full unmasked contacts.",
         "operationId": "export_leads_in_list_api_leads_lists__list_id__export_get",
         "parameters": [
           {
@@ -369,6 +369,22 @@
               "minimum": 1,
               "default": 100,
               "title": "Page Size"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           }
         ],
@@ -1125,6 +1141,57 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Set List Dynamic Rules Endpoint Api Leads Lists  List Id  Dynamic Rules Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/leads/segments/preview": {
+      "post": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Preview Segment Rules Endpoint",
+        "description": "Dry-run preview evaluating dynamic segmentation rules in real-time across workspace leads.\nSupports previewing rules with or without an existing list_id.\nReturns match counts, seniority/company size breakdown, and sample prospect cards without DB mutations.",
+        "operationId": "preview_segment_rules_endpoint_api_leads_segments_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DynamicRulesEvaluateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Preview Segment Rules Endpoint Api Leads Segments Preview Post"
                 }
               }
             }
@@ -5822,6 +5889,46 @@
         }
       }
     },
+    "/api/elein/calendar/negotiate": {
+      "post": {
+        "tags": [
+          "calendar_concierge"
+        ],
+        "summary": "Negotiate Slots Endpoint",
+        "description": "Autonomous negotiation of calendar slots based on inbound prospect replies.\nRecalculates conflict-free options based on requested days/timeframes or confirms selected options.",
+        "operationId": "negotiate_slots_endpoint_api_elein_calendar_negotiate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiateSlotPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/waterfall/enrich-single": {
       "post": {
         "tags": [
@@ -8745,6 +8852,79 @@
       }
     },
     "/api/elein/campaigns": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Get Campaigns",
+        "description": "Paranoia Layer 0 & 1: List all campaigns for the workspace with pagination,\nsummary counts, and tenant isolation.",
+        "operationId": "get_campaigns_api_elein_campaigns_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Campaigns Api Elein Campaigns Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "elein"
@@ -8752,14 +8932,14 @@
         "summary": "Create Campaign",
         "operationId": "create_campaign_api_elein_campaigns_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CampaignCreate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -9307,6 +9487,51 @@
               "type": "string",
               "title": "Campaign Id"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 5000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
           }
         ],
         "responses": {
@@ -9689,7 +9914,7 @@
           "elein"
         ],
         "summary": "Retry Failed Enrollment Node",
-        "description": "Paranoia Layer 0 & 2: Retries a failed or stalled node execution in campaign trace.",
+        "description": "Paranoia Layer 0 & 2: Retries a failed or stalled node execution in campaign trace.\nEnforces workspace ownership, enrollment association, and resets execution state to pending.",
         "operationId": "retry_failed_enrollment_node_api_elein_campaigns__campaign_id__enrollments__enrollment_id__retry_failed_node_post",
         "parameters": [
           {
@@ -14502,12 +14727,53 @@
         }
       }
     },
+    "/api/assets/knowledge/test-drive": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Test Objection",
+        "description": "Simulates how the AI will respond to a specific prospect message or objection\nusing the workspace's full 4-layer Knowledge Base, Personas, and Objections.",
+        "operationId": "test_objection_api_assets_knowledge_test_drive_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestObjectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assets/knowledge/test-objection": {
       "post": {
         "tags": [
           "assets"
         ],
         "summary": "Test Objection",
+        "description": "Simulates how the AI will respond to a specific prospect message or objection\nusing the workspace's full 4-layer Knowledge Base, Personas, and Objections.",
         "operationId": "test_objection_api_assets_knowledge_test_objection_post",
         "requestBody": {
           "content": {
@@ -19290,10 +19556,18 @@
             "description": "Descriptive angle name"
           },
           "template_text": {
-            "type": "string",
-            "maxLength": 2000,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Template Text",
-            "description": "Outreach template copy"
+            "description": "Outreach template copy",
+            "default": ""
           },
           "arm_type": {
             "anyOf": [
@@ -19306,12 +19580,57 @@
             ],
             "title": "Arm Type",
             "default": "full_message"
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel",
+            "default": "linkedin"
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "template_text"
+          "name"
         ],
         "title": "AddVariantPayload"
       },
@@ -20898,6 +21217,40 @@
             "title": "Contract Renewal Days",
             "description": "Days until competitor contract renewal",
             "default": 60
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -20971,6 +21324,40 @@
               }
             ],
             "title": "Linkedin Url"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -21095,6 +21482,40 @@
             ],
             "title": "Force Override",
             "default": false
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -21150,6 +21571,40 @@
             ],
             "title": "Overlap Context",
             "default": "Shared executive tenure"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -21566,6 +22021,17 @@
               }
             ],
             "title": "Rules"
+          },
+          "list_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "List Id"
           },
           "limit": {
             "type": "integer",
@@ -22778,6 +23244,42 @@
               }
             ],
             "title": "Cross Thread Peer"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases",
+            "default": ""
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model",
+            "default": ""
           }
         },
         "type": "object",
@@ -22841,6 +23343,40 @@
               }
             ],
             "title": "Annual Savings"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -23078,6 +23614,17 @@
             ],
             "title": "Video Topic",
             "default": "Outbound Pipeline Teardown"
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
           }
         },
         "type": "object",
@@ -23130,6 +23677,40 @@
               }
             ],
             "title": "Custom Pain Point"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -23604,6 +24185,40 @@
             ],
             "title": "Retire Parent",
             "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -23611,6 +24226,133 @@
           "parent_variant_id"
         ],
         "title": "MutateVariantPayload"
+      },
+      "NegotiateSlotPayload": {
+        "properties": {
+          "inbound_reply": {
+            "type": "string",
+            "title": "Inbound Reply",
+            "description": "Inbound email or LinkedIn reply text from prospect"
+          },
+          "prospect_name": {
+            "type": "string",
+            "title": "Prospect Name",
+            "description": "Prospect full name"
+          },
+          "lead_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Email",
+            "default": "prospect@company.com"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name",
+            "default": "Enterprise"
+          },
+          "rep_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rep Name",
+            "default": "Marcus Vance"
+          },
+          "rep_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rep Email",
+            "default": "marcus@ele-in.com"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes",
+            "default": 30
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases",
+            "default": ""
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "inbound_reply",
+          "prospect_name"
+        ],
+        "title": "NegotiateSlotPayload"
       },
       "NotificationPreferenceUpdate": {
         "properties": {
@@ -24140,6 +24882,78 @@
             ],
             "title": "Duration Minutes",
             "default": 30
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name",
+            "default": ""
+          },
+          "lead_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Email",
+            "default": ""
+          },
+          "inbound_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbound Reply",
+            "default": ""
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases",
+            "default": ""
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model",
+            "default": ""
           }
         },
         "type": "object",
@@ -24616,6 +25430,42 @@
             "title": "Staggered Interval Hours",
             "description": "Staggered interval in hours between same-account touches (1-24)",
             "default": 4
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases",
+            "default": ""
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model",
+            "default": ""
           }
         },
         "type": "object",
@@ -24698,6 +25548,40 @@
               }
             ],
             "title": "Domain"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -24932,6 +25816,40 @@
             ],
             "title": "Force Override",
             "default": false
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -25030,6 +25948,42 @@
             ],
             "title": "Hold Ttl Hours",
             "default": 72
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases",
+            "default": ""
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model",
+            "default": ""
           }
         },
         "type": "object",
@@ -25115,6 +26069,51 @@
               }
             ],
             "title": "Video Topic"
+          },
+          "media_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Url"
+          },
+          "use_ai": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Ai",
+            "default": false
+          },
+          "banned_phrases": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned Phrases"
+          },
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
           }
         },
         "type": "object",
@@ -26469,6 +27468,11 @@
           "api_key": {
             "type": "string",
             "title": "Api Key"
+          },
+          "live_check": {
+            "type": "boolean",
+            "title": "Live Check",
+            "default": false
           }
         },
         "type": "object",
@@ -26511,14 +27515,29 @@
       "TestObjectionRequest": {
         "properties": {
           "objection": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Objection"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
           }
         },
         "type": "object",
-        "required": [
-          "objection"
-        ],
         "title": "TestObjectionRequest"
       },
       "TextUpload": {

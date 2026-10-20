@@ -5,7 +5,7 @@ import useSWR from "swr"
 
 import { motion, AnimatePresence } from "motion/react"
 
-import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight, ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle, Briefcase, Link as LinkIcon , Shield, ShieldCheck, Lock, Globe, Clock, Calendar, Sparkles} from "lucide-react"
+import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight, ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle, AlertCircle, Briefcase, Link as LinkIcon , Shield, ShieldCheck, Lock, Globe, Clock, Calendar, Sparkles} from "lucide-react"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { cn } from "@/lib/utils"
 import { useHRTreeStore, dagToTree, treeToDag, saveDraftToLocalStorage } from "@campaigns/eiTreeStore"
@@ -48,6 +48,112 @@ function FadeContent({ children, blur = false, duration = 0.5, className = "" }:
   )
 }
 
+// ─── Unsaved Changes Confirmation Dialog ─────────────────────────────────────
+function UnsavedChangesModal({
+  isOpen,
+  onClose,
+  onDiscard,
+  onSaveDraft
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onDiscard: () => void
+  onSaveDraft: () => Promise<void> | void
+}) {
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen && !isSaving) {
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [isOpen, isSaving, onClose])
+
+  if (!isOpen) return null
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md"
+      onClick={() => { if (!isSaving) onClose() }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="unsaved-modal-title"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.16, ease: "easeOut" }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card/95 p-6 shadow-2xl backdrop-blur-xl"
+      >
+        {/* Header */}
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <h3 id="unsaved-modal-title" className="text-base font-semibold text-foreground">
+              Unsaved Campaign Changes
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              You have active changes on your campaign canvas. If you leave now without saving, recent modifications may not be synced to your workspace.
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="mt-6 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5 pt-4 border-t border-border/60">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="w-full sm:w-auto px-4 py-2 text-xs font-semibold rounded-lg border border-border text-foreground hover:bg-muted/80 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Keep Editing
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            disabled={isSaving}
+            className="w-full sm:w-auto px-4 py-2 text-xs font-semibold rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground border border-destructive/20 transition-all cursor-pointer disabled:opacity-50"
+          >
+            Discard & Exit
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setIsSaving(true)
+              try {
+                await onSaveDraft()
+              } finally {
+                setIsSaving(false)
+              }
+            }}
+            disabled={isSaving}
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Save className="h-3.5 w-3.5" />
+                <span>Save Draft & Exit</span>
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 // ─── Step progress header ─────────────────────────────────────────────────────
 const STEPS = [
   { id: "sequence", label: "Sequence" },
@@ -57,7 +163,17 @@ const STEPS = [
   { id: "preview", label: "Preview" },
 ]
 
-function StepHeader({ current, onBack, onStepClick }: { current: number, onBack: () => void, onStepClick?: (step: number) => void }) {
+function StepHeader({ 
+  current, 
+  maxStepReached = current, 
+  onBack, 
+  onStepClick 
+}: { 
+  current: number, 
+  maxStepReached?: number, 
+  onBack: () => void, 
+  onStepClick?: (step: number) => void 
+}) {
   const { theme, setTheme } = useTheme()
   return (
     <div className="relative flex items-center justify-center gap-0 py-5 border-b border-border/50 bg-background/50 z-10 shrink-0">
@@ -76,18 +192,20 @@ function StepHeader({ current, onBack, onStepClick }: { current: number, onBack:
       </div>
 
       {STEPS.map((step, i) => {
-        const done = i < current
+        const isReached = i <= maxStepReached
+        const done = i < current || (isReached && i !== current)
         const active = i === current
+        const clickable = isReached && !active
         return (
           <div key={step.id} className="flex items-center">
             <button
               type="button"
-              onClick={() => { if (done && onStepClick) onStepClick(i) }}
-              disabled={!done}
+              onClick={() => { if (clickable && onStepClick) onStepClick(i) }}
+              disabled={!clickable}
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all outline-none",
-                done ? "text-foreground cursor-pointer hover:bg-muted/50" : active ? "text-foreground" : "text-muted-foreground/40",
-                !done && !active && "cursor-not-allowed"
+                clickable ? "text-foreground cursor-pointer hover:bg-muted/50" : active ? "text-foreground" : "text-muted-foreground/40",
+                !clickable && !active && "cursor-not-allowed"
               )}>
               <div className={cn(
                 "w-5 h-5 rounded-full flex items-center justify-center border-2 transition-all",
@@ -223,7 +341,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
               <div className="mt-4 p-3 rounded-xl border border-primary/20 bg-primary/5 flex flex-col gap-2 text-center">
                 <p className="text-sm font-medium text-foreground">You need an audience list before launching.</p>
                 <div className="flex items-center justify-center gap-4">
-                  <Link to="/elein/leads" target="_blank" className="text-xs font-semibold text-primary hover:underline">
+                  <Link to="/elein/leads" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline">
                     Create a Lead List &rarr;
                   </Link>
                   <button type="button" onClick={() => mutate()} className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline">
@@ -375,6 +493,7 @@ function StepLeads({ state, onChange, onNext, showErrors }: { state: any; onChan
                   <Link
                     to="/elein/integrations"
                     target="_blank"
+                    rel="noopener noreferrer"
                     className="text-primary hover:underline font-medium inline-flex items-center gap-1"
                   >
                     Manage API Keys &rarr;
@@ -1010,6 +1129,7 @@ function StepSenders({ state, onChange, showErrors }: { state: any; onChange: (k
             <Link 
               to="/elein/accounts"
               target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors shadow-sm">
               Connect Account
             </Link>
@@ -1357,6 +1477,29 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                />
              </div>
+             {(state.schedule?.startTime || "09:00") >= (state.schedule?.endTime || "17:00") && (
+               <div className="flex items-center justify-between p-3 rounded-lg bg-destructive/10 border border-destructive/25 text-destructive text-xs mt-2">
+                 <div className="flex items-center gap-2">
+                   <AlertCircle size={15} className="shrink-0 text-destructive" />
+                   <span><strong>Invalid Curfew Window:</strong> Start time ({state.schedule?.startTime || "09:00"}) must precede End time ({state.schedule?.endTime || "17:00"}). Overnight schedules are not supported.</span>
+                 </div>
+                 <button
+                   type="button"
+                   onClick={() => {
+                     onChange("schedule", {
+                       ...state.schedule,
+                       startTime: "09:00",
+                       endTime: "17:00",
+                       start_hour: 9,
+                       end_hour: 17
+                     });
+                   }}
+                   className="shrink-0 underline font-semibold text-[11px] hover:text-destructive/80 cursor-pointer ml-2"
+                 >
+                   Reset to 09:00 - 17:00
+                 </button>
+               </div>
+             )}
              <p className="text-[11px] text-muted-foreground mt-1">Campaign will pause outreach outside these local hours.</p>
           </div>
 
@@ -1780,6 +1923,12 @@ function EleInCreateCampaignInner() {
   const [isSaving, setIsSaving] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showPreflightModal, setShowPreflightModal] = useState(false)
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false)
+
+  const [maxStepReached, setMaxStepReached] = useState(step)
+  useEffect(() => {
+    setMaxStepReached(prev => Math.max(prev, step))
+  }, [step])
 
   const { data: allLists } = useSWR<any[]>("/api/elein/leads/lists", fetcher)
   const selectedListInfo = (allLists || []).find((l: any) => l.id === state.leadListId)
@@ -1813,10 +1962,14 @@ function EleInCreateCampaignInner() {
 
     if (targetStep === 1) return { allowed: true, maxAllowedStep: 1 }
 
-    // Prerequisite for Step 2+: Campaign name and lead list must be configured
+    // Prerequisite for Step 2+: Campaign name and lead list must be configured with > 0 leads
     const form = useHRTreeStore.getState().formState
     if (!form.campaignName || !form.campaignName.trim() || !form.leadListId) {
       return { allowed: false, maxAllowedStep: 1, reason: "Please enter a campaign name and select a valid lead list." }
+    }
+    const currentList = (allLists || []).find((l: any) => l.id === form.leadListId)
+    if (currentList && currentList.row_count === 0) {
+      return { allowed: false, maxAllowedStep: 1, reason: "The selected audience list contains 0 leads. Please choose a list with leads." }
     }
 
     if (targetStep === 2) return { allowed: true, maxAllowedStep: 2 }
@@ -1827,6 +1980,17 @@ function EleInCreateCampaignInner() {
     }
 
     if (targetStep === 3) return { allowed: true, maxAllowedStep: 3 }
+
+    // Prerequisite for Step 4 (Preview/Launch): Curfew window must be valid
+    const startTime = form.schedule?.startTime || "09:00"
+    const endTime = form.schedule?.endTime || "17:00"
+    if (startTime >= endTime) {
+      return {
+        allowed: false,
+        maxAllowedStep: 3,
+        reason: `Curfew window is inverted: Start time (${startTime}) must precede End time (${endTime}).`
+      }
+    }
 
     return { allowed: true, maxAllowedStep: 4 }
   }
@@ -2094,7 +2258,7 @@ function EleInCreateCampaignInner() {
         toast.error("Cannot launch: Your sequence is empty.");
         isSavingRef.current = false;
         setIsSaving(false);
-        return;
+        throw new Error("Cannot launch: Your sequence is empty.");
       }
       
       const allErrors = [...criticalErrors];
@@ -2109,7 +2273,7 @@ function EleInCreateCampaignInner() {
         setActivationErrors(allErrors);
         isSavingRef.current = false;
         setIsSaving(false);
-        return;
+        throw new Error(allErrors[0] || "Cannot launch: Campaign configuration has validation errors.");
       }
     }
 
@@ -2182,6 +2346,18 @@ function EleInCreateCampaignInner() {
           if (!enrollRes.ok) {
             const errJson = await enrollRes.json().catch(() => ({}));
             toast.error(`Campaign saved, but failed to enroll leads: ${errJson.detail || "Enrollment failed"}`);
+          } else {
+            // Paranoia Layer 1 & 2 (B3-F08): Transparent breakdown of enrolled vs skipped leads
+            const enrollData = await enrollRes.json().catch(() => ({}));
+            const enrolledCount = enrollData.enrolled ?? 0;
+            const skippedCount = enrollData.skipped ?? 0;
+            const collisionCount = enrollData.collisions ?? 0;
+            if (skippedCount > 0 || collisionCount > 0) {
+              toast.info(
+                `Enrolled ${enrolledCount} leads (${skippedCount + collisionCount} skipped: ${collisionCount} active elsewhere, ${skippedCount} on DNC/suppressed).`,
+                { duration: 6000 }
+              );
+            }
           }
         } catch (enrollErr: any) {
           console.error("Failed to enroll list", enrollErr);
@@ -2261,15 +2437,21 @@ function EleInCreateCampaignInner() {
     }
   }
 
+  const handleDiscardAndExit = () => {
+    try {
+      localStorage.removeItem("elein_unsaved_draft");
+    } catch (_) {}
+    useHRTreeStore.getState().reset();
+    setShowUnsavedModal(false);
+    navigate("/elein/campaigns");
+  };
+
+  const handleSaveDraftAndExit = async () => {
+    setShowUnsavedModal(false);
+    await handleSaveDraft("DRAFT");
+  };
+
   const handleNext = () => {
-    if (step === 1) {
-      if (!state.campaignName || !state.campaignName.trim() || !state.leadListId) {
-        setShowErrors(true);
-        toast.error("Please provide the required setup information before continuing.");
-        return;
-      }
-      setShowErrors(false);
-    }
     if (step === 0) {
       const { rootNodes } = useHRTreeStore.getState()
       if (rootNodes.length === 0) {
@@ -2306,6 +2488,19 @@ function EleInCreateCampaignInner() {
         return
       }
     }
+    if (step === 1) {
+      if (!state.campaignName || !state.campaignName.trim() || !state.leadListId) {
+        setShowErrors(true);
+        toast.error("Please provide the required setup information before continuing.");
+        return;
+      }
+      if (selectedListInfo && selectedListInfo.row_count === 0) {
+        setShowErrors(true);
+        toast.error("Cannot proceed: Selected lead list contains 0 leads. Please choose an audience list with leads.");
+        return;
+      }
+      setShowErrors(false);
+    }
     if (step === 2) {
       if (!state.senderIds || state.senderIds.length === 0) {
         setShowErrors(true);
@@ -2313,6 +2508,16 @@ function EleInCreateCampaignInner() {
         return
       }
       setShowErrors(false);
+    }
+    if (step === 3) {
+      const startTime = state.schedule?.startTime || "09:00";
+      const endTime = state.schedule?.endTime || "17:00";
+      if (startTime >= endTime) {
+        toast.error("Invalid Curfew Window", {
+          description: `Sending start time (${startTime}) must precede end time (${endTime}). Overnight schedules are not supported.`
+        });
+        return;
+      }
     }
     if (step < STEPS.length - 1) setStep(step + 1)
   }
@@ -2467,16 +2672,26 @@ function EleInCreateCampaignInner() {
         onJumpToStep={(s) => navigateToStep(s)}
       />
 
+      {/* Unsaved Changes Confirmation Modal */}
+      <UnsavedChangesModal
+        isOpen={showUnsavedModal}
+        onClose={() => setShowUnsavedModal(false)}
+        onDiscard={handleDiscardAndExit}
+        onSaveDraft={handleSaveDraftAndExit}
+      />
+
       {/* Step Header */}
       <StepHeader 
         current={step} 
+        maxStepReached={maxStepReached}
         onBack={() => {
           if (step > 0) {
             setStep(step - 1)
           } else {
             const currentStoreState = useHRTreeStore.getState()
             const hasUnsaved = (currentStoreState.rootNodes && currentStoreState.rootNodes.length > 0) || Boolean(currentStoreState.formState.campaignName)
-            if (hasUnsaved && !window.confirm("You have unsaved campaign changes. Are you sure you want to exit?")) {
+            if (hasUnsaved) {
+              setShowUnsavedModal(true)
               return
             }
             navigate("/elein/campaigns")

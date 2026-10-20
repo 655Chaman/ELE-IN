@@ -248,16 +248,18 @@ function NakedVariableWarning({ text, onFix }: { text: string; onFix?: (fixed: s
 }
 
 // ─── Delay selector with calibrated quick presets ────────────────────────────
-function DelaySelector({ value, unit = "days", onChange }: { value: number; unit?: string; onChange: (v: number, u: string) => void }) {
+function DelaySelector({ value, unit = "days", onChange, allowZero = true }: { value: number; unit?: string; onChange: (v: number, u: string) => void; allowZero?: boolean }) {
+  const minVal = allowZero ? 0 : 1;
   useEffect(() => {
-    if (value === undefined || value === null || isNaN(value) || value < 1) {
-      onChange(1, unit || "days");
+    if (value === undefined || value === null || isNaN(value) || value < minVal) {
+      onChange(minVal, unit || "days");
     }
-  }, [value, unit, onChange]);
+  }, [value, unit, onChange, minVal]);
 
-  const displayVal = value !== undefined && value !== null && !isNaN(value) && value >= 1 ? value : 1;
+  const displayVal = value !== undefined && value !== null && !isNaN(value) && value >= minVal ? value : minVal;
 
   const PRESETS = [
+    ...(allowZero ? [{ label: "0 (Immediate)", val: 0, u: "days" }] : []),
     { label: "1 Day (Fast)", val: 1, u: "days" },
     { label: "3 Days (Recommended • 42% reply rate)", val: 3, u: "days" },
     { label: "5 Days (Gentle)", val: 5, u: "days" },
@@ -279,7 +281,7 @@ function DelaySelector({ value, unit = "days", onChange }: { value: number; unit
               type="button"
               onClick={() => onChange(p.val, p.u)}
               className={cn(
-                "px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all",
+                "px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all cursor-pointer",
                 isSelected
                   ? "bg-primary/15 border-primary/40 text-primary font-bold shadow-xs"
                   : "bg-background/40 border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/40"
@@ -296,7 +298,7 @@ function DelaySelector({ value, unit = "days", onChange }: { value: number; unit
         <span className="text-[11px] text-muted-foreground">Custom: Wait</span>
         <input
           type="number"
-          min={1}
+          min={minVal}
           step="1"
           value={displayVal}
           onChange={e => {
@@ -306,12 +308,12 @@ function DelaySelector({ value, unit = "days", onChange }: { value: number; unit
               return;
             }
             const val = parseFloat(raw);
-            const clamped = isNaN(val) || val < 1 ? 1 : Math.ceil(val);
+            const clamped = isNaN(val) || val < minVal ? minVal : Math.max(minVal, Math.ceil(val));
             onChange(clamped, unit);
           }}
           onBlur={e => {
-            if (e.target.value === "" || isNaN(parseFloat(e.target.value)) || parseFloat(e.target.value) < 1) {
-              onChange(1, unit);
+            if (e.target.value === "" || isNaN(parseFloat(e.target.value)) || parseFloat(e.target.value) < minVal) {
+              onChange(minVal, unit);
             }
           }}
           className="w-16 rounded-lg bg-card border border-border px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary text-center font-mono"
@@ -327,7 +329,7 @@ function DelaySelector({ value, unit = "days", onChange }: { value: number; unit
             <SelectItem value="weeks">Weeks</SelectItem>
           </SelectContent>
         </Select>
-        <span className="text-[11px] text-muted-foreground">before executing</span>
+        <span className="text-[11px] text-muted-foreground">{displayVal === 0 ? "immediately" : "before executing"}</span>
       </div>
     </div>
   )
@@ -353,6 +355,7 @@ function MessageEditor({
   const [pendingHook, setPendingHook] = useState<typeof MESSAGE_HOOKS[0] | null>(null)
   const [copied, setCopied] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -376,7 +379,26 @@ function MessageEditor({
   }, [dropdownRef])
 
   const insertVar = (varStr: string) => {
-    onChange((value || "") + " " + varStr)
+    const el = textareaRef.current
+    if (el) {
+      const start = el.selectionStart ?? (value?.length || 0)
+      const end = el.selectionEnd ?? (value?.length || 0)
+      const current = value || ""
+      const before = current.substring(0, start)
+      const after = current.substring(end)
+      const updated = before + varStr + after
+      if (updated.length <= maxChars) {
+        onChange(updated)
+        setTimeout(() => {
+          el.focus()
+          el.selectionStart = el.selectionEnd = start + varStr.length
+        }, 0)
+      } else {
+        onChange(updated.slice(0, maxChars))
+      }
+    } else {
+      onChange(((value || "") + " " + varStr).slice(0, maxChars))
+    }
     setShowVars(false)
   }
 
@@ -520,6 +542,7 @@ function MessageEditor({
         </div>
       ) : (
         <textarea
+          ref={textareaRef}
           maxLength={maxChars}
           value={value || ""}
           onChange={e => {
@@ -1106,6 +1129,7 @@ function ConnectionRequestConfig({ data, onChange }: { data: any; onChange: (k: 
   const [previewPersonaId, setPreviewPersonaId] = useState<string>("alex")
   const [pendingStarter, setPendingStarter] = useState<typeof CONNECTION_STARTERS[0] | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1129,7 +1153,21 @@ function ConnectionRequestConfig({ data, onChange }: { data: any; onChange: (k: 
   }, [dropdownRef])
 
   const insertVar = (v: string) => {
-    onChange("note", note + " " + v)
+    const el = textareaRef.current
+    if (el) {
+      const start = el.selectionStart ?? note.length
+      const end = el.selectionEnd ?? note.length
+      const before = note.substring(0, start)
+      const after = note.substring(end)
+      const updated = before + v + after
+      onChange("note", updated)
+      setTimeout(() => {
+        el.focus()
+        el.selectionStart = el.selectionEnd = start + v.length
+      }, 0)
+    } else {
+      onChange("note", note + " " + v)
+    }
     setShowVars(false)
   }
 
@@ -1344,6 +1382,7 @@ function ConnectionRequestConfig({ data, onChange }: { data: any; onChange: (k: 
           </div>
         ) : (
           <textarea
+            ref={textareaRef}
             maxLength={350}
             value={note}
             onChange={e => onChange("note", e.target.value)}
@@ -1472,12 +1511,44 @@ function SendInMailConfig({ data, onChange, isPaid = false }: { data: any; onCha
   const subject = data.subject || data.subject_template || "";
   const body = data.body || data.body_template || data.message || "";
   const fallbackToConn = Boolean(data.fallback_to_connection_request);
+  const subjectInputRef = useRef<HTMLInputElement>(null);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const insertVarSubject = (v: string) => {
-    onChange("subject", subject + ` {{${v}}}`);
+    const el = subjectInputRef.current;
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? subject.length;
+      const end = el.selectionEnd ?? subject.length;
+      const before = subject.substring(0, start);
+      const after = subject.substring(end);
+      const updated = before + token + after;
+      onChange("subject", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("subject", subject + ` {{${v}}}`);
+    }
   };
   const insertVarBody = (v: string) => {
-    onChange("body", body + ` {{${v}}}`);
+    const el = bodyTextareaRef.current;
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? body.length;
+      const end = el.selectionEnd ?? body.length;
+      const before = body.substring(0, start);
+      const after = body.substring(end);
+      const updated = before + token + after;
+      onChange("body", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("body", body + ` {{${v}}}`);
+    }
   };
 
   return (
@@ -1512,6 +1583,7 @@ function SendInMailConfig({ data, onChange, isPaid = false }: { data: any; onCha
           </span>
         </div>
         <input
+          ref={subjectInputRef}
           value={subject}
           onChange={e => onChange("subject", e.target.value)}
           placeholder="e.g. Quick thought on {{company}}"
@@ -1542,6 +1614,7 @@ function SendInMailConfig({ data, onChange, isPaid = false }: { data: any; onCha
           </span>
         </div>
         <textarea
+          ref={bodyTextareaRef}
           value={body}
           onChange={e => onChange("body", e.target.value)}
           rows={5}
@@ -1596,9 +1669,50 @@ function SendEmailConfig({ data, onChange }: { data: any; onChange: (k: string, 
   const useSenderPool = data.use_sender_pool !== false;
   const rotationStrategy = data.rotation_strategy || "HEALTH_WEIGHTED";
   const trackingDomain = data.tracking_domain || "";
+  const subjectInputRef = useRef<HTMLInputElement>(null);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const insertVarSubject = (v: string) => onChange("subject", subject + ` {{${v}}}`);
-  const insertVarBody = (v: string) => onChange("body", body + ` {{${v}}}`);
+  const insertVarSubject = (v: string) => {
+    const el = subjectInputRef.current;
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? subject.length;
+      const end = el.selectionEnd ?? subject.length;
+      const before = subject.substring(0, start);
+      const after = subject.substring(end);
+      const updated = before + token + after;
+      onChange("subject", updated);
+      onChange("subject_template", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("subject", subject + ` {{${v}}}`);
+      onChange("subject_template", subject + ` {{${v}}}`);
+    }
+  };
+
+  const insertVarBody = (v: string) => {
+    const el = bodyTextareaRef.current;
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? body.length;
+      const end = el.selectionEnd ?? body.length;
+      const before = body.substring(0, start);
+      const after = body.substring(end);
+      const updated = before + token + after;
+      onChange("body", updated);
+      onChange("body_template", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("body", body + ` {{${v}}}`);
+      onChange("body_template", body + ` {{${v}}}`);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1709,6 +1823,7 @@ function SendEmailConfig({ data, onChange }: { data: any; onChange: (k: string, 
           <span className="text-[10px] text-muted-foreground">{subject.length} chars</span>
         </div>
         <input
+          ref={subjectInputRef}
           value={subject}
           onChange={e => { onChange("subject", e.target.value); onChange("subject_template", e.target.value); }}
           placeholder="e.g. Quick question regarding {{company}}'s outbound"
@@ -1736,6 +1851,7 @@ function SendEmailConfig({ data, onChange }: { data: any; onChange: (k: string, 
           <span className="text-[10px] text-muted-foreground">{body.length} chars</span>
         </div>
         <textarea
+          ref={bodyTextareaRef}
           value={body}
           onChange={e => { onChange("body", e.target.value); onChange("body_template", e.target.value); }}
           rows={6}
@@ -8580,8 +8696,19 @@ export function EITreeNodeConfigPanel() {
   const { selectedNodeId, rootNodes, updateNodeData, selectNode, addChild } = useHRTreeStore()
   const isPickerOpen = usePickerStore(s => s.isOpen)
 
-  if (isPickerOpen) return null
+  // Layer 0 + Layer 1 Paranoia: Call hook unconditionally at the top of the component
+  // to strictly adhere to React Rules of Hooks and prevent hook order desynchronization crashes.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        selectNode(null)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectNode])
 
+  if (isPickerOpen) return null
 
   function findInTree(nodes: any[]): any | undefined {
     for (const n of nodes) {
@@ -8614,16 +8741,6 @@ export function EITreeNodeConfigPanel() {
   const onChange = (key: string, value: any) => {
     updateNodeData(selectedNode.id, { [key]: value })
   }
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        selectNode(null)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [selectNode])
 
   const Icon = config.icon
 

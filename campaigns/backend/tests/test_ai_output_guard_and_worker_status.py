@@ -43,6 +43,20 @@ class TestAIOutputGuardAndWorkerStatus(unittest.TestCase):
             res = executor.handle_send_ai_message({"lead_profile": {}, "prompt": "Say hello"}, "https://linkedin.com/in/test")
             self.assertEqual(res.get("status"), "rate_limited")
 
+    def test_markdown_link_with_placeholder_is_intercepted(self):
+        """Layer 1 Paranoia: Output guard must catch hallucinated placeholders inside markdown links."""
+        bad_link_text = "Check out our pricing: [Book Demo]({{booking_url}}) or visit [Site]({company_url})."
+        clean, valid, reason = sanitize_outbound_ai_message(bad_link_text, context_type="message")
+        self.assertFalse(valid, "Output guard must reject placeholders embedded in markdown links")
+        self.assertTrue("placeholder" in reason.lower() or "template tag" in reason.lower(), f"Unexpected reason: {reason}")
+
+    def test_markdown_bullet_list_preserves_leading_dash(self):
+        """Layer 2 Paranoia: Valid markdown bullet list must preserve leading dash and space."""
+        bullet_text = "- First deliverability advantage\n- Second multi-channel step"
+        clean, valid, reason = sanitize_outbound_ai_message(bullet_text, context_type="message")
+        self.assertTrue(valid)
+        self.assertTrue(clean.startswith("- First deliverability advantage"), "Leading dash of bullet list must not be stripped")
+
 
 if __name__ == "__main__":
     unittest.main()

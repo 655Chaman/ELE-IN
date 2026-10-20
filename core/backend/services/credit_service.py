@@ -59,12 +59,20 @@ def distributed_workspace_lock(
     Paranoia Layer 0, 1 & 2: Distributed Database Lock for Multi-Worker / Multi-Pod Deployments.
     - Layer 0: Uses Postgres atomic table lease (try_acquire_distributed_lock) across all Uvicorn workers & pods.
     - Layer 1: Automatic TTL expiration prevents permanent deadlock on process crash/kill.
-               Falls back to thread-safe in-memory mutex if Supabase RPC is unavailable or mocked.
-    - Layer 2: Workspace-scoped namespace ('auto_recharge:{workspace_id}', 'ledger_reconcile:{workspace_id}')
-               prevents cross-workspace starvation while blocking concurrent runs on the same tenant.
+               Defensive clamping enforces 1s <= TTL <= 86400s.
+               Gracefully degrades to thread-safe in-memory mutex if Supabase RPC is unavailable or mocked.
+    - Layer 2: Sanitized workspace-scoped namespace prevents injection/starvation while blocking
+               concurrent runs on the same tenant. Bounded retry polling loop for blocking DB locks.
     """
+    # Paranoia Layer 1 & 2: Sanitize lock name and clamp TTL
+    safe_lock_name = str(lock_name).strip()[:128] if lock_name else "default_workspace_lock"
+    try:
+        safe_ttl = max(1, min(86400, int(ttl_seconds)))
+    except (ValueError, TypeError):
+        safe_ttl = 60
+
     acquired_db = False
-    in_memory_lock = _get_in_memory_lock(lock_name)
+    in_memory_lock = _get_in_memory_lock(safe_lock_name)
     
     mem_acquired = in_memory_lock.acquire(blocking=blocking, timeout=5.0 if blocking else -1)
     if not mem_acquired:
@@ -78,37 +86,51 @@ def distributed_workspace_lock(
 
     try:
         if client is not None:
-            try:
-                rpc_res = client.rpc('try_acquire_distributed_lock', {
-                    'p_lock_name': lock_name,
-                    'p_ttl_seconds': ttl_seconds
-                }).execute()
-                if rpc_res and hasattr(rpc_res, 'data') and isinstance(rpc_res.data, bool):
-                    acquired_db = rpc_res.data
-                    if not acquired_db:
-                        # Database lock held by another worker / pod
-                        try:
-                            in_memory_lock.release()
-                        except RuntimeError:
-                            pass
-                        mem_acquired = False
-                        yield False
-                        return
-                else:
+            # Paranoia Layer 2: If blocking is True, poll DB lock up to 5.0s deadline
+            poll_deadline = time.monotonic() + (5.0 if blocking else 0.0)
+            while True:
+                try:
+                    rpc_res = client.rpc('try_acquire_distributed_lock', {
+                        'p_lock_name': safe_lock_name,
+                        'p_ttl_seconds': safe_ttl
+                    }).execute()
+                    if rpc_res and hasattr(rpc_res, 'data') and isinstance(rpc_res.data, bool):
+                        if rpc_res.data is True:
+                            acquired_db = True
+                            break
+                        # rpc_res.data is explicitly False: lock held by another worker/pod
+                    else:
+                        # Non-boolean response (e.g. unit test mock client): degrade to in-memory lock
+                        logger.debug(f"[DistributedLock] DB lock non-boolean response for {safe_lock_name}, degrading to in-memory lock")
+                        acquired_db = False
+                        break
+                except Exception as rpc_err:
+                    logger.debug(f"[DistributedLock] DB lock RPC fallback for {safe_lock_name}: {rpc_err}")
+                    # Supabase RPC unavailable / table missing: degrade to in-memory lock
                     acquired_db = False
-            except Exception as rpc_err:
-                logger.debug(f"[DistributedLock] DB lock RPC fallback for {lock_name}: {rpc_err}")
-                acquired_db = False
+                    break
+
+                if not blocking or time.monotonic() >= poll_deadline:
+                    # Database lock held by another worker / pod and timeout elapsed (or non-blocking)
+                    try:
+                        in_memory_lock.release()
+                    except RuntimeError:
+                        pass
+                    mem_acquired = False
+                    yield False
+                    return
+
+                time.sleep(0.1)
 
         yield True
     finally:
         if acquired_db and client is not None:
             try:
                 client.rpc('release_distributed_lock', {
-                    'p_lock_name': lock_name
+                    'p_lock_name': safe_lock_name
                 }).execute()
             except Exception as rel_err:
-                logger.warning(f"[DistributedLock] Failed to release DB lock {lock_name}: {rel_err}")
+                logger.warning(f"[DistributedLock] Failed to release DB lock {safe_lock_name}: {rel_err}")
         if mem_acquired:
             try:
                 in_memory_lock.release()
@@ -582,13 +604,15 @@ def refund_credits(
     workspace_id: str,
     amount: int,
     idempotency_key: str,
-    reason: str = "system_refund"
+    reason: str = "system_refund",
+    supabase_client: Optional[Any] = None
 ) -> dict:
     """
     Safely refunds credits to a workspace using idempotent event IDs.
     Layer 0: Core refund via add_credits_safely RPC.
     Layer 1: Multi-tenant collision avoidance by strictly scoping event_id to workspace_id.
     Layer 2: Human paranoia validation (amount clamped to positive integer, non-empty workspace).
+             Optional supabase_client injection for transactional testing / mocking.
     """
     if not workspace_id or not idempotency_key:
         return {"success": False, "reason": "missing_workspace_or_idempotency_key"}
@@ -605,7 +629,7 @@ def refund_credits(
         event_id = clean_key if clean_key.startswith("refund_") else f"refund_{clean_key}"
 
     try:
-        supabase = get_service_client()
+        supabase = supabase_client if supabase_client is not None else get_service_client()
         result = supabase.rpc('add_credits_safely', {
             'p_workspace_id': workspace_id,
             'p_credits': safe_amount,
@@ -616,6 +640,84 @@ def refund_credits(
     except Exception as e:
         logger.error(f"[CreditService] Credit refund failed: {e}", exc_info=True)
         return {"success": False, "reason": str(e)}
+
+
+class CreditReservation:
+    """
+    Paranoia Layer 0, 1 & 2: Two-Phase Commit (2PC) Credit Reservation Context Manager.
+    1. RESERVE: Places an immediate, idempotent hold on the exact credits required.
+    2. COMMIT: On verified successful completion, seals the deduction permanently.
+    3. RELEASE: On failure or unhandled exception, automatically compensates and restores the credits.
+    """
+
+    def __init__(
+        self,
+        workspace_id: str,
+        amount: int,
+        action_type: str,
+        correlation_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        supabase_client: Optional[Any] = None
+    ):
+        self.workspace_id = workspace_id
+        self.amount = max(0, int(amount or 0))
+        self.action_type = action_type
+        self.correlation_id = str(correlation_id).strip()
+        self.metadata = metadata or {}
+        self.supabase_client = supabase_client
+        self.is_reserved = False
+        self.is_committed = False
+        self.is_released = False
+        self.failure_reason = ""
+        self.idempotency_key = f"reserve_{workspace_id}_{action_type}_{self.correlation_id}"
+
+    def __enter__(self):
+        if self.amount <= 0 or not self.workspace_id:
+            self.is_reserved = True
+            return self
+
+        res = deduct_credits(
+            workspace_id=self.workspace_id,
+            amount=self.amount,
+            action_type=self.action_type,
+            idempotency_key=self.idempotency_key,
+            metadata={"phase": "reserve", "correlation_id": self.correlation_id, **self.metadata},
+            supabase_client=self.supabase_client
+        )
+        if isinstance(res, dict) and res.get("success"):
+            self.is_reserved = True
+        else:
+            self.is_reserved = False
+            self.failure_reason = res.get("reason", "deduction_failed") if isinstance(res, dict) else "deduction_failed"
+        return self
+
+    def commit(self) -> bool:
+        """Atomically marks the held reservation as permanently committed."""
+        if not self.is_reserved or self.is_committed or self.is_released:
+            return False
+        self.is_committed = True
+        logger.debug(f"[CreditReservation] Committed {self.amount} credits for {self.workspace_id} ({self.idempotency_key})")
+        return True
+
+    def release(self, reason: str = "operation_failed") -> bool:
+        """Compensate and restore the held credits back to the workspace."""
+        if not self.is_reserved or self.is_committed or self.is_released or self.amount <= 0:
+            return False
+        self.is_released = True
+        logger.info(f"[CreditReservation] Releasing {self.amount} held credits for {self.workspace_id} ({self.idempotency_key}). Reason: {reason}")
+        return refund_credits(
+            workspace_id=self.workspace_id,
+            amount=self.amount,
+            idempotency_key=self.idempotency_key,
+            reason=reason
+        ).get("success", False)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.is_reserved and not self.is_committed and not self.is_released:
+            auto_reason = f"exception_{exc_type.__name__}" if exc_type else "uncommitted_exit"
+            self.release(reason=auto_reason)
+        return False
+
 
 def add_credits(
     workspace_id: str,

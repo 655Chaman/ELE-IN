@@ -183,9 +183,9 @@ export function CampaignPreflightModal({
   }
 
   const score = data?.score ?? 0
-  const is100Clear = Boolean(data?.can_launch && (data?.warnings.length === 0))
-  const isWarningState = Boolean(data?.can_launch && (data?.warnings.length > 0))
-  const isBlocked = !data?.can_launch
+  const is100Clear = Boolean(!loading && !error && data?.can_launch && (data?.warnings.length === 0))
+  const isWarningState = Boolean(!loading && !error && data?.can_launch && (data?.warnings.length > 0))
+  const isBlocked = Boolean(!loading && !error && data && !data.can_launch)
 
   // Circumference calculations for the HUD flight gauge
   const gaugeRadius = 26
@@ -367,7 +367,7 @@ export function CampaignPreflightModal({
           >
             <ShieldCheck size={13} />
             <span>Residential IP Shield</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono font-bold border border-emerald-500/20">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono font-bold border border-emerald-500/20">
               Active
             </span>
           </button>
@@ -835,7 +835,25 @@ export function CampaignPreflightModal({
           </button>
 
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-            {isBlocked ? (
+            {loading ? (
+              <button
+                type="button"
+                disabled
+                className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold rounded-lg bg-muted text-muted-foreground border border-border cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <RefreshCw size={14} className="animate-spin text-muted-foreground shrink-0" />
+                <span>Running Preflight Verification...</span>
+              </button>
+            ) : error ? (
+              <button
+                type="button"
+                onClick={runCheck}
+                className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold rounded-lg bg-destructive/15 text-destructive border border-destructive/40 hover:bg-destructive/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <AlertCircle size={14} className="text-destructive shrink-0" />
+                <span>Verification Failed — Click to Retry</span>
+              </button>
+            ) : isBlocked ? (
               <button
                 type="button"
                 disabled

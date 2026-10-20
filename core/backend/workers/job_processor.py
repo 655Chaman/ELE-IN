@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import asyncio
 import logging
@@ -39,8 +40,17 @@ async def process_single_job(job, sync_supabase):
     job_id = job["id"]
     job_type = job["job_type"]
     workspace_id = job["workspace_id"]
-    asset_id = job["asset_id"]
-    payload = job["payload"]
+    asset_id = job.get("asset_id")
+    raw_payload = job.get("payload")
+    if isinstance(raw_payload, str):
+        try:
+            payload = json.loads(raw_payload)
+        except Exception:
+            payload = {}
+    elif isinstance(raw_payload, dict):
+        payload = dict(raw_payload)
+    else:
+        payload = {}
     
     print(f"Processing job {job_id} of type {job_type}")
     from knowledge.backend.services.knowledge_service import KnowledgeService
@@ -94,14 +104,6 @@ async def process_single_job(job, sync_supabase):
                     from integrations.backend.services.linkedin_worker import LinkedInWorker, SessionExpiredError
                     import json
                     import uuid
-
-                    if isinstance(payload, str):
-                        try:
-                            payload = json.loads(payload)
-                        except Exception:
-                            payload = {}
-                    elif not isinstance(payload, dict):
-                        payload = {}
 
                     # PARANOIA LAYER 1: Fallback to job.get('asset_id') if payload lacks account_id
                     account_id = payload.get('account_id') or job.get('asset_id')
@@ -172,7 +174,6 @@ async def process_single_job(job, sync_supabase):
                                     from knowledge.backend.services.elein_ai_service import classify_intent
                                     for m in messages:
                                         if m.get("direction") == "inbound":
-                                            import asyncio
                                             idem_key = f"classify_{ws_id}_{m.get('urn', hash(m['message_text']))}"
                                             intent_data = asyncio.run(classify_intent(m["message_text"], workspace_id=ws_id, idempotency_key=idem_key))
                                             m["intent"] = intent_data.get("intent", "unknown")
@@ -233,7 +234,10 @@ async def process_single_job(job, sync_supabase):
                 sync_supabase.table("processing_jobs").update({"status": "done"}).eq("id", job_id).execute()
                 
                 if job_type in ('url', 'text', 'pdf', 'synthesis'):
-                    loop.run_until_complete(KnowledgeService.update_synthesis(sync_supabase, workspace_id))
+                    # Layer 0 & 1 Paranoia (Flaw 12): Dedicated synthesis jobs default to force=True unless explicitly false.
+                    # Ingestion follower synthesis defaults to False unless payload specifies force=True.
+                    force_synthesis = payload.get("force", True if job_type == 'synthesis' else False) if isinstance(payload, dict) else (job_type == 'synthesis')
+                    loop.run_until_complete(KnowledgeService.update_synthesis(sync_supabase, workspace_id, force=bool(force_synthesis)))
                 
                 asset_status = "synced"
             finally:

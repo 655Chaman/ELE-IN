@@ -272,14 +272,16 @@ export function EleInCampaignDetail() {
       `"${(l.linkedin_url || '').replace(/"/g, '""')}"`,
       `"${(l.updated_at || l.next_run_at || '').replace(/"/g, '""')}"`
     ])
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r: string[]) => r.join(","))].join("\n")
-    const encodedUri = encodeURI(csvContent)
+    const csvContent = [headers.join(","), ...rows.map((r: string[]) => r.join(","))].join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
+    link.setAttribute("href", url)
     link.setAttribute("download", `${(campaign?.name || 'campaign').toLowerCase().replace(/\s+/g, '_')}_leads_${new Date().toISOString().slice(0, 10)}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
     toast.success(`Exported ${leads.length} leads to CSV!`)
   }
 
@@ -1003,7 +1005,7 @@ export function EleInCampaignDetail() {
                           ? "Try clearing your search query or status filter."
                           : "Enroll leads into this campaign to begin outreach execution."}
                       </p>
-                      {(search || statusFilter !== "all") && (
+                      {search || statusFilter !== "all" ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -1014,6 +1016,16 @@ export function EleInCampaignDetail() {
                         >
                           Reset Filters
                         </button>
+                      ) : (
+                        <div className="pt-2">
+                          <Link
+                            to={`/elein/campaigns/${id}/edit?step=1`}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
+                          >
+                            <Users size={12} />
+                            <span>Select Audience &amp; Enroll Leads</span>
+                          </Link>
+                        </div>
                       )}
                     </div>
                   </td>

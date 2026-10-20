@@ -73,7 +73,7 @@ export default function EleInKnowledge() {
   useEffect(() => {
     if (!workspace?.id) return;
 
-    const channel = supabase.channel('knowledge-assets-changes')
+    const channel = supabase.channel(`knowledge-realtime-${workspace.id}`)
       .on(
         'postgres_changes',
         {
@@ -82,11 +82,68 @@ export default function EleInKnowledge() {
           table: 'knowledge_assets',
           filter: `workspace_id=eq.${workspace.id}`,
         },
-        (payload: any) => {
+        () => {
           mutateAssets();
-          if (payload?.new?.status === 'synced' || payload?.new?.status === 'completed') {
-            mutateSynthesis();
-          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'knowledge_synthesis',
+          filter: `workspace_id=eq.${workspace.id}`,
+        },
+        () => {
+          mutateSynthesis();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'knowledge_synthesis_drafts',
+          filter: `workspace_id=eq.${workspace.id}`,
+        },
+        () => {
+          mutateSynthesis();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'personas',
+          filter: `workspace_id=eq.${workspace.id}`,
+        },
+        () => {
+          mutatePersonas();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'knowledge_objections',
+          filter: `workspace_id=eq.${workspace.id}`,
+        },
+        () => {
+          mutateObjections();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'objections',
+          filter: `workspace_id=eq.${workspace.id}`,
+        },
+        () => {
+          mutateObjections();
         }
       )
       .subscribe();
@@ -94,7 +151,7 @@ export default function EleInKnowledge() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workspace?.id, mutateAssets, mutateSynthesis]);
+  }, [workspace?.id, mutateAssets, mutateSynthesis, mutatePersonas, mutateObjections]);
 
   // Editable company name state (inline in the page header)
   const [isEditingName, setIsEditingName] = useState(false);
@@ -331,44 +388,54 @@ export default function EleInKnowledge() {
   const isPersonaCapped = !isPro && personaCount >= maxPersonas;
 
   const tabs = [
-    { id: 'assets', label: "Company Info", icon: <Database size={14} />, count: `${assetCount}/${maxAssets}` },
-    { id: 'personas', label: "Buyer Personas", icon: <Users size={14} />, count: `${personaCount}/${maxPersonas}` },
-    { id: 'objections', label: "Objection Playbook", icon: <ShieldAlert size={14} />, count: `${objectionCount}` },
-    { id: 'bayesian_icp', label: "Bayesian ICP", icon: <Sparkles size={14} className="text-indigo-400" />, count: isPro ? "Active" : "Pro" },
-    { id: 'ai_gateway', label: "AI Gateway & BYOK", icon: <ElesiumLogo size={14} />, count: isPro ? "Active" : "Pro" },
+    { id: 'assets', label: "Company Info", icon: <Database size={13} />, count: `${assetCount}` },
+    { id: 'personas', label: "Buyer Personas", icon: <Users size={13} />, count: `${personaCount}` },
+    { id: 'objections', label: "Objection Playbook", icon: <ShieldAlert size={13} />, count: `${objectionCount}` },
+    { id: 'bayesian_icp', label: "Lead Fit AI", icon: <Sparkles size={13} />, count: isPro ? "Active" : "Pro" },
+    { id: 'ai_gateway', label: "AI Models & BYOK", icon: <ElesiumLogo size={13} />, count: isPro ? "Active" : "Pro" },
   ];
 
-
-  const docsContext: Record<string, any> = {
+  const docsContext: Record<string, {
+    name: string;
+    badge: string;
+    what: string;
+    why: string;
+    roi: string;
+  }> = {
     assets: {
-      name: "Data Sources",
-      icon: <Database className="w-6 h-6" />,
-      content: "Large Language Models possess a vast understanding of the internet, but they do not know the unique specifics of your company. By providing your foundational assets—such as raw sales decks, PDF case studies, and live website URLs—you ground the AI in your reality. This prevents hallucinations and generic sales-speak. When a prospect asks detailed questions about your features, the AI can instantly cite specific case studies and prove ROI, converting friction directly into booked meetings.",
-      color: "from-blue-500 to-indigo-500"
+      name: "Company Knowledge Sources",
+      badge: "Context Foundation",
+      what: "Your company's single source of truth—including websites, pitch decks, case studies, and internal battlecards.",
+      why: "Default AI hallucinates and sends generic sales templates that get ignored or marked as spam. Grounding the AI in your real materials ensures every message cites your actual features, customer case studies, and proven metrics.",
+      roi: "Stops wasting outreach limits and credits on generic emails that get 0% reply rates. Hyper-personalized outreach citing real ROI turns more cold leads into booked meetings."
     },
     personas: {
       name: "Buyer Personas",
-      icon: <Users className="w-6 h-6" />,
-      content: "Detailed profiles of your target audience are critical. A VP of Sales cares about quota attainment, while a Head of RevOps focuses on tool consolidation and data silos. By defining the exact personas you are targeting, you instruct the AI on who it is talking to. It will automatically adjust its tone and map your product's value directly to the unique, daily pain points of the person reading the email.",
-      color: "from-blue-600 to-cyan-500"
+      badge: "Targeted Messaging",
+      what: "Target profiles defining specific job titles, seniority levels, and daily departmental pain points.",
+      why: "A VP of Engineering deletes emails about quota attainment; a CFO deletes emails about technical refactors. Personas instruct the AI on who reads each message so it speaks their exact language.",
+      roi: "Speaking directly to a prospect's daily pain points increases positive reply rates by 3x–4x. You book significantly more meetings from the same pool of outreach credits."
     },
     objections: {
-      name: "Objection Playbook",
-      icon: <ShieldAlert className="w-6 h-6" />,
-      content: "AI is naturally agreeable and polite. If a prospect replies 'We use a competitor' or 'We don't have budget', a default AI might simply apologize and end the conversation. Your Objection Playbook explicitly trains the AI on your battle-tested counters. It learns to politely challenge the prospect and pivot the conversation—turning hesitant replies into booked meetings by handling friction exactly like your best senior Account Executive would.",
-      color: "from-orange-500 to-red-500"
+      name: "Objection Playbooks",
+      badge: "Deal Rescue",
+      what: "Battle-tested counterarguments for common prospect pushbacks ('Too expensive', 'No budget', 'Using competitor').",
+      why: "Standard AI is naturally polite and apologizes when rejected, ending the conversation and losing the deal. Playbooks teach the AI how to handle hesitation like a seasoned enterprise Account Executive.",
+      roi: "Rescues deals you already paid credits to acquire. Converting even 1 out of 5 hesitations into a discovery call doubles your campaign ROI without buying more lead lists."
     },
     bayesian_icp: {
-      name: "Bayesian ICP Learning",
-      icon: <Sparkles className="w-6 h-6 text-indigo-400" />,
-      content: "Static ICP definitions become obsolete quickly. Ele-in's Bayesian ICP module maintains a live Beta-distribution prior across all firmographic and behavioral signals (headcount, funding, title seniority, and activity). Every positive conversion incrementally increases signal alpha, while lost opportunities increase beta. This produces mathematically grounded qualification scores rather than hallucinated LLM guesses.",
-      color: "from-indigo-500 to-blue-500"
+      name: "Lead Fit AI (Smart Lead Qualification)",
+      badge: "Credit Protection",
+      what: "An auto-learning lead filter that scores prospect buying probability from 0 to 100 before any outreach is sent.",
+      why: "Never blast messages to leads who will never buy. As you book meetings, the AI automatically learns which job titles, company sizes, and industries convert best and prioritizes them.",
+      roi: "The Credit Protection Gate holds low-scoring leads, preventing you from burning monthly credits and LinkedIn limits on cold prospects with zero buying intent."
     },
     ai_gateway: {
-      name: "AI Gateway & BYOK",
-      icon: <ElesiumLogo size={22} />,
-      content: "High-volume outbound requires reliable, cost-effective reasoning infrastructure. The AI Gateway coordinates model selection across specialized NIM reasoning endpoints (DeepSeek-R1, Nemotron-4 340B, and Llama 3.2), provides granular token consumption auditing, and lets Growth Pro teams connect zero-markup Bring-Your-Own-Key provider vaults.",
-      color: "from-blue-600 to-indigo-500"
+      name: "AI Models & Cost Control (BYOK)",
+      badge: "Infrastructure",
+      what: "Compute telemetry, model routing, and direct Bring-Your-Own-Key provider vault.",
+      why: "Match model intelligence to deal value—use fast, economical models for initial connection requests, and deep-reasoning models (DeepSeek-R1) for complex enterprise objection handling.",
+      roi: "Connect your own OpenAI, Anthropic, or DeepSeek API keys to pay raw wholesale provider pricing with 0% platform markup, saving up to 80% on high-volume runs."
     }
   };
 
@@ -381,13 +448,13 @@ export default function EleInKnowledge() {
 
         
         {/* ─── HEADER ─────────────────────────────────────────────── */}
-        <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             {/* Editable company name title */}
             {isEditingName ? (
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
-                  <BrainCircuit className="w-4 h-4 text-primary" />
+              <div className="flex items-center gap-3 mb-1.5">
+                <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/50 flex items-center justify-center text-foreground/80 shrink-0">
+                  <BrainCircuit className="w-4 h-4" />
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -397,21 +464,21 @@ export default function EleInKnowledge() {
                     onChange={(e) => setEditedCompanyName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCompanyName(); if (e.key === 'Escape') setIsEditingName(false); }}
                     placeholder="Workspace Name"
-                    className="text-xl font-bold bg-background border border-border focus:border-primary rounded-lg px-2.5 py-1 text-foreground focus:outline-none w-auto min-w-[220px] shadow-xs disabled:opacity-50"
+                    className="text-lg font-medium bg-background border border-border/70 rounded-lg px-2.5 py-1 text-foreground focus:outline-none focus:border-foreground/40 w-auto min-w-[200px]"
                   />
                   <button 
                     type="button"
                     onClick={handleSaveCompanyName} 
                     disabled={isSavingCompanyName}
-                    className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center min-w-[50px] transition-colors cursor-pointer"
+                    className="text-xs px-3 py-1 bg-foreground text-background rounded-md font-medium hover:bg-foreground/90 disabled:opacity-50 flex items-center justify-center min-w-[48px] transition-colors cursor-pointer"
                   >
-                    {isSavingCompanyName ? <div className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" /> : 'Save'}
+                    {isSavingCompanyName ? <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" /> : 'Save'}
                   </button>
                   <button 
                     type="button"
                     onClick={() => setIsEditingName(false)} 
                     disabled={isSavingCompanyName}
-                    className="text-xs px-3 py-1.5 bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 disabled:opacity-50 transition-colors cursor-pointer"
+                    className="text-xs px-2.5 py-1 bg-muted text-muted-foreground rounded-md hover:bg-muted/80 disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -429,90 +496,87 @@ export default function EleInKnowledge() {
                   }
                 }}
                 title="Click to rename"
-                className="text-2xl font-bold tracking-tight text-foreground mb-2 flex w-fit items-center gap-3 cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+                className="text-xl font-medium tracking-tight text-foreground mb-1 flex w-fit items-center gap-2.5 cursor-pointer group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
               >
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
-                  <BrainCircuit className="w-4 h-4 text-primary" />
+                <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/50 flex items-center justify-center text-foreground/80 shrink-0">
+                  <BrainCircuit className="w-4 h-4" />
                 </div>
-                <span className="group-hover:text-primary transition-colors">
-                  {workspace?.name ? `${workspace.name}'s Knowledge Base` : 'Your Knowledge Base'}
+                <span className="hover:text-foreground/80 transition-colors">
+                  {workspace?.name ? `${workspace.name}'s Knowledge Base` : 'Knowledge Base'}
                 </span>
-                <Edit2 size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Edit2 size={13} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
               </h1>
             )}
-            <p className="text-sm text-muted-foreground max-w-lg">
-              This is where your AI learns about your company. The more you add here, the smarter and more accurate your outreach becomes — no generic emails, ever.
+            <p className="text-xs text-muted-foreground">
+              Ground your AI on your real business so every credit sent turns into high-converting, personalized outreach.
             </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Knowledge Readiness Badge (Transcript 2: Goal Gradient Feedback) */}
-            <div className="h-9 flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60 bg-muted/20 backdrop-blur-md shadow-2xs">
-              <span className={`w-2 h-2 rounded-full ${
-                assetCount > 0 && personaCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Minimalist Readiness Badge */}
+            <div className="h-8.5 flex items-center gap-2 px-3 rounded-lg border border-border/50 bg-card/60 text-xs">
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                assetCount > 0 && personaCount > 0 ? 'bg-emerald-500' : 'bg-amber-500/80'
               }`} />
-              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <ElesiumLogo size={13} />
-                AI Brain: {assetCount > 0 && personaCount > 0 ? 'Grounded & Ready' : `${assetCount > 0 || personaCount > 0 ? 'Partially Grounded' : 'Needs Knowledge'}`}
+              <span className="text-xs text-foreground/90 font-medium">
+                {assetCount > 0 && personaCount > 0 ? 'AI Memory: Calibrated' : 'Needs Sources'}
               </span>
             </div>
+
+            {/* Subtle Plan / Quota Indicator */}
+            {!isPro && (
+              <button
+                type="button"
+                onClick={() => openPaywall({ featureName: "Knowledge Base & AI Brain Capacity" })}
+                className="h-8.5 flex items-center gap-1.5 px-3 rounded-lg border border-border/50 bg-card/60 hover:bg-muted text-xs text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer"
+                title="Manage AI Capacity"
+              >
+                <span>Free Plan · {assetCount}/{maxAssets} sources</span>
+                {(isAssetCapped || isPersonaCapped) && (
+                  <span className="text-amber-500 ml-1 font-semibold">· Quota Reached</span>
+                )}
+              </button>
+            )}
 
             <button
               type="button"
               onClick={() => setIsDocOpen(true)}
-              className="h-9 flex items-center gap-2 px-4 py-2 bg-muted/30 border border-border/60 rounded-lg text-xs font-semibold hover:bg-muted/50 text-foreground transition-colors cursor-pointer"
+              className="h-8.5 flex items-center gap-1.5 px-3 rounded-lg border border-border/50 bg-card/60 hover:bg-muted text-xs text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer"
             >
-              <FileText size={14} /> How it works
+              <FileText size={13} />
+              <span>Guide</span>
             </button>
+
             <TestDriveSimulator />
           </div>
         </div>
 
-        {/* ─── IN-SITU PAY RAMP: KNOWLEDGE BASE & AI BRAIN CAPACITY ─── */}
-        {!isPro && (
-          <div className="mb-8 p-4 sm:p-5 rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 shadow-xs relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-3.5">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 text-primary">
-                <ElesiumLogo size={20} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                    Free AI Knowledge Plan
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
-                    {assetCount}/{maxAssets} Docs &bull; {personaCount}/{maxPersonas} Personas
-                  </span>
-                  {(isAssetCapped || isPersonaCapped) && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 flex items-center gap-1">
-                      <Lock size={10} /> Quota Limit Reached
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                  Growth Pro unlocks <strong>25 Knowledge Assets</strong>, up to <strong>10 Target Buyer Personas</strong>, and the <strong>Continuous Bayesian ICP Machine Learning Engine</strong>.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => openPaywall({ featureName: "Knowledge Base & AI Brain Capacity" })}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-all cursor-pointer whitespace-nowrap self-start md:self-auto shrink-0"
-            >
-              <span>Expand AI Capacity</span>
-              <ArrowRight size={14} />
-            </button>
+        {/* Value Explainer Strip */}
+        <div className="mb-6 p-3.5 px-4 rounded-xl border border-border/50 bg-card/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-muted-foreground">
+            <Sparkles size={13} className="text-foreground/80 shrink-0" />
+            <span><strong className="text-foreground font-medium">Why train your AI?</strong> Without context, AI sends generic templates that get ignored. Grounding your AI ensures every message cites your real proof points, handles objections, and protects outreach credits.</span>
           </div>
-        )}
+          <button
+            type="button"
+            onClick={() => setIsDocOpen(true)}
+            className="text-foreground/80 hover:text-foreground text-[11px] font-medium underline underline-offset-4 shrink-0 self-start sm:self-auto cursor-pointer"
+          >
+            How it works →
+          </button>
+        </div>
 
-        {/* ─── PILL NAVIGATION WITH LIVE COUNTS ───── */}
+        {/* ─── TAB NAVIGATION ───── */}
         <div 
           role="tablist"
           aria-label="Knowledge Base Navigation"
-          className="bg-muted/40 p-1.5 rounded-xl border border-border/60 w-full flex flex-wrap lg:flex-nowrap items-center gap-1.5 mb-8 shadow-2xs"
+          className="flex items-center gap-6 border-b border-border mb-8 overflow-x-auto scrollbar-none"
         >
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
+            const isProBadge = tab.count === 'Pro';
+            const isActiveBadge = tab.count === 'Active';
+
             return (
               <button 
                 key={tab.id}
@@ -520,18 +584,26 @@ export default function EleInKnowledge() {
                 aria-selected={isActive}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}
+                className={`group relative flex items-center gap-2 pb-3 pt-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap border-b-2 -mb-px outline-hidden ${
+                  isActive 
+                    ? 'border-foreground text-foreground' 
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                }`}
               >
-                {isActive && (
-                  <motion.div layoutId="kb-active-pill" className="absolute inset-0 bg-background shadow-xs border border-border/50 rounded-lg" transition={{ type: "spring", bounce: 0.15, duration: 0.4 }} />
-                )}
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                  {tab.icon} <span>{tab.label}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold font-mono transition-colors ${
-                    isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {tab.count}
-                  </span>
+                <span className={`shrink-0 transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                  {tab.icon}
+                </span>
+                <span>{tab.label}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full leading-none transition-colors ${
+                  isProBadge
+                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-medium'
+                    : isActiveBadge
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium'
+                    : isActive
+                    ? 'bg-muted text-foreground font-medium'
+                    : 'bg-muted/60 text-muted-foreground group-hover:text-foreground'
+                }`}>
+                  {tab.count}
                 </span>
               </button>
             );
@@ -552,22 +624,24 @@ export default function EleInKnowledge() {
                 
                 {/* Data Sources (Spans 2 columns) */}
                 <div className="lg:col-span-2 group outline-none">
-                  <div className="h-full bg-card border border-border/60 rounded-xl p-6 lg:p-8 overflow-hidden relative shadow-xs">
+                  <div className="h-full bg-card/40 border border-border/50 rounded-xl p-6 lg:p-7 overflow-hidden relative">
                     <div className="relative z-10">
                       {/* Section heading */}
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
-                          <Database className="w-5 h-5 text-primary" />
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 shadow-2xs">
+                          <Database className="w-4 h-4 text-foreground/80" />
                         </div>
                         <div>
-                          <h3 className="text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
-                            Tell <ElesiumLogo size={18} /> AI about your company
+                          <h3 className="text-sm font-medium tracking-tight text-foreground">
+                            Company Knowledge Sources
                           </h3>
-                          <p className="text-xs text-muted-foreground mt-0.5">Add anything — your website, a sales deck, your pitch, notes. The AI reads it all.</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Ground your AI on your website, decks, and case studies so outreach cites real ROI and proof points.
+                          </p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 mt-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-8">
 
                         {/* ── 1. Upload PDF ── */}
                         <UploadPdfModal mutateAssets={mutateAssets} />
@@ -597,34 +671,34 @@ export default function EleInKnowledge() {
                               }
                             }
                           }}
-                          className="border border-border/60 bg-muted/20 hover:bg-muted/30 transition-all rounded-xl p-5 flex flex-col justify-between cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="border border-border/50 bg-card/40 hover:bg-card/70 hover:border-border/80 transition-all rounded-xl p-5 flex flex-col justify-between min-h-[200px] cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
                           <div>
-                            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-2">
-                              {isAssetCapped ? <Lock size={18} className="text-amber-500" /> : <FileText size={18} />}
+                            <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 mb-3">
+                              {isAssetCapped ? <Lock size={15} className="text-amber-500" /> : <FileText size={15} />}
                             </div>
-                            <h3 className="font-semibold text-sm text-foreground">
-                              {isAssetCapped ? "Upgrade to Paste Text" : "Copy-paste anything"}
+                            <h3 className="font-medium text-sm text-foreground">
+                              {isAssetCapped ? "Paste Notes" : "Paste Notes"}
                             </h3>
-                            <p className="text-xs text-muted-foreground mt-1 mb-3">
+                            <p className="text-xs text-muted-foreground mt-1 mb-3 leading-relaxed">
                               {isAssetCapped
-                                ? `Limit reached (${assetCount}/${maxAssets} docs)`
-                                : "Paste raw text, email templates, or notes directly."}
+                                ? `Plan limit reached (${assetCount}/${maxAssets} docs)`
+                                : "Paste raw positioning, email snippets, or internal FAQs."}
                             </p>
                           </div>
                           <button 
                             type="button"
                             tabIndex={-1}
-                            className={`w-full py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                            className={`w-full py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border cursor-pointer ${
                               isAssetCapped
-                                ? "bg-muted text-foreground border border-border hover:bg-muted/80"
-                                : "bg-primary text-primary-foreground hover:bg-primary/90"
+                                ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                                : "border-border/70 bg-background/60 hover:bg-muted/60 text-foreground"
                             }`}
                           >
                             {isAssetCapped ? (
                               <>
                                 <Lock size={12} className="text-amber-500" />
-                                <span>Unlock More Docs</span>
+                                <span>Quota Reached</span>
                               </>
                             ) : (
                               <span>Open Editor</span>
@@ -633,14 +707,13 @@ export default function EleInKnowledge() {
                         </div>
                       </div>
 
-                      <div className="pt-6 border-t border-border/60">
-                        <h4 className="text-sm font-semibold mb-1 text-foreground flex items-center gap-1.5">
-                          What <ElesiumLogo size={14} /> AI has learned so far
+                      <div className="pt-6 border-t border-border/40">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                          Connected Knowledge Sources ({assetCount})
                         </h4>
-                        <p className="text-xs text-muted-foreground mb-4">Each item below is part of your AI's memory. Delete any that are outdated.</p>
                         {(!assets && !assetsError) ? (
-                          <div className="space-y-3">
-                            {[1,2,3].map(i => <div key={i} className="h-16 w-full bg-muted/40 rounded-lg animate-pulse" />)}
+                          <div className="space-y-2">
+                            {[1,2,3].map(i => <div key={i} className="h-12 w-full bg-muted/30 rounded-lg animate-pulse" />)}
                           </div>
                         ) : (
                           <KnowledgeAssetList 
@@ -651,11 +724,10 @@ export default function EleInKnowledge() {
                             mutateSynthesis={mutateSynthesis}
                           />
                         )}
+                      </div>
                     </div>
                   </div>
                 </div>
-
-              </div>
 
                 <SynthesisEditor synthesis={synthesis} mutateSynthesis={mutateSynthesis} />
 
@@ -673,145 +745,143 @@ export default function EleInKnowledge() {
             )}
 
 {activeTab === 'objections' && (
-              <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 min-h-[680px]">
+              <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 min-h-[580px]">
                 {/* LEFT SIDEBAR: "Battle Playbooks" */}
-                <div className="bg-card border border-border/60 rounded-xl flex flex-col shadow-xs overflow-hidden relative">
-                  <div className="relative z-10 flex flex-col h-full">
-                    <div className="p-5 border-b border-border/60 flex justify-between items-start">
-                      <div className="flex flex-col">
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-bold uppercase tracking-wider mb-2 w-fit border border-red-500/20">Objection Engine</span>
-                        <h3 className="text-lg font-bold text-foreground">Battle Playbooks</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {Array.isArray(objections) ? objections.length : 0} playbook{(Array.isArray(objections) ? objections.length : 0) === 1 ? '' : 's'} trained
+                <div className="bg-card/40 border border-border/50 rounded-xl flex flex-col overflow-hidden">
+                  <div className="p-4 border-b border-border/40 flex justify-between items-center bg-card/60">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80">
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-medium text-foreground tracking-tight">Battle Playbooks</h3>
+                        <p className="text-[11px] text-muted-foreground">
+                          {Array.isArray(objections) ? objections.length : 0} playbook{(Array.isArray(objections) ? objections.length : 0) === 1 ? '' : 's'}
                         </p>
                       </div>
-                      <button 
-                        type="button"
-                        onClick={handleAddObjection} 
-                        disabled={isCreatingObjection} 
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
-                      >
-                        {isCreatingObjection ? <div className="w-3.5 h-3.5 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Plus size={14} />}
-                        <span className="hidden sm:inline">New Playbook</span>
-                      </button>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                      {isObjectionsLoading ? (
-                        [1,2,3,4].map(i => <div key={i} className="h-16 w-full bg-muted/40 rounded-lg animate-pulse" />)
-                      ) : (
-                        (Array.isArray(objections) ? objections : []).length === 0 ? (
-                          <div className="flex flex-col items-center justify-center flex-1 py-12 text-center h-full">
-                            <div className="w-12 h-12 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-3">
-                              <ShieldAlert className="w-6 h-6 text-red-400" />
-                            </div>
-                            <p className="text-sm font-medium text-foreground mb-1">No playbooks yet</p>
-                            <p className="text-xs text-muted-foreground mb-4 px-4">Create your first objection handler to train the AI on how to respond to pushback.</p>
-                            <button 
-                              type="button"
-                              onClick={handleAddObjection} 
-                              disabled={isCreatingObjection} 
-                              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold transition-colors flex items-center justify-center min-w-[140px] shadow-xs cursor-pointer"
-                            >
-                              {isCreatingObjection ? <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : 'Create First Playbook'}
-                            </button>
+                    <button 
+                      type="button"
+                      onClick={handleAddObjection} 
+                      disabled={isCreatingObjection} 
+                      className="bg-foreground text-background hover:bg-foreground/90 rounded-lg px-2.5 py-1 text-xs font-medium flex items-center gap-1 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      {isCreatingObjection ? <div className="w-3 h-3 rounded-full border-2 border-background border-t-transparent animate-spin" /> : <Plus size={13} />}
+                      <span>New</span>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                    {isObjectionsLoading ? (
+                      [1,2,3,4].map(i => <div key={i} className="h-14 w-full bg-muted/30 rounded-lg animate-pulse" />)
+                    ) : (
+                      (Array.isArray(objections) ? objections : []).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center flex-1 py-12 px-3 text-center h-full">
+                          <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center mb-2.5 text-muted-foreground">
+                            <ShieldAlert className="w-4 h-4" />
                           </div>
-                        ) : (
-                          (Array.isArray(objections) ? objections : []).map((obj: any) => (
-                            <div
-                              key={obj.id}
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => {
+                          <p className="text-xs font-medium text-foreground mb-1">No playbooks yet</p>
+                          <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">Train the AI on how to counter pushbacks.</p>
+                          <button 
+                            type="button"
+                            onClick={handleAddObjection} 
+                            disabled={isCreatingObjection} 
+                            className="px-3 py-1.5 bg-foreground text-background hover:bg-foreground/90 rounded-lg text-xs font-medium transition-colors shadow-2xs cursor-pointer"
+                          >
+                            {isCreatingObjection ? <div className="w-3.5 h-3.5 rounded-full border-2 border-background border-t-transparent animate-spin" /> : 'Create Playbook'}
+                          </button>
+                        </div>
+                      ) : (
+                        (Array.isArray(objections) ? objections : []).map((obj: any) => (
+                          <div
+                            key={obj.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              if (isDirtyObjection && selectedObjection?.id !== obj.id) {
+                                setPendingSelectObjection(obj);
+                                return;
+                              }
+                              setSelectedObjection(obj); setIsDirtyObjection(false); 
+                              if (window.innerWidth < 1024) {
+                                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
                                 if (isDirtyObjection && selectedObjection?.id !== obj.id) {
                                   setPendingSelectObjection(obj);
                                   return;
                                 }
-                                setSelectedObjection(obj); setIsDirtyObjection(false); 
-                                if (window.innerWidth < 1024) {
-                                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  if (isDirtyObjection && selectedObjection?.id !== obj.id) {
-                                    setPendingSelectObjection(obj);
-                                    return;
-                                  }
-                                  setSelectedObjection(obj);
-                                  setIsDirtyObjection(false);
-                                }
-                              }}
-                              className={`group p-3.5 rounded-lg cursor-pointer transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                                selectedObjection?.id === obj.id
-                                  ? 'bg-red-500/10 border-red-500/30 shadow-xs'
-                                  : 'border-transparent hover:bg-muted/40 hover:border-border/60'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-foreground truncate">{obj.name || 'Untitled Objection'}</p>
-                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{obj.rebuttal?.substring(0, 60) || 'No strategy yet'}...</p>
+                                setSelectedObjection(obj);
+                                setIsDirtyObjection(false);
+                              }
+                            }}
+                            className={`group p-3 rounded-lg cursor-pointer transition-all border text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                              selectedObjection?.id === obj.id
+                                ? 'bg-card border-border text-foreground shadow-2xs'
+                                : 'border-transparent hover:bg-muted/40 text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  {selectedObjection?.id === obj.id && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-foreground shrink-0" />
+                                  )}
+                                  <p className="text-xs font-medium text-foreground truncate">{obj.name || 'Untitled Objection'}</p>
                                 </div>
-                                <button
-                                  type="button"
-                                  aria-label="Delete playbook"
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteObjection(obj.id); }}
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0 mt-0.5"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{obj.rebuttal?.substring(0, 50) || 'No strategy defined'}...</p>
                               </div>
-                              {selectedObjection?.id === obj.id && (
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                  <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Active</span>
-                                </div>
-                              )}
+                              <button
+                                type="button"
+                                aria-label="Delete playbook"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteObjection(obj.id); }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0 cursor-pointer"
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             </div>
-                          ))
-                        )
-                      )}
-                    </div>
+                          </div>
+                        ))
+                      )
+                    )}
                   </div>
                 </div>
                 
                 {/* RIGHT PANEL: The Playbook Editor */}
-                <div className="bg-card border border-border/60 rounded-xl shadow-xs overflow-hidden flex flex-col relative">
+                <div className="bg-card/40 border border-border/50 rounded-xl shadow-2xs overflow-hidden flex flex-col">
                   {selectedObjection ? (
-                    <div className="flex-1 flex flex-col relative z-10">
+                    <div className="flex-1 flex flex-col">
                       {/* Status bar */}
-                      <div className="px-6 py-3 border-b border-border/60 flex items-center gap-3 bg-muted/20">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                          <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Editing Playbook</span>
-                        </div>
+                      <div className="px-5 py-2.5 border-b border-border/40 flex items-center gap-2 bg-muted/10 text-xs">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Editing</span>
                         <span className="text-border">/</span>
-                        <span className="text-xs font-medium text-muted-foreground truncate">{selectedObjection.name || 'Untitled'}</span>
+                        <span className="text-xs font-medium text-foreground truncate">{selectedObjection.name || 'Untitled'}</span>
                       </div>
 
-                      <div className="p-6 md:p-8 flex flex-col gap-6 flex-1 overflow-y-auto">
+                      <div className="p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
                         {/* Trigger Phrase Card */}
-                        <div className="bg-muted/20 border border-border/60 rounded-lg p-5 shadow-xs">
-                          <label className="text-[10px] font-bold text-red-500/80 dark:text-red-400/80 uppercase tracking-widest mb-3 block">Trigger Phrase</label>
+                        <div className="bg-card/60 border border-border/50 rounded-lg p-3.5">
+                          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 block">Trigger Phrase</label>
                           <input 
                             type="text" 
                             maxLength={500}
                             disabled={isSavingObjection}
-                            className="w-full bg-transparent text-xl font-bold text-foreground focus:outline-none placeholder:text-muted-foreground/50 disabled:opacity-50"
+                            className="w-full bg-transparent text-sm font-medium text-foreground focus:outline-none placeholder:text-muted-foreground/50 disabled:opacity-50"
                             value={selectedObjection.name || ''}
                             onChange={(e) => {
                               setSelectedObjection({...selectedObjection, name: e.target.value});
                               setIsDirtyObjection(true);
                             }}
-                            placeholder="When prospect says..."
+                            placeholder="When prospect says (e.g. 'We don't have budget')..."
                           />
                         </div>
 
                         {/* AI Response Strategy Card */}
-                        <div className="flex-1 bg-background border border-border/60 rounded-lg p-5 flex flex-col shadow-xs">
-                          <div className="flex justify-between items-center mb-3">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                        <div className="flex-1 bg-card/60 border border-border/50 rounded-lg p-3.5 flex flex-col">
+                          <div className="flex justify-between items-center mb-2">
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                               <ElesiumLogo size={12} />
                               AI Response Strategy
                             </label>
@@ -819,33 +889,33 @@ export default function EleInKnowledge() {
                           <textarea 
                             maxLength={5000}
                             disabled={isSavingObjection}
-                            className="flex-1 w-full bg-transparent text-sm focus:outline-none resize-none leading-relaxed text-foreground placeholder:text-muted-foreground/50 disabled:opacity-50"
+                            className="flex-1 w-full bg-transparent text-xs focus:outline-none resize-none leading-relaxed text-foreground placeholder:text-muted-foreground/50 disabled:opacity-50 min-h-[220px]"
                             value={selectedObjection.rebuttal || ''}
                             onChange={(e) => {
                               setSelectedObjection({...selectedObjection, rebuttal: e.target.value});
                               setIsDirtyObjection(true);
                             }}
-                            placeholder="Instructions for the AI on how to handle this objection..."
+                            placeholder="Instructions for the AI on how to handle this objection, key counterarguments, and pivot language..."
                           />
                           
-                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/60">
-                            <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                              Tip: Be specific. Instead of "acknowledge and pivot", write the exact words the AI should use.
+                          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/40">
+                            <p className="text-[11px] text-muted-foreground">
+                              Be specific. Provide exact wording and proof points to challenge hesitation politely.
                             </p>
-                            <div className={`text-xs font-medium ${(selectedObjection.rebuttal?.length || 0) > 4800 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            <div className={`text-[10px] font-mono ${(selectedObjection.rebuttal?.length || 0) > 4800 ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
                               {selectedObjection.rebuttal?.length || 0}/5000
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="p-5 border-t border-border/60 flex justify-between items-center bg-muted/10 mt-auto">
+                      <div className="p-3.5 border-t border-border/40 flex justify-between items-center bg-card/40 mt-auto">
                         <button 
                           type="button"
                           onClick={() => handleDeleteObjection(selectedObjection.id)}
-                          className="flex items-center gap-2 text-sm font-medium text-destructive hover:bg-destructive/10 px-3 py-2 rounded-lg transition-colors"
+                          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                         >
-                          <Trash2 size={16} /> Delete
+                          <Trash2 size={13} /> Delete
                         </button>
 
                         <button 
@@ -884,36 +954,32 @@ export default function EleInKnowledge() {
                               setIsSavingObjection(false);
                             }
                           }}
-                          className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center min-w-[120px] shadow-xs cursor-pointer ${
+                          className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all shadow-2xs cursor-pointer ${
                             isDirtyObjection || isSavingObjection
-                              ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
-                              : 'bg-muted text-muted-foreground cursor-not-allowed'
-                          } disabled:opacity-50 ${isDirtyObjection && !isSavingObjection ? 'animate-pulse' : ''}`}
+                              ? 'bg-foreground text-background hover:bg-foreground/90' 
+                              : 'bg-muted/50 text-muted-foreground cursor-not-allowed'
+                          } disabled:opacity-50`}
                         >
-                          {isSavingObjection ? <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : 'Save Strategy'}
+                          {isSavingObjection ? <div className="w-3.5 h-3.5 rounded-full border-2 border-background border-t-transparent animate-spin" /> : 'Save Strategy'}
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full p-12 text-center relative overflow-hidden flex-1">
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
-                      
-                      <div className="relative mb-6">
-                        <div className="w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-xs text-primary">
-                          <ShieldAlert className="w-7 h-7 text-primary" />
-                        </div>
+                    <div className="flex flex-col items-center justify-center h-full p-8 text-center flex-1">
+                      <div className="w-10 h-10 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center mb-3 text-muted-foreground">
+                        <ShieldAlert className="w-5 h-5" />
                       </div>
                       
-                      <h3 className="text-xl font-bold text-foreground mb-2 relative z-10">Select a Battle Playbook</h3>
-                      <p className="text-sm text-muted-foreground max-w-sm leading-relaxed mb-6 relative z-10">
-                        Each playbook trains the AI to handle a specific objection your prospects raise — turning "not interested" into booked meetings.
+                      <h3 className="text-sm font-medium text-foreground mb-1">Select a Battle Playbook</h3>
+                      <p className="text-xs text-muted-foreground max-w-sm leading-relaxed mb-5">
+                        Each playbook trains the AI to handle a specific objection your prospects raise — turning pushback into booked meetings.
                       </p>
                       
-                      <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-8 relative z-10">
+                      <div className="flex flex-wrap gap-2 justify-center max-w-sm mb-6">
                         {['Too expensive', 'Wrong timing', 'Using competitor'].map((ex) => (
-                          <div key={ex} className="bg-muted/40 rounded-lg p-3 text-center border border-border/60">
-                            <p className="text-xs font-medium text-muted-foreground">{ex}</p>
-                          </div>
+                          <span key={ex} className="px-2.5 py-1 rounded-md bg-muted/30 border border-border/40 text-[11px] text-muted-foreground font-medium">
+                            {ex}
+                          </span>
                         ))}
                       </div>
                       
@@ -922,10 +988,10 @@ export default function EleInKnowledge() {
                           type="button"
                           onClick={handleAddObjection}
                           disabled={isCreatingObjection}
-                          className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-semibold transition-all shadow-xs flex items-center gap-2 disabled:opacity-50 relative z-10 cursor-pointer"
+                          className="px-3.5 py-1.5 bg-foreground text-background hover:bg-foreground/90 rounded-lg text-xs font-medium transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                         >
-                          {isCreatingObjection ? <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Plus size={16} />}
-                          Create Your First Playbook
+                          {isCreatingObjection ? <div className="w-3.5 h-3.5 rounded-full border-2 border-background border-t-transparent animate-spin" /> : <Plus size={13} />}
+                          Create First Playbook
                         </button>
                       )}
                     </div>
@@ -946,10 +1012,10 @@ export default function EleInKnowledge() {
 
       </main>
 
-      {/* DYNAMIC DOCUMENTATION MODAL (Prose format) */}
+      {/* DYNAMIC DOCUMENTATION MODAL */}
       <AnimatePresence>
         {isDocOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -958,45 +1024,70 @@ export default function EleInKnowledge() {
               onClick={() => setIsDocOpen(false)}
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative w-full max-w-2xl bg-card border border-border/60 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative w-full max-w-lg bg-card border border-border/60 rounded-xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className={`absolute top-0 right-0 w-64 h-64 -mr-16 -mt-16 rounded-full bg-gradient-to-br ${activeDocData.color} opacity-10 blur-3xl pointer-events-none`} />
-              
-              <div className="relative p-6 pb-5 border-b border-border/60">
+              <div className="px-5 py-4 border-b border-border/50 flex justify-between items-center bg-card">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 bg-muted/60 border border-border/40 rounded-lg flex items-center justify-center text-foreground/80">
+                    <FileText size={14} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">{activeDocData?.name || "Documentation"}</h3>
+                    <p className="text-[10px] text-muted-foreground">AI Knowledge Guide</p>
+                  </div>
+                </div>
                 <button 
                   type="button"
                   aria-label="Close documentation"
                   onClick={() => setIsDocOpen(false)}
-                  className="absolute top-6 right-6 p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
-                  <X size={18} />
+                  <X size={15} />
                 </button>
-                
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-muted/40 border border-border/60 rounded-lg flex items-center justify-center text-foreground shadow-xs">
-                    {activeDocData.icon}
+              </div>
+
+              <div className="p-5 space-y-3.5 flex-1 overflow-y-auto text-xs leading-relaxed">
+                <div className="p-3.5 rounded-xl bg-card/60 border border-border/50 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-medium">
+                      What It Is
+                    </span>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/40 font-mono">
+                      {activeDocData?.badge}
+                    </span>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-semibold tracking-tight text-foreground">{activeDocData.title}</h2>
-                    <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-0.5">Documentation</p>
-                  </div>
+                  <p className="text-foreground font-medium text-xs pt-0.5">
+                    {activeDocData?.what}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-card/60 border border-border/50 space-y-1">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-medium block">
+                    Why Use This Feature?
+                  </span>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {activeDocData?.why}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-card/60 border border-border/50 space-y-1">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-medium block">
+                    Why Spend Credits &amp; ROI
+                  </span>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {activeDocData?.roi}
+                  </p>
                 </div>
               </div>
 
-              <div className="relative p-6 pt-5 space-y-4 flex-1 overflow-y-auto">
-                <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
-                  <p>{activeDocData.content}</p>
-                </div>
-              </div>
-
-              <div className="p-4 bg-muted/20 border-t border-border/60 flex justify-end">
+              <div className="px-5 py-3 bg-muted/20 border-t border-border/50 flex justify-end">
                 <button 
                   type="button"
                   onClick={() => setIsDocOpen(false)}
-                  className="px-5 py-2 bg-foreground text-background rounded-lg text-xs font-semibold hover:bg-foreground/90 transition-all shadow-xs"
+                  className="px-3.5 py-1.5 bg-foreground text-background rounded-lg text-xs font-medium hover:bg-foreground/90 transition-all shadow-2xs cursor-pointer"
                 >
                   Close
                 </button>
@@ -1006,6 +1097,7 @@ export default function EleInKnowledge() {
         )}
       </AnimatePresence>
 
+      {/* PASTE TEXT MODAL */}
       <AnimatePresence>
         {isPasteModalOpen && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -1013,24 +1105,29 @@ export default function EleInKnowledge() {
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm cursor-pointer"
               onClick={() => setIsPasteModalOpen(false)}
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative bg-card border border-border/60 shadow-2xl rounded-xl w-full max-w-lg p-6 overflow-hidden flex flex-col"
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative bg-card border border-border/60 shadow-2xl rounded-xl w-full max-w-md p-5 overflow-hidden flex flex-col"
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-foreground">Paste Knowledge</h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80">
+                    <FileText size={13} />
+                  </div>
+                  <h3 className="text-sm font-medium text-foreground">Paste Knowledge</h3>
+                </div>
                 <button 
                   type="button"
                   aria-label="Close"
                   onClick={() => setIsPasteModalOpen(false)} 
-                  className="text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-muted transition-colors"
+                  className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors cursor-pointer"
                 >
-                  <X size={18} />
+                  <X size={15} />
                 </button>
               </div>
               <input 
@@ -1038,19 +1135,19 @@ export default function EleInKnowledge() {
                 value={pasteTitle} 
                 onChange={e => setPasteTitle(e.target.value)} 
                 placeholder="Title (e.g. Competitor Battlecard)" 
-                className="w-full bg-background border border-border/60 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary mb-4 text-foreground" 
+                className="w-full bg-background border border-border/60 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-border text-foreground mb-3 placeholder:text-muted-foreground/60" 
               />
               <textarea 
                 value={pasteText} 
                 onChange={e => setPasteText(e.target.value)} 
-                placeholder="Paste your raw text, emails, or notes here..." 
-                className="w-full bg-background border border-border/60 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-h-[200px] mb-6 resize-none text-foreground" 
+                placeholder="Paste your raw text, emails, or internal positioning notes..." 
+                className="w-full bg-background border border-border/60 rounded-lg px-3 py-2.5 text-xs focus:outline-none focus:border-border min-h-[160px] mb-4 resize-none text-foreground placeholder:text-muted-foreground/60 leading-relaxed" 
               />
-              <div className="flex gap-3 w-full">
+              <div className="flex gap-2 w-full justify-end">
                 <button 
                   type="button"
                   onClick={() => setIsPasteModalOpen(false)} 
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-border/60 text-foreground text-sm font-medium hover:bg-muted/50 transition-colors"
+                  className="px-3.5 py-1.5 rounded-lg border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted text-xs font-medium transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1058,10 +1155,10 @@ export default function EleInKnowledge() {
                   type="button"
                   onClick={handlePasteText} 
                   disabled={isSavingPaste}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-xs disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center cursor-pointer"
                 >
                   {isSavingPaste ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
+                    <div className="w-3.5 h-3.5 rounded-full border-2 border-background border-t-transparent animate-spin" />
                   ) : (
                     'Save Text'
                   )}
@@ -1072,6 +1169,7 @@ export default function EleInKnowledge() {
         )}
       </AnimatePresence>
 
+      {/* DELETE ASSET CONFIRMATION MODAL */}
       <AnimatePresence>
         {deletingAssetId && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -1079,41 +1177,39 @@ export default function EleInKnowledge() {
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm cursor-pointer"
               onClick={() => !isDeleting && setDeletingAssetId(null)}
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative bg-card border border-border/60 shadow-2xl rounded-xl w-full max-w-sm p-6 overflow-hidden"
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative bg-card border border-border/60 shadow-2xl rounded-xl w-full max-w-sm p-5 overflow-hidden text-center"
             >
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-                  <Trash2 className="w-6 h-6 text-destructive" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Delete Asset?</h3>
-                <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-                  Are you sure you want to permanently delete this asset? The AI will instantly lose all context derived from it.
-                </p>
-                <div className="flex gap-3 w-full">
-                  <button 
-                    type="button"
-                    onClick={() => setDeletingAssetId(null)}
-                    disabled={isDeleting}
-                    className="flex-1 px-4 py-2.5 rounded-lg border border-border/60 text-foreground text-sm font-medium hover:bg-muted/50 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={confirmDeleteAsset}
-                    disabled={isDeleting}
-                    className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-colors shadow-xs disabled:opacity-50"
-                  >
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </button>
-                </div>
+              <div className="w-8 h-8 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center mb-3 mx-auto">
+                <Trash2 size={16} />
+              </div>
+              <h3 className="text-sm font-medium text-foreground mb-1">Delete Knowledge Asset</h3>
+              <p className="text-xs text-muted-foreground mb-5 leading-relaxed">
+                Are you sure you want to delete this asset? The AI will immediately lose context derived from it.
+              </p>
+              <div className="flex gap-2 w-full justify-end">
+                <button 
+                  type="button"
+                  onClick={() => setDeletingAssetId(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-border/60 text-muted-foreground hover:text-foreground text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={confirmDeleteAsset}
+                  disabled={isDeleting}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium hover:bg-destructive/90 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
               </div>
             </motion.div>
           </div>

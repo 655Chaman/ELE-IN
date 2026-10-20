@@ -50,7 +50,10 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
       currentNodes = [{
         id: uuidv4(),
         type: 'follow_profile',
-        data: { delay_days: config.followProfile.delay },
+        data: { 
+          delay_days: config.followProfile.delay,
+          delay: config.followProfile.delay
+        },
         children: { "then": currentNodes }
       }];
     }
@@ -59,12 +62,14 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
       currentNodes = [{
         id: uuidv4(),
         type: 'view_profile',
-        data: { delay_days: config.viewProfile.delay },
+        data: { 
+          delay_days: config.viewProfile.delay,
+          delay: config.viewProfile.delay
+        },
         children: { "then": currentNodes }
       }];
     }
 
-    (window as any)._nodes = currentNodes;
     onComplete(currentNodes);
   };
 

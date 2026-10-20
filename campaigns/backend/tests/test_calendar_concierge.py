@@ -276,6 +276,7 @@ class TestCalendarRouterEndpoints:
                 "id": "camp-cal-free",
                 "workspace_id": "00000000-0000-0000-0000-000000000001",
                 "metadata": {"calendar_concierge_enabled": True},
+                "nodes_json": [{"id": "node-1", "type": "message", "data": {"text": "hello"}}],
             }
         ]
         mock_sb.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = mock_data

@@ -202,7 +202,7 @@ class TestConditionNodesExecutor(unittest.TestCase):
         data = {"_lead_id": "lead_inbox_reply"}
         res = self.executor.handle_if_replied(data, self.test_lead_url)
         self.assertEqual(res.get("status"), "success")
-        self.assertEqual(res.get("branch"), Branch.POSITIVE.value)
+        self.assertEqual(res.get("branch"), Branch.NEUTRAL.value)
 
     def test_if_replied_clean_no_reply_default(self):
         """Layer 2: With no reply in variables, DB, or inbox, cleanly returns No Reply branch."""

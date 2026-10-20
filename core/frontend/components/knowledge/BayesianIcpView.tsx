@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Sparkles, TrendingUp, CheckCircle2, XCircle, RefreshCw, 
+  Sparkles, RefreshCw, 
   Cpu, ArrowUpRight, BarChart3, ShieldCheck, HelpCircle, 
-  Check, Play, Layers, Lock, Unlock, AlertTriangle,
+  Play, Layers, Lock, Unlock, AlertTriangle,
   RotateCcw, History, Zap, Gauge, Sliders, ShieldAlert,
-  Flame, ArrowDownRight, UserCheck, MessageSquare, Briefcase
+  Flame, UserCheck, MessageSquare, XCircle
 } from "lucide-react";
 import useSWR from "swr";
 import { fetchWithAuth, fetcher } from "@/lib/apiClient";
@@ -155,12 +155,12 @@ export function BayesianIcpView() {
         body: JSON.stringify({ weight_multiplier: newMultiplier }),
       });
       if (res.ok) {
-        toast.success(`Weight multiplier for "${signal.label}" set to ${newMultiplier}x`);
+        toast.success(`Weight multiplier for "${signal.label}" adjusted to ${newMultiplier}x`);
         mutateMatrix();
         mutateEvents();
       } else {
         const err = await res.json().catch(() => ({}));
-        toast.error(err.detail || "Failed to adjust multiplier");
+        toast.error(err.detail || "Failed to update multiplier");
       }
     } catch (e: any) {
       toast.error(e.message || "Network error");
@@ -169,7 +169,7 @@ export function BayesianIcpView() {
     }
   };
 
-  // Reset individual signal prior to Beta(2,2)
+  // Reset single signal prior
   const handleResetSignalPrior = async (signal: SignalCalibrationData) => {
     if (isIcpLocked) {
       openPaywall({ featureName: "Bayesian ICP Machine Learning" });
@@ -180,10 +180,10 @@ export function BayesianIcpView() {
       const res = await fetchWithAuth(`/api/knowledge/icp/signals/${signal.signal_name}/calibrate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reset_to_prior: true, weight_multiplier: 1.0, is_frozen: false }),
+        body: JSON.stringify({ reset_prior: true }),
       });
       if (res.ok) {
-        toast.success(`Signal "${signal.label}" reset to neutral prior Beta(2,2).`);
+        toast.success(`Signal "${signal.label}" reset to neutral prior Beta(2,2)`);
         mutateMatrix();
         mutateEvents();
       } else {
@@ -209,7 +209,7 @@ export function BayesianIcpView() {
         method: "POST",
       });
       if (res.ok) {
-        toast.success("Emergency Circuit Breaker Triggered: All Bayesian weights restored to baseline Beta(2,2)");
+        toast.success("All Bayesian weights restored to baseline Beta(2,2)");
         setShowResetModal(false);
         mutateMatrix();
         mutateEvents();
@@ -240,7 +240,7 @@ export function BayesianIcpView() {
       const json = await res.json();
       if (res.ok && json.status === "success") {
         setSimResult({ score: json.score, reasoning: json.reasoning });
-        toast.success("Bayesian ICP Score computed successfully!");
+        toast.success("Bayesian ICP Score computed successfully");
       } else {
         if (res.status === 402 || res.status === 403) {
           openPaywall({ featureName: "Bayesian ICP Machine Learning" });
@@ -280,7 +280,7 @@ export function BayesianIcpView() {
         }),
       });
       if (res.ok) {
-        toast.success(`Adaptive feedback loop recorded! Prior distribution reinforced for ${outcome.replace(/_/g, " ")}.`);
+        toast.success(`Feedback recorded for ${outcome.replace(/_/g, " ").toLowerCase()}`);
         mutateMatrix();
         mutateEvents();
         if (simResult) {
@@ -292,201 +292,148 @@ export function BayesianIcpView() {
     }
   };
 
-  const getCategoryColor = (cat: string) => {
-    switch (cat?.toUpperCase()) {
-      case "FIRMOGRAPHIC":
-        return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
-      case "BEHAVIORAL":
-        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-      case "INTENT":
-        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-      default:
-        return "bg-muted text-muted-foreground border-border/60";
-    }
-  };
-
-  const getConfidenceTierBadge = (tier: string) => {
-    switch (tier?.toUpperCase()) {
-      case "HIGH":
-        return (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-            <ShieldCheck size={11} /> High Conf (N≥30)
-          </span>
-        );
-      case "MEDIUM":
-        return (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center gap-1">
-            <Gauge size={11} /> Medium Conf (N≥10)
-          </span>
-        );
-      default:
-        return (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-            <HelpCircle size={11} /> Sparse / Early Prior
-          </span>
-        );
-    }
-  };
-
   const getEventBadge = (type: string) => {
     switch (type) {
       case "MEETING_BOOKED":
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Meeting Booked (+3α)</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Meeting Booked (+3x Win)</span>;
       case "POSITIVE_REPLY":
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">Positive Reply (+2α)</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-foreground border border-border/50">Positive Reply (+2x Win)</span>;
       case "CONNECTION_ACCEPTED":
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-400 border border-blue-500/30">Connected (+1α)</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50">Connected (+1x Win)</span>;
       case "GHOSTED_OR_LOST":
       case "lost":
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-400 border border-rose-500/30">Ghosted / Lost (+1β)</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-rose-600 dark:text-rose-400 border border-rose-500/20">Ghosted / Lost (+1x Loss)</span>;
       case "MANUAL_OVERRIDE":
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-400 border border-sky-500/30">Operator Override</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50">Operator Override</span>;
       case "RESET_ALL":
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">Circuit Breaker Reset</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-amber-600 dark:text-amber-400 border border-amber-500/20">Reset to Defaults</span>;
       default:
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50">{type}</span>;
+        return <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50">{type}</span>;
     }
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-6 pb-8">
       {/* ── Growth Pro Lock Banner ── */}
       {!isPro && (
-        <div className="p-6 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-transparent shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-primary/15 rounded-md text-primary mt-0.5 shrink-0 shadow-sm">
-              <Cpu size={24} />
+        <div className="p-5 rounded-xl border border-border/50 bg-card/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 shrink-0 mt-0.5">
+              <Sparkles size={16} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-foreground">
-                  Bayesian ICP Calibration Studio & Adaptive Feedback Loop
+                <h3 className="text-sm font-medium text-foreground">
+                  Lead Fit AI (Smart Lead Qualification)
                 </h3>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25">
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50 font-mono">
                   Growth Pro
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xl leading-relaxed">
-                Autonomous Beta-Binomial conjugate updating continuously adapts scoring weights across won and lost outreach signals. Upgrade to Growth Pro to adjust operator multiplier sliders, freeze signal drift, and automate qualification score gates.
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-xl leading-relaxed">
+                Automatically scores lead buying intent before sending outreach. As you book calls, the AI learns which job titles and industries convert best—protecting your credits and sending accounts.
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => openPaywall({ featureName: "Bayesian ICP Machine Learning" })}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all shadow-md shrink-0 whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:bg-foreground/90 transition-all shadow-2xs shrink-0 whitespace-nowrap cursor-pointer"
           >
-            <span>Unlock Calibration Studio</span>
-            <ArrowUpRight size={14} />
+            <span>Unlock Lead Fit AI</span>
+            <ArrowUpRight size={13} />
           </button>
         </div>
       )}
 
       {/* ── Studio Cockpit Header ── */}
-      <div className="p-8 rounded-xl bg-gradient-to-br from-indigo-950/40 via-background to-muted/20 border border-indigo-500/20 backdrop-blur-xl relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none" />
-        
+      <div className="p-6 lg:p-7 rounded-xl bg-card/40 border border-border/50 relative overflow-hidden">
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-semibold">
-                <Cpu size={14} className="animate-pulse" />
-                Beta-Binomial Conjugate Engine
-              </div>
-              <span className="text-xs text-emerald-400 font-mono font-medium flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                Continuous Thomson Sampling
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-muted/60 border border-border/40 text-[11px] text-muted-foreground font-medium">
+                <Sparkles size={13} />
+                Auto-Learning Prospect Filter
+              </span>
+              <span className="text-[11px] text-muted-foreground font-mono font-medium flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Learns from Won Deals
               </span>
             </div>
-            <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
-              Elesium Bayesian ICP Calibration Studio
-              <img src="/elesium-icon.png" alt="Elesium" className="w-5 h-5 object-contain" />
-              <a
-                href="https://elesium.online"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-semibold text-primary hover:underline ml-1"
-              >
-                (elesium.online)
-              </a>
+            <h2 className="text-sm font-medium text-foreground tracking-tight flex items-center gap-2">
+              Lead Fit AI &amp; Smart Lead Qualification
+              <span className="text-[11px] text-muted-foreground font-normal">(elesium.online)</span>
             </h2>
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              Every meeting booked (+3α), positive reply (+2α), connection accepted (+1α), or ghosted deal (+1β) updates the posterior Beta distribution in real time. Rigorously protected by operator freeze locks and sample damping.
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Every meeting booked (+3x win signal) or positive reply (+2x win signal) automatically trains the AI to prioritize similar prospects. Ghosted deals (+1x loss signal) lower priority—saving your outreach credits.
             </p>
           </div>
 
           {/* Quick Metrics & Controls */}
-          <div className="flex flex-wrap items-center gap-4 bg-background/50 border border-border/50 p-4 rounded-lg backdrop-blur-md">
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Signals</p>
-              <p className="text-2xl font-mono font-bold text-foreground">{signals.length || 8}</p>
+          <div className="flex flex-wrap items-center gap-3 bg-muted/20 border border-border/40 p-3 rounded-lg">
+            <div className="px-2">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium tracking-wider">Lead Traits</p>
+              <p className="text-lg font-mono font-medium text-foreground">{signals.length || 8}</p>
             </div>
-            <div className="h-8 w-px bg-border/60" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Data Points</p>
-              <p className="text-2xl font-mono font-bold text-indigo-400">{totalObservations}</p>
+            <div className="h-6 w-px bg-border/40" />
+            <div className="px-2">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium tracking-wider">Leads Evaluated</p>
+              <p className="text-lg font-mono font-medium text-foreground">{totalObservations}</p>
             </div>
-            <div className="h-8 w-px bg-border/60" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Score Gate Cutoff</p>
-              <p className="text-2xl font-mono font-bold text-emerald-400">{recommendedScoreGate}%</p>
+            <div className="h-6 w-px bg-border/40" />
+            <div className="px-2">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium tracking-wider">Credit Gate</p>
+              <p className="text-lg font-mono font-medium text-foreground">{recommendedScoreGate}%</p>
             </div>
-            <div className="h-8 w-px bg-border/60" />
-            <div className="flex flex-col gap-1.5">
+            <div className="h-6 w-px bg-border/40" />
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setShowResetModal(true)}
-                className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="1-Click Emergency Factory Reset"
+                className="px-2.5 py-1.5 rounded-lg border border-border/50 bg-card hover:bg-muted/50 text-muted-foreground hover:text-foreground text-xs font-medium flex items-center gap-1 transition-all cursor-pointer"
+                title="Reset all qualification learning to baseline defaults"
               >
                 <ShieldAlert size={12} />
-                <span>Circuit Breaker</span>
+                <span>Reset</span>
               </button>
               <button 
                 type="button"
                 onClick={() => { mutateMatrix(); mutateEvents(); }}
-                className="text-[11px] text-muted-foreground hover:text-foreground flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg border border-border/50 hover:bg-muted/50 transition-all cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-border/50 bg-card hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                title="Refresh Matrix"
               >
-                <RefreshCw size={11} className={matrixLoading || eventsLoading ? "animate-spin" : ""} /> Refresh
+                <RefreshCw size={12} className={matrixLoading || eventsLoading ? "animate-spin" : ""} />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Model Drift Radar Alert Banner (Layer 2 Paranoia) ── */}
+      {/* ── Model Drift Radar Alert Banner ── */}
       {driftWarnings.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            <Zap size={14} className="text-amber-400" />
-            <span>Autonomous Model Drift Detection Radar</span>
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Zap size={13} className="text-amber-500" />
+            <span>Real-Time Conversion Trends</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {driftWarnings.map((warn, idx) => (
               <div 
                 key={idx}
-                className={`p-4 rounded-lg border backdrop-blur-md flex items-start justify-between gap-4 ${
-                  warn.severity === "POSITIVE_ACCELERATION"
-                    ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
-                    : "bg-rose-950/20 border-rose-500/30 text-rose-300"
-                }`}
+                className="p-3.5 rounded-xl border border-border/50 bg-card/40 flex items-start justify-between gap-3"
               >
-                <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-md mt-0.5 ${
-                    warn.severity === "POSITIVE_ACCELERATION" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
-                  }`}>
-                    {warn.severity === "POSITIVE_ACCELERATION" ? <Flame size={18} /> : <AlertTriangle size={18} />}
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-md bg-muted/60 border border-border/40 flex items-center justify-center text-muted-foreground shrink-0 mt-0.5">
+                    {warn.severity === "POSITIVE_ACCELERATION" ? <Flame size={13} className="text-emerald-500" /> : <AlertTriangle size={13} className="text-amber-500" />}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-bold text-foreground">{warn.label}</h4>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        warn.severity === "POSITIVE_ACCELERATION" ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
-                      }`}>
-                        {warn.severity === "POSITIVE_ACCELERATION" ? "High-Yield Catalyst" : "Negative Divergence"}
+                      <h4 className="text-xs font-medium text-foreground">{warn.label}</h4>
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/40 font-mono">
+                        {warn.severity === "POSITIVE_ACCELERATION" ? "High Win Rate" : "Low Win Rate"}
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
                       {warn.message}
                     </p>
                   </div>
@@ -498,60 +445,60 @@ export function BayesianIcpView() {
       )}
 
       {/* ── Adaptive Score Gate Gauge Section ── */}
-      <div className="p-6 rounded-xl border border-border/60 bg-muted/5 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="space-y-1 max-w-xl">
+      <div className="p-5 rounded-xl border border-border/50 bg-card/40 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="space-y-0.5 max-w-xl">
           <div className="flex items-center gap-2">
-            <Gauge size={18} className="text-indigo-400" />
-            <h3 className="text-sm font-bold text-foreground">Recommended Qualification Score Gate</h3>
+            <Gauge size={15} className="text-muted-foreground" />
+            <h3 className="text-xs font-medium text-foreground">Credit Protection Gate ({recommendedScoreGate}/100)</h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Based on empirical convergence across {totalObservations} historical feedback data points, candidate prospects scoring below <strong className="text-indigo-400">{recommendedScoreGate}/100</strong> are recommended for secondary enrichment before costly connection requests.
+            Based on {totalObservations} evaluated prospects, leads scoring below <strong className="text-foreground">{recommendedScoreGate}/100</strong> are automatically held from campaigns. This saves your daily outreach credits and protects domain reputation.
           </p>
         </div>
 
         <div className="flex items-center gap-4 w-full md:w-auto shrink-0">
-          <div className="flex-1 md:w-56 space-y-1.5">
-            <div className="flex justify-between text-[11px] font-mono">
-              <span className="text-muted-foreground">Cutoff Yield</span>
-              <span className="text-emerald-400 font-bold">{recommendedScoreGate} / 100</span>
+          <div className="flex-1 md:w-48 space-y-1">
+            <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
+              <span>Gate Threshold</span>
+              <span className="text-foreground font-medium">{recommendedScoreGate} / 100</span>
             </div>
-            <div className="w-full bg-muted/60 h-2.5 rounded-full overflow-hidden p-0.5 border border-border/40">
+            <div className="w-full bg-muted/60 h-2 rounded-full overflow-hidden border border-border/40">
               <div 
-                className="bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-700"
+                className="bg-foreground h-full rounded-full transition-all duration-500"
                 style={{ width: `${recommendedScoreGate}%` }}
               />
             </div>
           </div>
-          <div className="px-3 py-2 rounded-xl bg-background border border-border/50 text-center">
-            <span className="text-[10px] text-muted-foreground block font-bold">STATUS</span>
-            <span className="text-xs font-mono font-bold text-emerald-400">ACTIVE GATE</span>
+          <div className="px-2.5 py-1.5 rounded-lg bg-muted/30 border border-border/40 text-center">
+            <span className="text-[9px] text-muted-foreground block font-mono uppercase">Status</span>
+            <span className="text-xs font-mono font-medium text-foreground">Active Gate</span>
           </div>
         </div>
       </div>
 
       {/* ── Signal Calibration Studio Matrix ── */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-              <BarChart3 size={18} className="text-indigo-400" />
-              Bayesian Signal Calibration Matrix
+            <h3 className="text-xs font-medium text-foreground tracking-tight flex items-center gap-1.5">
+              <BarChart3 size={14} className="text-muted-foreground" />
+              Lead Qualification Rules &amp; Learning
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Inspect Beta(α, β) distributions, 95% Credible Intervals, operator freeze locks, and multiplier scalers.
+              How the AI evaluates each lead trait. Booked calls boost importance; ghosted messages lower it.
             </p>
           </div>
 
           {/* Category Filter Pills */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/20 border border-border/40">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-muted/30 border border-border/40">
             {["ALL", "FIRMOGRAPHIC", "BEHAVIORAL", "INTENT"].map((cat) => (
               <button
                 type="button"
                 key={cat}
                 onClick={() => setActiveCategoryFilter(cat)}
-                className={`text-[11px] font-bold px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                   activeCategoryFilter === cat
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-card text-foreground shadow-2xs border border-border/50"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
                 }`}
               >
@@ -562,7 +509,7 @@ export function BayesianIcpView() {
         </div>
 
         {/* Grid of Signals */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {filteredSignals.map((signal) => {
             const isBusy = updatingSignal === signal.signal_name;
             const ciLowerPct = (signal.credible_interval_lower * 100).toFixed(1);
@@ -573,28 +520,21 @@ export function BayesianIcpView() {
             return (
               <div 
                 key={signal.signal_name}
-                className={`p-5 rounded-lg border transition-all duration-200 flex flex-col justify-between backdrop-blur-sm relative overflow-hidden ${
-                  signal.is_frozen
-                    ? "border-amber-500/30 bg-amber-950/[0.04]"
-                    : "border-border/60 bg-muted/10 hover:border-indigo-500/40"
-                }`}
+                className="p-4 rounded-xl border border-border/50 bg-card/40 hover:bg-card/70 hover:border-border/80 transition-all flex flex-col justify-between shadow-2xs"
               >
-                {/* Frozen Indicator Glow */}
-                {signal.is_frozen && (
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
-                )}
-
                 <div>
                   {/* Card Top Header */}
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${getCategoryColor(signal.category)}`}>
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/40">
                           {signal.category}
                         </span>
-                        {getConfidenceTierBadge(signal.confidence_tier)}
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/40">
+                          {signal.confidence_tier}
+                        </span>
                       </div>
-                      <h4 className="text-sm font-bold text-foreground mt-2">{signal.label}</h4>
+                      <h4 className="text-xs font-medium text-foreground mt-1.5">{signal.label}</h4>
                     </div>
 
                     {/* Freeze Lock Toggle Button */}
@@ -602,82 +542,80 @@ export function BayesianIcpView() {
                       type="button"
                       onClick={() => handleToggleFreeze(signal)}
                       disabled={isBusy}
-                      className={`p-1.5 rounded-md border transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold shrink-0 ${
+                      className={`p-1.5 rounded-md border transition-all cursor-pointer flex items-center gap-1 text-[10px] font-medium shrink-0 ${
                         signal.is_frozen
-                          ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
-                          : "bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                          ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
+                          : "bg-muted/40 border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/60"
                       }`}
-                      title={signal.is_frozen ? "Signal is frozen: Click to unlock automated adaptation" : "Signal is auto-adapting: Click to freeze against drift"}
+                      title={signal.is_frozen ? "Trait is locked: Click to unlock automated learning" : "Auto-learning is active: Click to lock against automated changes"}
                     >
                       {signal.is_frozen ? (
                         <>
-                          <Lock size={12} className="text-amber-400" />
-                          <span>Frozen</span>
+                          <Lock size={11} />
+                          <span>Locked</span>
                         </>
                       ) : (
                         <>
-                          <Unlock size={12} />
-                          <span>Adapt</span>
+                          <Unlock size={11} />
+                          <span>Auto-Learns</span>
                         </>
                       )}
                     </button>
                   </div>
 
-                  <p className="text-xs text-muted-foreground mb-4 leading-relaxed line-clamp-2">
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed line-clamp-2">
                     {signal.description}
                   </p>
                 </div>
 
                 {/* Mathematical Metrics & Credible Interval */}
-                <div className="space-y-3 pt-3 border-t border-border/40">
+                <div className="space-y-2.5 pt-2.5 border-t border-border/40">
                   {/* Empirical Win Rate & Weight */}
                   <div className="flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-[10px] text-muted-foreground font-mono block">WIN PROBABILITY</span>
-                      <span className="text-sm font-bold font-mono text-emerald-400">{rawMeanPct}%</span>
-                      <span className="text-[10px] text-muted-foreground font-mono ml-1">(±{(signal.std_dev * 100).toFixed(1)}%)</span>
+                      <span className="text-[9px] text-muted-foreground font-mono block uppercase">Win Rate</span>
+                      <span className="text-xs font-mono font-medium text-foreground">{rawMeanPct}%</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] text-muted-foreground font-mono block">EFFECTIVE WEIGHT</span>
-                      <span className="text-sm font-bold font-mono text-indigo-400">{effectiveWeight}</span>
-                      <span className="text-[10px] text-muted-foreground font-mono ml-1">({signal.weight_multiplier}x)</span>
+                      <span className="text-[9px] text-muted-foreground font-mono block uppercase">Scoring Impact</span>
+                      <span className="text-xs font-mono font-medium text-foreground">{effectiveWeight} ({signal.weight_multiplier}x)</span>
                     </div>
                   </div>
 
                   {/* 95% Credible Interval Bar */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-                      <span>95% Credible Interval</span>
-                      <span className="text-foreground font-bold">[{ciLowerPct}% — {ciUpperPct}%]</span>
+                      <span>Confidence Range</span>
+                      <span className="text-foreground">[{ciLowerPct}% — {ciUpperPct}%]</span>
                     </div>
-                    <div className="w-full bg-muted/60 h-2 rounded-full overflow-hidden relative">
+                    <div className="w-full bg-muted/60 h-1.5 rounded-full overflow-hidden relative border border-border/40">
                       <div 
-                        className="bg-indigo-500/30 h-full rounded-full absolute"
+                        className="bg-foreground/20 h-full rounded-full absolute"
                         style={{ 
                           left: `${Math.max(0, signal.credible_interval_lower * 100)}%`,
                           width: `${Math.max(5, (signal.credible_interval_upper - signal.credible_interval_lower) * 100)}%`
                         }}
                       />
                       <div 
-                        className="bg-emerald-400 h-full rounded-full absolute transition-all duration-500"
+                        className="bg-foreground h-full rounded-full absolute transition-all duration-300"
                         style={{ 
-                          left: `${Math.max(0, (signal.raw_mean * 100) - 2)}%`,
-                          width: "4%"
+                          left: `${Math.max(0, (signal.raw_mean * 100) - 1)}%`,
+                          width: "3%"
                         }}
                       />
                     </div>
                   </div>
 
-                  {/* Beta Parameters α & β */}
-                  <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground bg-background/50 px-3 py-1.5 rounded-xl border border-border/40">
-                    <span>α (Wins) = <strong className="text-emerald-400">{signal.alpha}</strong></span>
-                    <span>β (Losses) = <strong className="text-rose-400">{signal.beta}</strong></span>
-                    <span>N = <strong className="text-foreground">{signal.sample_size}</strong></span>
+                  {/* Learning Counts */}
+                  <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground bg-muted/20 px-2 py-1 rounded-md border border-border/30">
+                    <span>Won: <strong className="text-foreground font-medium">{signal.alpha}</strong></span>
+                    <span>Lost: <strong className="text-foreground font-medium">{signal.beta}</strong></span>
+                    <span>Tested: <strong className="text-foreground font-medium">{signal.sample_size}</strong></span>
                   </div>
 
                   {/* Operator Multiplier Quick Adjust */}
-                  <div className="pt-2 flex items-center justify-between gap-1 text-[10px]">
-                    <span className="text-muted-foreground font-bold flex items-center gap-1">
+                  <div className="pt-1 flex items-center justify-between gap-1 text-[10px]">
+                    <span className="text-muted-foreground flex items-center gap-1">
                       <Sliders size={11} /> Boost:
                     </span>
                     <div className="flex items-center gap-1">
@@ -687,9 +625,9 @@ export function BayesianIcpView() {
                           key={mult}
                           onClick={() => handleMultiplierChange(signal, mult)}
                           disabled={isBusy}
-                          className={`px-2 py-0.5 rounded-md font-mono font-bold transition-all cursor-pointer ${
+                          className={`px-1.5 py-0.5 rounded-md font-mono text-[10px] transition-all cursor-pointer ${
                             Math.abs(signal.weight_multiplier - mult) < 0.05
-                              ? "bg-indigo-600 text-white"
+                              ? "bg-foreground text-background font-medium"
                               : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground"
                           }`}
                         >
@@ -700,8 +638,8 @@ export function BayesianIcpView() {
                         type="button"
                         onClick={() => handleResetSignalPrior(signal)}
                         disabled={isBusy}
-                        className="p-1 rounded-md bg-muted/30 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 transition-all cursor-pointer ml-1"
-                        title="Reset this signal to Beta(2,2)"
+                        className="p-1 rounded-md bg-muted/30 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all cursor-pointer ml-1"
+                        title="Reset this trait to baseline default"
                       >
                         <RotateCcw size={10} />
                       </button>
@@ -714,33 +652,33 @@ export function BayesianIcpView() {
         </div>
       </div>
 
-      {/* ── Chronological Adaptive Feedback Ledger (Live Activity Log) ── */}
-      <div className="p-6 rounded-xl border border-border/60 bg-muted/5 backdrop-blur-xl space-y-4">
+      {/* ── Chronological Adaptive Feedback Ledger ── */}
+      <div className="p-5 rounded-xl border border-border/50 bg-card/40 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <History size={18} className="text-indigo-400" />
-            <h3 className="text-base font-bold text-foreground">Adaptive Feedback Ledger</h3>
+            <History size={14} className="text-muted-foreground" />
+            <h3 className="text-xs font-medium text-foreground">Live Conversion Learning History</h3>
           </div>
-          <span className="text-xs text-muted-foreground font-mono">Recent Reinforcement Events</span>
+          <span className="text-[11px] text-muted-foreground font-mono">Recent Campaign Outcomes</span>
         </div>
 
-        <div className="divide-y divide-border/40 max-h-72 overflow-y-auto pr-2">
+        <div className="divide-y divide-border/30 max-h-60 overflow-y-auto pr-1">
           {events.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">
-              No outcome events recorded yet. Deal conversions will stream here in real time.
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No outcome events recorded yet. As prospects book meetings and reply, learning events will stream here in real time.
             </div>
           ) : (
             events.map((evt) => (
-              <div key={evt.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-3">
+              <div key={evt.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2.5">
                   {getEventBadge(evt.event_type)}
                   <div>
-                    <span className="font-semibold text-foreground">
-                      Signals Updated: {evt.signals_affected?.join(", ") || "General Prior"}
+                    <span className="font-medium text-foreground">
+                      {evt.signals_affected?.join(", ") || "General Trait"}
                     </span>
                     {evt.details && Object.keys(evt.details).length > 0 && (
-                      <span className="text-[11px] text-muted-foreground block font-mono">
-                        {JSON.stringify(evt.details).slice(0, 80)}
+                      <span className="text-[11px] text-muted-foreground block font-mono mt-0.5">
+                        {JSON.stringify(evt.details).slice(0, 70)}
                       </span>
                     )}
                   </div>
@@ -755,91 +693,91 @@ export function BayesianIcpView() {
       </div>
 
       {/* ── Interactive Prospect Score Simulator ── */}
-      <div className="p-8 rounded-xl border border-border/60 bg-muted/5 backdrop-blur-xl">
-        <div className="flex items-center justify-between mb-6">
+      <div className="p-6 rounded-xl border border-border/50 bg-card/40">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <Layers size={20} className="text-indigo-400" />
-              Live Bayesian Prospect Simulator
+            <h3 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <Layers size={14} className="text-muted-foreground" />
+              Lead Qualification Simulator
             </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Verify how candidate prospect attributes score against active Bayesian posterior distributions before dispatching sequences.
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Test any prospect profile to see how the AI grades them before spending outreach credits.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
           {/* Form */}
-          <div className="space-y-4 bg-background/50 p-6 rounded-lg border border-border/50">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3 bg-card/60 p-4 rounded-xl border border-border/50">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Job Title</label>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Job Title</label>
                 <input
                   type="text"
                   value={testProfile.title}
                   onChange={(e) => setTestProfile({ ...testProfile, title: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-border focus:ring-1 focus:ring-ring"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Company Name</label>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Company Name</label>
                 <input
                   type="text"
                   value={testProfile.company}
                   onChange={(e) => setTestProfile({ ...testProfile, company: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-border focus:ring-1 focus:ring-ring"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Employee Headcount</label>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Employee Headcount</label>
                 <input
                   type="number"
                   value={testProfile.headcount}
                   onChange={(e) => setTestProfile({ ...testProfile, headcount: parseInt(e.target.value) || 0 })}
-                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-border focus:ring-1 focus:ring-ring"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Industry Vertical</label>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Industry Vertical</label>
                 <input
                   type="text"
                   value={testProfile.industry}
                   onChange={(e) => setTestProfile({ ...testProfile, industry: e.target.value })}
-                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border/60 text-foreground focus:outline-none focus:border-border focus:ring-1 focus:ring-ring"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2">
-              <label className="text-xs font-semibold text-foreground flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center justify-between pt-1">
+              <label className="text-xs font-normal text-foreground flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={testProfile.recent_posts}
                   onChange={(e) => setTestProfile({ ...testProfile, recent_posts: e.target.checked })}
-                  className="rounded border-border text-indigo-600 focus:ring-indigo-500"
+                  className="rounded border-border text-foreground focus:ring-ring"
                 />
-                Published active posts in last 14 days
+                <span>Active posts in last 14 days</span>
               </label>
 
               <button
                 type="button"
                 onClick={handleSimulateScore}
                 disabled={simulating}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="px-3.5 py-1.5 bg-foreground text-background text-xs font-medium rounded-lg transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
                 {simulating ? (
-                  <RefreshCw size={14} className="animate-spin" />
+                  <RefreshCw size={13} className="animate-spin" />
                 ) : isIcpLocked ? (
-                  <Lock size={14} className="text-amber-300" />
+                  <Lock size={13} className="text-amber-500" />
                 ) : (
-                  <Play size={14} />
+                  <Play size={13} />
                 )}
-                <span>Run Bayesian Evaluation</span>
+                <span>Run Evaluation</span>
                 {isIcpLocked && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[9px] font-bold tracking-wide">
+                  <span className="px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground text-[9px] font-mono">
                     PRO
                   </span>
                 )}
@@ -848,71 +786,69 @@ export function BayesianIcpView() {
           </div>
 
           {/* Results Display */}
-          <div className="p-6 rounded-lg border border-border/50 bg-background/50 h-full flex flex-col justify-between">
+          <div className="p-4 rounded-xl border border-border/50 bg-card/60 h-full flex flex-col justify-between">
             {simResult ? (
               <div>
-                <div className="flex items-center justify-between pb-4 border-b border-border/50 mb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Computed Fit Score</span>
-                  <span className={`text-2xl font-black font-mono px-3 py-1 rounded-lg ${
-                    simResult.score >= recommendedScoreGate
-                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" 
-                      : simResult.score >= 50
-                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
-                      : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-                  }`}>
+                <div className="flex items-center justify-between pb-3 border-b border-border/40 mb-3">
+                  <span className="text-xs font-medium text-muted-foreground">Computed Fit Score</span>
+                  <span className="text-xl font-mono font-medium px-2.5 py-0.5 rounded-md border border-border/50 bg-muted/30 text-foreground">
                     {simResult.score}/100
                   </span>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-foreground">Probabilistic Reasoning & Active Signals:</p>
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      Gate: {simResult.score >= recommendedScoreGate ? "PASS" : "BELOW GATE"}
+                    <p className="text-xs font-medium text-foreground">Qualification Analysis:</p>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
+                      simResult.score >= recommendedScoreGate 
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                    }`}>
+                      {simResult.score >= recommendedScoreGate ? "Passed Credit Gate" : "Held to Save Credits"}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-4 rounded-lg border border-border/40 font-mono">
-                    {simResult.reasoning || "Evaluation converged across active prior distribution matrix."}
+                  <p className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-3 rounded-lg border border-border/40">
+                    {simResult.reasoning || "Evaluation completed against your conversion history."}
                   </p>
                 </div>
 
                 {/* Simulate Feedback Outcomes */}
-                <div className="mt-6 pt-4 border-t border-border/50">
-                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">Simulate Real-World Outcome Feedback:</p>
+                <div className="mt-4 pt-3 border-t border-border/40">
+                  <p className="text-[11px] font-medium text-muted-foreground mb-2">Simulate Conversion Learning:</p>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => handleSimulateOutcome("MEETING_BOOKED")}
-                      className="py-2 px-1 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="py-1.5 px-1 rounded-lg bg-card hover:bg-muted text-foreground border border-border/50 text-xs font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
-                      <UserCheck size={12} />
-                      <span>Booked (+3α)</span>
+                      <UserCheck size={12} className="text-emerald-500" />
+                      <span>Booked (+3x Win)</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSimulateOutcome("POSITIVE_REPLY")}
-                      className="py-2 px-1 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="py-1.5 px-1 rounded-lg bg-card hover:bg-muted text-foreground border border-border/50 text-xs font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <MessageSquare size={12} />
-                      <span>Reply (+2α)</span>
+                      <span>Reply (+2x Win)</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSimulateOutcome("GHOSTED_OR_LOST")}
-                      className="py-2 px-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="py-1.5 px-1 rounded-lg bg-card hover:bg-muted text-foreground border border-border/50 text-xs font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
-                      <XCircle size={12} />
-                      <span>Lost (+1β)</span>
+                      <XCircle size={12} className="text-rose-500" />
+                      <span>Lost (+1x Loss)</span>
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-muted-foreground">
-                <Cpu size={32} className="text-muted-foreground/40 mb-3" />
-                <p className="text-xs font-semibold text-foreground">No Simulation Run Yet</p>
-                <p className="text-[11px] text-muted-foreground mt-1 max-w-xs">
-                  Fill in candidate variables on the left and click "Run Bayesian Evaluation" to preview real-time scoring.
+              <div className="h-56 flex flex-col items-center justify-center text-center p-4 text-muted-foreground">
+                <Sparkles size={24} className="text-muted-foreground/40 mb-2" />
+                <p className="text-xs font-medium text-foreground">No Simulation Run Yet</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 max-w-xs leading-relaxed">
+                  Enter candidate parameters on the left and click "Run Evaluation" to preview scoring before spending credits.
                 </p>
               </div>
             )}
@@ -923,37 +859,27 @@ export function BayesianIcpView() {
       {/* ── Emergency Reset Modal (Circuit Breaker) ── */}
       <AnimatePresence>
         {showResetModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.98, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-card border border-rose-500/30 rounded-xl max-w-md w-full p-6 shadow-2xl relative space-y-4"
+              exit={{ scale: 0.98, opacity: 0 }}
+              className="bg-card border border-border/60 rounded-xl max-w-sm w-full p-5 shadow-2xl relative space-y-3"
             >
-              <div className="flex items-center gap-3 text-rose-400">
-                <div className="p-3 bg-rose-500/15 rounded-md">
-                  <ShieldAlert size={24} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground">Emergency Circuit Breaker</h3>
-                  <p className="text-xs text-rose-400/80 font-mono">Reset All Priors to Beta(2,2)</p>
-                </div>
+              <div className="w-8 h-8 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center mb-1">
+                <ShieldAlert size={16} />
               </div>
-
+              <h3 className="text-sm font-medium text-foreground">Reset Qualification Model</h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                This will reset all learned Bayesian probabilities and alpha/beta parameters across your entire workspace back to baseline neutral priors (50% win rate). All operator multipliers will be restored to 1.0x and freeze locks will be removed.
+                This will reset all learned qualification probabilities back to default neutral baselines across your workspace. Multipliers will reset to 1.0x and trait locks will be removed.
               </p>
 
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] leading-relaxed">
-                <strong>Safety Notice:</strong> Historical deal logs in the Feedback Ledger will be retained for audit trails, but model scoring weights will immediately reset.
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowResetModal(false)}
                   disabled={isResettingAll}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -961,9 +887,9 @@ export function BayesianIcpView() {
                   type="button"
                   onClick={handleResetAllSignals}
                   disabled={isResettingAll}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium hover:bg-destructive/90 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  {isResettingAll ? <RefreshCw size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
+                  {isResettingAll ? <RefreshCw size={12} className="animate-spin" /> : <ShieldAlert size={12} />}
                   <span>Confirm Full Reset</span>
                 </button>
               </div>

@@ -3,6 +3,7 @@ import re
 import uuid
 import random
 import logging
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
@@ -38,23 +39,171 @@ def sanitize_text(val: Optional[str]) -> str:
 
 def normalize_linkedin_post_url(url: Optional[str]) -> str:
     """
-    Normalizes LinkedIn post and activity URLs by stripping tracking queries and hashes.
-    Example: https://www.linkedin.com/posts/username_post-title-activity-724912893-xyz/?utm_source=share
-    -> https://www.linkedin.com/posts/username_post-title-activity-724912893-xyz
+    Normalizes LinkedIn post and activity URLs by stripping tracking queries and hashes,
+    and enforcing strict host and schema validation (Paranoia Layer 1 & 2).
+    Valid patterns include:
+      - https://www.linkedin.com/posts/...
+      - https://www.linkedin.com/feed/update/...
+      - https://www.linkedin.com/pulse/...
+      - https://linkedin.com/in/.../recent-activity/...
+    Rejects malformed schemes (javascript:, data:, etc.) and non-LinkedIn domains.
     """
     if not url:
         return ""
     clean = str(url).strip()
-    # Strip protocol if messy or whitespace
     clean = re.sub(r'[\x00-\x1F\x7F]', '', clean)
-    # Strip URL fragments and query parameters
-    clean = clean.split('?')[0].split('#')[0].rstrip('/')
-    
-    # Must look like a linkedin URL
-    if "linkedin.com" not in clean.lower():
-        # Fallback sanitize
-        return sanitize_text(clean)
-    return clean
+    if not clean:
+        return ""
+
+    # Auto-prepend https:// if domain begins without scheme
+    if not clean.lower().startswith(("http://", "https://")):
+        if clean.lower().startswith(("linkedin.com", "www.linkedin.com")):
+            clean = "https://" + clean
+        else:
+            return ""
+
+    try:
+        parsed = urllib.parse.urlparse(clean)
+        scheme = parsed.scheme.lower()
+        if scheme not in ("http", "https"):
+            return ""
+
+        hostname = (parsed.hostname or "").lower()
+        if hostname != "linkedin.com" and not hostname.endswith(".linkedin.com"):
+            return ""
+
+        path = parsed.path.rstrip('/')
+        if not path or path == "/":
+            return ""
+
+        valid_path_keywords = ["/posts/", "/feed/update/", "/pulse/", "/recent-activity", "activity-", "urn:li:activity:"]
+        if not any(k in path.lower() for k in valid_path_keywords):
+            if len(path.strip('/').split('/')) < 2:
+                return ""
+
+        return f"{scheme}://{hostname}{path}"
+    except Exception as e:
+        logger.warning(f"Error parsing linkedin URL {url}: {e}")
+        return ""
+
+
+def get_member_daily_engagements(
+    workspace_id: str,
+    member_account_ids: List[str],
+    supabase: Any = None
+) -> Dict[str, Dict[str, int]]:
+    """
+    Aggregates today's executed and scheduled like and comment counts per account.
+    Enforces Paranoia Layer 1 & 2: Prevents accounts from exceeding daily activity caps.
+    """
+    now = datetime.now(timezone.utc)
+    start_of_today_iso = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    usage: Dict[str, Dict[str, int]] = {
+        acc_id: {"likes": 0, "comments": 0} for acc_id in member_account_ids
+    }
+    if not member_account_ids:
+        return usage
+
+    counted_from_db = False
+    if supabase:
+        try:
+            eng_res = (
+                supabase.table("advocacy_engagements")
+                .select("account_id, action_type, status, created_at")
+                .eq("workspace_id", workspace_id)
+                .gte("created_at", start_of_today_iso)
+                .in_("account_id", member_account_ids)
+                .in_("status", ["queued", "completed"])
+                .execute()
+            )
+            if eng_res.data and isinstance(eng_res.data, list):
+                for row in eng_res.data:
+                    aid = row.get("account_id")
+                    atype = (row.get("action_type") or "").lower()
+                    if aid in usage:
+                        if atype == "like":
+                            usage[aid]["likes"] += 1
+                        elif atype == "comment":
+                            usage[aid]["comments"] += 1
+                counted_from_db = True
+        except Exception as e:
+            logger.warning(f"Failed to query daily engagements from DB: {e}")
+
+    # Fall back to in-memory store if DB query was not used or returned no connection
+    if not counted_from_db:
+        for b_id, eng_list in _IN_MEMORY_ENGAGEMENTS.items():
+            for eng in eng_list:
+                if (
+                    eng.get("workspace_id") == workspace_id
+                    and eng.get("created_at", "") >= start_of_today_iso
+                    and eng.get("status") in ("queued", "completed")
+                ):
+                    aid = eng.get("account_id")
+                    atype = (eng.get("action_type") or "").lower()
+                    if aid in usage:
+                        if atype == "like":
+                            usage[aid]["likes"] += 1
+                        elif atype == "comment":
+                            usage[aid]["comments"] += 1
+
+    return usage
+
+
+def compute_biomimetic_offset(
+    index: int,
+    total_actions: int,
+    window_minutes: int,
+    action_type: str = "like"
+) -> int:
+    """
+    Paranoia Layer 1 & 2: Bio-mimetic engagement delay modeling human browsing behavior.
+    - Uses Truncated Gaussian distribution clustered around progressive sequence slots.
+    - Incorporates fatigue degradation factor: later actions experience 5-15% increased reading delay.
+    - Prevents uniform/linear interval fingerprinting that triggers bot detection heuristics.
+    """
+    total_sec = max(300, window_minutes * 60)
+    base_spacing = total_sec / max(1, total_actions)
+
+    mean = (index + 0.5) * base_spacing
+    std_dev = max(15.0, base_spacing * 0.20)
+    sample = random.gauss(mean, std_dev)
+
+    # Human cognitive latency: reading comments requires more time than passive liking
+    cognitive_overhead = random.randint(45, 110) if action_type == "comment" else random.randint(10, 30)
+    fatigue_multiplier = 1.0 + (0.08 * (index / max(1, total_actions)))
+
+    computed = (sample * fatigue_multiplier) + cognitive_overhead
+    # Bound within valid golden-hour execution window
+    clamped = max(45, min(int(computed), total_sec - 15))
+    return clamped
+
+
+def clamp_to_circadian_daylight(scheduled_time: datetime, timezone_str: str = "UTC") -> datetime:
+    """
+    Paranoia Layer 1 & 2: Account Reputation Safety.
+    Guarantees engagement actions occur during credible human active hours (08:00 to 20:30 local time).
+    Actions scheduled during nocturnal curfews (21:00 - 07:30) roll forward to 08:30 + jitter,
+    preventing suspicious 3 AM automated spikes.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(timezone_str)
+    except Exception:
+        tz = timezone.utc
+
+    local_dt = scheduled_time.astimezone(tz)
+    local_hour = local_dt.hour
+
+    if local_hour >= 21 or local_hour < 8:
+        if local_hour >= 21:
+            next_day = local_dt.date() + timedelta(days=1)
+        else:
+            next_day = local_dt.date()
+        jitter_minutes = random.randint(15, 50)
+        wake_dt = datetime(next_day.year, next_day.month, next_day.day, 8, jitter_minutes, tzinfo=tz)
+        return wake_dt.astimezone(timezone.utc)
+
+    return scheduled_time
 
 
 def is_spam_comment(comment: Optional[str]) -> bool:
@@ -302,6 +451,9 @@ def submit_post_for_boost(
     - Actions are staggered across the golden hour window with randomized jitter.
     """
     norm_url = normalize_linkedin_post_url(post_url)
+    if not norm_url:
+        raise ValueError("Invalid LinkedIn post URL. Must be a valid linkedin.com post or activity link.")
+
     clean_content = sanitize_text(post_content)
     now = datetime.now(timezone.utc)
 
@@ -312,8 +464,10 @@ def submit_post_for_boost(
             logger.info(f"Duplicate post boost detected for {norm_url}. Returning existing boost.")
             return b
 
-    # 2. Compute Golden Hour Deadline
-    window_mins = max(15, min(target_window_minutes, 180))
+    # 2. Compute Golden Hour Deadline and Bound Inputs (Layer 1 & 2: Human Error & Flood Defense)
+    safe_target_likes = max(1, min(int(target_likes if target_likes is not None else 10), 50))
+    safe_target_comments = max(0, min(int(target_comments if target_comments is not None else 5), 25))
+    window_mins = max(15, min(int(target_window_minutes if target_window_minutes is not None else 60), 180))
     deadline = now + timedelta(minutes=window_mins)
 
     boost_id = str(uuid.uuid4())
@@ -324,8 +478,8 @@ def submit_post_for_boost(
         "author_account_id": author_account_id,
         "post_url": norm_url,
         "post_content": clean_content,
-        "target_likes": target_likes,
-        "target_comments": target_comments,
+        "target_likes": safe_target_likes,
+        "target_comments": safe_target_comments,
         "target_window_minutes": window_mins,
         "status": "boosting",
         "likes_count": 0,
@@ -335,64 +489,94 @@ def submit_post_for_boost(
         "updated_at": now.isoformat()
     }
 
-    # 3. Retrieve pod members and exclude the author account (Paranoia Layer 1)
+    # 3. Retrieve pod members and exclude author account (Paranoia Layer 1)
     all_members = list_pod_members(workspace_id, pod_id, supabase)
     eligible_members = [
         m for m in all_members 
         if m["account_id"] != author_account_id and m.get("is_active", True)
     ]
 
-    # 4. Schedule staggered engagements across golden hour
+    # 4. Check Daily Quotas per Member (Paranoia Layer 1: Account Safety Defense)
+    member_ids = [m["account_id"] for m in eligible_members]
+    daily_usage = get_member_daily_engagements(workspace_id, member_ids, supabase)
+
+    like_eligible_members = []
+    comment_eligible_members = []
+
+    for m in eligible_members:
+        aid = m["account_id"]
+        like_cap = int(m.get("daily_like_cap") or 15)
+        comment_cap = int(m.get("daily_comment_cap") or 5)
+
+        current_likes = daily_usage.get(aid, {}).get("likes", 0)
+        current_comments = daily_usage.get(aid, {}).get("comments", 0)
+
+        if current_likes < like_cap:
+            like_eligible_members.append(m)
+        else:
+            logger.info(f"Member {aid} reached daily like cap ({current_likes}/{like_cap}). Skipping for likes.")
+
+        if current_comments < comment_cap:
+            comment_eligible_members.append(m)
+        else:
+            logger.info(f"Member {aid} reached daily comment cap ({current_comments}/{comment_cap}). Skipping for comments.")
+
+    # 5. Schedule staggered engagements across golden hour
     engagements: List[Dict[str, Any]] = []
-    if eligible_members:
-        # Determine like participants (up to target_likes)
-        like_count = min(len(eligible_members), target_likes)
-        like_members = random.sample(eligible_members, like_count)
-        
-        # Determine comment participants (up to target_comments)
-        comment_count = min(len(eligible_members), target_comments)
-        comment_members = random.sample(eligible_members, comment_count)
+    like_count = min(len(like_eligible_members), safe_target_likes)
+    like_members = random.sample(like_eligible_members, like_count) if like_count > 0 else []
 
-        # Distribute action times across window with jitter
-        spacing_seconds = (window_mins * 60) // max(1, (like_count + comment_count))
-        current_offset = random.randint(60, 180) # Initial human reaction delay
+    comment_count = min(len(comment_eligible_members), safe_target_comments)
+    comment_members = random.sample(comment_eligible_members, comment_count) if comment_count > 0 else []
 
-        for member in like_members:
-            scheduled_time = now + timedelta(seconds=current_offset)
-            engagements.append({
-                "id": str(uuid.uuid4()),
-                "workspace_id": workspace_id,
-                "post_boost_id": boost_id,
-                "account_id": member["account_id"],
-                "action_type": "like",
-                "reaction_type": random.choice(REACTION_TYPES),
-                "comment_text": "",
-                "scheduled_at": scheduled_time.isoformat(),
-                "executed_at": None,
-                "status": "queued",
-                "failure_reason": "",
-                "created_at": now.isoformat()
-            })
-            current_offset += max(45, spacing_seconds + random.randint(-20, 35))
+    # Distribute action times using bio-mimetic Gaussian modeling and circadian daylight bounds
+    total_actions = like_count + comment_count
+    action_idx = 0
 
-        for member in comment_members:
-            scheduled_time = now + timedelta(seconds=current_offset)
-            comment_text = generate_contextual_comment(clean_content, persona_title=member.get("account_name", "Executive"))
-            engagements.append({
-                "id": str(uuid.uuid4()),
-                "workspace_id": workspace_id,
-                "post_boost_id": boost_id,
-                "account_id": member["account_id"],
-                "action_type": "comment",
-                "reaction_type": "INSIGHTFUL",
-                "comment_text": comment_text,
-                "scheduled_at": scheduled_time.isoformat(),
-                "executed_at": None,
-                "status": "queued",
-                "failure_reason": "",
-                "created_at": now.isoformat()
-            })
-            current_offset += max(90, spacing_seconds + random.randint(10, 60))
+    for member in like_members:
+        offset_sec = compute_biomimetic_offset(action_idx, total_actions, window_mins, "like")
+        action_idx += 1
+        raw_scheduled = now + timedelta(seconds=offset_sec)
+        member_tz = member.get("timezone") or "UTC"
+        safe_scheduled = clamp_to_circadian_daylight(raw_scheduled, member_tz)
+
+        engagements.append({
+            "id": str(uuid.uuid4()),
+            "workspace_id": workspace_id,
+            "post_boost_id": boost_id,
+            "account_id": member["account_id"],
+            "action_type": "like",
+            "reaction_type": random.choice(REACTION_TYPES),
+            "comment_text": "",
+            "scheduled_at": safe_scheduled.isoformat(),
+            "executed_at": None,
+            "status": "queued",
+            "failure_reason": "",
+            "created_at": now.isoformat()
+        })
+
+    for member in comment_members:
+        offset_sec = compute_biomimetic_offset(action_idx, total_actions, window_mins, "comment")
+        action_idx += 1
+        raw_scheduled = now + timedelta(seconds=offset_sec)
+        member_tz = member.get("timezone") or "UTC"
+        safe_scheduled = clamp_to_circadian_daylight(raw_scheduled, member_tz)
+
+        comment_text = generate_contextual_comment(clean_content, persona_title=member.get("account_name", "Executive"))
+        engagements.append({
+            "id": str(uuid.uuid4()),
+            "workspace_id": workspace_id,
+            "post_boost_id": boost_id,
+            "account_id": member["account_id"],
+            "action_type": "comment",
+            "reaction_type": "INSIGHTFUL",
+            "comment_text": comment_text,
+            "scheduled_at": safe_scheduled.isoformat(),
+            "executed_at": None,
+            "status": "queued",
+            "failure_reason": "",
+            "created_at": now.isoformat()
+        })
 
     # Save to database if available
     if supabase:

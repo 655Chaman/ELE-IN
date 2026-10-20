@@ -598,11 +598,11 @@ def preview_dynamic_segment(
         if len(sample_leads) < 15:
             sample_leads.append({
                 "id": attrs["id"],
-                "first_name": attrs["first_name"] or "Verified",
-                "last_name": attrs["last_name"] or "Prospect",
+                "first_name": attrs["first_name"],
+                "last_name": attrs["last_name"],
                 "email": attrs["email"],
-                "company_name": attrs["company_name"] or "Enterprise Target",
-                "job_title": attrs["job_title"] or "Executive",
+                "company_name": attrs["company_name"],
+                "job_title": attrs["job_title"],
                 "seniority": sen,
                 "company_size": sz,
                 "intent_tier": it,
@@ -671,12 +671,7 @@ def export_dynamic_segment_csv(
             logger.warning(f"[LeadSegmentation] Failed to fetch leads for CSV export: {e}")
 
     if not leads:
-        # Fallback sample leads so export works in zero-migration / empty sandbox environments
-        leads = [
-            {"id": "l1", "first_name": "Elena", "last_name": "Rostova", "company_name": "VentureScale AI", "job_title": "Chief Revenue Officer", "company_size": "51-200", "intent_score": 88, "email": "elena@venturescale.ai", "verification_status": "VALID"},
-            {"id": "l2", "first_name": "Marcus", "last_name": "Sterling", "company_name": "Aether Cloud", "job_title": "VP Engineering", "company_size": "201-500", "intent_score": 82, "email": "marcus@aethercloud.io", "verification_status": "VALID"},
-            {"id": "l3", "first_name": "Sarah", "last_name": "Chen", "company_name": "Prism Analytics", "job_title": "Co-Founder & CEO", "company_size": "11-50", "intent_score": 76, "email": "sarah@prismanalytics.com", "verification_status": "VALID"}
-        ]
+        leads = []
 
     matching_leads = filter_leads_in_memory(leads, rules) if rules else leads
     output = io.StringIO()

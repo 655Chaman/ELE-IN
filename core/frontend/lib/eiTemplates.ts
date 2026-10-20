@@ -291,7 +291,7 @@ export const HR_TEMPLATES: EITemplate[] = [
       { "id": "e_sw_1_2", "source": "sw_1", "target": "sw_2", "sourceHandle": "then" },
       { "id": "e_sw_2_3", "source": "sw_2", "target": "sw_3", "sourceHandle": "then" },
       { "id": "e_sw_3_4", "source": "sw_3", "target": "sw_4", "sourceHandle": "then" },
-      { "id": "e_sw_4_5", "source": "sw_4", "target": "sw_5", "sourceHandle": "then" },
+      { "id": "e_sw_4_5", "source": "sw_4", "target": "sw_5", "sourceHandle": "Accepted" },
       { "id": "e_sw_5_6", "source": "sw_5", "target": "sw_6", "sourceHandle": "Connected" }
     ]
   },
@@ -350,7 +350,7 @@ export const HR_TEMPLATES: EITemplate[] = [
       }
     ],
     "edges": [
-      { "id": "e_ow_1_2", "source": "ow_1", "target": "ow_2", "sourceHandle": "then" },
+      { "id": "e_ow_1_2", "source": "ow_1", "target": "ow_2", "sourceHandle": "Accepted" },
       { "id": "e_ow_2_3", "source": "ow_2", "target": "ow_3", "sourceHandle": "Connected" },
       { "id": "e_ow_2_4", "source": "ow_2", "target": "ow_4", "sourceHandle": "Email Discovered" }
     ]
@@ -431,12 +431,23 @@ export const HR_TEMPLATES: EITemplate[] = [
           "subject": "Quick note for {{first_name|there}}",
           "body": "Hi {{first_name|there}},\n\nWanted to reach out directly regarding your team at {{company|your company}}."
         }
+      },
+      {
+        "id": "bn_1_end",
+        "type": "sequence_end",
+        "position": { "x": 450, "y": 250 },
+        "data": {
+          "delayDays": 0,
+          "label": "Disqualify (Low Fit)",
+          "exit_reason": "bad_fit"
+        }
       }
     ],
     "edges": [
       { "id": "e_bn_1_2", "source": "bn_1", "target": "bn_2", "sourceHandle": "Strong fit (>75)" },
+      { "id": "e_bn_1_end", "source": "bn_1", "target": "bn_1_end", "sourceHandle": "Weak fit (<75)" },
       { "id": "e_bn_2_3", "source": "bn_2", "target": "bn_3", "sourceHandle": "then" },
-      { "id": "e_bn_3_4", "source": "bn_3", "target": "bn_4", "sourceHandle": "then" },
+      { "id": "e_bn_3_4", "source": "bn_3", "target": "bn_4", "sourceHandle": "Accepted" },
       { "id": "e_bn_4_5", "source": "bn_4", "target": "bn_5", "sourceHandle": "Connected" },
       { "id": "e_bn_4_6", "source": "bn_4", "target": "bn_6", "sourceHandle": "Not connected" },
       { "id": "e_bn_6_7", "source": "bn_6", "target": "bn_7", "sourceHandle": "Found" }

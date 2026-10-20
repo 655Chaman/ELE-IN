@@ -4,7 +4,7 @@ import csv
 import io
 import re
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +76,10 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
         "event_data": {
             "new_title": "VP of Revenue Operations",
             "previous_company": "Databricks",
-            "start_date": (datetime.utcnow() - timedelta(days=14)).strftime("%Y-%m-%d"),
+            "start_date": (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d"),
             "tenure_days": 14
         },
-        "detected_at": datetime.utcnow().isoformat(),
+        "detected_at": datetime.now(timezone.utc).isoformat(),
         "status": "PENDING",
         "generated_icebreaker": "Elena, congratulations on stepping in as VP of Revenue Operations at Veloce Systems! Typically in the first 90 days, tech debt in outbound pipeline is the #1 headache. Thought this benchmark might be useful as you settle in.",
         "enrolled_campaign_id": None
@@ -97,9 +97,9 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
             "round_type": "Series B",
             "amount_raised": "$28M",
             "lead_investor": "Bessemer Venture Partners",
-            "announced_date": (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%d")
+            "announced_date": (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
         },
-        "detected_at": datetime.utcnow().isoformat(),
+        "detected_at": datetime.now(timezone.utc).isoformat(),
         "status": "PENDING",
         "generated_icebreaker": "Marcus — huge congrats on the $28M Series B for Apex Cloud! As you scale out the outbound team to hit new ARR targets, our pre-warm infrastructure cuts ramp time in half. Open to a brief glance?",
         "enrolled_campaign_id": None
@@ -116,9 +116,9 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
         "event_data": {
             "new_title": "Chief Growth Officer",
             "previous_title": "VP Marketing",
-            "effective_date": (datetime.utcnow() - timedelta(days=21)).strftime("%Y-%m-%d")
+            "effective_date": (datetime.now(timezone.utc) - timedelta(days=21)).strftime("%Y-%m-%d")
         },
-        "detected_at": datetime.utcnow().isoformat(),
+        "detected_at": datetime.now(timezone.utc).isoformat(),
         "status": "PENDING",
         "generated_icebreaker": "Sarah, saw your well-deserved promotion to Chief Growth Officer at Quantify Health! With expanded responsibility across sales and growth, curious how you are tackling LinkedIn inbox saturation this quarter?",
         "enrolled_campaign_id": None
@@ -137,7 +137,7 @@ _IN_MEMORY_TRIGGERS: List[Dict[str, Any]] = [
             "department": "Enterprise Sales & SDRs",
             "surge_percentage": "+45%"
         },
-        "detected_at": datetime.utcnow().isoformat(),
+        "detected_at": datetime.now(timezone.utc).isoformat(),
         "status": "PENDING",
         "generated_icebreaker": "Devin — noticed HyperScale Labs is aggressively expanding the enterprise sales team with 6 new SDR roles. We help high-growth teams equip reps with automated pre-warming so new SDRs book 2x meetings in month 1.",
         "enrolled_campaign_id": None
@@ -190,7 +190,7 @@ def generate_trigger_icebreaker(
         if tenure_days is None and safe_data.get("start_date"):
             parsed_start = _parse_iso_or_ymd(str(safe_data.get("start_date")))
             if parsed_start:
-                tenure_days = max(0, (datetime.utcnow() - parsed_start).days)
+                tenure_days = max(0, (datetime.now(timezone.utc) - parsed_start).days)
 
         try:
             tenure_val = int(tenure_days) if tenure_days is not None else None
@@ -318,13 +318,15 @@ def _parse_iso_or_ymd(date_str: Optional[str]) -> Optional[datetime]:
         return None
     try:
         if cleaned.endswith("Z"):
-            cleaned = cleaned[:-1]
-        if "+" in cleaned:
-            cleaned = cleaned.split("+")[0]
-        return datetime.fromisoformat(cleaned)
+            cleaned = cleaned[:-1] + "+00:00"
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception:
         try:
-            return datetime.strptime(cleaned[:10], "%Y-%m-%d")
+            dt = datetime.strptime(cleaned[:10], "%Y-%m-%d")
+            return dt.replace(tzinfo=timezone.utc)
         except Exception:
             return None
 
@@ -366,7 +368,7 @@ def ingest_trigger_radar_signal(
             clean_event_data[str(k)] = sanitize_text(v) if isinstance(v, str) else v
 
     # Layer 1: Stale-signal expiration guard
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
     signal_date_raw = (
         detected_at
         or clean_event_data.get("start_date")

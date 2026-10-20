@@ -407,14 +407,21 @@ export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions
     const targets = childrenMap.get(nodeId) || [];
     targets.forEach(t => {
       let targetHandle = t.handle;
-      // Normalization: handle mismatch between "output" and "then"
+      // Normalization: handle mismatch between "output", "then", and defined labels
       if (!children[targetHandle]) {
-        if (labels.length === 1) {
+        const matchingLabel = labels.find(l => l.toLowerCase() === (targetHandle || "").toLowerCase());
+        if (matchingLabel) {
+          targetHandle = matchingLabel;
+        } else if (labels.length === 1) {
           targetHandle = labels[0];
         } else if (targetHandle === "output" && children["then"]) {
           targetHandle = "then";
         } else if (targetHandle === "then" && children["output"]) {
           targetHandle = "output";
+        } else if (children[labels[0]] && (targetHandle === "then" || targetHandle === "output" || targets.length === 1)) {
+          // If edge uses generic "then"/"output" on a multi-output node or is the single outgoing edge,
+          // route to the primary branch (labels[0], e.g. "Accepted") rather than spawning a phantom 3rd branch.
+          targetHandle = labels[0];
         }
       }
       if (!children[targetHandle]) children[targetHandle] = [];

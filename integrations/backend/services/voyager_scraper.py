@@ -348,15 +348,21 @@ class VoyagerScraper:
                 if match:
                     public_id = match.group(1)
 
-            if not public_id:
-                continue
+            location = entity.get("locationName", "") or entity.get("geoLocationName", "")
+            company = ""
+            if " at " in headline:
+                company = headline.split(" at ", 1)[1].strip()
+            elif "@" in headline:
+                company = headline.split("@", 1)[1].strip()
 
-            linkedin_url = f"https://www.linkedin.com/in/{public_id}"
+            linkedin_url = f"https://www.linkedin.com/in/{public_id}" if public_id else ""
 
             profiles.append({
                 "first_name": first_name,
                 "last_name": last_name,
                 "headline": headline,
+                "company_name": company,
+                "location": location,
                 "linkedin_url": linkedin_url,
             })
 
@@ -384,11 +390,21 @@ class VoyagerScraper:
                     last_name = parts[1] if len(parts) > 1 else ""
                     subtitle = target.get("primarySubtitle", {})
                     headline = subtitle.get("text", "") if isinstance(subtitle, dict) else ""
+                    sec_sub = target.get("secondarySubtitle", {})
+                    location = sec_sub.get("text", "") if isinstance(sec_sub, dict) else ""
+
+                    company = ""
+                    if " at " in headline:
+                        company = headline.split(" at ", 1)[1].strip()
+                    elif "@" in headline:
+                        company = headline.split("@", 1)[1].strip()
 
                     profiles.append({
                         "first_name": first_name,
                         "last_name": last_name,
                         "headline": headline,
+                        "company_name": company,
+                        "location": location,
                         "linkedin_url": f"https://www.linkedin.com/in/{public_id}",
                     })
 

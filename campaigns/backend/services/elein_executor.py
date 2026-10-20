@@ -5,7 +5,7 @@ import re
 import json
 import random
 import urllib.parse
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime, timezone
 from core.backend.services.limits import get_effective_usage_date
 
@@ -262,6 +262,29 @@ import time
 _GLOBAL_BRAIN_CACHE = {}
 _GLOBAL_BRAIN_CACHE_TTL = 300
 
+def invalidate_brain_cache(workspace_id: Optional[str] = None):
+    """
+    Layer 1 Paranoia (Flaws 3 & 11): Multi-cache eviction hook for _GLOBAL_BRAIN_CACHE
+    and _knowledge_context_cache in elein_ai_service.
+    Called whenever synthesis, personas, or objection playbooks are updated.
+    If workspace_id is None, clears the entire global brain and knowledge context caches.
+    """
+    global _GLOBAL_BRAIN_CACHE
+    if workspace_id:
+        if workspace_id in _GLOBAL_BRAIN_CACHE:
+            _GLOBAL_BRAIN_CACHE.pop(workspace_id, None)
+            logger.info(f"[Brain] Invalidation: Evicted unified brain cache for workspace {workspace_id}")
+    else:
+        _GLOBAL_BRAIN_CACHE.clear()
+        logger.info("[Brain] Invalidation: Evicted entire global brain cache")
+
+    # Layer 1 Paranoia (Flaw 11): Synchronize with elein_ai_service knowledge context cache
+    try:
+        from knowledge.backend.services.elein_ai_service import invalidate_knowledge_context_cache
+        invalidate_knowledge_context_cache(workspace_id)
+    except Exception as e:
+        logger.warning(f"[Brain] Invalidation: Failed to evict knowledge context cache: {e}")
+
 class EleInNodeExecutor:
 
     """
@@ -280,14 +303,14 @@ class EleInNodeExecutor:
         self.workspace_id = workspace_id or getattr(self.worker, "workspace_id", None) or "default-workspace"
         self.campaign_id = campaign_id
 
-    def _deduct_credits(self, amount: int = 1, idempotency_key: Optional[str] = None) -> bool:
+    def _deduct_credits(self, amount: int = 1, idempotency_key: Optional[str] = None, action_type: str = "sendgrid_email") -> bool:
         if not self.workspace_id or not self.supabase:
             return True
         try:
             res = self.supabase.rpc('deduct_credits_safely', {
                 'p_workspace_id': self.workspace_id,
                 'p_amount': amount,
-                'p_action_type': 'sendgrid_email',
+                'p_action_type': action_type,
                 'p_idempotency_key': idempotency_key
             }).execute()
             if res.data and not res.data.get('success'):
@@ -295,6 +318,8 @@ class EleInNodeExecutor:
             return True
         except Exception as e:
             logger.warning(f"Credit deduction warning in EleInNodeExecutor: {e}")
+            if "insufficient" in str(e).lower():
+                return False
             return True
 
     def _refund_credits(self, amount: int = 1, idempotency_key: Optional[str] = None, reason: str = "execution_failed"):
@@ -314,18 +339,28 @@ class EleInNodeExecutor:
             return "No database connection bound to executor.", effective_date
             
         try:
-            # Check warmup cap if account is in warmup
+            # Check warmup cap if account is in warmup or custom daily limits if not
             acc_res = self.supabase.table("accounts").select(
-                "is_warmup, warmup_max_connections, warmup_max_messages"
+                "is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, daily_inmail_limit"
             ).eq("id", self.worker.account_id).execute()
-            if acc_res.data and acc_res.data[0].get("is_warmup"):
+            if acc_res.data and len(acc_res.data) > 0:
                 account = acc_res.data[0]
-                warmup_cap = None
-                if action_type == "connection_request":
-                    warmup_cap = account.get("warmup_max_connections") if account.get("warmup_max_connections") is not None else 20
-                elif action_type == "message":
-                    warmup_cap = account.get("warmup_max_messages") if account.get("warmup_max_messages") is not None else 40
-                if warmup_cap is not None:
+                cap = None
+                is_warmup = bool(account.get("is_warmup"))
+                if is_warmup:
+                    if action_type == "connection_request":
+                        cap = account.get("warmup_max_connections") if account.get("warmup_max_connections") is not None else 20
+                    elif action_type == "message":
+                        cap = account.get("warmup_max_messages") if account.get("warmup_max_messages") is not None else 40
+                else:
+                    if action_type == "connection_request":
+                        cap = account.get("daily_connection_limit")
+                    elif action_type == "message":
+                        cap = account.get("daily_message_limit")
+                    elif action_type in ("inmail", "paid_inmail"):
+                        cap = account.get("daily_inmail_limit")
+
+                if cap is not None:
                     usage_res = self.supabase.table("account_daily_action_counts") \
                         .select("count") \
                         .eq("account_id", self.worker.account_id) \
@@ -333,8 +368,9 @@ class EleInNodeExecutor:
                         .eq("usage_date", effective_date) \
                         .execute()
                     current_usage = usage_res.data[0].get("count", 0) if (usage_res.data and len(usage_res.data) > 0) else 0
-                    if current_usage >= int(warmup_cap):
-                        return f"Warmup daily limit reached for action: {action_type} ({current_usage}/{warmup_cap})", effective_date
+                    if current_usage >= int(cap):
+                        prefix = "Warmup daily limit" if is_warmup else "Daily account limit"
+                        return f"{prefix} reached for action: {action_type} ({current_usage}/{cap})", effective_date
 
             res = self.supabase.rpc("try_consume_daily_action", {
                 "p_account_id": self.worker.account_id,
@@ -420,6 +456,20 @@ class EleInNodeExecutor:
                 
             self.supabase.table("messages").insert(insert_payload).execute()
             
+            # Paranoia Layer 1: Bi-directional lead status synchronization to 'contacted'
+            if lead_id:
+                try:
+                    lead_curr = self.supabase.table("leads").select("status").eq("id", lead_id).execute()
+                    if lead_curr.data:
+                        curr_st = lead_curr.data[0].get("status")
+                        if curr_st in ("extracted", "enrolled", "pending", "open", None):
+                            self.supabase.table("leads").update({
+                                "status": "contacted",
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            }).eq("id", lead_id).execute()
+                except Exception as _lead_upd_err:
+                    logger.debug(f"Non-fatal leads.status sync to 'contacted': {_lead_upd_err}")
+            
             try:
                 from integrations.backend.services.webhook_service import emit_webhook_event
                 ws_id = workspace_id or self.workspace_id
@@ -441,7 +491,7 @@ class EleInNodeExecutor:
         except Exception as e:
             logger.warning(f"Failed to log outbound message: {e}")
 
-    def _interpolate_template(self, template: str, data: Dict[str, Any], linkedin_url: Optional[str], strip_unresolved: bool = True) -> str:
+    def _interpolate_template(self, template: str, data: Dict[str, Any], linkedin_url: Optional[str] = None, strip_unresolved: bool = True) -> str:
         """
         Substitutes variables {{first_name}}, {{company}}, {{title}}, etc. into text.
         Paranoia Layer 1: Falls back to database lead lookup if lead object is missing in memory.
@@ -463,7 +513,7 @@ class EleInNodeExecutor:
             lead_id = data.get("_lead_id") or data.get("lead_id")
             try:
                 ws_id = str(data.get("_workspace_id") or data.get("workspace_id") or getattr(self, "workspace_id", "") or "").strip()
-                query = self.supabase.table("leads").select("first_name, last_name, company, company_name, title, job_title, industry, location, email, phone")
+                query = self.supabase.table("leads").select("first_name, last_name, company, company_name, title, job_title, industry, location, email, phone, metadata, custom_fields")
                 if ws_id and ws_id != "ws-default":
                     query = query.eq("workspace_id", ws_id)
                 if lead_id:
@@ -520,6 +570,31 @@ class EleInNodeExecutor:
             "phone": raw_phone,
             "phone_number": raw_phone,
         }
+
+        # Paranoia Layer 0 & 1 (Flaw 30): Unpack custom variables from lead metadata or variables
+        lead_meta = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
+        cv_map = lead_meta.get("custom_variables") if isinstance(lead_meta.get("custom_variables"), dict) else {}
+        if not cv_map and isinstance(lead.get("custom_variables"), dict):
+            cv_map = lead["custom_variables"]
+
+        if isinstance(cv_map, dict):
+            for ck, cv in cv_map.items():
+                if isinstance(ck, str) and cv is not None:
+                    val = clean_enrichment_value(cv)
+                    raw_lookup[ck] = val
+                    raw_lookup[ck.lower()] = val
+
+        # Paranoia Layer 0 & 1: Unpack custom_fields (from CSV imports or webhook enrichment)
+        cf_map = lead.get("custom_fields") if isinstance(lead.get("custom_fields"), dict) else {}
+        if not cf_map and isinstance(lead_meta.get("custom_fields"), dict):
+            cf_map = lead_meta["custom_fields"]
+        if isinstance(cf_map, dict):
+            for ck, cv in cf_map.items():
+                if isinstance(ck, str) and cv is not None:
+                    val = clean_enrichment_value(cv)
+                    raw_lookup[ck] = val
+                    raw_lookup[ck.lower()] = val
+                    raw_lookup[f"custom_fields.{ck.lower()}"] = val
 
         for k, v in variables.items():
             if isinstance(k, str) and isinstance(v, (str, int, float)):
@@ -873,21 +948,40 @@ class EleInNodeExecutor:
             logger.error(f"handle_trigger_radar_enrich error: {e}")
             return {"status": "error", "branch": Branch.NOT_FOUND.value, "error": str(e)}
 
-    def _match_keywords(self, lead_val: Optional[str], keyword_spec: Optional[str]) -> bool:
+    def _match_keywords(self, lead_val: Optional[str], keyword_spec: Any) -> bool:
         """
-        Paranoia Layer 1 & 2: Case-insensitive, multi-separator (comma, semicolon, pipe) matching.
-        Strips whitespace, ignores empty tokens.
+        Paranoia Layer 0, 1 & 2 (Flaw 22):
+        Intelligent word-boundary matching with length-descending precedence.
+        Prevents substring false positives (e.g. 'dev' in 'delivery', 'cto' in 'doctor',
+        'in' in 'China', 'fund' in 'fundamental', 'seed' in 'proceed').
+        Supports multi-word tokens ('VP of Sales'), tech tokens with symbols ('C++', 'Node.js', '.NET'),
+        and multi-separator splits (comma, semicolon, pipe) as well as list/set sequences.
         """
-        if not keyword_spec or not str(keyword_spec).strip():
+        if not keyword_spec:
             return False
         if not lead_val or not str(lead_val).strip():
             return False
 
         val_str = str(lead_val).strip().lower()
-        tokens = [t.strip().lower() for t in re.split(r"[,;|]", str(keyword_spec)) if t.strip()]
-        if not tokens:
+        if isinstance(keyword_spec, (list, tuple, set)):
+            raw_tokens = [str(t).strip().lower() for t in keyword_spec if str(t).strip()]
+        else:
+            raw_tokens = [t.strip().lower() for t in re.split(r"[,;|]", str(keyword_spec)) if t.strip()]
+        if not raw_tokens:
             return False
-        return any(token in val_str for token in tokens)
+
+        # Sort tokens by length descending so specific multi-word tokens match before single words
+        tokens = sorted(raw_tokens, key=len, reverse=True)
+
+        for token in tokens:
+            # Determine appropriate left and right boundaries
+            left_boundary = r'(?<!\w)' if re.match(r'^\w', token) else r'(?<!\S)'
+            right_boundary = r'(?!\w)' if re.search(r'\w$', token) else r'(?!\S)'
+            pattern = left_boundary + re.escape(token) + right_boundary
+            if re.search(pattern, val_str, re.IGNORECASE):
+                return True
+
+        return False
 
     @staticmethod
     def _to_bool(val: Any) -> bool:
@@ -922,32 +1016,59 @@ class EleInNodeExecutor:
             return ", ".join(items) if items else None
         return None
 
-    def _get_lead_field(self, data: Dict[str, Any], linkedin_url: Optional[str], *field_names: str) -> Optional[str]:
-        lead = data.get("lead") or data.get("lead_profile") or {}
-        if isinstance(lead, dict):
-            for f in field_names:
-                formatted = self._format_field_val(lead.get(f))
-                if formatted is not None:
-                    return formatted
-
-        variables = data.get("variables") or {}
-        if isinstance(variables, dict):
-            for f in field_names:
-                formatted = self._format_field_val(variables.get(f))
-                if formatted is not None:
-                    return formatted
-
-        # Check top-level data fields
+    def _extract_from_container(self, container: Any, field_names: Tuple[str, ...]) -> Optional[str]:
+        if not isinstance(container, dict):
+            return None
+        # 1. Direct key match
         for f in field_names:
-            formatted = self._format_field_val(data.get(f))
+            formatted = self._format_field_val(container.get(f))
             if formatted is not None:
                 return formatted
+        # 2. Nested custom_fields / metadata / custom_variables
+        for sub_key in ("custom_fields", "metadata", "custom_variables"):
+            sub = container.get(sub_key)
+            if isinstance(sub, dict):
+                for f in field_names:
+                    formatted = self._format_field_val(sub.get(f))
+                    if formatted is not None:
+                        return formatted
+                # Case-insensitive check in sub dict
+                norm_sub = {str(k).strip().lower(): v for k, v in sub.items()}
+                for f in field_names:
+                    formatted = self._format_field_val(norm_sub.get(str(f).strip().lower()))
+                    if formatted is not None:
+                        return formatted
+        # 3. Case-insensitive top-level check
+        norm_c = {str(k).strip().lower(): v for k, v in container.items()}
+        for f in field_names:
+            formatted = self._format_field_val(norm_c.get(str(f).strip().lower()))
+            if formatted is not None:
+                return formatted
+        return None
 
+    def _get_lead_field(self, data: Dict[str, Any], linkedin_url: Optional[str], *field_names: str) -> Optional[str]:
+        # Check in lead / lead_profile
+        lead = data.get("lead") or data.get("lead_profile")
+        val = self._extract_from_container(lead, field_names)
+        if val is not None:
+            return val
+
+        # Check in execution variables
+        val = self._extract_from_container(data.get("variables"), field_names)
+        if val is not None:
+            return val
+
+        # Check in top-level data
+        val = self._extract_from_container(data, field_names)
+        if val is not None:
+            return val
+
+        # Check Supabase database with safe column selection
         if self.supabase and (linkedin_url or data.get("_lead_id") or data.get("lead_id")):
             lead_id = data.get("_lead_id") or data.get("lead_id")
             try:
-                cols = ", ".join(field_names)
-                query = self.supabase.table("leads").select(cols)
+                safe_cols = "id, title, job_title, company, company_name, industry, location, email, phone, metadata, custom_fields"
+                query = self.supabase.table("leads").select(safe_cols)
                 if lead_id:
                     res = query.eq("id", lead_id).limit(1).execute()
                 elif linkedin_url:
@@ -955,11 +1076,9 @@ class EleInNodeExecutor:
                 else:
                     res = None
                 if res and isinstance(res.data, list) and len(res.data) > 0 and isinstance(res.data[0], dict):
-                    row = res.data[0]
-                    for f in field_names:
-                        formatted = self._format_field_val(row.get(f))
-                        if formatted is not None:
-                            return formatted
+                    row_val = self._extract_from_container(res.data[0], field_names)
+                    if row_val is not None:
+                        return row_val
             except Exception:
                 pass
         return None
@@ -1032,6 +1151,17 @@ class EleInNodeExecutor:
                     unresolved.extend(matches)
                 data[k] = self._interpolate_template(v, data, linkedin_url, strip_unresolved=True)
 
+        if isinstance(data.get("bandit_variants"), list):
+            for variant in data["bandit_variants"]:
+                if isinstance(variant, dict):
+                    for vk in ("template_text", "body", "message", "subject", "note"):
+                        vv = variant.get(vk)
+                        if isinstance(vv, str) and "{{" in vv and "}}" in vv:
+                            dry_run = self._interpolate_template(vv, data, linkedin_url, strip_unresolved=False)
+                            matches = re.findall(r"\{\{.*?\}\}", dry_run)
+                            if matches:
+                                unresolved.extend(matches)
+
         if unresolved:
             logger.error(f"Message contained unresolved variables: {unresolved}")
             self._release_limit(consumed_action, usage_date=consumed_date)
@@ -1047,38 +1177,56 @@ class EleInNodeExecutor:
         try:
             if hasattr(self, handler_name):
                 handler = getattr(self, handler_name)
-                return handler(data, linkedin_url)
+                res = handler(data, linkedin_url)
             elif hasattr(self, f"handle_{action}"):
                 handler = getattr(self, f"handle_{action}")
-                return handler(data, linkedin_url)
+                res = handler(data, linkedin_url)
             else:
-                return self._default_handler(action, data, linkedin_url)
+                res = self._default_handler(action, data, linkedin_url)
+
+            # Paranoia Layer 1: If execution failed, hit limits, was blocked, or diverted, release pre-consumed action quota
+            if isinstance(res, dict):
+                st = str(res.get("status", "")).lower()
+                if st in ("error", "failed", "rate_limited", "security_challenge", "session_expired", "pool_exhausted", "account_disconnected", "skipped", "suppressed", "deferred", "postponed"):
+                    self._release_limit(consumed_action, usage_date=consumed_date)
+                    res.setdefault("branch", Branch.FAILED.value)
+            return res
         except UninterpolatedTemplateError as e:
             # C2: Unresolved template — route to approval_queue, do not retry forever
             logger.error(f"[C2] Unresolved template variable: {e}")
             self._release_limit(consumed_action, usage_date=consumed_date)
-            return {"status": "error", "error": str(e), "requires_approval": True}
+            return {"status": "error", "error": str(e), "requires_approval": True, "branch": Branch.FAILED.value}
         except LeadSuppressedError as e:
             # E1: Lead is suppressed — mark as not-interested, do not retry
             logger.info(f"[E1] Lead suppressed: {e}")
             self._release_limit(consumed_action, usage_date=consumed_date)
-            return {"status": "suppressed", "error": str(e)}
+            return {"status": "suppressed", "error": str(e), "branch": Branch.FAILED.value}
         except SessionExpiredError as e:
             logger.error(f"[Auth] Session Expired Error caught in executor: {e}")
             self._release_limit(consumed_action, usage_date=consumed_date)
-            return {"status": "account_disconnected", "error": str(e)}
+            return {"status": "account_disconnected", "error": str(e), "branch": Branch.FAILED.value}
 
         except Exception as e:
             err_str = str(e).lower()
             if "suppression_list_violation" in err_str or "u0001" in err_str:
                 logger.info(f"[E1] Lead suppressed by database constraint: {e}")
                 self._release_limit(consumed_action, usage_date=consumed_date)
-                return {"status": "suppressed", "error": str(e)}
+                return {"status": "suppressed", "error": str(e), "branch": Branch.FAILED.value}
 
-            if "security challenge detected" in err_str:
+            if any(sig in err_str for sig in ("security challenge", "security_challenge", "checkpoint", "captcha", "pin verification", "two-factor", "unusual activity")):
                 logger.error(f"[Auth] Security Challenge detected: {e}")
                 self._release_limit(consumed_action, usage_date=consumed_date)
-                return {"status": "security_challenge", "error": str(e)}
+                return {"status": "security_challenge", "error": str(e), "branch": Branch.FAILED.value}
+
+            if any(sig in err_str for sig in ("session expired", "session_expired", "invalid cookies", "cookies expired")):
+                logger.error(f"[Auth] Session expired detected: {e}")
+                self._release_limit(consumed_action, usage_date=consumed_date)
+                return {"status": "account_disconnected", "error": str(e), "branch": Branch.FAILED.value}
+
+            if any(sig in err_str for sig in ("browser pool exhausted", "pool_exhausted", "browser_pool_exhausted")):
+                logger.warning(f"[BrowserPool] Browser pool exhausted: {e}")
+                self._release_limit(consumed_action, usage_date=consumed_date)
+                return {"status": "pool_exhausted", "error": str(e), "branch": Branch.FAILED.value}
             
             # Any other exception (including timeout or network errors) could mean the action
             # was partially executed. We must RAISE the exception so the orchestrator
@@ -1145,14 +1293,14 @@ class EleInNodeExecutor:
             if personas_res.data:
                 brain["personas"] = personas_res.data
                 
-            obj_res = self.supabase.table("knowledge_objections").select("*").eq("workspace_id", workspace_id).execute()
-            if obj_res.data:
-                brain["objections"] = obj_res.data
-            else:
-                # Layer 1 Paranoia: Fallback to legacy objections table
-                legacy_obj = self.supabase.table("objections").select("*").eq("workspace_id", workspace_id).execute()
-                if legacy_obj.data:
-                    brain["objections"] = legacy_obj.data
+            # Layer 0 & 1 Paranoia (Flaw 10): Delegate to PersonaService.get_objections to merge both modern
+            # knowledge_objections and legacy objections tables with deduplication and schema tolerance.
+            try:
+                from admin.backend.services.persona_service import PersonaService
+                brain["objections"] = PersonaService.get_objections(self.supabase, workspace_id)
+            except Exception as obj_err:
+                logger.warning(f"[Brain] Failed to fetch objections via PersonaService: {obj_err}")
+                brain["objections"] = []
                 
             _GLOBAL_BRAIN_CACHE[workspace_id] = {'brain': brain, 'timestamp': now}
             return brain
@@ -1161,6 +1309,44 @@ class EleInNodeExecutor:
             
         return {}
 
+    @staticmethod
+    def _match_buyer_persona(personas: List[Dict[str, Any]], headline: str) -> Optional[Dict[str, Any]]:
+        r"""
+        Layer 0, 1, 2 Paranoia (Flaw 9): Robust, word-boundary buyer persona matcher.
+        - Layer 0: Identifies matching buyer persona by prospect headline/title.
+        - Layer 1: Prevents false-positive substring collisions (e.g. 'cto' in 'Doctor',
+                   'vp' in 'Developer') using regex non-word boundaries (?<!\w)...(?!\w).
+                   Sorts target titles by length descending so specific titles match first.
+        - Layer 2: Tolerates varied DB schemas (lists, comma-separated strings, single strings).
+        """
+        if not headline or not isinstance(headline, str) or not personas:
+            return None
+        headline_clean = headline.strip().lower()
+        if not headline_clean:
+            return None
+
+        for p in personas:
+            if not isinstance(p, dict):
+                continue
+            raw_targets = p.get("target_titles", [])
+            targets: List[str] = []
+            if isinstance(raw_targets, list):
+                for item in raw_targets:
+                    if isinstance(item, str):
+                        targets.extend([t.strip().lower() for t in item.split(",") if t.strip()])
+            elif isinstance(raw_targets, str):
+                targets.extend([t.strip().lower() for t in raw_targets.split(",") if t.strip()])
+
+            targets.sort(key=len, reverse=True)
+
+            for target in targets:
+                if len(target) < 2:
+                    continue
+                pattern = r'(?<!\w)' + re.escape(target) + r'(?!\w)'
+                if re.search(pattern, headline_clean):
+                    return p
+        return None
+
     # ─── AI NODES (Zero Latency Integration) ───────────────────────────────────
 
     def handle_ai_personalize(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
@@ -1168,17 +1354,12 @@ class EleInNodeExecutor:
         workspace_id = data.get("workspace_id") or data.get("_workspace_id") or self.workspace_id or ""
         brain = self._get_unified_brain(workspace_id)
         
-        # Layer 1 Paranoia: Route specific Buyer Personas without blowing up context window.
+        # Layer 1 Paranoia (Flaw 9): Route specific Buyer Personas with word-boundary anti-collision
         profile = data.get("lead_profile", {}) or {}
         headline = str(profile.get("title", "")).lower()
         
         personas = brain.get("personas", [])
-        matched_persona = None
-        for p in personas:
-            targets = [t.lower().strip() for t in p.get("target_titles", [])]
-            if any(t in headline for t in targets):
-                matched_persona = p
-                break
+        matched_persona = self._match_buyer_persona(personas, headline)
         
         custom_persona = data.get("custom_persona", "")
         if matched_persona:
@@ -1372,17 +1553,13 @@ class EleInNodeExecutor:
         workspace_id = data.get("workspace_id") or data.get("_workspace_id") or self.workspace_id or ""
         brain = self._get_unified_brain(workspace_id)
         
+        # Layer 1 Paranoia (Flaw 9): Route specific Buyer Personas with word-boundary anti-collision
         personas = brain.get("personas", [])
         icp_criteria = data.get("icp_description") or brain.get("target_customer_profile", "") or "B2B Ideal Customer Profile"
         profile = data.get("lead_profile", {}) or {}
         headline = str(profile.get("title", "")).lower()
         
-        matched_persona = None
-        for p in personas:
-            targets = [t.lower().strip() for t in p.get("target_titles", [])]
-            if any(t in headline for t in targets):
-                matched_persona = p
-                break
+        matched_persona = self._match_buyer_persona(personas, headline)
                 
         if matched_persona:
             icp_criteria += f"\n\nStrict Buyer Persona Match for this Lead:\nTitle: {matched_persona.get('title', 'Unknown')}\nPain Points: {', '.join(matched_persona.get('pain_points', []))}\nValue Prop: {matched_persona.get('value_prop', '')}"
@@ -1523,8 +1700,30 @@ class EleInNodeExecutor:
         competitors = data.get("competitors", [])
         
         if isinstance(competitors, str):
-            competitors = [c.strip() for c in competitors.split(",") if c.strip()]
+            competitors = [c.strip() for c in re.split(r"[,;|]", competitors) if c.strip()]
             
+        if not competitors and workspace_id:
+            # Layer 1 Paranoia: Fall back to workspace brain synthesis battlecards & key differentiators
+            brain = self._get_unified_brain(workspace_id)
+            comp_list = brain.get("competitors") or []
+            if not comp_list:
+                diffs = brain.get("key_differentiators") or []
+                found_comps = []
+                stopwords = {
+                    "them", "others", "existing", "traditional", "manual", "legacy",
+                    "tools", "solutions", "workflows", "processes", "vendors", "providers"
+                }
+                for d in diffs:
+                    for m in re.finditer(r'(?:vs\.?|versus|compared to|replaces?)\s+([^.,;\n]+?)(?:\s+(?:with|by|using|in|for|as)|[.,;\n]|$)', str(d), re.IGNORECASE):
+                        clause = m.group(1).strip()
+                        tokens = re.split(r'\s*(?:,|&|\band\b|\bor\b)\s*', clause, flags=re.IGNORECASE)
+                        for tok in tokens:
+                            tok_clean = re.sub(r'[^A-Za-z0-9\-]', '', tok).strip()
+                            if tok_clean and tok_clean.lower() not in stopwords and len(tok_clean) >= 2:
+                                found_comps.append(tok_clean.capitalize())
+                comp_list = list(dict.fromkeys(found_comps))
+            competitors = comp_list
+
         if not competitors:
             return {
                 "status": "success",
@@ -1532,18 +1731,24 @@ class EleInNodeExecutor:
                 "competitor_detected": False,
                 "variables": {
                     "competitor_detected": False,
-                    "detected_competitor": ""
+                    "detected_competitor": "",
+                    "competitor_name": ""
                 }
             }
             
         try:
             found = detect_competitor(profile, competitors, ai_model, workspace_id)
             if isinstance(found, (tuple, list)):
-                is_detected = bool(found[0] and str(found[0]).strip().lower() not in ("none", "false", "no", ""))
-                comp_name = str(found[0]) if is_detected else ""
+                raw_comp = str(found[0]).strip()
+                is_detected = bool(raw_comp and raw_comp.lower() not in ("none", "false", "no", ""))
+                if is_detected and raw_comp.lower() in ("yes", "true"):
+                    comp_name = competitors[0] if competitors else "Competitor"
+                else:
+                    comp_name = raw_comp if is_detected else ""
             else:
-                is_detected = bool(found and str(found).strip().lower() not in ("none", "false", "no", ""))
-                comp_name = str(found) if is_detected else ""
+                raw_comp = str(found or "").strip()
+                is_detected = bool(raw_comp and raw_comp.lower() not in ("none", "false", "no", ""))
+                comp_name = competitors[0] if (is_detected and raw_comp.lower() in ("yes", "true")) else (raw_comp if is_detected else "")
         except UsageLimitExceededError as e:
             logger.warning(f"AI Competitor detection stopped due to credit limits: {e}")
             return {"status": "error", "error": "insufficient_credits", "branch": Branch.FAILED.value}
@@ -1559,7 +1764,8 @@ class EleInNodeExecutor:
             "competitor_detected": is_detected,
             "variables": {
                 "competitor_detected": is_detected,
-                "detected_competitor": comp_name
+                "detected_competitor": comp_name,
+                "competitor_name": comp_name
             }
         }
 
@@ -1597,7 +1803,34 @@ class EleInNodeExecutor:
 
     def handle_ai_query_brain(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         from knowledge.backend.services.elein_ai_service import query_knowledge_base, UsageLimitExceededError
-        reply = data.get("reply_text") or data.get("reply") or data.get("message") or ""
+        reply = (
+            data.get("reply_text") or 
+            data.get("reply") or 
+            data.get("message") or 
+            data.get("lead_message") or 
+            data.get("inbound_text") or 
+            data.get("incoming_message") or 
+            data.get("variables", {}).get("incoming_message") or 
+            data.get("variables", {}).get("inbound_text") or 
+            ""
+        )
+        if not reply and self.supabase:
+            # Layer 1 Paranoia: Query latest inbound message from messages table
+            lead_id = data.get("lead_id")
+            if lead_id:
+                try:
+                    last_msg_res = self.supabase.table("messages")\
+                        .select("message_text")\
+                        .eq("lead_id", lead_id)\
+                        .eq("direction", "inbound")\
+                        .order("created_at", desc=True)\
+                        .limit(1)\
+                        .execute()
+                    if last_msg_res.data:
+                        reply = last_msg_res.data[0].get("message_text", "")
+                except Exception as me:
+                    logger.debug(f"[QueryBrain] Fallback query to messages table failed: {me}")
+
         profile = data.get("lead_profile", {})
         workspace_id = data.get("workspace_id") or data.get("_workspace_id") or self.workspace_id or ""
         
@@ -1605,31 +1838,58 @@ class EleInNodeExecutor:
         # Layer 1 Paranoia: Only inject relevant objections.
         from knowledge.backend.services.elein_ai_service import _truncate_to_tokens
         
+        # Layer 0 & 1 Paranoia (Flaw 13): Word-boundary regex matching with length-descending prioritization
+        # Prevents substring collisions (e.g. trigger 'no' in 'know', 'in' in 'interactive')
         objections = brain.get("objections", [])
         matched_objections = []
-        reply_lower = reply.lower()
-        
-        # Layer 1 Paranoia: Score and rank matches. Longer triggers are more specific/relevant.
-        for o in objections:
-            trigger = o.get("trigger", "").lower()
-            if not trigger:
-                continue
-                
-            # Exact match is highest priority, partial match is lower
-            if trigger in reply_lower:
-                matched_objections.append((len(trigger), o))
-            elif any(word in reply_lower for word in trigger.split() if len(word) > 4):
-                matched_objections.append((0, o))  # Weight 0 for partial word matches
-                
+        reply_lower = (reply or "").lower()
+
+        if reply_lower:
+            for o in objections:
+                if not isinstance(o, dict):
+                    continue
+                # Support both modern list/comma-separated triggers and legacy scalar trigger
+                raw_trigs = o.get("triggers") if isinstance(o.get("triggers"), list) else [o.get("trigger")]
+                candidate_triggers = []
+                for rt in raw_trigs:
+                    if isinstance(rt, str):
+                        for sub_t in rt.split(","):
+                            clean_t = sub_t.strip().lower()
+                            if len(clean_t) >= 2:
+                                candidate_triggers.append(clean_t)
+
+                candidate_triggers.sort(key=len, reverse=True)
+                matched_weight = -1
+                matched_trigger_str = ""
+
+                for trig in candidate_triggers:
+                    pattern = r'(?<!\w)' + re.escape(trig) + r'(?!\w)'
+                    if re.search(pattern, reply_lower):
+                        matched_weight = len(trig)
+                        matched_trigger_str = trig
+                        break
+
+                if matched_weight > 0:
+                    matched_objections.append((matched_weight, matched_trigger_str, o))
+                else:
+                    # Secondary fallback: partial word matching with length > 4 and word boundaries
+                    for trig in candidate_triggers:
+                        words = [w for w in re.split(r'\s+', trig) if len(w) > 4]
+                        if any(re.search(r'(?<!\w)' + re.escape(w) + r'(?!\w)', reply_lower) for w in words):
+                            matched_objections.append((0, trig, o))
+                            break
+
         # Sort by weight (descending) so exact, long phrases win.
         matched_objections.sort(key=lambda x: x[0], reverse=True)
         
         # Layer 2 Paranoia: Hard cap at 2 objections to prevent token blowout.
         # Truncate the user's essays to 150 words maximum per playbook.
         relevant_playbook = []
-        for weight, o in matched_objections[:2]:
-            safe_playbook = _truncate_to_tokens(o.get("playbook", ""), 150)
-            relevant_playbook.append(f"- Trigger '{o.get('trigger')}': {safe_playbook}")
+        for weight, trig_str, o in matched_objections[:2]:
+            raw_pb = o.get("playbook") or o.get("resolution") or ""
+            safe_playbook = _truncate_to_tokens(raw_pb, 150)
+            disp_trig = trig_str or o.get("trigger") or "Objection"
+            relevant_playbook.append(f"- Trigger '{disp_trig}': {safe_playbook}")
                 
         playbook_str = "\n".join(relevant_playbook) if relevant_playbook else ""
         
@@ -2256,22 +2516,18 @@ class EleInNodeExecutor:
             note = None
             if bandit_meta.get("enabled"):
                 note = bandit_meta.get("body") or ""
-                if note and len(note) > 300:
-                    note = note[:297] + "..."
-                res = self.worker.send_connection_request(linkedin_url, note, data.get('fallback'))
-            elif note_strategy == "Fixed note":
+            elif note_strategy == "Fixed note" or data.get("note"):
                 raw_note = data.get('note', '')
                 note = self._interpolate_template(raw_note, data, linkedin_url) if raw_note else ""
-                # Layer 2 Paranoia: Clamp to LinkedIn's 300-char connection note limit
-                if note and len(note) > 300:
-                    note = note[:297] + "..."
-                res = self.worker.send_connection_request(linkedin_url, note, data.get('fallback'))
             else:
-                raw_note = data.get('note')
-                note = self._interpolate_template(raw_note, data, linkedin_url) if raw_note else None
-                if note and len(note) > 300:
-                    note = note[:297] + "..."
-                res = self.worker.send_connection_request(linkedin_url, note, data.get('fallback'))
+                note = None
+
+            if note and len(note) > 300:
+                note = note[:297] + "..."
+            if note:
+                assert_fully_interpolated(note, lead_id=str(data.get("_lead_id") or ""), node_id=str(data.get("_current_node_id") or ""))
+
+            res = self.worker.send_connection_request(linkedin_url, note, data.get('fallback'))
                 
             if res.get("status") == "success":
                 if note:
@@ -2296,6 +2552,12 @@ class EleInNodeExecutor:
         except (LinkedInActionOutcomeUnknown, SessionExpiredError):
             raise
         except Exception as e:
+            err_str = str(e).lower()
+            if any(sig in err_str for sig in ("security challenge", "security_challenge", "checkpoint", "captcha", "pin verification", "two-factor", "unusual activity")):
+                logger.error(f"[Auth] Security Challenge detected in handle_connection_request: {e}")
+                return {"status": "security_challenge", "error": str(e), "branch": Branch.FAILED.value}
+            if any(sig in err_str for sig in ("session expired", "session_expired", "invalid cookies", "cookies expired")):
+                return {"status": "account_disconnected", "error": str(e), "branch": Branch.FAILED.value}
             logger.error(f"Error in handle_connection_request: {e}")
             return {"status": "error", "error": str(e), "branch": Branch.FAILED.value}
 
@@ -2441,7 +2703,8 @@ class EleInNodeExecutor:
 
         res = self.worker.check_if_connected(linkedin_url)
         if res.get("status") == "success":
-            b = Branch.CONNECTED.value if res.get("branch") == "Connected" else Branch.NOT_CONNECTED.value
+            is_conn = (str(res.get("branch", "")).strip().lower() in ("connected", "yes", "true")) or (res.get("connected") is True)
+            b = Branch.CONNECTED.value if is_conn else Branch.NOT_CONNECTED.value
             res["branch"] = b
             res["connected"] = (b == Branch.CONNECTED.value)
         else:
@@ -3068,21 +3331,21 @@ class EleInNodeExecutor:
             return {"status": "error", "branch": Branch.OUT_OF_RANGE.value, "error": str(e)}
 
     def handle_if_title_matches(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        keyword = data.get("keyword") or data.get("title_keyword") or ""
+        keyword = data.get("keyword") or data.get("keywords") or data.get("title_keyword") or data.get("title_keywords") or ""
         title = self._get_lead_field(data, linkedin_url, "title", "job_title", "headline")
         matched = self._match_keywords(title, keyword)
         branch = Branch.MATCHES.value if matched else Branch.DOES_NOT_MATCH.value
         return {"status": "success", "branch": branch, "matched": matched, "field_value": title}
 
     def handle_if_location_matches(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        keyword = data.get("keyword") or data.get("location_keyword") or ""
+        keyword = data.get("keyword") or data.get("keywords") or data.get("location_keyword") or data.get("locations") or data.get("location_keywords") or ""
         location = self._get_lead_field(data, linkedin_url, "location", "city", "country", "geo_region")
         matched = self._match_keywords(location, keyword)
         branch = Branch.MATCHES.value if matched else Branch.DOES_NOT_MATCH.value
         return {"status": "success", "branch": branch, "matched": matched, "field_value": location}
 
     def handle_if_industry_matches(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        keyword = data.get("keyword") or data.get("industry_keyword") or ""
+        keyword = data.get("keyword") or data.get("keywords") or data.get("industry_keyword") or data.get("industries") or data.get("industry_keywords") or ""
         industry = self._get_lead_field(data, linkedin_url, "industry", "company_industry")
         matched = self._match_keywords(industry, keyword)
         branch = Branch.MATCHES.value if matched else Branch.DOES_NOT_MATCH.value
@@ -3205,6 +3468,11 @@ class EleInNodeExecutor:
             chosen_body = self._interpolate_template(raw_template, data, linkedin_url) if raw_template else ""
             chosen_subject = self._interpolate_template(raw_subject, data, linkedin_url) if raw_subject else default_subject
 
+            if chosen_body:
+                assert_fully_interpolated(chosen_body, lead_id=str(lead_id or ""), node_id=str(node_id or ""))
+            if chosen_subject:
+                assert_fully_interpolated(chosen_subject, lead_id=str(lead_id or ""), node_id=str(node_id or ""))
+
             return {
                 "enabled": True,
                 "body": chosen_body,
@@ -3214,6 +3482,8 @@ class EleInNodeExecutor:
                 "sticky_hit": bool(arm_res.get("sticky_hit", False)),
                 "experiment_id": arm_res.get("experiment_id"),
             }
+        except UninterpolatedTemplateError:
+            raise
         except Exception as e:
             logger.warning(f"Bandit copy resolution fallback on error: {e}")
             return {"enabled": False, "body": default_body, "subject": default_subject}
@@ -3242,6 +3512,8 @@ class EleInNodeExecutor:
                 "requires_approval": True,
                 "branch": Branch.FAILED.value
             }
+
+        assert_fully_interpolated(body, lead_id=str(data.get("_lead_id") or ""), node_id=str(data.get("_current_node_id") or ""))
             
         attachment_url = data.get("attachment_url") or data.get("doc_url") or data.get("image_url")
         attachment_type = data.get("attachment_type") or ("image" if data.get("image_url") else "document" if data.get("doc_url") else "document")
@@ -3251,6 +3523,10 @@ class EleInNodeExecutor:
                 res = self.worker.send_message_with_attachment(linkedin_url, body, attachment_url, attachment_type)
             else:
                 res = self.worker.send_message(linkedin_url, body)
+
+            if isinstance(res, dict) and res.get("status") in ("rate_limited", "security_challenge", "session_expired", "pool_exhausted"):
+                res.setdefault("branch", Branch.FAILED.value)
+                return res
 
             if isinstance(res, dict) and res.get("status") == "error":
                 raw_err = res.get("error", "")
@@ -3296,6 +3572,12 @@ class EleInNodeExecutor:
         except LinkedInActionOutcomeUnknown:
             raise
         except Exception as e:
+            err_str = str(e).lower()
+            if any(sig in err_str for sig in ("security challenge", "security_challenge", "checkpoint", "captcha", "pin verification", "two-factor", "unusual activity")):
+                logger.error(f"[Auth] Security Challenge detected in handle_send_message: {e}")
+                return {"status": "security_challenge", "error": str(e), "branch": Branch.FAILED.value}
+            if any(sig in err_str for sig in ("session expired", "session_expired", "invalid cookies", "cookies expired")):
+                return {"status": "account_disconnected", "error": str(e), "branch": Branch.FAILED.value}
             logger.exception(f"Exception during handle_send_message: {e}")
             return {"status": "error", "error": str(e), "branch": Branch.FAILED.value}
 
@@ -3562,7 +3844,7 @@ class EleInNodeExecutor:
                     "branch": Branch.FAILED.value
                 }
             self._log_outbound_message(data, f"[Voice Note] {note or ''}".strip())
-            return {"status": "success", "branch": "No reply yet"} 
+            return {"status": "success", "branch": Branch.SENT.value, "note": note} 
         except LinkedInActionOutcomeUnknown:
             raise
         except Exception as e:
@@ -3681,6 +3963,11 @@ class EleInNodeExecutor:
         if len(body) > 1900:
             body = body[:1897] + "..."
 
+        if subject:
+            assert_fully_interpolated(subject, lead_id=str(lead_id or ""), node_id=str(data.get("_current_node_id") or ""))
+        if body:
+            assert_fully_interpolated(body, lead_id=str(lead_id or ""), node_id=str(data.get("_current_node_id") or ""))
+
         # 2. Arbitrage Gate (Paranoia Layer 0 & 1)
         if only_free and is_open_profile is False:
             if fallback_conn:
@@ -3787,8 +4074,11 @@ class EleInNodeExecutor:
                 return res_email
             return {"status": "rate_limited", "reason": "inmail_exhausted", "error": res.get("error", "Out of InMail credits"), "branch": Branch.FAILED.value}
 
-        if "branch" not in res:
-            res["branch"] = Branch.FAILED.value
+        if res.get("status") != "success":
+            if not is_open_profile:
+                self._release_limit("inmail")
+            if "branch" not in res:
+                res["branch"] = Branch.FAILED.value
         return res
 
     def handle_send_paid_inmail(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
@@ -3942,6 +4232,19 @@ Reject: {reject_link}
         if not workspace_id or not lead_id:
             return {"status": "error", "error": "Missing workspace_id or lead_id in context"}
             
+        # Paranoia Layer 0 & 1 (Flaw 29): Prevent double-dispatch when reply was already queued/sent via approval queue
+        if data.get("approval_delivered_via_job"):
+            logger.info(f"AI reply already delivered/enqueued via approval job queue for lead {lead_id}. Skipping duplicate worker send.")
+            approved_reply = data.get("approved_ai_reply") or ""
+            if approved_reply:
+                self._log_outbound_message(data, approved_reply)
+            return {
+                "status": "success",
+                "branch": Branch.THEN.value,
+                "action": "ai_generate_reply",
+                "delivered_via": "approval_job_queue"
+            }
+
         approved_reply = data.get("approved_ai_reply")
         if approved_reply:
             clean_reply = approved_reply
@@ -3982,11 +4285,10 @@ Reject: {reject_link}
             except Exception:
                 pass
             
-            synthesis = KnowledgeService.get_synthesis(self.supabase, workspace_id)
-            if not synthesis:
-                synthesis = {}
+            brain = self._get_unified_brain(workspace_id)
+            synthesis = brain if brain.get("core_value_prop") else (KnowledgeService.get_synthesis(self.supabase, workspace_id) or {})
                 
-            synthesis_layer = "CORE VALUE PROP:\n" + synthesis.get('core_value_prop', '') + "\n\n"
+            synthesis_layer = "CORE VALUE PROP:\n" + (synthesis.get('core_value_prop') or '') + "\n\n"
             if isinstance(synthesis.get('key_differentiators'), list):
                 diffs = [str(x).strip() for x in synthesis.get('key_differentiators', []) if x is not None and str(x).strip()]
                 if diffs:
@@ -4000,9 +4302,51 @@ Reject: {reject_link}
                     synthesis_layer += "PROOF POINTS:\n" + ", ".join(proofs) + "\n\n"
             elif synthesis.get('proof_points'):
                 synthesis_layer += "PROOF POINTS:\n" + str(synthesis.get('proof_points')).strip() + "\n\n"
+
+            # Layer 1 Paranoia: Check Objection Playbooks against lead message
+            # Sort candidate triggers by length descending so specific multi-word triggers match before generic ones.
+            # Use regex non-word boundaries (?<!\w)...(?!\w) to prevent false-positive substring collisions
+            # (e.g. trigger "no" matching inside "know", trigger "in" matching inside "interesting", etc.)
+            matched_playbook = ""
+            msg_lower = (lead_message or "").lower()
+            if msg_lower:
+                candidate_objs = []
+                for obj in brain.get("objections", []):
+                    # Support both list and scalar triggers
+                    raw_trigs = obj.get("triggers") if isinstance(obj.get("triggers"), list) else [obj.get("trigger")]
+                    for t in raw_trigs:
+                        if t and isinstance(t, str):
+                            clean_t = t.strip().lower()
+                            if len(clean_t) >= 2:
+                                candidate_objs.append((clean_t, obj))
                 
-            rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + "\n".join(chunk_texts)
-            context_str = synthesis_layer + rag_layer
+                # Sort candidate triggers by length descending (longest / most specific first)
+                candidate_objs.sort(key=lambda x: len(x[0]), reverse=True)
+                for trig, obj in candidate_objs:
+                    pattern = r'(?<!\w)' + re.escape(trig) + r'(?!\w)'
+                    if re.search(pattern, msg_lower):
+                        matched_playbook = (obj.get("playbook") or obj.get("resolution") or "").strip()
+                        if matched_playbook:
+                            break
+
+            # Layer 1 Paranoia (Flaw 9): Check Buyer Personas against lead title with word-boundary protection
+            lead_profile = data.get("lead_profile") or {}
+            headline = str(lead_profile.get("title", "")).lower()
+            matched_persona_directives = ""
+            if headline:
+                matched_p = self._match_buyer_persona(brain.get("personas", []), headline)
+                if matched_p:
+                    p_title = matched_p.get("title", "Buyer Persona")
+                    pain_list = matched_p.get("pain_points", [])
+                    p_pain = ", ".join(pain_list) if isinstance(pain_list, list) else str(pain_list)
+                    p_tone = matched_p.get("tone_tweaks", "")
+                    matched_persona_directives = f"You are speaking to a {p_title}. Their key pain points: {p_pain}. Tone directives: {p_tone}"
+                
+            rag_layer = "RELEVANT KNOWLEDGE BASE CHUNKS:\n" + ("\n".join(chunk_texts) if chunk_texts else "None matched.") + "\n\n"
+            objection_layer = f"RELEVANT OBJECTION PLAYBOOK:\n{matched_playbook}\n\n" if matched_playbook else ""
+            persona_layer = f"TARGET BUYER PERSONA:\n{matched_persona_directives}\n\n" if matched_persona_directives else ""
+
+            context_str = synthesis_layer + rag_layer + objection_layer + persona_layer
             
             # Paranoia Layer 1 & 2 (VULN-15): Sanitize untrusted prospect text and sandbox inside XML tags
             clean_lead_message = str(lead_message or "")
@@ -4030,28 +4374,35 @@ EXECUTION RULES:
 Respond ONLY with valid JSON."""
 
             from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
+            ai_model = str(data.get("ai_model") or "").strip()
             try:
                 user_prompt = f"<incoming_message>\n{clean_lead_message}\n</incoming_message>"
-                raw_response = _run_llm_with_failover(system_prompt=system_prompt, user_prompt=user_prompt, workspace_id=workspace_id, max_tokens=500, task="generation")
+                raw_response = _run_llm_with_failover(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    workspace_id=workspace_id,
+                    max_tokens=500,
+                    task="generation",
+                    ai_model=ai_model
+                )
             except Exception as e:
                 return {"status": "error", "error": f"LLM Generation failed: {str(e)}"}
                 
             if not raw_response or "Error" in raw_response:
                 return {"status": "error", "error": f"LLM Generation failed: {raw_response}"}
                 
-            import re, json
             match = re.search(r'\{.*\}', raw_response, re.DOTALL)
             if not match:
                 return {"status": "error", "error": "LLM failed to output JSON format."}
                 
             try:
-                data = json.loads(match.group(0))
+                parsed_reply_payload = json.loads(match.group(0))
             except json.JSONDecodeError:
                 return {"status": "error", "error": "LLM output invalid JSON."}
                 
-            clean_reply = data.get("reply", "")
-            confidence = data.get("confidence", 0)
-            grounded = data.get("grounded_in_knowledge", False)
+            clean_reply = parsed_reply_payload.get("reply", "")
+            confidence = parsed_reply_payload.get("confidence", 0)
+            grounded = parsed_reply_payload.get("grounded_in_knowledge", False)
             
             # VULNERABILITY FIXED: Physically strip banned phrases from autonomous AI replies
             brain = self._get_unified_brain(workspace_id)
@@ -4089,7 +4440,14 @@ Respond ONLY with valid JSON."""
             overlap_pass, overlap_reason = check_overlap(clean_reply, context_str)
             
             # THE GATE
-            approved_by_gate = (confidence >= 9) and grounded and overlap_pass
+            # Layer 0 & 1 Paranoia: Composite gate enforcing semantic retrieval relevance,
+            # LLM confidence, grounding verification, and token/numeric overlap.
+            sim_threshold = threshold if threshold <= 1.0 else 0.65
+            conf_threshold = int(threshold) if threshold > 1.0 else 8
+
+            similarity_pass = bool(chunks and max_similarity >= sim_threshold)
+            confidence_pass = bool(confidence >= conf_threshold)
+            approved_by_gate = similarity_pass and confidence_pass and grounded and overlap_pass
             
             if not approved_by_gate:
                 # Paranoia Layer 1: Prevent duplicate approval requests for the same execution state
@@ -4358,15 +4716,42 @@ Respond ONLY with valid JSON."""
                         logger.warning(f"if_replied worker check error: {e}")
 
                 if has_replied_db and not sentiment:
-                    text_lower = reply_text.lower()
-                    if any(w in text_lower for w in ["yes", "interested", "sure", "book", "call", "send over", "let's", "great"]):
-                        sentiment = Branch.POSITIVE.value
-                    elif any(w in text_lower for w in ["no", "not interested", "unsubscribe", "stop", "remove", "busy", "pass"]):
-                        sentiment = Branch.NEGATIVE.value
-                    elif reply_text:
+                    clean_reply = (reply_text or "").strip()
+                    if not clean_reply:
+                        # Layer 1 Paranoia (Flaw 24): Never default empty replies to Positive
                         sentiment = Branch.NEUTRAL.value
                     else:
-                        sentiment = Branch.POSITIVE.value
+                        text_lower = clean_reply.lower()
+
+                        # Priority 1: Check compound negative phrases and words first
+                        negative_phrases = [
+                            "not interested", "not looking", "no thanks", "no thank you",
+                            "stop messaging", "unsubscribe", "remove me", "don't contact",
+                            "never contact", "take me off", "pass on this", "wrong person",
+                            "busy right now", "not a fit", "no need"
+                        ]
+                        negative_words = ["no", "stop", "unsubscribe", "remove", "busy", "pass", "spam", "neither"]
+
+                        # Priority 2: Positive phrases and words
+                        positive_phrases = [
+                            "book a call", "let's talk", "let's chat", "let's connect",
+                            "send over", "sounds good", "happy to", "would love to",
+                            "tell me more", "more info", "share details"
+                        ]
+                        positive_words = ["interested", "sure", "book", "call", "great", "definitely", "yes", "absolutely"]
+
+                        def _contains_token(tokens, text):
+                            for tok in sorted(tokens, key=len, reverse=True):
+                                if re.search(r'(?<!\w)' + re.escape(tok) + r'(?!\w)', text, re.IGNORECASE):
+                                    return True
+                            return False
+
+                        if _contains_token(negative_phrases, text_lower) or _contains_token(negative_words, text_lower):
+                            sentiment = Branch.NEGATIVE.value
+                        elif _contains_token(positive_phrases, text_lower) or _contains_token(positive_words, text_lower):
+                            sentiment = Branch.POSITIVE.value
+                        else:
+                            sentiment = Branch.NEUTRAL.value
 
             if not sentiment:
                 sentiment = Branch.NO_REPLY.value
@@ -4719,14 +5104,14 @@ Respond ONLY with valid JSON."""
             if not audit.get("can_safely_send"):
                 if audit.get("is_spam_trap"):
                     logger.error(f"[DeliverabilityGuard] ABORT: Spam trap honeypot detected: {to_email}")
-                    return {"status": "skipped", "reason": "spam_trap_detected", "error": "Prospect email matches known ESP spam trap or honeypot."}
+                    return {"status": "skipped", "reason": "spam_trap_detected", "branch": Branch.FAILED.value, "error": "Prospect email matches known ESP spam trap or honeypot."}
                 if audit.get("is_disposable"):
                     logger.warning(f"[DeliverabilityGuard] ABORT: Disposable email rejected: {to_email}")
-                    return {"status": "skipped", "reason": "disposable_email_rejected", "error": "Recipient uses a disposable/ephemeral email provider."}
+                    return {"status": "skipped", "reason": "disposable_email_rejected", "branch": Branch.FAILED.value, "error": "Recipient uses a disposable/ephemeral email provider."}
                 if audit.get("is_role_based") and not allow_role_based:
                     logger.warning(f"[DeliverabilityGuard] Role-based email blocked: {to_email}")
-                    return {"status": "skipped", "reason": "role_based_email_blocked", "error": f"Role-based mailbox '{audit.get('role_category')}' blocked by deliverability policy."}
-                return {"status": "skipped", "reason": audit.get("rejection_reason", "deliverability_check_failed"), "error": audit.get("rejection_reason", "Deliverability check failed")}
+                    return {"status": "skipped", "reason": "role_based_email_blocked", "branch": Branch.FAILED.value, "error": f"Role-based mailbox '{audit.get('role_category')}' blocked by deliverability policy."}
+                return {"status": "skipped", "reason": audit.get("rejection_reason", "deliverability_check_failed"), "branch": Branch.FAILED.value, "error": audit.get("rejection_reason", "Deliverability check failed")}
 
             # Phase 38: Pre-flight Recipient MX Record Guard & Catch-All Probe
             from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
@@ -4764,6 +5149,11 @@ Respond ONLY with valid JSON."""
                 subject = subject[:197] + "..."
             if len(body) > 50000:
                 body = body[:49997] + "..."
+
+            if subject:
+                assert_fully_interpolated(subject, lead_id=str(lead_id or ""), node_id=str(data.get("_current_node_id") or ""))
+            if body:
+                assert_fully_interpolated(body, lead_id=str(lead_id or ""), node_id=str(data.get("_current_node_id") or ""))
 
             # Phase 39: Pre-flight Spam Trigger Words & Algorithmic Content Spam Score Classifier
             spam_audit: Dict[str, Any] = {}
@@ -5602,38 +5992,85 @@ Respond ONLY with valid JSON."""
             matched = True
             reasons = []
 
-            title_keywords = [k.strip().lower() for k in data.get("title_keywords", "").split(",") if k.strip()]
-            locations = [l.strip().lower() for l in data.get("locations", "").split(",") if l.strip()]
-            industries = [i.strip().lower() for i in data.get("industries", "").split(",") if i.strip()]
+            def _normalize_kw_list(val: Any) -> List[str]:
+                if not val:
+                    return []
+                if isinstance(val, (list, tuple, set)):
+                    return [str(k).strip().lower() for k in val if str(k).strip()]
+                return [k.strip().lower() for k in str(val).split(",") if k.strip()]
+
+            title_keywords = _normalize_kw_list(data.get("title_keywords"))
+            locations = _normalize_kw_list(data.get("locations"))
+            industries = _normalize_kw_list(data.get("industries"))
             min_hc = data.get("min_headcount")
             max_hc = data.get("max_headcount")
 
-            lead_title = str(data.get("lead_title", "")).lower()
-            lead_location = str(data.get("lead_location", "")).lower()
-            lead_industry = str(data.get("lead_industry", "")).lower()
-            lead_headcount = int(data.get("lead_headcount") or 0)
+            lead_title = str(data.get("lead_title") or "").strip().lower()
+            if not lead_title:
+                lead_title = str(self._get_lead_field(data, linkedin_url, "title", "job_title", "headline") or "").strip().lower()
 
-            if title_keywords and not any(kw in lead_title for kw in title_keywords):
+            lead_location = str(data.get("lead_location") or "").strip().lower()
+            if not lead_location:
+                lead_location = str(self._get_lead_field(data, linkedin_url, "location", "city", "country", "geo_region") or "").strip().lower()
+
+            lead_industry = str(data.get("lead_industry") or "").strip().lower()
+            if not lead_industry:
+                lead_industry = str(self._get_lead_field(data, linkedin_url, "industry", "company_industry") or "").strip().lower()
+
+            if title_keywords and not any(self._match_keywords(lead_title, kw) for kw in title_keywords):
                 matched = False
                 reasons.append("title_mismatch")
-            if locations and not any(loc in lead_location for loc in locations):
+            if locations and not any(self._match_keywords(lead_location, loc) for loc in locations):
                 matched = False
                 reasons.append("location_mismatch")
-            if industries and not any(ind in lead_industry for ind in industries):
+            if industries and not any(self._match_keywords(lead_industry, ind) for ind in industries):
                 matched = False
                 reasons.append("industry_mismatch")
-            if min_hc and lead_headcount < int(min_hc):
-                matched = False
-                reasons.append("headcount_below_min")
-            if max_hc and lead_headcount > int(max_hc):
-                matched = False
-                reasons.append("headcount_above_max")
 
-            output = Branch.MATCHES.value if matched else "No match"
-            return {"status": "success", "branch": output, "message": f"Lead criteria check: {output}", "reasons": reasons}
+            raw_hc = data.get("lead_headcount") or data.get("headcount")
+            if raw_hc is None:
+                raw_hc = self._get_lead_field(data, linkedin_url, "company_size", "headcount", "employee_count")
+
+            parsed_hc = self._parse_headcount(raw_hc)
+            lead_min_hc, lead_max_hc = parsed_hc if parsed_hc else (0, 0)
+
+            parsed_min = self._parse_headcount(min_hc)
+            effective_min = parsed_min[0] if parsed_min else None
+
+            parsed_max = self._parse_headcount(max_hc)
+            effective_max = parsed_max[1] if parsed_max else None
+
+            # Paranoia Layer 2: Auto-correct human inversion (min > max)
+            if effective_min is not None and effective_max is not None and effective_min > effective_max:
+                effective_min, effective_max = effective_max, effective_min
+
+            if effective_min is not None and parsed_hc:
+                if lead_max_hc < effective_min:
+                    matched = False
+                    reasons.append("headcount_below_min")
+            if effective_max is not None and parsed_hc:
+                if lead_min_hc > effective_max:
+                    matched = False
+                    reasons.append("headcount_above_max")
+
+            output = Branch.MATCHES.value if matched else Branch.DOES_NOT_MATCH.value
+            return {
+                "status": "success",
+                "branch": output,
+                "output": output,
+                "matched": matched,
+                "message": f"Lead criteria check: {output}",
+                "reasons": reasons
+            }
         except Exception as e:
             logger.error(f"handle_if_lead_matches error: {e}")
-            return {"status": "error", "output": "No match", "error": str(e)}
+            return {
+                "status": "error",
+                "branch": Branch.DOES_NOT_MATCH.value,
+                "output": Branch.DOES_NOT_MATCH.value,
+                "matched": False,
+                "error": str(e)
+            }
 
     def handle_react_to_post(self, data: dict, linkedin_url: str) -> dict:
         # Route to existing like_post handler — the worker handles quantity and reaction_type
@@ -5717,9 +6154,27 @@ Respond ONLY with valid JSON."""
             except Exception as e:
                 logger.warning(f"Bandit A/B split fallback to deterministic hash: {e}")
 
-        h = int(hashlib.md5(f"{lead_id}_{node_id}".encode("utf-8")).hexdigest(), 16)
-        branch = "Path A" if (h % 2 == 0) else "Path B"
-        return {"status": "success", "branch": branch, "message": f"Routed to {branch}"}
+        # Paranoia Layer 0 & 1 (Flaw 31): Support user-configured split percentage/ratio
+        try:
+            path_a_pct = float(
+                data.get("path_a_pct")
+                if data.get("path_a_pct") is not None
+                else (data.get("split_percentage")
+                      if data.get("split_percentage") is not None
+                      else (data.get("split_ratio", 50)))
+            )
+        except (ValueError, TypeError):
+            path_a_pct = 50.0
+        path_a_pct = max(0.0, min(100.0, path_a_pct))
+
+        h = int(hashlib.md5(f"{lead_id}_{node_id}".encode("utf-8")).hexdigest(), 16) % 100
+        branch = "Path A" if (h < path_a_pct) else "Path B"
+        return {
+            "status": "success",
+            "branch": branch,
+            "path_a_pct": path_a_pct,
+            "message": f"Routed to {branch} (weight {path_a_pct}% A / {100.0 - path_a_pct}% B)"
+        }
 
     def handle_weighted_split(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         import hashlib
@@ -5920,7 +6375,7 @@ Respond ONLY with valid JSON."""
     def handle_send_meeting_invite(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         calendly_url = data.get("calendly_url", "")
         body = data.get("body", "")
-        combined = f"{body}\\n\\nBook a time here: {calendly_url}" if calendly_url else body
+        combined = f"{body}\n\nBook a time here: {calendly_url}" if calendly_url else body
         data_copy = dict(data)
         data_copy["message"] = combined
         if hasattr(self, "handle_send_message"):

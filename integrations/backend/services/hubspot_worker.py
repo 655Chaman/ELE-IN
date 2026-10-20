@@ -49,7 +49,7 @@ async def import_hubspot_list_bg(supabase, workspace_id: str, hubspot_list_id: i
 
             url = (
                 f"https://api.hubapi.com/contacts/v1/lists/{hubspot_list_id}/contacts/all"
-                f"?count=100&property=firstname&property=lastname&property=company&property=linkedin&property=city"
+                f"?count=100&property=firstname&property=lastname&property=company&property=linkedin&property=hs_linkedin_url&property=city&property=country&property=email&property=jobtitle&property=phone"
             )
             if vid_offset > 0:
                 url += f"&vidOffset={vid_offset}"
@@ -106,8 +106,12 @@ async def import_hubspot_list_bg(supabase, workspace_id: str, hubspot_list_id: i
                 first_name = props.get("firstname", {}).get("value", "")
                 last_name = props.get("lastname", {}).get("value", "")
                 company = props.get("company", {}).get("value", "")
-                linkedin = props.get("linkedin", {}).get("value", "")
+                linkedin = props.get("hs_linkedin_url", {}).get("value", "") or props.get("linkedin", {}).get("value", "")
                 city = props.get("city", {}).get("value", "")
+                country = props.get("country", {}).get("value", "")
+                email = props.get("email", {}).get("value", "")
+                job_title = props.get("jobtitle", {}).get("value", "")
+                phone = props.get("phone", {}).get("value", "")
 
                 # Paranoia Layer 1: Sanitize text against NUL bytes and control characters
                 clean_first = DataHygieneService.sanitize_text(first_name, 100)
@@ -115,19 +119,36 @@ async def import_hubspot_list_bg(supabase, workspace_id: str, hubspot_list_id: i
                 clean_company = DataHygieneService.sanitize_text(company, 150)
                 clean_linkedin = DataHygieneService.sanitize_text(linkedin, 300)
                 clean_city = DataHygieneService.sanitize_text(city, 100)
+                clean_country = DataHygieneService.sanitize_text(country, 100)
+                clean_email = DataHygieneService.clean_email(email)
+                clean_job_title = DataHygieneService.sanitize_text(job_title, 150)
 
-                # Deduplicate within batch
+                # Deduplicate within batch by both email and linkedin (Email-first & Cross-field support)
+                is_duplicate = False
+                if clean_email and clean_email.lower() in seen_urls:
+                    is_duplicate = True
+                if clean_linkedin and clean_linkedin.lower() in seen_urls:
+                    is_duplicate = True
+
+                if is_duplicate:
+                    continue
+
+                if clean_email:
+                    seen_urls.add(clean_email.lower())
                 if clean_linkedin:
-                    if clean_linkedin in seen_urls:
-                        continue
-                    seen_urls.add(clean_linkedin)
+                    seen_urls.add(clean_linkedin.lower())
+
+                loc_str = f"{clean_city}, {clean_country}".strip(", ") if clean_country else clean_city
 
                 chunk_leads.append({
                     "first_name": clean_first,
                     "last_name": clean_last,
                     "company_name": clean_company,
                     "linkedin_url": clean_linkedin,
-                    "p_location": clean_city
+                    "email": clean_email,
+                    "job_title": clean_job_title,
+                    "p_location": loc_str,
+                    "phone": phone
                 })
 
                 # Stream flush when chunk limit reached

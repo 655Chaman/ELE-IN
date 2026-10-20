@@ -3,6 +3,14 @@ import type { SeqTreeNode } from "@campaigns/eiTreeStore";
 
 const _TERMINAL_NODES = ['sequence_end', 'mark_converted', 'mark_not_interested', 'mark_opted_out'];
 
+function getNodeLabel(node: SeqTreeNode): string {
+  const customLabel = node.data?.label as string | undefined;
+  if (customLabel && customLabel.trim().length > 0) return customLabel.trim();
+  const def = HR_NODE_DEFS[node.type as keyof typeof HR_NODE_DEFS];
+  if (def?.label) return def.label;
+  return node.type.replace(/_/g, ' ');
+}
+
 export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string, string[]>, warnings: Record<string, string[]> } {
   const errors: Record<string, string[]> = {};
   const warnings: Record<string, string[]> = {};
@@ -23,10 +31,11 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     visited.add(node.id);
     const nodeErrors: string[] = [];
     const nodeWarnings: string[] = [];
+    const stepLabel = getNodeLabel(node);
 
     const exemptIdentical = ['send_message', 'send_message_with_doc', 'send_message_with_image', 'sequence_end'];
     if (node.type === state.lastAction && !exemptIdentical.includes(node.type)) {
-      nodeErrors.push(`This '${node.type.replace(/_/g, ' ')}' step is identical to the immediate previous step. This is usually a mistake. How to correct: Delete this node or change its action type.`);
+      nodeErrors.push(`Step "${stepLabel}": This step is identical to the immediate previous step. This is usually a mistake. How to correct: Delete this node or change its action type.`);
     }
 
 
@@ -41,47 +50,47 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     // Root nodes (entry step directly following Sequence start) can execute immediately (delay 0).
     // Subsequent nodes in the sequence must have at least 1 day delay to prevent account spam flags.
     if (prevNode !== null && nodeDelay < 1) {
-      nodeErrors.push("Delay must be at least 1 day to protect your account.");
+      nodeErrors.push(`Step "${stepLabel}": Delay must be at least 1 day to protect your account.`);
     } else if (nodeDelay < 0) {
-      nodeErrors.push("Delay cannot be negative.");
+      nodeErrors.push(`Step "${stepLabel}": Delay cannot be negative.`);
     }
     
     if (['send_message', 'send_message_with_doc', 'send_message_with_image', 'send_intro_message', 'send_followup', 'send_breakup_message', 'send_reengage_message'].includes(node.type)) {
        if (!node.data.body || typeof node.data.body !== 'string' || node.data.body.trim() === '') {
-         nodeErrors.push("Your message body is empty! Leads will receive a blank message. How to correct: Click this node and write a message.");
+         nodeErrors.push(`Step "${stepLabel}": Your message body is empty! Leads will receive a blank message. How to correct: Click this node and write a message.`);
        }
     } else if (node.type === 'connection_request') {
        if (node.data.note_strategy === "Fixed note") {
          if (!node.data.note || typeof node.data.note !== 'string' || node.data.note.trim() === '') {
-           nodeErrors.push("Your connection request is set to 'Fixed note' but has no note! How to correct: Click this node and write a note.");
+           nodeErrors.push(`Step "${stepLabel}": Your connection request is set to 'Fixed note' but has no note! How to correct: Click this node and write a note.`);
          } else if (node.data.note.length > 300) {
-           nodeErrors.push("Connection requests cannot exceed 300 characters. How to correct: Click this node and shorten your note.");
+           nodeErrors.push(`Step "${stepLabel}": Connection requests cannot exceed 300 characters. How to correct: Click this node and shorten your note.`);
          }
        }
     /* removed send_message_ab */
     } else if (node.type === 'send_inmail' || node.type === 'send_paid_inmail') {
        if (!node.data.subject || typeof node.data.subject !== 'string' || node.data.subject.trim() === '') {
-         nodeErrors.push("InMail subject is empty! How to correct: Click this node and write a subject line.");
+         nodeErrors.push(`Step "${stepLabel}": InMail subject is empty! How to correct: Click this node and write a subject line.`);
        } else if (node.data.subject.length > 200) {
          const len = node.data.subject.length;
          const diff = len - 200;
-         nodeErrors.push(`InMail subject is ${new Intl.NumberFormat('en-US').format(len)} characters. LinkedIn's hard limit is 200. Trim ${new Intl.NumberFormat('en-US').format(diff)} characters.`);
+         nodeErrors.push(`Step "${stepLabel}": InMail subject is ${new Intl.NumberFormat('en-US').format(len)} characters. LinkedIn's hard limit is 200. Trim ${new Intl.NumberFormat('en-US').format(diff)} characters.`);
        }
        if (!node.data.body || typeof node.data.body !== 'string' || node.data.body.trim() === '') {
-         nodeErrors.push("InMail body is empty! How to correct: Click this node and write a message body.");
+         nodeErrors.push(`Step "${stepLabel}": InMail body is empty! How to correct: Click this node and write a message body.`);
        } else if (node.data.body.length > 1900) {
          const len = node.data.body.length;
          const diff = len - 1900;
-         nodeErrors.push(`InMail body is ${new Intl.NumberFormat('en-US').format(len)} characters. LinkedIn's hard limit is 1,900. Trim ${new Intl.NumberFormat('en-US').format(diff)} characters.`);
+         nodeErrors.push(`Step "${stepLabel}": InMail body is ${new Intl.NumberFormat('en-US').format(len)} characters. LinkedIn's hard limit is 1,900. Trim ${new Intl.NumberFormat('en-US').format(diff)} characters.`);
        }
     } else if (node.type === 'send_voice_note') {
        if (!node.data.audio_url || typeof node.data.audio_url !== 'string' || node.data.audio_url.trim() === '') {
-         nodeErrors.push("Voice note node has no audio URL configured.");
+         nodeErrors.push(`Step "${stepLabel}": Voice note node has no audio URL configured.`);
        } else {
          const url = node.data.audio_url.trim();
          const isSecureOrLocal = url.startsWith("https://") || url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1") || url.startsWith("/api/") || url.startsWith("blob:");
          if (!isSecureOrLocal) {
-           nodeErrors.push("Audio URL must start with https:// (or http:// for local instances). Insecure external URLs are not supported.");
+           nodeErrors.push(`Step "${stepLabel}": Audio URL must start with https:// (or http:// for local instances). Insecure external URLs are not supported.`);
          } else {
            const validExts = [".mp3", ".mp4", ".wav", ".ogg", ".m4a", ".webm"];
            const validCDNs = ["drive.google.com", "dropbox.com", "loom.com"];
@@ -98,7 +107,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
            
            const hasValidCDN = validCDNs.some(cdn => lowerUrl.includes(cdn));
            if (!hasValidExt && !hasValidCDN && !url.startsWith("blob:") && !url.startsWith("/api/")) {
-             nodeWarnings.push("Audio URL does not appear to point to an audio file. Verify it is a direct audio link.");
+             nodeWarnings.push(`Step "${stepLabel}": Audio URL does not appear to point to an audio file. Verify it is a direct audio link.`);
            }
          }
        }
@@ -107,38 +116,38 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     if (['remove_connection', 'endorse_skill', 'recommendation'].includes(node.type) || (isMessageNode && !['send_inmail', 'send_paid_inmail'].includes(node.type))) {
       if (node.data?.fallback_to_connection_request) {
         if (state.connectionStatus === 'unknown') {
-          nodeWarnings.push(`${node.type.replace(/_/g, ' ')} requires a 1st-degree connection. Auto-fallback to Connection Request is active if lead is not connected.`);
+          nodeWarnings.push(`Step "${stepLabel}": Requires a 1st-degree connection. Auto-fallback to Connection Request is active if lead is not connected.`);
         }
       } else if (state.connectionStatus === 'unknown') {
-         nodeErrors.push(`This action requires a 1st-degree connection. How to correct: If your campaign audience isn't exclusively 1st-degree connections, you need to add a 'Connection Request' or 'If Connected?' check before this step.`);
+         nodeErrors.push(`Step "${stepLabel}": This action requires a 1st-degree connection. How to correct: If your campaign audience isn't exclusively 1st-degree connections, add a 'Connection Request' or 'If Connected?' check before this step.`);
       } else if (state.connectionStatus === 'pending') {
-         nodeErrors.push(`You cannot use '${node.type.replace(/_/g, ' ')}' here because the connection request is still pending. How to correct: Delete this node here, and add it inside the 'ACCEPTED' branch of the Connection Request.`);
+         nodeErrors.push(`Step "${stepLabel}": You cannot use this action here because the connection request is still pending. How to correct: Add it inside the 'ACCEPTED' branch of the Connection Request.`);
       } else if (state.connectionStatus === 'withdrawn') {
-         nodeErrors.push(`You cannot use '${node.type.replace(/_/g, ' ')}' here because the connection request was withdrawn. How to correct: Remove this node, or send a new connection request first.`);
+         nodeErrors.push(`Step "${stepLabel}": You cannot use this action here because the connection request was withdrawn. How to correct: Send a new connection request first.`);
       }
     }
 
     if (node.type === 'withdraw_request') {
       if (state.connectionStatus === 'accepted') {
-        nodeErrors.push("You cannot withdraw a connection request that has already been accepted. How to correct: Remove this node, or use 'Remove Connection' instead.");
+        nodeErrors.push(`Step "${stepLabel}": You cannot withdraw a connection request that has already been accepted. How to correct: Use 'Remove Connection' instead.`);
       } else if (state.connectionStatus === 'unknown' || state.connectionStatus === 'withdrawn') {
-        nodeErrors.push("You can only withdraw a connection request if one is currently pending. How to correct: Delete this node here, and add it inside the 'NOT ACCEPTED YET' branch of a Connection Request.");
+        nodeErrors.push(`Step "${stepLabel}": You can only withdraw a connection request if one is currently pending. How to correct: Place this node inside the 'NOT ACCEPTED YET' branch of a Connection Request.`);
       } else if (state.autoWithdrawEnabled) {
-        nodeErrors.push("You already enabled 'Withdraw connection request' inside the Connection Request node settings. Adding a physical 'Withdraw Request' node is redundant and will cause errors. How to correct: Delete this node, OR turn off the setting in the Connection Request node.");
+        nodeErrors.push(`Step "${stepLabel}": You already enabled 'Withdraw connection request' inside the Connection Request node settings. Adding a physical 'Withdraw Request' node is redundant.`);
       }
     }
 
     if (node.type === 'if_connected' || node.type === 'seamless_identity_matching') {
       if (state.connectionStatus === 'accepted') {
-         nodeErrors.push("The lead is already connected in this path, so checking their status again is redundant. How to correct: Delete this node.");
+         nodeErrors.push(`Step "${stepLabel}": The lead is already connected in this path, so checking their status again is redundant. How to correct: Delete this node.`);
       }
     }
 
     if (node.type === 'connection_request' || node.type === 'connection_no_note') {
       if (state.connectionStatus === 'pending') {
-        nodeErrors.push("You already have a pending connection request in this path. Sending another one immediately is invalid. How to correct: Delete this duplicate node, or use 'Withdraw Pending Request' before sending a new one.");
+        nodeErrors.push(`Step "${stepLabel}": You already have a pending connection request in this path. Sending another one immediately is invalid.`);
       } else if (state.connectionStatus === 'accepted') {
-        nodeErrors.push("You are already connected to leads in this path. Sending a connection request is invalid. How to correct: Delete this duplicate node.");
+        nodeErrors.push(`Step "${stepLabel}": You are already connected to leads in this path. Sending a connection request is invalid.`);
       }
     }
 
@@ -146,7 +155,7 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       if (state.hasSentMessage) {
         const totalDelaySinceLastMsg = state.lastMessageDelayAccumulator + nodeDelay;
         if (totalDelaySinceLastMsg === 0) {
-          nodeErrors.push("Sending multiple messages back-to-back with 0 delay risks flagging your account for spam. How to correct: Click this node's settings and set the Delay to 1 day or more.");
+          nodeErrors.push(`Step "${stepLabel}": Sending multiple messages back-to-back with 0 delay risks flagging your account for spam. How to correct: Set Delay to 1 day or more.`);
         }
       }
     }
@@ -189,14 +198,64 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       }
     }
 
-    // NEW: Variable Validation
-    const ALLOWED_VARIABLES = [
+    // Variable Validation & Semantic Normalization
+    const CANONICAL_VARIABLES = new Set([
       'first_name', 'last_name', 'company', 'job_title', 'location', 'industry', 'mutual_connections',
       // AI & Enrichment Variables
       'ai_icebreaker', 'ai_hook', 'ai_sentiment', 'ai_brain_reply', 'ai_objection_handler', 'ai_translated',
       'best_send_time', 'work_email', 'email', 'phone', 'competitor_detected', 'buying_signal', 'profile_summary',
       'icp_score', 'tech_stack', 'funding_round', 'headcount', 'mutual_connections_count'
-    ];
+    ]);
+
+    const VARIABLE_ALIASES: Record<string, string> = {
+      firstname: 'first_name',
+      first_name: 'first_name',
+      first: 'first_name',
+      name: 'first_name',
+      lead_name: 'first_name',
+      prospect_name: 'first_name',
+      lastname: 'last_name',
+      last_name: 'last_name',
+      last: 'last_name',
+      company: 'company',
+      companyname: 'company',
+      company_name: 'company',
+      org: 'company',
+      organization: 'company',
+      title: 'job_title',
+      jobtitle: 'job_title',
+      job_title: 'job_title',
+      role: 'job_title',
+      position: 'job_title',
+      headline: 'job_title',
+      location: 'location',
+      city: 'location',
+      state: 'location',
+      country: 'location',
+      industry: 'industry',
+      sector: 'industry',
+      email: 'email',
+      work_email: 'work_email',
+      workemail: 'work_email',
+      phone: 'phone',
+      phonenumber: 'phone',
+      phone_number: 'phone',
+      tech_stack: 'tech_stack',
+      techstack: 'tech_stack',
+      funding: 'funding_round',
+      funding_round: 'funding_round',
+      headcount: 'headcount',
+      employees: 'headcount',
+      mutual_connections: 'mutual_connections',
+      mutuals: 'mutual_connections',
+      mutual_connections_count: 'mutual_connections_count'
+    };
+
+    function normalizeVar(raw: string): string {
+      const clean = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+      const stripped = clean.replace(/^(lead|prospect|contact|recipient)\./, '');
+      return VARIABLE_ALIASES[stripped] || VARIABLE_ALIASES[clean] || (CANONICAL_VARIABLES.has(stripped) ? stripped : clean);
+    }
     
     function extractAllStringValues(obj: Record<string, unknown>): string[] {
       const results: string[] = [];
@@ -211,16 +270,20 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       if (!text || typeof text !== 'string') return;
       const matches = [...text.matchAll(/{{\s*([\w.]+)(?:\|.*?)?\s*}}/g)];
       for (const match of matches) {
-        let varName = match[1].trim();
-        // Drop any filter syntax like | fallback
-        if (varName.includes('|')) {
-          varName = varName.split('|')[0].trim();
+        let rawVar = match[1].trim();
+        const hasFallback = match[0].includes('|') || rawVar.includes('|');
+        if (rawVar.includes('|')) {
+          rawVar = rawVar.split('|')[0].trim();
         }
-        if (!ALLOWED_VARIABLES.includes(varName)) {
+        const normalized = normalizeVar(rawVar);
+        const isCanonical = CANONICAL_VARIABLES.has(normalized);
+        const isCustomWithFallback = hasFallback || normalized.startsWith('custom_') || normalized.startsWith('csv_') || normalized.startsWith('crm_');
+
+        if (!isCanonical && !isCustomWithFallback) {
            if (customError) {
-             nodeErrors.push(customError(varName));
+             nodeErrors.push(customError(rawVar));
            } else {
-             nodeErrors.push(`Invalid variable '{{${varName}}}' found in ${fieldName}. Allowed variables are: ${ALLOWED_VARIABLES.join(', ')}. How to correct: Click this node, remove the invalid text, and use the 'Add variables' dropdown to insert correct ones.`);
+             nodeErrors.push(`Step "${stepLabel}": Unrecognized variable '{{${rawVar}}}' in ${fieldName}. To use custom lead attributes safely, provide a fallback: '{{${rawVar} | fallback: text}}', or choose from standard variables: first_name, company, title.`);
            }
         }
       }
@@ -257,22 +320,23 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
         const textVal = node.data[field] as string;
         const unprotected = findUnprotectedVariables(textVal);
         for (const varName of unprotected) {
-          nodeWarnings.push(`Message contains {{${varName}}} without a fallback value. If a lead is missing this field, blank text will be sent. Recommended: {{${varName}|fallback}}`);
+          nodeWarnings.push(`Step "${stepLabel}": Message contains {{${varName}}} without a fallback value. If a lead is missing this field, blank text will be sent. Recommended: {{${varName} | fallback: there}}`);
         }
         const singleBraceVars = findSingleBraceVariables(textVal);
         for (const singleVar of singleBraceVars) {
-          if (ALLOWED_VARIABLES.includes(singleVar.toLowerCase())) {
-            nodeWarnings.push(`Detected single brace variable '{${singleVar}}'. Outreach variables require double curly braces: '{{${singleVar}}}'.`);
+          const canonical = normalizeVar(singleVar);
+          if (CANONICAL_VARIABLES.has(canonical)) {
+            nodeWarnings.push(`Step "${stepLabel}": Detected single brace variable '{${singleVar}}'. Outreach variables require double curly braces: '{{${canonical}}}'.`);
           }
         }
       }
     }
 
     if (node.data.fallback_message) {
-      checkVariablesInString(node.data.fallback_message as string, 'fallback_message', (badVar) => `Node '${node.type}': fallback_message contains invalid variable {{${badVar}}}. The fallback will crash if the AI fails.`);
+      checkVariablesInString(node.data.fallback_message as string, 'fallback_message', (badVar) => `Step "${stepLabel}": fallback_message contains invalid variable {{${badVar}}}. The fallback will crash if the AI fails.`);
     }
     if (node.data.custom_persona) {
-      checkVariablesInString(node.data.custom_persona as string, 'custom_persona', (badVar) => `Node '${node.type}': custom_persona contains invalid variable {{${badVar}}}. The fallback will crash if the AI fails.`);
+      checkVariablesInString(node.data.custom_persona as string, 'custom_persona', (badVar) => `Step "${stepLabel}": custom_persona contains invalid variable {{${badVar}}}. The fallback will crash if the AI fails.`);
     }
 
     if (nodeErrors.length > 0) {

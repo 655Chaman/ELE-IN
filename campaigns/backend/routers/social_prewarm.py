@@ -419,7 +419,8 @@ def generate_post_endpoint(
             workspace_id=workspace_id,
             amount=2,
             idempotency_key=f"refund_{idem_key}",
-            reason="thought_leadership_post_generation_failed"
+            reason="thought_leadership_post_generation_failed",
+            supabase_client=supabase
         )
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -436,6 +437,9 @@ def schedule_post_endpoint(
     """
     _check_workspace_tier_permission(workspace_id, "can_thought_leadership_studio", supabase)
 
+    if not payload.post_content or len(payload.post_content.strip()) < 5:
+        raise HTTPException(status_code=400, detail="post_content must be at least 5 characters long")
+
     from campaigns.backend.services.content_publisher_service import schedule_thought_leadership_post
     res = schedule_thought_leadership_post(
         supabase=supabase,
@@ -446,6 +450,8 @@ def schedule_post_endpoint(
         scheduled_at=payload.scheduled_at,
         account_id=payload.account_id
     )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message", "Failed to schedule post"))
     return res
 
 

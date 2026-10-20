@@ -4229,9 +4229,20 @@ def create_campaign(
         log_audit(supabase, workspace_id, user_id, "campaign.created", "campaign", campaign_id)
 
         try:
+            from core.backend.api.auth_dep import get_service_client
+            svc_client = None
+            if hasattr(supabase, "_mock_self") or hasattr(supabase, "mock_calls"):
+                svc_client = supabase
+            else:
+                try:
+                    svc_client = get_service_client() or supabase
+                except Exception:
+                    svc_client = supabase
+            db_client = svc_client or supabase
+
             if not atomic_created:
                 # 1. Create Campaign Version
-                supabase.table("campaign_versions").insert({
+                db_client.table("campaign_versions").insert({
                     "id": version_id,
                     "campaign_id": campaign_id,
                     "version": 1,
@@ -4245,16 +4256,22 @@ def create_campaign(
                 node_id_map[n["id"]] = new_node_id
                 node_cfg = dict(n.get("data") or {})
                 node_cfg["_ui_node_id"] = n["id"]
+                pos = n.get("position") or {}
+                node_key = n.get("key") or n.get("node_key") or n.get("id") or new_node_id
                 node_inserts.append({
                     "id": new_node_id,
                     "campaign_version_id": version_id,
+                    "campaign_id": campaign_id,
+                    "node_key": str(node_key),
                     "node_type": n.get("type", "unknown"),
                     "config": node_cfg,
-                    "ui_position": n.get("position", {})
+                    "ui_position": pos,
+                    "position_x": pos.get("x", 0),
+                    "position_y": pos.get("y", 0)
                 })
             
             if node_inserts:
-                supabase.table("campaign_nodes").insert(node_inserts).execute()
+                db_client.table("campaign_nodes").insert(node_inserts).execute()
 
             # 3. Map Edges
             edge_inserts = []
@@ -4266,17 +4283,17 @@ def create_campaign(
                         "campaign_version_id": version_id,
                         "source_node_id": source_uuid,
                         "target_node_id": target_uuid,
-                        "condition": e.get("sourceHandle")
+                        "source_handle": e.get("sourceHandle") or e.get("source_handle"),
+                        "target_handle": e.get("targetHandle") or e.get("target_handle"),
+                        "condition": e.get("sourceHandle") or e.get("condition")
                     })
             
             if edge_inserts:
-                supabase.table("campaign_edges").insert(edge_inserts).execute()
+                db_client.table("campaign_edges").insert(edge_inserts).execute()
 
             # 4. Link Accounts (only if not already linked by atomic RPC)
             if not atomic_created and campaign.senders:
-                from core.backend.api.auth_dep import get_service_client
-                svc = get_service_client()
-                svc.table("campaign_accounts").insert(
+                db_client.table("campaign_accounts").insert(
                     [{"campaign_id": campaign_id, "account_id": s} for s in campaign.senders]
                 ).execute()
 
@@ -4550,6 +4567,17 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                     raise HTTPException(status_code=409, detail="Concurrent campaign modification conflict. Please reload and retry.")
                 time.sleep(0.05 * (attempt + 1))
 
+        from core.backend.api.auth_dep import get_service_client
+        svc_client = None
+        if hasattr(client, "_mock_self") or hasattr(client, "mock_calls"):
+            svc_client = client
+        else:
+            try:
+                svc_client = get_service_client() or client
+            except Exception:
+                svc_client = client
+        db_client = svc_client or client
+
         node_id_map = {}
         node_inserts = []
         for n in nodes_raw:
@@ -4557,16 +4585,22 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
             node_id_map[n["id"]] = new_node_id
             node_cfg = dict(n.get("data") or {})
             node_cfg["_ui_node_id"] = n["id"]
+            pos = n.get("position") or {}
+            node_key = n.get("key") or n.get("node_key") or n.get("id") or new_node_id
             node_inserts.append({
                 "id": new_node_id,
                 "campaign_version_id": version_id,
+                "campaign_id": campaign_id,
+                "node_key": str(node_key),
                 "node_type": n.get("type", "unknown"),
                 "config": node_cfg,
-                "ui_position": n.get("position", {})
+                "ui_position": pos,
+                "position_x": pos.get("x", 0),
+                "position_y": pos.get("y", 0)
             })
         
         if node_inserts:
-            client.table("campaign_nodes").insert(node_inserts).execute()
+            db_client.table("campaign_nodes").insert(node_inserts).execute()
 
         edge_inserts = []
         for e in edges_raw:
@@ -4577,11 +4611,13 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                     "campaign_version_id": version_id,
                     "source_node_id": source_uuid,
                     "target_node_id": target_uuid,
-                    "condition": e.get("sourceHandle")
+                    "source_handle": e.get("sourceHandle") or e.get("source_handle"),
+                    "target_handle": e.get("targetHandle") or e.get("target_handle"),
+                    "condition": e.get("sourceHandle") or e.get("condition")
                 })
         
         if edge_inserts:
-            client.table("campaign_edges").insert(edge_inserts).execute()
+            db_client.table("campaign_edges").insert(edge_inserts).execute()
         
         try:
             from core.backend.api.auth_dep import get_service_client

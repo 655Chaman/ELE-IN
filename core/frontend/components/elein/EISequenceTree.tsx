@@ -6,7 +6,6 @@ import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { useState, useCallback, useRef, useEffect } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { DotPattern } from "@/components/ui/dot-pattern"
-import { AnimatedBeam } from "@/components/ui/animated-beam"
 import {
   Plus, Check, X, Clock, Trash2, Edit2,
   UserPlus, MessageSquare, Eye, Heart, Users, Mail,
@@ -416,7 +415,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setInfoNode(type as EINodeType) }}
-                            className="absolute right-2 top-2 p-1.5 rounded-lg bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 opacity-0 group-hover:opacity-100 transition-all z-20 cursor-pointer"
+                            className="absolute right-2 bottom-2 p-1.5 rounded-lg bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted/70 opacity-0 group-hover:opacity-100 transition-all z-20 cursor-pointer"
                             title="More info"
                             aria-label={`More info about ${def.label}`}
                           >
@@ -527,7 +526,7 @@ function AddEndPair({ isFirstStep, parentId, branchLabel, onEnd }: AddEndPairPro
   const [showEndTip, setShowEndTip] = useState(false)
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="add-step-pair flex items-center gap-2">
       <button
         type="button"
         onClick={() => openPicker(parentId, branchLabel, isFirstStep)}
@@ -592,8 +591,9 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
 
   if (isEnd) {
     return (
-      <div className="group relative flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border/50 text-muted-foreground text-sm font-medium shadow-sm hover:border-destructive/50 transition-colors cursor-pointer pr-10" onClick={onDelete}>
-        <StopCircle size={14} /> End sequence
+      <div className="node-card group relative flex items-center gap-2 px-4 py-2.5 rounded-lg bg-card border border-border/50 text-muted-foreground text-sm font-medium shadow-sm transition-colors pr-10">
+        <StopCircle size={14} className="text-zinc-500" />
+        <span>End sequence</span>
         
         {/* Delete Button (visible on hover) */}
         {onDelete && (
@@ -613,12 +613,19 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
   return (
     <div
       draggable={draggable}
-      onDragStart={onDragStart}
+      onDragStart={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, input, select, textarea, [data-no-drag]')) {
+          e.preventDefault();
+          return;
+        }
+        onDragStart?.(e);
+      }}
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       onClick={onSelect}
-      className={`!p-0 group w-[320px] !rounded-xl !bg-card border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[2px] ${
+      className={`node-card !p-0 group w-[320px] !rounded-xl !bg-card border transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-[2px] ${
         isSelected ? "!border-primary ring-2 ring-primary/20 shadow-md z-10" : "hover:!border-primary/50"
       } ${isDragging ? "opacity-30 scale-95" : ""} ${isDragOver ? "border-dashed !border-primary !bg-primary/5 dark:!bg-primary/10" : ""}`}
      
@@ -718,7 +725,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                 <div className={hasError ? "text-[14px] font-bold text-rose-600 dark:text-rose-400 leading-tight" : "text-[14px] font-bold text-foreground leading-tight flex items-center gap-1.5"}>
                   <span>{label}</span>
                   {isAiNode && (
-                     <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
                       Elesium
                     </span>
                   )}
@@ -827,11 +834,44 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
 // ─── Branch pill ───────────────────────────────────────────────────────────────
 
 function BranchPill({ label }: { label: string }) {
-  const isPositive = label === "Connected" || label === "Replied" || label === "Booked" || label === "Email found" || label === "Open" || label === "Success" || label === "Yes"
+  const norm = label.toLowerCase()
+  const isPositive =
+    norm === "connected" ||
+    norm === "replied" ||
+    norm === "booked" ||
+    norm === "email found" ||
+    norm === "open" ||
+    norm === "success" ||
+    norm === "yes" ||
+    norm === "accepted" ||
+    norm === "found" ||
+    norm === "hiring" ||
+    norm === "has mutuals" ||
+    norm.includes("strong fit") ||
+    norm.includes("high fit")
+
+  const isNegative =
+    norm === "no" ||
+    norm === "ignored" ||
+    norm === "rejected" ||
+    norm === "not found" ||
+    norm === "not hiring" ||
+    norm === "no mutuals" ||
+    norm === "unopened" ||
+    norm === "bounced" ||
+    norm.includes("weak fit") ||
+    norm.includes("low fit") ||
+    norm.includes("disqualif")
+
+  const dotClass = isPositive
+    ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+    : isNegative
+    ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"
+    : "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.8)]"
 
   return (
-    <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase bg-background border border-border/50 shadow-sm z-10 transition-all hover:border-border hover:shadow-md">
-      <div className={`w-2 h-2 rounded-full ${isPositive ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}`} />
+    <div className="branch-pill flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase bg-background border border-border/80 shadow-sm z-10 transition-all hover:border-border hover:shadow-md">
+      <div className={`w-2 h-2 rounded-full ${dotClass}`} />
       <span className="text-foreground font-bold">{label}</span>
     </div>
   )
@@ -840,9 +880,9 @@ function BranchPill({ label }: { label: string }) {
 // ─── Vertical connector line ───────────────────────────────────────────────────
 function VLine({ height = 32 }: { height?: number }) {
   return (
-    <div className="relative w-px bg-border/60 mx-auto overflow-hidden" style={{ height }}>
+    <div className="relative w-[2px] bg-zinc-300 dark:bg-zinc-700/80 mx-auto overflow-hidden rounded-full shadow-[0_0_1px_rgba(255,255,255,0.05)]" style={{ height }}>
       <motion.div
-        className="absolute left-0 w-full bg-gradient-to-b from-transparent via-primary/70 to-transparent"
+        className="absolute left-0 w-full bg-gradient-to-b from-transparent via-primary to-transparent shadow-[0_0_8px_hsl(var(--primary))]"
         style={{ height: Math.max(12, Math.floor(height * 0.5)) }}
         initial={{ y: -height }}
         animate={{ y: height }}
@@ -912,8 +952,15 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
   if (nodes.length === 0) {
     return (
       <div className="flex flex-col items-center">
-        <VLine />
-        {!readOnly && <AddEndPair isFirstStep={isFirstStep} parentId={parentId} branchLabel={branchLabel} onEnd={handleEnd} />}
+        <VLine height={20} />
+        {readOnly ? (
+          <div className="px-3 py-1 rounded-full bg-muted/40 border border-border/40 text-[10px] text-muted-foreground font-medium flex items-center gap-1.5 shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
+            End of branch
+          </div>
+        ) : (
+          <AddEndPair isFirstStep={isFirstStep} parentId={parentId} branchLabel={branchLabel} onEnd={handleEnd} />
+        )}
       </div>
     )
   }
@@ -991,7 +1038,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                     <div key={bl} className="relative flex flex-col items-center min-w-[320px] flex-1">
                       {branchLabels.length > 1 && (
                         <div 
-                          className="absolute top-0 h-px bg-border z-0"
+                          className="absolute top-0 h-[2px] bg-zinc-300 dark:bg-zinc-700/80 z-0"
                           style={{
                             left: i === 0 ? '50%' : '-1rem',
                             right: i === branchLabels.length - 1 ? '50%' : '-1rem'
@@ -999,7 +1046,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                         />
                       )}
                       {/* Vertical line dropping down to the pill */}
-                      <div className="w-px h-4 bg-border z-0" />
+                      <div className="w-[2px] h-4 bg-zinc-300 dark:bg-zinc-700/80 z-0" />
                       
                       <div className="relative z-10 bg-background rounded-full">
                         <BranchPill label={bl} />
@@ -1123,6 +1170,22 @@ const QUICK_PRESETS = [
   }
 ]
 
+// ─── Tree Lookup Helper ────────────────────────────────────────────────────────
+function findNodeInTree(nodes: SeqTreeNode[], id: string): SeqTreeNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children) {
+      for (const branch of Object.values(n.children)) {
+        if (Array.isArray(branch)) {
+          const found = findNodeInTree(branch, id);
+          if (found) return found;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // ─── Root: Sequence Tree ───────────────────────────────────────────────────────
 
 export function EISequenceTree({ 
@@ -1144,15 +1207,118 @@ export function EISequenceTree({
   const rootNodes = (readOnly && initialNodes !== undefined) ? initialNodes : storeRootNodes
   const { addRoot, addChild, stickyNotes, addStickyNote, loadTree } = useHRTreeStore()
   const updateNodeData = useHRTreeStore(s => s.updateNodeData)
+  const historyLength = useHRTreeStore(s => s.history.length)
+  const futureLength = useHRTreeStore(s => s.future.length)
+  const undo = useHRTreeStore(s => s.undo)
+  const redo = useHRTreeStore(s => s.redo)
   const picker = usePickerStore()
   const [zoom, setZoom] = useState(1)
-  const [hasFitView, setHasFitView] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [pendingAddParams, setPendingAddParams] = useState<{type: EINodeType, data: any, parentId: string | null, branchLabel: string} | null>(null)
   const [presetModalOpen, setPresetModalOpen] = useState(false)
   const [selectedPreset, setSelectedPreset] = useState<typeof QUICK_PRESETS[0] | null>(null)
   const selectedNodeId = useHRTreeStore(s => s.selectedNodeId)
+
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const contentWrapperRef = React.useRef<HTMLDivElement>(null)
+  const startNodeRef = React.useRef<HTMLDivElement>(null)
+  const firstNodeRef = React.useRef<HTMLDivElement>(null)
+  const isDragging = React.useRef(false)
+  const lastMousePos = React.useRef({ x: 0, y: 0 })
+
+  const fitToCanvas = React.useCallback(() => {
+    if (!containerRef.current || !contentWrapperRef.current) return;
+    const container = containerRef.current;
+    const wrapper = contentWrapperRef.current;
+
+    const viewportW = container.clientWidth;
+    const viewportH = container.clientHeight;
+    if (viewportW <= 0 || viewportH <= 0) return;
+
+    // Structure elements that define the rendered DAG boundaries
+    const selector = '.node-card, .sticky-note, .sequence-start-node, .add-step-pair, .branch-pill';
+    const elements = Array.from(wrapper.querySelectorAll(selector)) as HTMLElement[];
+
+    const currentZoom = zoom || 1;
+    const wrapperRect = wrapper.getBoundingClientRect();
+
+    let minRelX = Infinity;
+    let maxRelX = -Infinity;
+    let minRelY = Infinity;
+    let maxRelY = -Infinity;
+
+    try {
+      if (elements.length > 0) {
+        elements.forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (!r || (r.width === 0 && r.height === 0)) return;
+          const left = (r.left - wrapperRect.left) / currentZoom;
+          const right = (r.right - wrapperRect.left) / currentZoom;
+          const top = (r.top - wrapperRect.top) / currentZoom;
+          const bottom = (r.bottom - wrapperRect.top) / currentZoom;
+
+          if (isFinite(left) && left < minRelX) minRelX = left;
+          if (isFinite(right) && right > maxRelX) maxRelX = right;
+          if (isFinite(top) && top < minRelY) minRelY = top;
+          if (isFinite(bottom) && bottom > maxRelY) maxRelY = bottom;
+        });
+      }
+    } catch (err) {
+      console.warn("Failed measuring tree geometry for fitToCanvas:", err);
+    }
+
+    if (!isFinite(minRelX) || !isFinite(maxRelX) || !isFinite(minRelY) || !isFinite(maxRelY)) {
+      minRelX = 0;
+      maxRelX = wrapper.offsetWidth || 400;
+      minRelY = 0;
+      maxRelY = wrapper.offsetHeight || 300;
+    }
+
+    const structureW = Math.max(maxRelX - minRelX, 50);
+    const structureH = Math.max(maxRelY - minRelY, 50);
+    const centerRelX = (minRelX + maxRelX) / 2;
+    const centerRelY = (minRelY + maxRelY) / 2;
+
+    // Viewport padding in pixels (generous margin for sidebars and toolbars)
+    const paddingX = 140;
+    const paddingY = 120;
+    const availW = Math.max(viewportW - paddingX, 100);
+    const availH = Math.max(viewportH - paddingY, 100);
+
+    const targetZoom = Math.min(availW / structureW, availH / structureH);
+    if (isNaN(targetZoom) || !isFinite(targetZoom)) return;
+
+    // Clamped between 0.1 (never cut off massive trees) and 1.0 (never overscale small trees)
+    const finalZoom = Math.max(0.1, Math.min(1.0, Number(targetZoom.toFixed(2))));
+
+    setZoom(finalZoom);
+
+    const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const scrollBehavior = prefersReducedMotion ? 'auto' : 'smooth';
+
+    const scheduleCenter = () => {
+      if (!containerRef.current || !contentWrapperRef.current) return;
+      const c = containerRef.current;
+      const w = contentWrapperRef.current;
+
+      const scaledCenterX = centerRelX * finalZoom;
+      const scaledCenterY = centerRelY * finalZoom;
+
+      const targetScrollLeft = (w.offsetLeft + scaledCenterX) - (viewportW / 2);
+      const targetScrollTop = (w.offsetTop + scaledCenterY) - (viewportH / 2);
+
+      c.scrollTo({
+        left: Math.max(0, targetScrollLeft),
+        top: Math.max(0, targetScrollTop),
+        behavior: scrollBehavior
+      });
+    };
+
+    requestAnimationFrame(scheduleCenter);
+    setTimeout(scheduleCenter, 60);
+    setTimeout(scheduleCenter, 220);
+  }, [zoom]);
   const validation = React.useMemo(() => validateTree(rootNodes), [JSON.stringify(rootNodes)])
   const treeErrors = validation.errors;
   const treeWarnings = validation.warnings;
@@ -1284,6 +1450,13 @@ export function EISequenceTree({
         return;
       }
 
+      // 2b. Fit to Canvas shortcut (Cmd/Ctrl + 0)
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        fitToCanvas();
+        return;
+      }
+
       // 3. Undo / Redo shortcuts (Cmd/Ctrl + Z, Cmd/Ctrl + Shift + Z)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (!readOnly) {
@@ -1311,11 +1484,24 @@ export function EISequenceTree({
         }
       }
 
-      // 5. Delete or Backspace: Remove selected node
+      // 5. Delete or Backspace: Remove selected node with safety gate & undo toast
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId && !readOnly) {
         e.preventDefault();
-        useHRTreeStore.getState().removeNode(selectedNodeId);
-        toast.success("Node removed from sequence");
+        const target = findNodeInTree(rootNodes, selectedNodeId);
+        if (target) {
+          const hasChildren = Object.values(target.children || {}).some(branch => (branch as any[])?.length > 0);
+          if (hasChildren) {
+            const confirmed = window.confirm(`Deleting this step will also remove its downstream connected branches. Are you sure you want to proceed?`);
+            if (!confirmed) return;
+          }
+          useHRTreeStore.getState().removeNode(selectedNodeId);
+          toast("Step removed from sequence", {
+            action: {
+              label: "Undo",
+              onClick: () => useHRTreeStore.getState().undo()
+            }
+          });
+        }
         return;
       }
 
@@ -1399,13 +1585,7 @@ export function EISequenceTree({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSave, rootNodes, isSaving, readOnly, selectedNodeId, isPickerOpen]);
-
-  const containerRef = React.useRef<HTMLDivElement>(null)
-  const startNodeRef = React.useRef<HTMLDivElement>(null)
-  const firstNodeRef = React.useRef<HTMLDivElement>(null)
-  const isDragging = React.useRef(false)
-  const lastMousePos = React.useRef({ x: 0, y: 0 })
+  }, [onSave, rootNodes, isSaving, readOnly, selectedNodeId, isPickerOpen, fitToCanvas]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only drag on left click, and ignore if clicking on a button or interactive element
@@ -1632,19 +1812,28 @@ export function EISequenceTree({
       {/* Left Vertical Toolbar */}
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-3 pointer-events-auto">
         {/* Zoom Group */}
-        <div className="flex flex-row bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden w-fit">
+        <div className="flex flex-row items-center bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden w-fit">
           <button 
             type="button" 
-            onClick={() => setZoom(z => Math.min(z + 0.1, 2))} 
+            onClick={() => setZoom(z => Math.min(Math.round((z + 0.1) * 10) / 10, 2))} 
             className="w-10 h-10 flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors border-r border-border cursor-pointer" 
             title="Zoom In"
             aria-label="Zoom in"
           >
             <ZoomIn size={16} />
           </button>
+          <button
+            type="button"
+            onClick={() => setZoom(1)}
+            className="px-2.5 h-10 flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground font-mono text-xs font-semibold transition-colors border-r border-border cursor-pointer"
+            title="Reset Zoom to 100%"
+            aria-label="Reset zoom to 100%"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
           <button 
             type="button" 
-            onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} 
+            onClick={() => setZoom(z => Math.max(Math.round((z - 0.1) * 10) / 10, 0.2))} 
             className="w-10 h-10 flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors border-r border-border cursor-pointer" 
             title="Zoom Out"
             aria-label="Zoom out"
@@ -1653,36 +1842,9 @@ export function EISequenceTree({
           </button>
           <button 
             type="button"
-            onClick={() => {
-              if (hasFitView) return;
-              setHasFitView(true);
-              if (containerRef.current) {
-                const el = containerRef.current;
-                const contentEl = el.firstElementChild as HTMLElement;
-                if (contentEl) {
-                  const unscaledW = contentEl.scrollWidth;
-                  const unscaledH = contentEl.scrollHeight;
-                  const targetZoom = Math.min(
-                    (el.clientWidth - 80) / Math.max(unscaledW, 1),
-                    (el.clientHeight - 80) / Math.max(unscaledH, 1)
-                  );
-                  const finalZoom = Math.max(0.2, Math.min(1.0, targetZoom));
-                  setZoom(finalZoom);
-                  setTimeout(() => {
-                    el.scrollTo({
-                      left: (el.scrollWidth - el.clientWidth) / 2,
-                      top: (el.scrollHeight - el.clientHeight) / 2,
-                      behavior: 'smooth'
-                    });
-                  }, 50);
-                }
-              }
-            }} 
-            className={cn(
-              "w-10 h-10 flex items-center justify-center transition-colors", 
-              hasFitView ? "text-muted-foreground/30 cursor-not-allowed pointer-events-none" : "hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-            )} 
-            title="Fit to Canvas"
+            onClick={fitToCanvas} 
+            className="w-10 h-10 flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer" 
+            title="Fit to Canvas (Cmd+0)"
             aria-label="Fit to canvas"
           >
             <Maximize size={16} />
@@ -1694,16 +1856,16 @@ export function EISequenceTree({
           <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden mt-1">
             <button
               type="button"
-              onClick={() => useHRTreeStore.getState().undo()}
-              disabled={useHRTreeStore.getState().history.length === 0}
+              onClick={undo}
+              disabled={historyLength === 0}
               className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-b border-border w-full cursor-pointer"
             >
               <Undo size={14} className="shrink-0" /> <span className="font-medium">Undo</span>
             </button>
             <button
               type="button"
-              onClick={() => useHRTreeStore.getState().redo()}
-              disabled={useHRTreeStore.getState().future.length === 0}
+              onClick={redo}
+              disabled={futureLength === 0}
               className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-b border-border w-full cursor-pointer"
             >
               <Redo size={14} className="shrink-0" /> <span className="font-medium">Redo</span>
@@ -1764,90 +1926,19 @@ export function EISequenceTree({
           className="fill-neutral-400/20 dark:fill-neutral-500/20 [mask-image:radial-gradient(ellipse_at_center,white,transparent_80%)]"
         />
 
-        {rootNodes.length > 0 && (
-          <AnimatedBeam
-            containerRef={containerRef}
-            fromRef={startNodeRef}
-            toRef={firstNodeRef}
-            pathColor="hsl(var(--border))"
-            pathWidth={1.5}
-            pathOpacity={0.4}
-            gradientStartColor="#6366f1"
-            gradientStopColor="#3b82f6"
-            duration={3}
-          />
-        )}
-
         <div 
-          className="relative flex flex-col items-center min-w-max min-h-max py-20 px-20 transition-all duration-200 ease-out origin-top"
+          ref={contentWrapperRef}
+          className="relative flex flex-col items-center w-max min-w-full min-h-full py-20 px-20 transition-all duration-200 ease-out origin-top"
           style={{ zoom: zoom } as any}
         >
           {stickyNotes?.map(note => <EIStickyNote key={note.id} note={note} />)}
           {/* Sequence start node */}
-          <div ref={startNodeRef} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm text-foreground text-sm font-semibold">
+          <div ref={startNodeRef} className="sequence-start-node flex items-center gap-2 px-5 py-2.5 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm text-foreground text-sm font-semibold">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
             Sequence start
           </div>
-
-          {/* Zero-state high-performance architecture presets */}
-          {rootNodes.length === 0 && !readOnly && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-6 max-w-xl w-full p-6 rounded-xl border border-dashed border-border bg-card/80 backdrop-blur-md shadow-sm text-center"
-            >
-              <h3 className="text-sm font-bold text-foreground mb-1">Calibrated Sequence Architectures</h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                Pre-calibrated outreach blueprints with built-in cadence delays and branch logic:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-                {QUICK_PRESETS.map((p) => {
-                  const PIcon = p.icon;
-                  return (
-                    <button
-                      type="button"
-                      key={p.id}
-                      onClick={() => applyPreset(p)}
-                      className="p-3.5 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between text-left"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className={`p-1.5 rounded-md border text-xs ${p.color}`}>
-                            <PIcon size={13} />
-                          </span>
-                          <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                            {p.badge}
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
-                          {p.name}
-                        </h4>
-                        <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
-                          {p.description}
-                        </p>
-                      </div>
-                      <div className="mt-3 pt-2 border-t border-border/40 text-[11px] font-bold text-primary flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                        <span>Load Blueprint</span>
-                        <ArrowRight size={11} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              {onTemplatesClick && (
-                <button
-                  type="button"
-                  onClick={onTemplatesClick}
-                  className="mt-4 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:underline cursor-pointer inline-flex items-center gap-1"
-                >
-                  <span>Or browse complete template library</span>
-                  <ArrowRight size={11} />
-                </button>
-              )}
-            </motion.div>
-          )}
 
           {/* The tree */}
           <Branch

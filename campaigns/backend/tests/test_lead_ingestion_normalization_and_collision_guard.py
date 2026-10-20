@@ -412,6 +412,69 @@ class TestCSVHygieneCreditSecurity(unittest.TestCase):
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    def test_bidirectional_channel_enrichment_and_domain_merge_on_collision(self):
+        """
+        Paranoia Layer 1 & 2: When an incoming lead collides with an existing record,
+        merging must enrich missing contact channels (e.g. LinkedIn URL added to email-only lead,
+        or email added to URL-only lead) and synchronize the domain field.
+        """
+        from leads.backend.services.lead_ingestion_service import execute_bulk_import_leads
+
+        mock_supabase = MagicMock()
+        mock_supabase.rpc.side_effect = Exception("RPC unmigrated fallback")
+
+        # Mock existing lead: has LinkedIn URL but NO email, and domain is missing
+        existing_lead = {
+            "id": "lead-existing-123",
+            "workspace_id": "ws-enrich",
+            "linkedin_url": "https://www.linkedin.com/in/alexmercer",
+            "email": None,
+            "first_name": "Alex",
+            "last_name": "Mercer",
+            "company_name": "Gentek Corp",
+            "domain": None,
+            "metadata": {"source": "legacy_import"}
+        }
+
+        select_mock = MagicMock()
+        select_mock.eq.return_value = select_mock
+        select_mock.or_.return_value = select_mock
+        select_mock.in_.return_value = select_mock
+        select_mock.execute.return_value = MagicMock(data=[existing_lead])
+        mock_supabase.table.return_value.select.return_value = select_mock
+
+        update_mock = MagicMock()
+        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+
+        incoming_leads = [{
+            "linkedin_url": "https://www.linkedin.com/in/alexmercer/",
+            "email": "alex.mercer@gentek.com",
+            "first_name": "Alexander",
+            "last_name": "Mercer",
+            "company_name": "Gentek Corp",
+            "domain": "gentek.com"
+        }]
+
+        res = execute_bulk_import_leads(
+            supabase=mock_supabase,
+            list_id="list-enrich",
+            workspace_id="ws-enrich",
+            leads=incoming_leads,
+            collision_policy="merge"
+        )
+
+        self.assertTrue(res["success"])
+        self.assertEqual(res["inserted_count"], 1)
+
+        # Verify update payload contained newly discovered email and domain!
+        update_calls = mock_supabase.table.return_value.update.call_args_list
+        self.assertTrue(len(update_calls) > 0)
+        payload = update_calls[0][0][0]
+
+        self.assertEqual(payload.get("email"), "alex.mercer@gentek.com")
+        self.assertEqual(payload.get("domain"), "gentek.com")
+        self.assertEqual(payload.get("first_name"), "Alexander")
+
 
 if __name__ == "__main__":
     unittest.main()

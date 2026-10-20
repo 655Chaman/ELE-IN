@@ -31,6 +31,74 @@ def _get_service_client():
     return get_service_client()
 
 
+def _repair_and_parse_json(text: str) -> dict:
+    """
+    Three-Layer Paranoia JSON extractor and auto-repair.
+    Recovers valid JSON even if output was truncated mid-quote,
+    dangling with trailing commas, or missing terminating brackets.
+    """
+    if not text or not isinstance(text, str):
+        return {}
+    clean = text.strip()
+    import re
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", clean)
+    if match:
+        clean = match.group(1).strip()
+    try:
+        return json.loads(clean)
+    except Exception:
+        pass
+    idx_brace = clean.find("{")
+    idx_bracket = clean.find("[")
+    if idx_brace == -1 and idx_bracket == -1:
+        return {}
+    if idx_bracket != -1 and (idx_brace == -1 or idx_bracket < idx_brace):
+        start_idx = idx_bracket
+    else:
+        start_idx = idx_brace
+    sub = clean[start_idx:]
+    in_quote = False
+    escape = False
+    for ch in sub:
+        if ch == "\\" and not escape:
+            escape = True
+            continue
+        if ch == "\"" and not escape:
+            in_quote = not in_quote
+        escape = False
+    if in_quote:
+        sub += "\""
+    sub = re.sub(r",\s*([\]\}])", r"\1", sub)
+    sub = re.sub(r",\s*$", "", sub)
+    stack = []
+    in_quote = False
+    escape = False
+    for ch in sub:
+        if ch == "\\" and not escape:
+            escape = True
+            continue
+        if ch == "\"" and not escape:
+            in_quote = not in_quote
+        if not in_quote:
+            if ch in "{[":
+                stack.append(ch)
+            elif ch == "}":
+                if stack and stack[-1] == "{":
+                    stack.pop()
+            elif ch == "]":
+                if stack and stack[-1] == "[":
+                    stack.pop()
+        escape = False
+    sub = re.sub(r",\s*$", "", sub)
+    while stack:
+        open_ch = stack.pop()
+        sub += "}" if open_ch == "{" else "]"
+    try:
+        return json.loads(sub)
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # KnowledgeService
 # ---------------------------------------------------------------------------
@@ -49,8 +117,9 @@ class KnowledgeService:
         status: str,
         chunk_count: int = 0,
         error_msg: str = "",
+        trigger_synthesis: bool = False,
     ):
-        """Update asset row to final state and kick off synthesis if success."""
+        """Update asset row to final state and optionally schedule synthesis."""
         update_payload: dict = {
             "status": status,
             "updated_at": datetime.utcnow().isoformat(),
@@ -81,7 +150,7 @@ class KnowledgeService:
             except Exception as ce:
                 logger.warning(f"[KB] chunk_count reconciliation failed for {asset_id}: {ce}")
 
-        if status == "synced":
+        if status == "synced" and trigger_synthesis:
             import asyncio
             try:
                 loop = asyncio.get_event_loop()
@@ -140,7 +209,7 @@ class KnowledgeService:
             async with httpx.AsyncClient(
                 timeout=20.0, 
                 follow_redirects=True, 
-                verify=False,
+                verify=True,
                 event_hooks={"response": [_safe_redirect_hook]}
             ) as client:
                 resp = await client.get(url, headers=headers)
@@ -166,6 +235,61 @@ class KnowledgeService:
                     return text
         except Exception as d_err:
             logger.warning(f"[KB] Tier 2 Direct HTTP scraping failed for {url}: {d_err}")
+
+        # Tier 3 Paranoia: Headless browser rendering for dynamic SPAs (React, Vue, Next.js)
+        try:
+            logger.info(f"[KB] Tier 3: Attempting headless browser rendering for {url}")
+            from playwright.async_api import async_playwright
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    timeout=12000,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                )
+                try:
+                    context = await browser.new_context(
+                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        viewport={"width": 1280, "height": 800}
+                    )
+                    page = await context.new_page()
+
+                    # Paranoia Layer 1 & 2: Subresource SSRF protection
+                    # Block attempts by the scraped webpage to make requests to internal subnets, localhost, or cloud metadata
+                    from core.backend.core.validators import is_safe_ssrf_url
+                    async def handle_subresource_route(route):
+                        req_url = route.request.url
+                        # Allow data URLs and blob URLs for inline fonts/images
+                        if req_url.startswith("data:") or req_url.startswith("blob:"):
+                            await route.continue_()
+                            return
+                        if not is_safe_ssrf_url(req_url):
+                            logger.warning(f"[KB Playwright SSRF Block] Aborted internal/unsafe subresource request: {req_url}")
+                            await route.abort()
+                        else:
+                            await route.continue_()
+
+                    await page.route("**/*", handle_subresource_route)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=12000)
+                    await page.wait_for_timeout(1500)
+                    rendered_text = ""
+                    for selector in ["main", "article", "[role='main']", "#root", "#__next", "#app", "body"]:
+                        el = await page.query_selector(selector)
+                        if el:
+                            t = await el.inner_text()
+                            if t and len(t.strip()) >= 50:
+                                rendered_text = t.strip()
+                                break
+                    if not rendered_text:
+                        rendered_text = (await page.inner_text("body") or "").strip()
+                    
+                    rendered_text = re.sub(r'\n{3,}', '\n\n', rendered_text).strip()
+                    if len(rendered_text) >= 50:
+                        logger.info(f"[KB] Tier 3 (Playwright) successfully rendered {len(rendered_text)} chars from {url}")
+                        return rendered_text
+                finally:
+                    await browser.close()
+        except Exception as p_err:
+            logger.debug(f"[KB] Tier 3 Playwright rendering unavailable or failed for {url}: {p_err}")
 
         return ""
 
@@ -321,6 +445,11 @@ class KnowledgeService:
                 .eq("id", asset_id) \
                 .eq("workspace_id", workspace_id) \
                 .execute()
+            try:
+                from campaigns.backend.services.elein_executor import invalidate_brain_cache
+                invalidate_brain_cache(workspace_id)
+            except Exception as ice:
+                logger.debug(f"[KB] Brain cache invalidate skipped on asset delete: {ice}")
             return True
         except Exception as e:
             logger.error(f"[KB] DB delete failed for {asset_id}: {e}")
@@ -346,71 +475,177 @@ class KnowledgeService:
 
     @staticmethod
     def get_synthesis(supabase, workspace_id: str) -> Optional[Dict]:
-        """Return the current synthesis record for this workspace (with draft fallback)."""
+        """Return the current synthesis record for this workspace (with draft fallback & visibility)."""
         try:
             res = supabase.table("knowledge_synthesis") \
                 .select("*") \
                 .eq("workspace_id", workspace_id) \
                 .limit(1) \
                 .execute()
-            synthesis = res.data[0] if res.data else None
+            live_synthesis = res.data[0] if res.data else None
 
-            # Layer 1 Paranoia: Fallback to draft synthesis if live is pending review or empty
-            if not synthesis or not synthesis.get("core_value_prop"):
-                try:
-                    draft_res = supabase.table("knowledge_synthesis_drafts") \
-                        .select("*") \
-                        .eq("workspace_id", workspace_id) \
-                        .limit(1) \
-                        .execute()
-                    if draft_res.data and draft_res.data[0].get("core_value_prop"):
-                        synthesis = draft_res.data[0]
-                        synthesis["is_draft"] = True
-                except Exception as de:
-                    logger.warning(f"[KB] Draft synthesis fallback failed for {workspace_id}: {de}")
+            # Layer 1 Paranoia: Check for pending review draft in knowledge_synthesis_drafts
+            try:
+                draft_res = supabase.table("knowledge_synthesis_drafts") \
+                    .select("*") \
+                    .eq("workspace_id", workspace_id) \
+                    .limit(1) \
+                    .execute()
+                draft = draft_res.data[0] if draft_res.data else None
+            except Exception as de:
+                logger.warning(f"[KB] Draft synthesis query failed for {workspace_id}: {de}")
+                draft = None
 
-            return synthesis
+            # Case A: A pending draft exists (surface draft so human review banner triggers)
+            if draft and draft.get("core_value_prop"):
+                synthesis = dict(draft)
+                synthesis["is_draft"] = True
+                synthesis["has_draft"] = True
+                synthesis["status"] = "pending_review"
+                if live_synthesis:
+                    synthesis["live_synthesis"] = live_synthesis
+                return synthesis
+
+            # Case B: No draft exists, return live synthesis
+            if live_synthesis:
+                live_synthesis["has_draft"] = False
+                return live_synthesis
+
+            return None
         except Exception as e:
             logger.error(f"[KB] get_synthesis failed: {e}")
             return None
 
     @staticmethod
-    async def update_synthesis(supabase, workspace_id: str):
+    async def update_synthesis(supabase, workspace_id: str, force: bool = False):
         """
         Re-run LLM synthesis over the top KB chunks for this workspace and
-        upsert the 6-field result into knowledge_synthesis.
+        upsert the 6-field result into knowledge_synthesis (or drafts).
+
+        Three-Layer Paranoia Framework:
+        - Layer 0: Synthesize value prop, differentiators, ICP, proof points from indexed assets.
+        - Layer 1: Batch coalescing (defers synthesis if other asset ingestion jobs are pending/processing),
+                   content-based fingerprinting (no 5-minute wall clock blindness),
+                   zero-asset cleanup without burning credits.
+        - Layer 2: Graceful credit deduction handling, idempotent execution, resume incomplete runs.
         """
+        from datetime import datetime, timedelta, timezone
         if not HAS_LLM:
             logger.warning("[KB] update_synthesis skipped — no LLM configured")
             return
 
-        import time
-        window_id = int(time.time()) // 300  # 5-minute debounce window
-        idemp_key = f"ai_synthesis_{workspace_id}_{window_id}"
-        
+        # Layer 1 Paranoia: Batch Coalescing with Zombie Reaper Filter
+        # If other asset ingestion jobs are pending/processing for this workspace in processing_jobs,
+        # defer synthesis until the final job finishes. Jobs older than 15 minutes are treated as crashed zombies.
+        if not force:
+            try:
+                fifteen_mins_ago = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+                pending_jobs_res = supabase.table("processing_jobs") \
+                    .select("id, status, created_at, updated_at") \
+                    .eq("workspace_id", workspace_id) \
+                    .in_("job_type", ["url", "text", "pdf", "text_process"]) \
+                    .in_("status", ["pending", "processing", "running"]) \
+                    .execute()
+                active_jobs = []
+                for j in (pending_jobs_res.data or []):
+                    ts = j.get("updated_at") or j.get("created_at")
+                    if not ts or ts >= fifteen_mins_ago:
+                        active_jobs.append(j)
+                if active_jobs:
+                    logger.info(f"[KB] Deferring synthesis for workspace {workspace_id}: {len(active_jobs)} active asset jobs still running.")
+                    return
+            except Exception as je:
+                logger.warning(f"[KB] Could not check pending processing_jobs for workspace {workspace_id}: {je}")
+
+        # Layer 1 Paranoia: Query current assets and compute content-based fingerprint
+        # Resilient to schema variations (missing updated_at, chunk_count, etc.)
+        import hashlib
+        try:
+            try:
+                assets_res = supabase.table("knowledge_assets") \
+                    .select("*") \
+                    .eq("workspace_id", workspace_id) \
+                    .execute()
+            except Exception as se:
+                logger.warning(f"[KB] select('*') failed on knowledge_assets, falling back to minimal fields: {se}")
+                assets_res = supabase.table("knowledge_assets") \
+                    .select("id, status") \
+                    .eq("workspace_id", workspace_id) \
+                    .execute()
+            assets = assets_res.data if (assets_res and assets_res.data is not None) else []
+        except Exception as ae:
+            logger.error(f"[KB] Failed to query knowledge_assets for fingerprint: {ae}")
+            # CRITICAL ARCHITECTURAL SAFETY (Paranoia Layer 0 & 1):
+            # If the database query failed, NEVER assume 0 assets.
+            # Purging synthesis on a failed query wipes the user's company intelligence.
+            return
+
+        # If 0 total assets exist in the workspace, the user has completely deleted all documents.
+        # Only then do we purge the synthesis cache.
+        if len(assets) == 0:
+            logger.info(f"[KB] 0 assets remaining in workspace {workspace_id}. Purging synthesis cache.")
+            try:
+                supabase.table("knowledge_synthesis").delete().eq("workspace_id", workspace_id).execute()
+                supabase.table("knowledge_synthesis_drafts").delete().eq("workspace_id", workspace_id).execute()
+                try:
+                    from campaigns.backend.services.elein_executor import invalidate_brain_cache
+                    invalidate_brain_cache(workspace_id)
+                except Exception as ice:
+                    logger.debug(f"[KB] Brain cache invalidate skipped on purge: {ice}")
+            except Exception as pe:
+                logger.error(f"[KB] Failed to purge synthesis for empty workspace {workspace_id}: {pe}")
+            return
+
+        synced_assets = [a for a in assets if a.get("status") in ("synced", "completed")]
+
+        # If assets exist but none are completed yet (e.g. they are still processing, or failed),
+        # do NOT purge existing synthesis. Simply defer until an asset completes.
+        if not synced_assets:
+            logger.info(f"[KB] Assets exist ({len(assets)}) but none are synced/completed yet for workspace {workspace_id}. Deferring synthesis.")
+            return
+
+        # Content fingerprint based on synced assets and chunk counts
+        fingerprint_items = sorted(
+            [f"{a['id']}:{a.get('updated_at') or a.get('created_at') or ''}:{a.get('chunk_count', 0) or 0}" for a in synced_assets]
+        )
+        content_hash = hashlib.sha256(",".join(fingerprint_items).encode("utf-8")).hexdigest()[:16]
+
+        # Content-based idempotency key:
+        # Changes whenever assets are added, updated, retried, or deleted.
+        if force:
+            import time
+            idemp_key = f"ai_synthesis_{workspace_id}_{content_hash}_{int(time.time())}"
+        else:
+            idemp_key = f"ai_synthesis_{workspace_id}_{content_hash}"
+
         try:
             from core.backend.api.auth_dep import get_service_client
-            _svc = get_service_client()
-            _deduct_res = _svc.rpc('deduct_credits_safely', {
-                'p_workspace_id': workspace_id,
-                'p_amount': 3,
-                'p_action_type': 'ai_synthesis',
-                'p_idempotency_key': idemp_key,
-                'p_metadata': json.dumps({"reason": "knowledge_synthesis"})
-            }).execute()
-            
-            if _deduct_res.data:
-                if not _deduct_res.data.get('success'):
-                    logger.warning(f"[KB] Insufficient credits for synthesis in workspace {workspace_id}")
-                    return
-                if _deduct_res.data.get('reason') == 'already_processed':
-                    logger.info(f"[KB] Synthesis already ran recently for workspace {workspace_id} (debounced).")
-                    return
+            _svc = get_service_client() or supabase
+            if _svc:
+                _deduct_res = _svc.rpc('deduct_credits_safely', {
+                    'p_workspace_id': workspace_id,
+                    'p_amount': 3,
+                    'p_action_type': 'ai_synthesis',
+                    'p_idempotency_key': idemp_key,
+                    'p_metadata': json.dumps({"reason": "knowledge_synthesis", "content_hash": content_hash})
+                }).execute()
+
+                if _deduct_res.data:
+                    if not _deduct_res.data.get('success'):
+                        logger.warning(f"[KB] Insufficient credits for synthesis in workspace {workspace_id}")
+                        return
+                    if _deduct_res.data.get('reason') == 'already_processed':
+                        existing_synth = KnowledgeService.get_synthesis(supabase, workspace_id)
+                        if existing_synth and existing_synth.get("core_value_prop") and not force:
+                            logger.info(f"[KB] Synthesis already up-to-date for workspace {workspace_id} with content hash {content_hash}.")
+                            return
+                        else:
+                            logger.info(f"[KB] Resuming previously billed incomplete synthesis for workspace {workspace_id} (hash {content_hash}).")
         except Exception as e:
             logger.error(f"[KB] Failed to deduct credits for synthesis: {e}")
             return
 
-        logger.info(f"[KB] Running synthesis for workspace {workspace_id}")
+        logger.info(f"[KB] Running synthesis for workspace {workspace_id} (hash {content_hash})")
 
         try:
             gathered_chunks = []
@@ -437,7 +672,53 @@ class KnowledgeService:
                     except Exception as q_err:
                         logger.debug(f"[KB] Thematic retrieval for '{q[:30]}' failed: {q_err}")
 
-            # Layer 1 Paranoia: If vector search gathered few chunks, sample directly from knowledge_chunks table
+            # Layer 1 Paranoia: Stratified Multi-Asset Sampling
+            # Ensure every synced asset in the workspace has representation in gathered_chunks
+            # to eliminate single-document recency bias.
+            for asset in synced_assets:
+                aid = asset["id"]
+                asset_has_chunk = any(c.get("asset_id") == aid for c in gathered_chunks)
+                if not asset_has_chunk or len(gathered_chunks) < 15:
+                    try:
+                        achunks_res = supabase.table("knowledge_chunks") \
+                            .select("id, asset_id, content") \
+                            .eq("workspace_id", workspace_id) \
+                            .eq("asset_id", aid) \
+                            .order("chunk_index", desc=False) \
+                            .limit(4) \
+                            .execute()
+                        for r in (achunks_res.data or []):
+                            cnt = r.get("content", "").strip()
+                            if cnt and cnt not in seen_contents:
+                                seen_contents.add(cnt)
+                                gathered_chunks.append({
+                                    "id": r.get("id"),
+                                    "asset_id": aid,
+                                    "content": cnt,
+                                    "source": asset.get("name") or asset.get("source") or "Uploaded Asset"
+                                })
+                    except Exception as achunk_err:
+                        try:
+                            achunks_res = supabase.table("knowledge_chunks") \
+                                .select("id, asset_id, content") \
+                                .eq("workspace_id", workspace_id) \
+                                .eq("asset_id", aid) \
+                                .limit(4) \
+                                .execute()
+                            for r in (achunks_res.data or []):
+                                cnt = r.get("content", "").strip()
+                                if cnt and cnt not in seen_contents:
+                                    seen_contents.add(cnt)
+                                    gathered_chunks.append({
+                                        "id": r.get("id"),
+                                        "asset_id": aid,
+                                        "content": cnt,
+                                        "source": asset.get("name") or asset.get("source") or "Uploaded Asset"
+                                    })
+                        except Exception as e2:
+                            logger.debug(f"[KB] Stratified sampling fallback failed for asset {aid}: {e2}")
+
+            # Fallback if still under 5 chunks
             if len(gathered_chunks) < 5:
                 try:
                     db_res = supabase.table("knowledge_chunks").select("id, asset_id, content").eq("workspace_id", workspace_id).order("created_at", desc=True).limit(20).execute()
@@ -455,10 +736,13 @@ class KnowledgeService:
                     logger.debug(f"[KB] Direct chunk fallback failed: {dbe}")
 
             # Format context with enriched source attribution (up to 25 representative chunks)
+            # Layer 2 Paranoia: Neutralize prompt injection attempts inside gathered document context
+            from knowledge.backend.services.prompt_safety import sanitize_for_prompt
             context_parts = []
             for row in gathered_chunks[:25]:
                 source = row.get("source") or row.get("metadata", {}).get("source") or "Document"
-                context_parts.append(f"--- Document Context [{source}] ---\n{row['content']}")
+                sanitized_chunk = sanitize_for_prompt(row.get('content', ''), source_label=f"kb_chunk_{source}")
+                context_parts.append(f"--- Document Context [{source}] ---\n{sanitized_chunk}")
             context = "\n\n".join(context_parts)
         except Exception as e:
             logger.error(f"[KB] Multi-thematic retrieval for synthesis failed: {e}")
@@ -471,6 +755,11 @@ class KnowledgeService:
                 logger.info(f"[KB] 0 assets remaining in workspace {workspace_id}. Purging synthesis cache.")
                 supabase.table("knowledge_synthesis").delete().eq("workspace_id", workspace_id).execute()
                 supabase.table("knowledge_synthesis_drafts").delete().eq("workspace_id", workspace_id).execute()
+                try:
+                    from campaigns.backend.services.elein_executor import invalidate_brain_cache
+                    invalidate_brain_cache(workspace_id)
+                except Exception as ice:
+                    logger.debug(f"[KB] Brain cache invalidate skipped on purge: {ice}")
             else:
                 logger.warning(f"[KB] Insufficient text extracted ({len(context)} chars), but workspace still has {len(existing_assets)} assets. Preserving existing synthesis to prevent data loss.")
             return
@@ -514,17 +803,14 @@ Rules:
                         model=current_model,
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.1,
-                        max_tokens=600,
+                        max_tokens=1500,
                     )
                     raw = response.choices[0].message.content.strip()
-                    from knowledge.backend.services.elein_ai_service import _extract_json_from_slop
-                    result = _extract_json_from_slop(raw)
-                    break
-                except json.JSONDecodeError as e:
-                    logger.error(f"[KB] Synthesis JSON parse error with key {k_obj['id']}: {e} | Raw: {raw[:200]}")
-                    # Layer 0 Paranoia: Do not rotate API keys for a JSON hallucination.
-                    # It's a model fault, not an auth/network fault. Break to next model.
-                    break
+                    result = _repair_and_parse_json(raw)
+                    if result and result.get("core_value_prop"):
+                        break
+                    else:
+                        logger.warning(f"[KB] Incomplete synthesis output from key {k_obj['id']}. Trying next model/key.")
                 except Exception as e:
                     err_str = str(e)
                     logger.error(f"[KB] Synthesis LLM call failed with key {k_obj['id']}: {err_str}")
@@ -534,7 +820,7 @@ Rules:
                         logger.error(f"[KB] Fatal 400 Bad Request in synthesis. Aborting immediately.")
                         return
                     continue
-            if result:
+            if result and result.get("core_value_prop"):
                 break
 
         if not result:
@@ -582,6 +868,11 @@ Rules:
                 live_payload.pop("status", None)
                 supabase.table("knowledge_synthesis").upsert(live_payload, on_conflict="workspace_id").execute()
                 logger.info(f"[KB] Live synthesis auto-seeded for workspace {workspace_id}")
+                try:
+                    from campaigns.backend.services.elein_executor import invalidate_brain_cache
+                    invalidate_brain_cache(workspace_id)
+                except Exception as ice:
+                    logger.debug(f"[KB] Brain cache invalidate skipped on auto-seed: {ice}")
         except Exception as e:
             logger.error(f"[KB] Synthesis draft upsert failed: {e}")
 

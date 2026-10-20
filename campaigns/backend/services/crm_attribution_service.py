@@ -3,10 +3,15 @@ import uuid
 import re
 import json
 import hashlib
+import threading
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# Paranoia Layer 1: Concurrency locks and memory bounds
+_crm_sync_lock = threading.Lock()
+_MAX_SYNC_LOGS = 500
 
 
 def sanitize_text(val: Optional[str]) -> str:
@@ -29,9 +34,12 @@ def normalize_domain(domain: Optional[str]) -> str:
     return d.split("/")[0].split("?")[0].strip()
 
 
-def calculate_payload_hash(payload: Dict[str, Any]) -> str:
-    """Computes a deterministic SHA256 hash of a payload dictionary."""
-    canonical_str = json.dumps(payload, sort_keys=True, default=str)
+def calculate_payload_hash(payload: Dict[str, Any], workspace_id: Optional[str] = None) -> str:
+    """Computes a deterministic SHA256 hash of a payload dictionary, optionally scoped to tenant."""
+    if workspace_id:
+        canonical_str = json.dumps({"workspace_id": workspace_id, "data": payload}, sort_keys=True, default=str)
+    else:
+        canonical_str = json.dumps(payload, sort_keys=True, default=str)
     return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
 
 
@@ -199,8 +207,9 @@ def calculate_deal_attribution(
             weighted_touchpoints.append(tp_copy)
             weights_summary[tp.get("channel", f"step_{i+1}")] = round(w, 4)
 
+    deterministic_id = f"attr-{uuid.uuid5(uuid.NAMESPACE_DNS, f'deal_attr:{workspace_id}:{deal_id}:{chosen_model}').hex[:12]}"
     attribution_record = {
-        "id": f"attr-{uuid.uuid4().hex[:8]}",
+        "id": deterministic_id,
         "workspace_id": workspace_id,
         "deal_id": deal_id,
         "deal_name": clean_name,
@@ -222,7 +231,12 @@ def calculate_deal_attribution(
         except Exception as e:
             logger.warning("DB insert into deal_attributions failed, falling back to memory: %s", e)
 
-    _IN_MEMORY_DEAL_ATTRIBUTIONS.insert(0, attribution_record)
+    with _crm_sync_lock:
+        for idx, existing in enumerate(_IN_MEMORY_DEAL_ATTRIBUTIONS):
+            if existing.get("deal_id") == deal_id and existing.get("workspace_id") in (workspace_id, "ws-default"):
+                _IN_MEMORY_DEAL_ATTRIBUTIONS[idx] = attribution_record
+                return attribution_record
+        _IN_MEMORY_DEAL_ATTRIBUTIONS.insert(0, attribution_record)
     return attribution_record
 
 
@@ -236,27 +250,32 @@ def process_inbound_crm_event(
     Paranoia Layer 0, 1 & 2: Handles inbound CRM webhook notifications with echo loop prevention
     and automatic outbound campaign halting upon deal progression.
     """
-    current_hash = calculate_payload_hash(payload)
+    current_hash = calculate_payload_hash(payload, workspace_id=workspace_id)
+    now_utc = datetime.now(timezone.utc)
     
     # 1. Echo Loop Suppression (Layer 1 Paranoia)
-    for log in _IN_MEMORY_SYNC_LOGS[:10]:
-        if log.get("payload_hash") == current_hash and log.get("status") == "success":
-            skip_log = {
-                "id": f"log-{uuid.uuid4().hex[:8]}",
-                "workspace_id": workspace_id,
-                "direction": "inbound_from_crm",
-                "event_type": event_type,
-                "status": "skipped_echo",
-                "payload_hash": current_hash,
-                "details": {"reason": "Duplicate payload hash detected within debounce window"},
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            _IN_MEMORY_SYNC_LOGS.insert(0, skip_log)
-            return {
-                "success": True,
-                "status": "skipped_echo",
-                "message": "Echo loop suppressed successfully. No recursive updates dispatched."
-            }
+    with _crm_sync_lock:
+        for log in _IN_MEMORY_SYNC_LOGS[:20]:
+            if log.get("payload_hash") == current_hash and log.get("status") == "success":
+                if log.get("workspace_id") in (workspace_id, "ws-default"):
+                    skip_log = {
+                        "id": f"log-{uuid.uuid4().hex[:8]}",
+                        "workspace_id": workspace_id,
+                        "direction": "inbound_from_crm",
+                        "event_type": event_type,
+                        "status": "skipped_echo",
+                        "payload_hash": current_hash,
+                        "details": {"reason": "Duplicate payload hash detected within debounce window"},
+                        "created_at": now_utc.isoformat()
+                    }
+                    _IN_MEMORY_SYNC_LOGS.insert(0, skip_log)
+                    if len(_IN_MEMORY_SYNC_LOGS) > _MAX_SYNC_LOGS:
+                        del _IN_MEMORY_SYNC_LOGS[_MAX_SYNC_LOGS:]
+                    return {
+                        "success": True,
+                        "status": "skipped_echo",
+                        "message": "Echo loop suppressed successfully. No recursive updates dispatched."
+                    }
 
     # 2. Extract Event Specifics
     data = payload.get("data", {}) or payload
@@ -269,13 +288,37 @@ def process_inbound_crm_event(
     # 3. Campaign Halting on Opportunity/Customer (Layer 2 Paranoia)
     campaigns_halted = 0
     if stage in ('closed_won', 'customer', 'opportunity'):
-        # Automatically update matched account
-        if domain:
-            for acc in _IN_MEMORY_CRM_ACCOUNTS:
-                if acc.get("domain") == domain:
-                    acc["lifecycle_stage"] = "customer" if stage == "closed_won" else "opportunity"
-                    acc["last_synced_at"] = datetime.now(timezone.utc).isoformat()
-                    campaigns_halted += 1
+        with _crm_sync_lock:
+            if domain:
+                for acc in _IN_MEMORY_CRM_ACCOUNTS:
+                    if acc.get("domain") == domain and acc.get("workspace_id") in (workspace_id, "ws-default"):
+                        acc["lifecycle_stage"] = "customer" if stage == "closed_won" else "opportunity"
+                        acc["last_synced_at"] = now_utc.isoformat()
+                        campaigns_halted += 1
+
+        # Layer 1 Paranoia: Cascade campaign outreach halting in Supabase
+        if supabase and domain and workspace_id:
+            try:
+                matched_leads = supabase.table("leads").select("id").eq("workspace_id", workspace_id).ilike("email", f"%@{domain}").execute()
+                lead_ids = [l["id"] for l in (matched_leads.data or []) if isinstance(l, dict) and l.get("id")]
+                if lead_ids:
+                    enr_res = supabase.table("campaign_enrollments").select("id").in_("lead_id", lead_ids).execute()
+                    enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                    if enr_ids:
+                        now_iso = now_utc.isoformat()
+                        supabase.table("campaign_execution_states").update({
+                            "status": "completed",
+                            "error_reason": f"crm_deal_{stage}",
+                            "updated_at": now_iso
+                        }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
+                        supabase.table("campaign_enrollments").update({
+                            "status": "completed",
+                            "completed_at": now_iso,
+                            "updated_at": now_iso
+                        }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
+                        campaigns_halted += len(lead_ids)
+            except Exception as e:
+                logger.warning(f"Error halting campaigns in Supabase for domain {domain}: {e}")
 
     # If deal created, calculate instant attribution
     if deal_id and deal_amount > 0:
@@ -297,9 +340,12 @@ def process_inbound_crm_event(
         "status": "success",
         "payload_hash": current_hash,
         "details": {"domain": domain, "stage": stage, "campaigns_halted": campaigns_halted},
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": now_utc.isoformat()
     }
-    _IN_MEMORY_SYNC_LOGS.insert(0, success_log)
+    with _crm_sync_lock:
+        _IN_MEMORY_SYNC_LOGS.insert(0, success_log)
+        if len(_IN_MEMORY_SYNC_LOGS) > _MAX_SYNC_LOGS:
+            del _IN_MEMORY_SYNC_LOGS[_MAX_SYNC_LOGS:]
 
     return {
         "success": True,
@@ -333,11 +379,12 @@ def list_synced_accounts(workspace_id: str, supabase: Optional[Any] = None) -> L
         except Exception as e:
             logger.warning("DB query to crm_account_sync_mappings failed, using in-memory store: %s", e)
 
-    return [
-        dict(a)
-        for a in _IN_MEMORY_CRM_ACCOUNTS
-        if a.get("workspace_id") in (workspace_id, "ws-default")
-    ]
+    with _crm_sync_lock:
+        return [
+            dict(a)
+            for a in _IN_MEMORY_CRM_ACCOUNTS
+            if a.get("workspace_id") in (workspace_id, "ws-default")
+        ]
 
 
 def upsert_synced_account(
@@ -353,9 +400,10 @@ def upsert_synced_account(
     clean_domain = normalize_domain(domain)
     clean_name = sanitize_text(company_name) or clean_domain
     now_iso = datetime.now(timezone.utc).isoformat()
+    deterministic_id = f"crm-acc-{uuid.uuid5(uuid.NAMESPACE_DNS, f'crm_acc:{workspace_id}:{clean_domain}').hex[:12]}"
 
     record = {
-        "id": f"crm-acc-{uuid.uuid4().hex[:8]}",
+        "id": deterministic_id,
         "workspace_id": workspace_id,
         "domain": clean_domain,
         "company_name": clean_name,
@@ -376,15 +424,16 @@ def upsert_synced_account(
         except Exception as e:
             logger.warning("DB insert into crm_account_sync_mappings failed: %s", e)
 
-    # Layer 1 Paranoia: Deduplicate in-memory by (workspace_id, domain)
-    for idx, existing in enumerate(_IN_MEMORY_CRM_ACCOUNTS):
-        if existing.get("domain") == clean_domain and existing.get("workspace_id") in (workspace_id, "ws-default"):
-            updated = {**existing, **record, "id": existing["id"]}
-            _IN_MEMORY_CRM_ACCOUNTS[idx] = updated
-            return updated
+    # Layer 1 Paranoia: Deduplicate in-memory by (workspace_id, domain) under lock
+    with _crm_sync_lock:
+        for idx, existing in enumerate(_IN_MEMORY_CRM_ACCOUNTS):
+            if existing.get("domain") == clean_domain and existing.get("workspace_id") in (workspace_id, "ws-default"):
+                updated = {**existing, **record, "id": existing["id"]}
+                _IN_MEMORY_CRM_ACCOUNTS[idx] = updated
+                return updated
 
-    _IN_MEMORY_CRM_ACCOUNTS.insert(0, record)
-    return record
+        _IN_MEMORY_CRM_ACCOUNTS.insert(0, record)
+        return record
 
 
 def delete_synced_account(
@@ -404,11 +453,12 @@ def delete_synced_account(
             logger.warning("DB delete from crm_account_sync_mappings failed, using in-memory fallback: %s", e)
 
     removed = False
-    for idx, acc in enumerate(list(_IN_MEMORY_CRM_ACCOUNTS)):
-        if acc.get("id") == clean_id and acc.get("workspace_id") in (workspace_id, "ws-default"):
-            _IN_MEMORY_CRM_ACCOUNTS.pop(idx)
-            removed = True
-            break
+    with _crm_sync_lock:
+        for idx, acc in enumerate(list(_IN_MEMORY_CRM_ACCOUNTS)):
+            if acc.get("id") == clean_id and acc.get("workspace_id") in (workspace_id, "ws-default"):
+                _IN_MEMORY_CRM_ACCOUNTS.pop(idx)
+                removed = True
+                break
 
     return {"id": clean_id, "workspace_id": workspace_id, "deleted": True, "removed_in_memory": removed}
 
@@ -423,11 +473,12 @@ def list_deal_attributions(workspace_id: str, supabase: Optional[Any] = None) ->
         except Exception as e:
             logger.warning("DB query to deal_attributions failed, using in-memory store: %s", e)
 
-    return [
-        dict(d)
-        for d in _IN_MEMORY_DEAL_ATTRIBUTIONS
-        if d.get("workspace_id") in (workspace_id, "ws-default")
-    ]
+    with _crm_sync_lock:
+        return [
+            dict(d)
+            for d in _IN_MEMORY_DEAL_ATTRIBUTIONS
+            if d.get("workspace_id") in (workspace_id, "ws-default")
+        ]
 
 
 def export_crm_attributions_csv(workspace_id: str, supabase: Optional[Any] = None) -> str:

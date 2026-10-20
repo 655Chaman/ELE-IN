@@ -373,6 +373,7 @@ class TestAbmEndpoints:
                 "id": "camp-abm-free",
                 "workspace_id": "00000000-0000-0000-0000-000000000001",
                 "metadata": {"abm_multithread_enabled": True},
+                "nodes_json": [{"type": "message", "data": {"text": "hello"}}],
             }
         ]
         mock_sb.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = mock_data

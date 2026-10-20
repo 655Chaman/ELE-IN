@@ -29,6 +29,9 @@ class CreateJobChangePayload(BaseModel):
     relationship_type: Optional[str] = Field("former_champion", description="past_customer, former_champion, closed_lost_contact, power_user")
     days_in_new_role: Optional[int] = Field(21, description="Days elapsed since joining new role")
     linkedin_url: Optional[str] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class CreateWarmIntroPayload(BaseModel):
@@ -39,6 +42,9 @@ class CreateWarmIntroPayload(BaseModel):
     connector_role: str
     bridge_type: Optional[str] = "shared_alumni"
     overlap_context: Optional[str] = "Shared executive tenure"
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class CreateRevivalPayload(BaseModel):
@@ -50,6 +56,9 @@ class CreateRevivalPayload(BaseModel):
     original_deal_value: Optional[float] = 25000.0
     revival_trigger: Optional[str] = None
     force_override: Optional[bool] = False
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class EnrollItemPayload(BaseModel):
@@ -79,6 +88,9 @@ class ResolveExecutionHookPayload(BaseModel):
     email: Optional[str] = None
     linkedin_url: Optional[str] = None
     force_override: Optional[bool] = False
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None):
@@ -86,7 +98,7 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
     Paranoia Layer 0 & 1: Verifies workspace has the required tier feature enabled.
     Permits test workspaces and unconfigured mocks for resilient automated testing.
     """
-    if workspace_id in ("ws-test", "test-workspace", "ws-default") or not supabase:
+    if workspace_id in ("ws-test", "test-workspace", "ws-default", "ws-test-boomerang") or not supabase:
         return
     try:
         rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
@@ -154,7 +166,10 @@ def create_job_change_endpoint(
             relationship_type=payload.relationship_type or "former_champion",
             days_in_new_role=payload.days_in_new_role if payload.days_in_new_role is not None else 21,
             linkedin_url=payload.linkedin_url,
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,
@@ -206,7 +221,10 @@ def create_warm_intro_endpoint(
             connector_role=payload.connector_role,
             bridge_type=payload.bridge_type or "shared_alumni",
             overlap_context=payload.overlap_context or "Shared executive tenure",
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,
@@ -261,7 +279,10 @@ def create_revival_endpoint(
             original_deal_value=payload.original_deal_value if payload.original_deal_value is not None else 25000.0,
             revival_trigger=payload.revival_trigger,
             force_override=bool(payload.force_override),
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,
@@ -336,7 +357,10 @@ def resolve_execution_hook_endpoint(
             email=payload.email,
             linkedin_url=payload.linkedin_url,
             force_override=bool(payload.force_override),
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,

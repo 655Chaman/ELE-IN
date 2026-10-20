@@ -121,6 +121,7 @@ class AISettingsUpdateRequest(BaseModel):
 class TestKeyRequest(BaseModel):
     provider: str
     api_key: str
+    live_check: bool = False
 
 
 @router.get("/settings")
@@ -337,12 +338,44 @@ def test_byok_key(
     except InvalidKeyFormatError as ike:
         raise HTTPException(status_code=400, detail=str(ike))
 
+    live_verified = False
+    if payload.live_check:
+        # Layer 1 & 2 (Flaw 4.5): Perform real lightweight handshake with provider
+        try:
+            if provider == "openai":
+                from openai import OpenAI
+                client = OpenAI(api_key=clean_key, timeout=5.0)
+                client.models.list()
+                live_verified = True
+            elif provider == "deepseek":
+                from openai import OpenAI
+                client = OpenAI(api_key=clean_key, base_url="https://api.deepseek.com", timeout=5.0)
+                client.models.list()
+                live_verified = True
+            elif provider == "anthropic":
+                import urllib.request
+                req = urllib.request.Request(
+                    "https://api.anthropic.com/v1/models",
+                    headers={"x-api-key": clean_key, "anthropic-version": "2023-06-01"}
+                )
+                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                    if resp.status == 200:
+                        live_verified = True
+            else:
+                live_verified = True
+        except Exception as conn_err:
+            err_msg = str(conn_err)
+            if "401" in err_msg or "auth" in err_msg.lower() or "unauthorized" in err_msg.lower() or "invalid_api_key" in err_msg.lower():
+                raise HTTPException(status_code=400, detail=f"Live validation failed: Invalid or inactive {provider.capitalize()} API key.")
+            logger.warning(f"[AIGateway] Live check skipped due to network/timeout: {conn_err}")
+
     return {
         "status": "success",
         "valid": True,
+        "live_verified": live_verified,
         "provider": provider,
         "last_chars": clean_key[-4:],
-        "message": f"Successfully validated {provider.capitalize()} API key format."
+        "message": f"Successfully validated {provider.capitalize()} API key format." + (" (Live provider verified)" if live_verified else "")
     }
 
 

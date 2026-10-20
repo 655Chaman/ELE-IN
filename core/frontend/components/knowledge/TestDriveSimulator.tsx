@@ -212,10 +212,10 @@ export function TestDriveSimulator() {
       <button
         type="button"
         onClick={() => setIsTestOpen(true)}
-        className="h-9 flex items-center gap-2 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-all shadow-xs cursor-pointer shrink-0"
+        className="h-8.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 bg-card/60 hover:bg-muted text-xs text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer shrink-0"
       >
-        <MessageSquare size={14} />
-        <span>Simulate AI Reply</span>
+        <MessageSquare size={13} />
+        <span>Test Drive</span>
       </button>
 
       <AnimatePresence>
@@ -230,73 +230,72 @@ export function TestDriveSimulator() {
             />
             
             <motion.div 
-              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              className="relative w-full max-w-[660px] bg-card border border-border/60 shadow-2xl rounded-xl flex flex-col overflow-hidden h-[660px] max-h-[92vh]"
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative w-full max-w-[600px] bg-card border border-border/60 shadow-2xl rounded-xl flex flex-col overflow-hidden h-[620px] max-h-[90vh]"
             >
               {/* Header */}
-              <div className="p-5 border-b border-border/60 flex justify-between items-center bg-muted/20 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
-                    <MessageSquare size={18} />
+              <div className="px-5 py-4 border-b border-border/50 flex justify-between items-center bg-card shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80">
+                    <MessageSquare size={14} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
-                      <span>AI Objection &amp; Reply Simulator</span>
+                    <h3 className="text-sm font-medium text-foreground">
+                      AI Objection Simulator
                     </h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Stress-test your knowledge base and playbooks against real adversarial pushbacks.
+                    <p className="text-[10px] text-muted-foreground">
+                      Stress-test your knowledge base and playbooks against pushbacks.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   {testResponses.length > 0 && (
                     <button
                       type="button"
                       onClick={handleClearHistory}
-                      title="Clear chat history"
-                      className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors cursor-pointer"
+                      title="Clear history"
+                      className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors cursor-pointer"
                     >
-                      <RotateCcw size={15} />
+                      <RotateCcw size={13} />
                     </button>
                   )}
                   <button 
                     type="button"
                     onClick={() => setIsTestOpen(false)} 
-                    className="text-muted-foreground hover:text-foreground p-2 rounded-md hover:bg-muted transition-colors cursor-pointer"
+                    className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors cursor-pointer"
                   >
-                    <X size={16} />
+                    <X size={15} />
                   </button>
                 </div>
               </div>
 
               {/* Chat Feed */}
-              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 bg-card">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-card">
                 {/* Intro greeting */}
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 mt-1">
-                    <BrainCircuit size={16} />
+                <div className="flex gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 shrink-0 mt-0.5">
+                    <BrainCircuit size={14} />
                   </div>
-                  <div className="bg-muted/20 rounded-lg rounded-tl-xs p-4 text-xs sm:text-sm text-foreground max-w-[88%] border border-border/60 shadow-xs leading-relaxed space-y-2">
-                    <p className="font-semibold text-foreground flex items-center gap-1.5">
-                      <BrainCircuit size={14} className="text-primary" />
-                      <span>Welcome to the AI Rebuttal Simulator.</span>
+                  <div className="bg-muted/30 rounded-lg p-3 text-xs text-foreground max-w-[88%] border border-border/40 leading-relaxed space-y-1.5">
+                    <p className="font-medium text-foreground flex items-center gap-1.5">
+                      <span>Test your AI before spending outreach credits.</span>
                     </p>
-                    <p className="text-muted-foreground">
-                      Type any real objection your prospects throw at you, or click one of the battle-tested adversarial challenges below to test our rebuttal engine.
+                    <p className="text-muted-foreground text-xs">
+                      Type any objection your prospects raise, or click a challenge preset below to verify how the AI handles pushbacks and pivots to a meeting.
                     </p>
                   </div>
                 </div>
 
                 {/* Empty State: 1-Click Adversarial Challenges Grid */}
                 {testResponses.length === 0 && (
-                  <div className="pt-2 pb-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-2.5">
-                      Battle-Tested Adversarial Challenges (1-Click Test):
+                  <div className="pt-2">
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground block mb-2">
+                      Challenge Presets:
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {ADVERSARIAL_CHALLENGES.map((ch) => {
                         const Icon = ch.icon;
                         return (
@@ -305,14 +304,14 @@ export function TestDriveSimulator() {
                             type="button"
                             disabled={isTesting}
                             onClick={() => handleTestDrive(ch.objection)}
-                            className="p-3 text-left rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all group flex flex-col justify-between cursor-pointer shadow-2xs"
+                            className="p-3 text-left rounded-lg border border-border/50 bg-card/60 hover:bg-card hover:border-border transition-all flex flex-col justify-between cursor-pointer shadow-2xs group"
                           >
                             <div className="flex items-center justify-between w-full mb-1">
-                              <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
-                                <Icon size={13} className="text-primary" />
+                              <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                                <Icon size={12} className="text-muted-foreground group-hover:text-foreground transition-colors" />
                                 {ch.title}
                               </span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground font-mono">
                                 {ch.persona}
                               </span>
                             </div>
@@ -328,41 +327,41 @@ export function TestDriveSimulator() {
 
                 {/* Responses Feed */}
                 {testResponses.map((msg, idx) => (
-                  <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                     {msg.role === 'ai' && (
-                      <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-1">
-                        <ElesiumLogo size={18} />
+                      <div className="w-7 h-7 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 shrink-0 mt-0.5">
+                        <ElesiumLogo size={14} />
                       </div>
                     )}
                     
-                    <div className={`max-w-[85%] ${
+                    <div className={`max-w-[85%] text-xs ${
                       msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-lg rounded-tr-xs p-3.5 shadow-xs'
-                        : 'bg-muted/20 text-foreground border border-border/60 rounded-lg rounded-tl-xs p-4 shadow-xs'
+                        ? 'bg-foreground text-background rounded-lg rounded-tr-xs p-3 shadow-2xs'
+                        : 'bg-muted/30 text-foreground border border-border/40 rounded-lg rounded-tl-xs p-3.5 shadow-2xs'
                     }`}>
                       {msg.role === 'user' && (
-                        <div className="text-[10px] text-primary-foreground/70 uppercase tracking-wider font-bold mb-1">
-                          Prospect Objection
+                        <div className="text-[9px] uppercase tracking-wider font-mono opacity-70 mb-1">
+                          Prospect
                         </div>
                       )}
 
-                      <p className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed">
+                      <p className="whitespace-pre-wrap leading-relaxed">
                         {msg.content}
                       </p>
 
                       {/* AI Response Metadata & Action Bar */}
                       {msg.role === 'ai' && (
-                        <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground gap-2 flex-wrap">
-                          <div className="flex items-center gap-2">
+                        <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5">
                             {msg.matchedStrategy && (
-                              <span className="inline-flex items-center gap-1 font-medium text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                <Check size={10} />
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground border border-border/40 font-mono text-[9px]">
+                                <Check size={9} />
                                 {msg.matchedStrategy}
                               </span>
                             )}
                             {msg.charCount && (
-                              <span className="font-mono text-[10px] opacity-75">
-                                {msg.charCount} chars (~{Math.max(1, Math.round(msg.charCount / 25))}s read)
+                              <span className="font-mono text-[9px] opacity-75">
+                                {msg.charCount} chars
                               </span>
                             )}
                           </div>
@@ -370,17 +369,17 @@ export function TestDriveSimulator() {
                           <button
                             type="button"
                             onClick={() => handleCopy(msg.content, idx)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-muted transition-colors font-medium text-[11px] cursor-pointer"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground text-[10px] cursor-pointer"
                           >
                             {copiedIndex === idx ? (
                               <>
-                                <Check size={12} className="text-emerald-500" />
+                                <Check size={11} className="text-emerald-500" />
                                 <span className="text-emerald-500">Copied</span>
                               </>
                             ) : (
                               <>
-                                <Copy size={12} />
-                                <span>Copy Rebuttal</span>
+                                <Copy size={11} />
+                                <span>Copy</span>
                               </>
                             )}
                           </button>
@@ -392,13 +391,13 @@ export function TestDriveSimulator() {
 
                 {/* Thinking / Streaming Indicator */}
                 {isTesting && (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-1">
-                      <ElesiumLogo size={18} className="animate-pulse" />
+                  <div className="flex gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 shrink-0 mt-0.5">
+                      <ElesiumLogo size={14} className="animate-pulse" />
                     </div>
-                    <div className="bg-muted/20 rounded-lg rounded-tl-xs p-4 text-xs text-muted-foreground border border-border/60 shadow-xs flex items-center gap-2">
-                      <Loader2 size={13} className="animate-spin text-primary" />
-                      <span>Retrieving knowledge base differentiators & synthesizing rebuttal...</span>
+                    <div className="bg-muted/30 rounded-lg rounded-tl-xs p-3 text-xs text-muted-foreground border border-border/40 shadow-2xs flex items-center gap-2">
+                      <Loader2 size={12} className="animate-spin text-foreground" />
+                      <span>Synthesizing rebuttal...</span>
                     </div>
                   </div>
                 )}
@@ -408,9 +407,9 @@ export function TestDriveSimulator() {
 
               {/* Bottom Challenge Chips Bar (when conversation is active) */}
               {testResponses.length > 0 && (
-                <div className="px-5 py-2 border-t border-border/60 bg-muted/20 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground shrink-0 mr-1">
-                    Quick Test:
+                <div className="px-4 py-1.5 border-t border-border/40 bg-muted/10 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+                  <span className="text-[10px] uppercase font-mono text-muted-foreground shrink-0 mr-1">
+                    Quick:
                   </span>
                   {ADVERSARIAL_CHALLENGES.map((ch) => (
                     <button
@@ -418,7 +417,7 @@ export function TestDriveSimulator() {
                       type="button"
                       disabled={isTesting}
                       onClick={() => handleTestDrive(ch.objection)}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-card border border-border/60 text-foreground hover:border-primary/40 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+                      className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
                     >
                       {ch.title}
                     </button>
@@ -427,7 +426,7 @@ export function TestDriveSimulator() {
               )}
 
               {/* Composer Input */}
-              <div className="p-4 border-t border-border/60 bg-muted/20 shrink-0 relative z-10">
+              <div className="p-3.5 border-t border-border/50 bg-muted/20 shrink-0 relative z-10">
                 <div className="relative flex items-center">
                   <input 
                     type="text" 
@@ -439,21 +438,21 @@ export function TestDriveSimulator() {
                         handleTestDrive();
                       }
                     }} 
-                    placeholder="Type a prospect objection (e.g. 'We don't have budget right now')..." 
+                    placeholder="Type an objection (e.g. 'We don't have budget')..." 
                     maxLength={1000}
                     disabled={isTesting}
-                    className="w-full bg-background border border-border/60 rounded-xl pl-4 pr-24 py-3 text-xs sm:text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all shadow-xs disabled:opacity-60" 
+                    className="w-full bg-background border border-border/60 rounded-lg pl-3 pr-20 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-border focus:ring-1 focus:ring-ring transition-all disabled:opacity-60" 
                   />
                   
-                  <div className="absolute right-2 flex items-center gap-1">
+                  <div className="absolute right-1.5 flex items-center gap-1">
                     {isTesting ? (
                       <button 
                         type="button"
                         onClick={handleStopGeneration}
                         title="Stop generation"
-                        className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                        className="bg-muted text-muted-foreground hover:text-foreground px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <Square size={12} className="fill-current" />
+                        <Square size={10} className="fill-current" />
                         <span>Stop</span>
                       </button>
                     ) : (
@@ -461,18 +460,18 @@ export function TestDriveSimulator() {
                         type="button"
                         onClick={() => handleTestDrive()} 
                         disabled={!testMessage.trim()} 
-                        className="bg-foreground text-background hover:bg-foreground/90 p-2 rounded-lg transition-colors disabled:opacity-40 cursor-pointer shadow-xs"
+                        className="bg-foreground text-background hover:bg-foreground/90 p-1.5 rounded-md transition-colors disabled:opacity-40 cursor-pointer shadow-2xs"
                         title="Test Objection"
                       >
-                        <Play size={13} className="fill-current" />
+                        <Play size={11} className="fill-current" />
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-1.5 px-1 flex justify-between items-center text-[10px] text-muted-foreground">
-                  <span>Press Enter to simulate</span>
-                  <span>{testMessage.length} / 1,000 chars</span>
+                <div className="mt-1 px-0.5 flex justify-between items-center text-[10px] text-muted-foreground font-mono">
+                  <span>Enter to send</span>
+                  <span>{testMessage.length}/1000</span>
                 </div>
               </div>
             </motion.div>

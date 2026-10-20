@@ -61,6 +61,9 @@ def sanitize_for_prompt(text: Any, source_label: str = "user_content") -> str:
     if not text.strip():
         return ""
 
+    # Defang internal boundary escape tokens to prevent delimiter breakout (Issue 6 resolution)
+    text = re.sub(r'(?i)\[\/?USER_CONTENT_(?:START|END)\]', '[ESCAPED_DELIMITER]', text)
+
     # Check for injection patterns
     for pattern in INJECTION_PATTERNS:
         if re.search(pattern, text):
@@ -125,12 +128,15 @@ def truncate_to_context_limit(
     def estimate_chars(msgs: list) -> int:
         return sum(len(m.get("content", "")) for m in msgs)
 
-    if estimate_chars(messages) <= max_chars:
-        return messages  # Fast path — no truncation needed
+    # Layer 1 & 2 Paranoia (Issue 7 resolution): Clone messages so callers' dicts are never mutated in-place
+    cloned_messages = [{"role": m.get("role", "user"), "content": str(m.get("content", ""))} for m in messages]
+
+    if estimate_chars(cloned_messages) <= max_chars:
+        return cloned_messages  # Fast path — returns fresh clones
 
     # Separate system message(s) from the rest
-    system_msgs = [m for m in messages if m.get("role") == "system"]
-    other_msgs = [m for m in messages if m.get("role") != "system"]
+    system_msgs = [m for m in cloned_messages if m.get("role") == "system"]
+    other_msgs = [m for m in cloned_messages if m.get("role") != "system"]
 
     system_chars = estimate_chars(system_msgs)
     budget = max_chars - system_chars
@@ -145,8 +151,8 @@ def truncate_to_context_limit(
             system_msgs[-1]["content"] = system_msgs[-1]["content"][:max_chars] + "\n[TRUNCATED]"
         return system_msgs
 
-    # Remove oldest non-system messages until we fit
-    while other_msgs and estimate_chars(other_msgs) > budget:
+    # Remove oldest non-system messages until we fit or until only 1 remains to be truncated
+    while len(other_msgs) > 1 and estimate_chars(other_msgs) > budget:
         removed = other_msgs.pop(0)  # Remove oldest first
         logger.warning(
             f"[ContextWindow] Removed oldest message to fit context limit. "

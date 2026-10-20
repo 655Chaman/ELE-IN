@@ -564,6 +564,8 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
             from integrations.backend.services.webhook_service import verify_webhook_signature
             if not verify_webhook_signature(body, configured_secret, timestamp_hdr, sig_hdr, tolerance_seconds=300):
                 raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        elif sig_hdr and not timestamp_hdr:
+            raise HTTPException(status_code=401, detail="Missing webhook timestamp header for signature verification")
         else:
             matched = False
             if incoming_secret:
@@ -644,21 +646,30 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
     # If someone spams the booking webhook with the same email 50 times in a second,
     # if metadata already has meeting_booked: True and all campaign states are already completed,
     # return early with {"status": "already_processed"} without re-updating records or triggering redundant queries.
-    if isinstance(meta, dict) and meta.get("meeting_booked") is True:
+    is_first_booking = not bool(isinstance(meta, dict) and meta.get("meeting_booked") is True)
+    if not is_first_booking:
         try:
             enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
             if isinstance(enr_res.data, list):
                 if not enr_res.data:
-                    return {"status": "already_processed"}
+                    res_already = {"status": "already_processed", "lead_id": lead_id, "email": email, "reason": "Meeting already recorded and outreach halted"}
+                    ledger.update_result(idem_key, res_already)
+                    return res_already
                 enr_ids = [r["id"] for r in enr_res.data if isinstance(r, dict) and "id" in r]
                 if not enr_ids:
-                    return {"status": "already_processed"}
+                    res_already = {"status": "already_processed", "lead_id": lead_id, "email": email, "reason": "Meeting already recorded and outreach halted"}
+                    ledger.update_result(idem_key, res_already)
+                    return res_already
                 states_res = supabase.table("campaign_execution_states").select("status").in_("enrollment_id", enr_ids).execute()
                 if isinstance(states_res.data, list):
                     if not states_res.data or all(isinstance(s, dict) and s.get("status") == "completed" for s in states_res.data):
-                        return {"status": "already_processed"}
+                        res_already = {"status": "already_processed", "lead_id": lead_id, "email": email, "reason": "Meeting already recorded and outreach halted"}
+                        ledger.update_result(idem_key, res_already)
+                        return res_already
             elif not enr_res.data:
-                return {"status": "already_processed"}
+                res_already = {"status": "already_processed", "lead_id": lead_id, "email": email, "reason": "Meeting already recorded and outreach halted"}
+                ledger.update_result(idem_key, res_already)
+                return res_already
         except Exception as e:
             logger.warning(f"Error checking idempotency states for lead {lead_id}: {e}")
 
@@ -683,20 +694,37 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
 
     # 3. Halt active outreach for this lead across all in-flight statuses
     try:
+        now_iso = datetime.utcnow().isoformat()
         enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
         if enr_res.data and isinstance(enr_res.data, list):
             enr_ids = [r["id"] for r in enr_res.data if isinstance(r, dict) and "id" in r]
             if enr_ids:
                 supabase.table("campaign_execution_states").update({
                     "status": "completed",
-                    "error_reason": "meeting_booked"
+                    "error_reason": "meeting_booked",
+                    "lease_token": None,
+                    "lease_expires_at": None,
+                    "updated_at": now_iso
                 }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
+                supabase.table("campaign_enrollments").update({
+                    "status": "completed",
+                    "completed_at": now_iso,
+                    "updated_at": now_iso
+                }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
         elif enr_res.data and not isinstance(enr_res.data, list):
             enr_ids = [r["id"] for r in enr_res.data]
             supabase.table("campaign_execution_states").update({
                 "status": "completed",
-                "error_reason": "meeting_booked"
+                "error_reason": "meeting_booked",
+                "lease_token": None,
+                "lease_expires_at": None,
+                "updated_at": now_iso
             }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
+            supabase.table("campaign_enrollments").update({
+                "status": "completed",
+                "completed_at": now_iso,
+                "updated_at": now_iso
+            }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
     except Exception as e:
         logger.warning(f"Failed to complete campaign states on meeting booked: {e}")
 
@@ -707,22 +735,25 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
     except Exception as cascade_err:
         logger.warning(f"Failed to cascade meeting booked unsubscribe to email sequencers: {cascade_err}")
 
-    try:
-        from integrations.backend.services.webhook_service import emit_webhook_event
-        ua = (request.headers.get("user-agent") or "").lower()
-        platform = "calendly" if "calendly" in ua else ("cal.com" if "cal" in ua else "calendar")
-        emit_webhook_event(
-            workspace_id=workspace_id,
-            event_type="lead.meeting_booked",
-            payload={
-                "lead_id": lead_id,
-                "email": email,
-                "platform": platform,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        )
-    except Exception as e:
-        logger.warning(f"Failed to emit lead.meeting_booked webhook: {e}")
+    if is_first_booking:
+        try:
+            from integrations.backend.services.webhook_service import emit_webhook_event
+            ua = (request.headers.get("user-agent") or "").lower()
+            platform = "calendly" if "calendly" in ua else ("cal.com" if "cal" in ua else "calendar")
+            emit_webhook_event(
+                workspace_id=workspace_id,
+                event_type="lead.meeting_booked",
+                payload={
+                    "lead_id": lead_id,
+                    "email": email,
+                    "platform": platform,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit lead.meeting_booked webhook: {e}")
+    else:
+        logger.info(f"[BookingWebhook] Suppressed duplicate lead.meeting_booked webhook for lead {lead_id} (already booked)")
 
     res = {"status": "success", "lead_id": lead_id, "email": email, "message": "Meeting recorded. Lead paused."}
     ledger.update_result(idem_key, res)
@@ -1088,13 +1119,23 @@ def _cascade_halt_lead_linkedin_outreach(supabase, workspace_id: str, lead_id: s
         if enr_res.data and isinstance(enr_res.data, list):
             enr_ids = [r["id"] for r in enr_res.data if isinstance(r, dict) and "id" in r]
             if enr_ids:
+                now_iso = datetime.utcnow().isoformat()
                 supabase.table("campaign_execution_states").update({
                     "status": "completed",
                     "error_reason": error_reason,
                     "lease_token": None,
                     "lease_expires_at": None,
-                    "updated_at": datetime.utcnow().isoformat()
+                    "updated_at": now_iso
                 }).eq("workspace_id", workspace_id).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
+
+                # Paranoia Layer 1 & 2: Synchronize campaign_enrollments lifecycle
+                reason_lower = (error_reason or "").lower()
+                target_status = "completed" if any(w in reason_lower for w in ["reply", "replied", "book", "meeting"]) else "exited"
+                supabase.table("campaign_enrollments").update({
+                    "status": target_status,
+                    "completed_at": now_iso,
+                    "updated_at": now_iso
+                }).eq("workspace_id", workspace_id).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
     except Exception as e:
         logger.warning(f"Failed to cascade halt execution states for lead {lead_id} in workspace {workspace_id}: {e}")
 
@@ -1212,6 +1253,8 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
             from integrations.backend.services.webhook_service import verify_webhook_signature
             if not verify_webhook_signature(body, configured_secret, timestamp_hdr, sig_hdr, tolerance_seconds=300):
                 raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        elif sig_hdr and not timestamp_hdr:
+            raise HTTPException(status_code=401, detail="Missing webhook timestamp header for signature verification")
         else:
             matched = False
             if incoming_secret:
@@ -1301,7 +1344,7 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
         meta = {}
 
     # 8. Layer 2: Idempotency Defense
-    already_replied = is_reply and (meta.get("email_replied") is True or lead.get("status") == "Replied (Email)")
+    already_replied = is_reply and (meta.get("email_replied") is True or lead.get("status") in ("Replied (Email)", "replied"))
     already_unsub = is_unsub and (meta.get("unsubscribed") is True or lead.get("status") == "Unsubscribed")
 
     if already_replied or already_unsub:
@@ -1339,7 +1382,7 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
         try:
             supabase.table("leads").update({
                 "metadata": meta,
-                "status": "Replied (Email)"
+                "status": "replied"
             }).eq("id", lead_id).execute()
         except Exception as e:
             logger.error(f"Failed to update lead {lead_id} on reply: {e}")
@@ -1428,10 +1471,24 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
 
         try:
             supabase.table("leads").update({
+                "status": "bounced",
                 "metadata": meta
             }).eq("id", lead_id).execute()
         except Exception as e:
             logger.error(f"Failed to update lead {lead_id} on bounce: {e}")
+
+        # Paranoia Layer 1 & 2: Cascade halt active campaign outreach & auto-suppress hard-bounced email
+        _cascade_halt_lead_linkedin_outreach(supabase, workspace_id, lead_id, error_reason="email_bounced")
+        if email:
+            try:
+                supabase.table("suppression_list").upsert({
+                    "id": str(uuid.uuid4()),
+                    "workspace_id": workspace_id,
+                    "email": email.strip().lower(),
+                    "reason": "email_hard_bounce"
+                }, ignore_duplicates=True, on_conflict="workspace_id,email").execute()
+            except Exception as supp_err:
+                logger.warning(f"Failed to auto-suppress bounced email {email}: {supp_err}")
 
     res = {"status": "success", "lead_id": lead_id, "email": email, "event": event_type}
     ledger.update_result(idem_key, res)
@@ -1551,6 +1608,8 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
             from integrations.backend.services.webhook_service import verify_webhook_signature
             if not verify_webhook_signature(body, configured_secret, timestamp_hdr, sig_hdr, tolerance_seconds=300):
                 raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        elif sig_hdr and not timestamp_hdr:
+            raise HTTPException(status_code=401, detail="Missing webhook timestamp header for signature verification")
         else:
             matched = False
             if incoming_secret:
@@ -1640,7 +1699,7 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
         meta = {}
 
     # 8. Layer 2: Idempotency Defense
-    already_replied = is_reply and (meta.get("email_replied") is True or lead.get("status") == "Replied (Email)")
+    already_replied = is_reply and (meta.get("email_replied") is True or lead.get("status") in ("Replied (Email)", "replied"))
     already_unsub = is_unsub and (meta.get("unsubscribed") is True or lead.get("status") == "Unsubscribed")
 
     if already_replied or already_unsub:
@@ -1678,7 +1737,7 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
         try:
             supabase.table("leads").update({
                 "metadata": meta,
-                "status": "Replied (Email)"
+                "status": "replied"
             }).eq("id", lead_id).execute()
         except Exception as e:
             logger.error(f"Failed to update lead {lead_id} on reply: {e}")
@@ -1767,10 +1826,24 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
 
         try:
             supabase.table("leads").update({
+                "status": "bounced",
                 "metadata": meta
             }).eq("id", lead_id).execute()
         except Exception as e:
             logger.error(f"Failed to update lead {lead_id} on bounce: {e}")
+
+        # Paranoia Layer 1 & 2: Cascade halt active campaign outreach & auto-suppress hard-bounced email
+        _cascade_halt_lead_linkedin_outreach(supabase, workspace_id, lead_id, error_reason="email_bounced")
+        if email:
+            try:
+                supabase.table("suppression_list").upsert({
+                    "id": str(uuid.uuid4()),
+                    "workspace_id": workspace_id,
+                    "email": email.strip().lower(),
+                    "reason": "email_hard_bounce"
+                }, ignore_duplicates=True, on_conflict="workspace_id,email").execute()
+            except Exception as supp_err:
+                logger.warning(f"Failed to auto-suppress bounced email {email}: {supp_err}")
 
     res = {"status": "success", "lead_id": lead_id, "email": email, "event": raw_ev}
     ledger.update_result(idem_key, res)

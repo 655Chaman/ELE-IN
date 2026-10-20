@@ -44,12 +44,16 @@ class GenerateVoiceScriptPayload(BaseModel):
     title: Optional[str] = None
     tone: Optional[str] = "casual_peer"
     custom_pain_point: Optional[str] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class GenerateVideoCardPayload(BaseModel):
     lead_name: str
     company: str
     video_topic: Optional[str] = "Outbound Pipeline Teardown"
+    banned_phrases: Optional[str] = None
 
 
 class ResolveMultimodalAssetPayload(BaseModel):
@@ -61,6 +65,10 @@ class ResolveMultimodalAssetPayload(BaseModel):
     event_name: Optional[str] = None
     custom_pain_point: Optional[str] = None
     video_topic: Optional[str] = None
+    media_url: Optional[str] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None):
@@ -223,7 +231,10 @@ def generate_voice_script_endpoint(
             tone=payload.tone or "casual_peer",
             custom_pain_point=payload.custom_pain_point,
             workspace_id=workspace_id,
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases,
+            ai_model=payload.ai_model or "",
         )
         if isinstance(result, dict):
             result["credits_deducted"] = 2
@@ -297,7 +308,8 @@ def generate_video_card_endpoint(
             company=payload.company,
             video_topic=payload.video_topic,
             workspace_id=workspace_id,
-            supabase=supabase
+            supabase=supabase,
+            banned_phrases=payload.banned_phrases,
         )
         if isinstance(result, dict):
             result["credits_deducted"] = 3
@@ -345,7 +357,11 @@ def resolve_execution_asset_endpoint(
             event_name=payload.event_name,
             custom_pain_point=payload.custom_pain_point,
             video_topic=payload.video_topic,
-            supabase=supabase
+            supabase=supabase,
+            media_url=payload.media_url,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases,
+            ai_model=payload.ai_model or "",
         )
         return result
     except HTTPException:

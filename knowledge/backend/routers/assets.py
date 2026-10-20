@@ -1,5 +1,8 @@
+import logging
 from fastapi import APIRouter
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["assets"])
 
@@ -22,6 +25,42 @@ from core.backend.api.auth_dep import get_supabase_client
 from core.backend.api.auth_dep import get_current_workspace
 from supabase import Client
 from fastapi import Depends, HTTPException
+
+def _mark_asset_failed_safe(supabase: Client, asset_id: str, error_text: str):
+    """
+    Paranoia Layer 0 & 1 (Flaw 21):
+    Safely marks a knowledge asset as 'failed' with error explanation.
+    Tolerates both 'error_msg' (canonical Migration 009) and 'error_message' column names,
+    preventing PGRST204 column not found errors from leaving assets stuck in 'queued'.
+    """
+    try:
+        supabase.table("knowledge_assets").update({
+            "status": "failed",
+            "error_msg": error_text
+        }).eq("id", asset_id).execute()
+    except Exception as e:
+        err_str = str(e).lower()
+        if "error_msg" in err_str and ("does not exist" in err_str or "pgrst204" in err_str or "42703" in err_str):
+            try:
+                supabase.table("knowledge_assets").update({
+                    "status": "failed",
+                    "error_message": error_text
+                }).eq("id", asset_id).execute()
+            except Exception:
+                pass
+        elif "error_msg" in err_str and ("does not exist" in err_str or "pgrst204" in err_str or "42703" in err_str):
+            try:
+                supabase.table("knowledge_assets").update({
+                    "status": "failed",
+                    "error_message": error_text
+                }).eq("id", asset_id).execute()
+            except Exception:
+                pass
+        else:
+            try:
+                supabase.table("knowledge_assets").update({"status": "failed"}).eq("id", asset_id).execute()
+            except Exception:
+                pass
 
 @router.get("/knowledge/assets", response_model=List[Dict])
 def get_knowledge_base(
@@ -52,8 +91,9 @@ async def add_knowledge_pdf(
     from core.backend.services.credit_service import TIER_LIMITS
     limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
     max_assets = limits.get("max_knowledge_assets", 3)
-    
-    current_count = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).execute().count or 0
+    # Paranoia Layer 1: Only count active/synced/processing assets towards quota; failed uploads must not block the user
+    count_res = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).neq("status", "failed").execute()
+    current_count = count_res.count if isinstance(getattr(count_res, "count", None), int) else (len(count_res.data) if isinstance(getattr(count_res, "data", None), list) else 0)
     if current_count >= max_assets:
         raise HTTPException(
             status_code=403,
@@ -98,7 +138,7 @@ async def add_knowledge_pdf(
 
     try:
         supabase.table("knowledge_assets").insert(asset).execute()
-        enqueue_job(
+        job = enqueue_job(
             supabase, 
             'pdf', 
             workspace_id, 
@@ -108,6 +148,8 @@ async def add_knowledge_pdf(
                 'storage_path': storage_path
             }
         )
+        if not job:
+            raise RuntimeError("Job queue rejected PDF processing task.")
     except Exception as e:
         if uploaded_to_storage:
             try:
@@ -135,8 +177,9 @@ async def add_knowledge_url(
     from core.backend.services.credit_service import TIER_LIMITS
     limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
     max_assets = limits.get("max_knowledge_assets", 3)
-    
-    current_count = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).execute().count or 0
+    # Paranoia Layer 1: Only count active/synced/processing assets towards quota; failed uploads must not block the user
+    count_res = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).neq("status", "failed").execute()
+    current_count = count_res.count if isinstance(getattr(count_res, "count", None), int) else (len(count_res.data) if isinstance(getattr(count_res, "data", None), list) else 0)
     if current_count >= max_assets:
         raise HTTPException(
             status_code=403,
@@ -155,8 +198,8 @@ async def add_knowledge_url(
     import uuid
     
     # LAYER 2 (Human Paranoia): Prevent duplicate clicks queuing the exact same URL multiple times
-    existing = supabase.table("knowledge_assets").select("*").eq("workspace_id", workspace_id).eq("source_url", clean_url).eq("status", "processing").execute()
-    if existing.data:
+    existing = supabase.table("knowledge_assets").select("*").eq("workspace_id", workspace_id).eq("source_url", clean_url).in_("status", ["queued", "processing", "pending", "synced"]).execute()
+    if existing and isinstance(getattr(existing, "data", None), list) and len(existing.data) > 0:
         return existing.data[0]
         
     asset_id = str(uuid.uuid4())
@@ -168,15 +211,22 @@ async def add_knowledge_url(
         "source_url": clean_url,  # stored for retry
         "status": "queued"
     }
-    supabase.table("knowledge_assets").insert(asset).execute()
+    try:
+        supabase.table("knowledge_assets").insert(asset).execute()
+    except Exception as ie:
+        raise HTTPException(status_code=500, detail=f"Failed to create asset record: {ie}")
     
-    enqueue_job(
+    job = enqueue_job(
         supabase, 
         'url', 
         workspace_id, 
         asset_id, 
         {'url': payload.url}
     )
+    if not job:
+        _mark_asset_failed_safe(supabase, asset_id, "Failed to enqueue background processing job. Please try again.")
+        raise HTTPException(status_code=500, detail="Failed to enqueue URL processing job. Please try again.")
+
     return {"status": "success", "asset": asset}
 
 @router.delete("/knowledge/assets/{asset_id}")
@@ -190,6 +240,12 @@ def delete_knowledge_asset(
     if not success:
         raise HTTPException(status_code=404, detail="Asset not found")
         
+    try:
+        from campaigns.backend.services.elein_executor import invalidate_brain_cache
+        invalidate_brain_cache(workspace_id)
+    except Exception as e:
+        logger.warning(f"Failed to invalidate brain cache on asset deletion: {e}")
+
     # Layer 0 Paranoia: Force a complete rebuild of the synthesis cache.
     # Without this, the AI will confidently hallucinate deleted features forever.
     enqueue_job(supabase, "synthesis", workspace_id, "sys_delete", {})
@@ -211,12 +267,10 @@ async def retry_knowledge_asset(
     if asset.get("status") not in ["failed", "error"]:
         raise HTTPException(status_code=400, detail="Only failed assets can be retried")
     
-    # Reset status to queued
-    supabase.table("knowledge_assets").update({"status": "queued"}).eq("id", asset_id).execute()
-    
     asset_type = asset.get("type", "")
+    job = None
     if asset_type == "url":
-        enqueue_job(
+        job = enqueue_job(
             supabase, 
             'url', 
             workspace_id, 
@@ -241,7 +295,7 @@ async def retry_knowledge_asset(
                 detail="Original text is not available for retry. Please add the text snippet again."
             )
 
-        enqueue_job(
+        job = enqueue_job(
             supabase, 
             'text', 
             workspace_id, 
@@ -261,7 +315,7 @@ async def retry_knowledge_asset(
             file_exists = True
 
         if file_exists:
-            enqueue_job(
+            job = enqueue_job(
                 supabase,
                 'pdf',
                 workspace_id,
@@ -281,6 +335,11 @@ async def retry_knowledge_asset(
         supabase.table("knowledge_assets").update({"status": "failed"}).eq("id", asset_id).execute()
         raise HTTPException(status_code=400, detail=f"Unsupported asset type '{asset_type}' for retry")
     
+    if not job:
+        _mark_asset_failed_safe(supabase, asset_id, f"Failed to enqueue retry job for {asset_type}.")
+        raise HTTPException(status_code=500, detail=f"Failed to queue background job for {asset_type} retry.")
+
+    supabase.table("knowledge_assets").update({"status": "queued"}).eq("id", asset_id).execute()
     return {"status": "retrying", "asset_id": asset_id}
 
 
@@ -467,6 +526,12 @@ def update_manual_synthesis(
         "buyer_personas": _coerce_list(payload.get("buyer_personas"))
     }
     supabase.table("knowledge_synthesis").upsert(upsert_data).execute()
+    # Layer 1 Paranoia: Invalidate in-memory executor brain cache
+    try:
+        from campaigns.backend.services.elein_executor import invalidate_brain_cache
+        invalidate_brain_cache(workspace_id)
+    except Exception as ie:
+        logger.warning(f"[KB] Brain cache invalidation failed on manual update: {ie}")
     return {"status": "success"}
 
 @router.post("/knowledge/upload/text", response_model=Optional[Dict])
@@ -482,8 +547,9 @@ async def add_knowledge_text(
     from core.backend.services.credit_service import TIER_LIMITS
     limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
     max_assets = limits.get("max_knowledge_assets", 3)
-    
-    current_count = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).execute().count or 0
+    # Paranoia Layer 1: Only count active/synced/processing assets towards quota; failed uploads must not block the user
+    count_res = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).neq("status", "failed").execute()
+    current_count = count_res.count if isinstance(getattr(count_res, "count", None), int) else (len(count_res.data) if isinstance(getattr(count_res, "data", None), list) else 0)
     if current_count >= max_assets:
         raise HTTPException(
             status_code=403,
@@ -504,12 +570,13 @@ async def add_knowledge_text(
     # LAYER 2 (Human Paranoia): Hash the text to prevent users from mashing 'Upload' 50 times
     text_hash = hashlib.md5(clean_text.encode()).hexdigest()
     # Check if a processing job for this exact text hash already exists in this workspace
-    existing = supabase.table("processing_jobs").select("*").eq("workspace_id", workspace_id).eq("job_type", "text_process").eq("status", "pending").execute()
-    for job in existing.data:
-        if job.get("payload", {}).get("hash") == text_hash:
+    existing = supabase.table("processing_jobs").select("*").eq("workspace_id", workspace_id).in_("job_type", ["text", "text_process"]).in_("status", ["pending", "processing"]).execute()
+    for job in (existing.data or []):
+        j_payload = job.get("payload") or {}
+        if isinstance(j_payload, dict) and j_payload.get("hash") == text_hash:
             # Found duplicate pending job, just return the existing asset
             existing_asset = supabase.table("knowledge_assets").select("*").eq("id", job.get("asset_id")).execute()
-            if existing_asset.data:
+            if existing_asset and isinstance(getattr(existing_asset, "data", None), list) and len(existing_asset.data) > 0:
                 return existing_asset.data[0]
 
     asset_id = str(uuid.uuid4())
@@ -532,13 +599,17 @@ async def add_knowledge_text(
         else:
             raise
     
-    enqueue_job(
+    job = enqueue_job(
         supabase, 
         'text', 
         workspace_id, 
         asset_id, 
-        {'name': payload.title, 'text': payload.text}
+        {'name': clean_title, 'text': clean_text, 'hash': text_hash}
     )
+    if not job:
+        _mark_asset_failed_safe(supabase, asset_id, "Failed to enqueue background processing job. Please try again.")
+        raise HTTPException(status_code=500, detail="Failed to enqueue text processing job. Please try again.")
+
     return {"status": "success", "asset": asset}
 
 @router.post("/knowledge/synthesis/approve")
@@ -582,6 +653,13 @@ async def approve_knowledge_synthesis(
     
     # Delete the draft
     supabase.table("knowledge_synthesis_drafts").delete().eq("workspace_id", workspace_id).execute()
+
+    # Layer 1 Paranoia: Invalidate in-memory executor brain cache
+    try:
+        from campaigns.backend.services.elein_executor import invalidate_brain_cache
+        invalidate_brain_cache(workspace_id)
+    except Exception as ie:
+        logger.warning(f"[KB] Brain cache invalidation failed on approval: {ie}")
     
     return {"status": "success", "message": "Synthesis approved and applied."}
 
@@ -599,18 +677,20 @@ async def get_objections(
     if not workspace_id:
         raise HTTPException(status_code=401, detail="Workspace context required")
     try:
-        res = supabase.table("knowledge_objections").select("*").eq("workspace_id", workspace_id).order("created_at", desc=False).execute()
-        # Frontend expects { id, name, rebuttal }
+        from admin.backend.services.persona_service import PersonaService
+        rows = PersonaService.get_objections(supabase, workspace_id)
+        # Frontend expects { id, name, rebuttal, created_at }
         formatted = []
-        for row in res.data:
+        for row in rows:
             formatted.append({
-                "id": row["id"],
-                "name": row["trigger"],
-                "rebuttal": row["playbook"],
-                "created_at": row["created_at"]
+                "id": row.get("id"),
+                "name": row.get("trigger") or row.get("name", ""),
+                "rebuttal": row.get("playbook") or row.get("rebuttal", ""),
+                "created_at": row.get("created_at")
             })
         return formatted
     except Exception as e:
+        logger.error(f"[KB] Failed to fetch objections: {e}")
         raise HTTPException(status_code=503, detail="Knowledge service temporarily unavailable")
 
 @router.post("/knowledge/objections")
@@ -631,17 +711,14 @@ async def create_objection(
         raise HTTPException(status_code=422, detail="Payload length limits exceeded")
 
     try:
-        existing = supabase.table("knowledge_objections").select("*").eq("workspace_id", workspace_id).eq("trigger", trigger_clean).maybe_single().execute()
-        if existing and existing.data:
-            return {"success": True, "objection": existing.data}
-            
-        res = supabase.table("knowledge_objections").insert({
-            "workspace_id": workspace_id,
+        from admin.backend.services.persona_service import PersonaService
+        created = PersonaService.create_objection(supabase, workspace_id, {
             "trigger": trigger_clean,
             "playbook": playbook_clean
-        }).execute()
-        return {"success": True, "objection": res.data[0] if res.data else None}
+        })
+        return {"success": True, "objection": created}
     except Exception as e:
+        logger.error(f"[KB] Failed to create objection: {e}")
         raise HTTPException(status_code=503, detail="Knowledge service temporarily unavailable")
 
 @router.put("/knowledge/objections/{objection_id}")
@@ -663,16 +740,18 @@ async def update_objection(
         raise HTTPException(status_code=422, detail="Payload length limits exceeded")
 
     try:
-        res = supabase.table("knowledge_objections").update({
+        from admin.backend.services.persona_service import PersonaService
+        updated = PersonaService.update_objection(supabase, workspace_id, objection_id, {
             "trigger": trigger_clean,
             "playbook": playbook_clean
-        }).eq("id", objection_id).eq("workspace_id", workspace_id).execute()
-        if not res.data:
+        })
+        if not updated:
             raise HTTPException(status_code=404, detail="Objection not found")
-        return {"success": True, "objection": res.data[0] if res.data else None}
+        return {"success": True, "objection": updated}
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"[KB] Failed to update objection {objection_id}: {e}")
         raise HTTPException(status_code=503, detail="Knowledge service temporarily unavailable")
 
 @router.delete("/knowledge/objections/{objection_id}")
@@ -684,74 +763,49 @@ async def delete_objection(
     if not workspace_id:
         raise HTTPException(status_code=401, detail="Workspace context required")
     try:
-        res = supabase.table("knowledge_objections").delete().eq("id", objection_id).eq("workspace_id", workspace_id).execute()
-        if not res.data:
+        from admin.backend.services.persona_service import PersonaService
+        deleted = PersonaService.delete_objection(supabase, workspace_id, objection_id)
+        if not deleted:
             raise HTTPException(status_code=404, detail="Objection not found")
         return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"[KB] Failed to delete objection {objection_id}: {e}")
         raise HTTPException(status_code=503, detail="Knowledge service temporarily unavailable")
 
 class TestObjectionRequest(BaseModel):
-    objection: str
+    objection: Optional[str] = None
+    message: Optional[str] = None
     
 @router.post("/knowledge/test-objection")
+@router.post("/knowledge/test-drive")
 async def test_objection(
     req: TestObjectionRequest,
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace)
 ):
-    from knowledge.backend.services.elein_ai_service import _run_llm_with_failover
+    """
+    Simulates how the AI will respond to a specific prospect message or objection
+    using the workspace's full 4-layer Knowledge Base, Personas, and Objections.
+    """
+    input_text = (req.message or req.objection or "").strip()
+    if not input_text:
+        return {
+            "response": "Please provide a prospect message or objection to test.",
+            "reply": "Please provide a prospect message or objection to test."
+        }
+
+    from knowledge.backend.services.elein_ai_service import generate_test_drive_response
     
-    # Layer 1 Paranoia: Fallback to draft if live synthesis is missing due to schema desync
-    synthesis = KnowledgeService.get_synthesis(supabase, workspace_id)
-    if not synthesis or not synthesis.get('key_differentiators'):
-        draft_res = supabase.table("knowledge_synthesis_drafts").select("*").eq("workspace_id", workspace_id).execute()
-        if draft_res.data:
-            synthesis = draft_res.data[0]
-            
-    if not synthesis:
-        raise HTTPException(status_code=400, detail="No synthesis available. Please seed the workspace first.")
-        
-    synthesis_layer = f"CORE VALUE PROP:\n{synthesis.get('core_value_prop', '')}\n\n"
-    if isinstance(synthesis.get('key_differentiators'), list):
-        diffs = [str(x).strip() for x in synthesis.get('key_differentiators', []) if x is not None and str(x).strip()]
-        if diffs:
-            synthesis_layer += f"KEY DIFFERENTIATORS:\n{', '.join(diffs)}\n\n"
-    elif synthesis.get('key_differentiators'):
-        synthesis_layer += f"KEY DIFFERENTIATORS:\n{str(synthesis.get('key_differentiators')).strip()}\n\n"
-
-    if isinstance(synthesis.get('proof_points'), list):
-        proofs = [str(x).strip() for x in synthesis.get('proof_points', []) if x is not None and str(x).strip()]
-        if proofs:
-            synthesis_layer += f"PROOF POINTS:\n{', '.join(proofs)}\n\n"
-    elif synthesis.get('proof_points'):
-        synthesis_layer += f"PROOF POINTS:\n{str(synthesis.get('proof_points')).strip()}\n\n"
-        
-    system_prompt = f"""You are an elite Sales Development Representative handling objections.
-
---- LAYER 1: WORKSPACE CONSTITUTION ---
-{synthesis_layer}
-
---- LAYER 2: EXECUTION RULES ---
-GOAL: Write exactly ONE concise paragraph to handle the objection.
-1. Acknowledge the objection professionally.
-2. Pivot using our specific key differentiators or proof points.
-3. Close with a soft question or call to action.
-DO NOT use generic boilerplate. Use the exact proof points provided in the constitution."""
-
-    user_prompt = f"LEAD OBJECTION:\n{req.objection}\n\nWrite the reply:"
-
     try:
-        reply = _run_llm_with_failover(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=300,
-            temperature=0.7,
-            task="generation",
-            workspace_id=workspace_id
+        response_text = await generate_test_drive_response(
+            supabase, workspace_id, message=input_text
         )
-        return {"reply": reply}
+        return {
+            "response": response_text,
+            "reply": response_text
+        }
     except Exception as e:
+        logger.error(f"[TestObjection] Test drive simulation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

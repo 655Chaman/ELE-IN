@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import logging
+import threading
 import requests
 import secrets
 import urllib.parse
@@ -285,6 +286,7 @@ def verify_webhook_signature(
     Paranoia Layer 1 & 2: Validates webhook authenticity and prevents replay attacks.
     - Constant-time HMAC comparison via hmac.compare_digest
     - Replay attack window bound (tolerance_seconds, default 300s = 5m)
+    - Strips common header prefixes (e.g. 'sha256=', 'v1=', 't=...,v1=...') safely.
     """
     if not secret or not signature or timestamp is None:
         return False
@@ -300,7 +302,24 @@ def verify_webhook_signature(
         
     try:
         _, expected_signature = generate_webhook_signature(payload, secret, timestamp_override=ts_int)
-        return hmac.compare_digest(str(signature), expected_signature)
+        
+        # Paranoia Layer 1 & 2: Support prefixed signatures ('sha256=...', 'v1=...', 't=...,v1=...')
+        sig_str = str(signature).strip()
+        candidates = [sig_str]
+        
+        if "=" in sig_str:
+            # Handle comma-separated key-value pairs (e.g., Stripe/Svix format 't=123,v1=abc')
+            parts = [p.strip() for p in sig_str.split(",")]
+            for p in parts:
+                if "=" in p:
+                    _, val = p.split("=", 1)
+                    candidates.append(val.strip())
+        
+        # Constant-time comparison across extracted candidates
+        for cand in candidates:
+            if hmac.compare_digest(cand, expected_signature):
+                return True
+        return False
     except Exception as e:
         logger.error(f"[Webhook] Signature verification error: {e}")
         return False
@@ -474,6 +493,17 @@ def test_webhook_endpoint(
         status_code = resp.status_code
         response_body = resp.text[:1000]
         success = 200 <= status_code < 300
+
+        # Honor Retry-After and 429 adaptive rate limits
+        if hasattr(resp, "headers"):
+            retry_after_hdr = resp.headers.get("Retry-After")
+            if retry_after_hdr:
+                try:
+                    record_endpoint_backpressure(endpoint_id, float(retry_after_hdr))
+                except (ValueError, TypeError):
+                    record_endpoint_backpressure(endpoint_id, 60.0)
+            elif status_code == 429:
+                record_endpoint_backpressure(endpoint_id, 60.0)
     except requests.Timeout:
         latency_ms = int((time.time() - start_time) * 1000)
         response_body = "Request timed out after 8.0 seconds."
@@ -595,6 +625,17 @@ def replay_webhook_delivery(
         status_code = resp.status_code
         response_body = resp.text[:1000]
         success = 200 <= status_code < 300
+
+        # Honor Retry-After and 429 adaptive rate limits
+        if hasattr(resp, "headers"):
+            retry_after_hdr = resp.headers.get("Retry-After")
+            if retry_after_hdr:
+                try:
+                    record_endpoint_backpressure(endpoint_id, float(retry_after_hdr))
+                except (ValueError, TypeError):
+                    record_endpoint_backpressure(endpoint_id, 60.0)
+            elif status_code == 429:
+                record_endpoint_backpressure(endpoint_id, 60.0)
     except requests.Timeout:
         latency_ms = int((time.time() - start_time) * 1000)
         response_body = "Request timed out after 8.0 seconds."
@@ -892,11 +933,39 @@ def get_dead_letter_queue(
         return {"status": "error", "data": [], "total_count": 0, "error": str(e)}
 
 
+# ─── ADAPTIVE ENDPOINT RATE-LIMIT BACKPRESSURE (PARANOIA LAYER 1 & 2) ───────────
+_ENDPOINT_BACKPRESSURE: Dict[str, float] = {}
+_BACKPRESSURE_LOCK = threading.Lock()
+
+def record_endpoint_backpressure(endpoint_id: str, retry_after_seconds: float):
+    """Dynamically register rate-limit backpressure received from external webhook recipient."""
+    if not endpoint_id or retry_after_seconds <= 0:
+        return
+    with _BACKPRESSURE_LOCK:
+        _ENDPOINT_BACKPRESSURE[str(endpoint_id)] = time.time() + retry_after_seconds
+        logger.info(f"[AdaptiveBackpressure] Endpoint {endpoint_id} throttled for {retry_after_seconds:.1f}s via provider feedback.")
+
+def get_endpoint_backpressure(endpoint_id: str) -> Optional[float]:
+    """Returns remaining backpressure duration in seconds, or None if clear."""
+    if not endpoint_id:
+        return None
+    with _BACKPRESSURE_LOCK:
+        until = _ENDPOINT_BACKPRESSURE.get(str(endpoint_id))
+        if until:
+            remaining = until - time.time()
+            if remaining > 0:
+                return remaining
+            else:
+                del _ENDPOINT_BACKPRESSURE[str(endpoint_id)]
+    return None
+
+
 def dispatch_webhook_delivery(
     delivery: Dict[str, Any],
     endpoint: Dict[str, Any],
     supabase: Optional[Any] = None,
-    max_retries: int = 5
+    max_retries: int = 5,
+    fence_token: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Paranoia Layer 0, 1 & 2: Executes a single webhook delivery with:
@@ -935,6 +1004,22 @@ def dispatch_webhook_delivery(
         except Exception:
             pass
         return {"status": "circuit_open", "delivery_id": delivery_id, "next_retry_at": next_retry}
+
+    # Adaptive Backpressure Check (Honor 429 & Retry-After)
+    remaining_backpressure = get_endpoint_backpressure(endpoint_id)
+    if remaining_backpressure is not None and remaining_backpressure > 0:
+        logger.info(f"[Webhook Dispatcher] Deferring endpoint {endpoint_id} due to active backpressure ({remaining_backpressure:.1f}s remaining).")
+        now_dt = datetime.now(timezone.utc)
+        next_retry = (now_dt + timedelta(seconds=max(5, int(remaining_backpressure)))).isoformat()
+        try:
+            client.table("webhook_deliveries").update({
+                "delivery_status": "pending",
+                "next_retry_at": next_retry,
+                "response_body": f"[Adaptive Backpressure active: waiting {remaining_backpressure:.1f}s]"
+            }).eq("id", delivery_id).execute()
+        except Exception:
+            pass
+        return {"status": "retry_scheduled", "delivery_id": delivery_id, "attempt_count": attempt_count, "next_retry_at": next_retry}
 
     # 2. SSRF Protection (Paranoia Layer 1)
     if not is_safe_ssrf_url(url):
@@ -992,6 +1077,17 @@ def dispatch_webhook_delivery(
         status_code = resp.status_code
         response_body = resp.text[:1000]
         success = 200 <= status_code < 300
+
+        # Honor Retry-After and 429 adaptive rate limits
+        if hasattr(resp, "headers"):
+            retry_after_hdr = resp.headers.get("Retry-After")
+            if retry_after_hdr:
+                try:
+                    record_endpoint_backpressure(endpoint_id, float(retry_after_hdr))
+                except (ValueError, TypeError):
+                    record_endpoint_backpressure(endpoint_id, 60.0)
+            elif status_code == 429:
+                record_endpoint_backpressure(endpoint_id, 60.0)
     except requests.Timeout:
         latency_ms = int((time.time() - start_time) * 1000)
         response_body = "Request timed out (3s connect / 10s read)."
@@ -1091,6 +1187,23 @@ def dispatch_pending_webhooks(batch_size: int = 50, supabase: Optional[Any] = No
         dead_lettered = 0
 
         for d in deliveries:
+            deliv_id = d["id"]
+            # Paranoia Layer 1 & 2: Monotonic Fencing Token & CAS Atomic Claim
+            # Guarantees single-dispatch execution across concurrent worker processes/pods
+            fence_token = f"fence_{deliv_id}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
+            try:
+                claim_res = client.table("webhook_deliveries").update({
+                    "delivery_status": "processing",
+                    "response_body": f"[Claimed with fence token {fence_token}]"
+                }).eq("id", deliv_id).in_("delivery_status", ["pending", "retrying"]).execute()
+
+                if claim_res and hasattr(claim_res, "data") and claim_res.data is not None:
+                    if len(claim_res.data) == 0:
+                        logger.debug(f"[Webhook Dispatcher] Delivery {deliv_id} already claimed by another worker. Skipping.")
+                        continue
+            except Exception as claim_err:
+                logger.debug(f"[Webhook Dispatcher] CAS claim check fallback for {deliv_id}: {claim_err}")
+
             ep = endpoints_map.get(d.get("endpoint_id"))
             if not ep or not ep.get("is_active"):
                 route_to_dead_letter(
@@ -1102,7 +1215,7 @@ def dispatch_pending_webhooks(batch_size: int = 50, supabase: Optional[Any] = No
                 dead_lettered += 1
                 continue
 
-            out = dispatch_webhook_delivery(delivery=d, endpoint=ep, supabase=client)
+            out = dispatch_webhook_delivery(delivery=d, endpoint=ep, supabase=client, fence_token=fence_token)
             st = out.get("status")
             if st == "success":
                 succeeded += 1

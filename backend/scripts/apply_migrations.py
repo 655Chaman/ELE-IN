@@ -151,7 +151,8 @@ ORDERED_MIGRATIONS = [
     "098_harden_rls_and_rpc.sql",
     "099_add_processing_to_outbox_event_status.sql",
     "100_leads_module_hardening.sql",
-    "cleanup_orphaned_leads.sql",
+    "101_leads_data_integrity_remediation.sql",
+    "102_leads_storage_and_schema_drift.sql",
     "rpc_claim_jobs.sql",
     "rpc_decrement_count.sql",
     "999_master_pending_sync.sql"

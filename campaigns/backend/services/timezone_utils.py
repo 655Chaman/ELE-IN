@@ -188,7 +188,7 @@ def calculate_next_run_at(base_time: datetime, target_tz: str, schedule: Optiona
 
     # Ensure base_time is UTC aware
     if base_time is None:
-        base_time = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        base_time = datetime.now(timezone.utc)
     elif base_time.tzinfo is None:
         base_time = pytz.UTC.localize(base_time)
     else:
@@ -294,7 +294,7 @@ def calculate_next_run_with_jitter(
       - Paranoia Layer 2: Safely handles weekend rollover: if Friday after 5:00 PM, rolls to Monday morning with jitter, NEVER Saturday or Sunday.
     """
     if base_time is None:
-        base_time = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        base_time = datetime.now(timezone.utc)
     elif base_time.tzinfo is None:
         base_time = pytz.UTC.localize(base_time)
     else:
@@ -392,7 +392,7 @@ def is_within_recipient_window(
     schedule = meta.get("schedule") or {}
 
     if now_dt is None:
-        now_utc = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        now_utc = datetime.now(timezone.utc)
     elif now_dt.tzinfo is None:
         now_utc = pytz.UTC.localize(now_dt)
     else:

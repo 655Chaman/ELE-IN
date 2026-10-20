@@ -45,6 +45,9 @@ class MutateVariantPayload(BaseModel):
     channel: Optional[str] = "linkedin"
     touchpoint_id: Optional[str] = None
     retire_parent: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    use_ai: Optional[bool] = False
+    ai_model: Optional[str] = None
 
 
 class EnrollTriggerPayload(BaseModel):
@@ -72,8 +75,12 @@ class IngestTriggerSignalPayload(BaseModel):
 class AddVariantPayload(BaseModel):
     campaign_id: Optional[str] = None
     name: str = Field(..., max_length=120, description="Descriptive angle name")
-    template_text: str = Field(..., max_length=2000, description="Outreach template copy")
+    template_text: Optional[str] = Field(default="", max_length=2000, description="Outreach template copy")
     arm_type: Optional[str] = "full_message"
+    banned_phrases: Optional[str] = None
+    use_ai: Optional[bool] = False
+    ai_model: Optional[str] = None
+    channel: Optional[str] = "linkedin"
 
 
 def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None):
@@ -201,7 +208,10 @@ def mutate_variant_endpoint(
             channel=payload.channel or "linkedin",
             touchpoint_id=payload.touchpoint_id,
             retire_parent=bool(payload.retire_parent),
-            supabase=supabase
+            supabase=supabase,
+            banned_phrases=payload.banned_phrases,
+            use_ai=bool(payload.use_ai),
+            ai_model=payload.ai_model,
         )
         return result
     except PermissionError as pe:
@@ -349,9 +359,13 @@ def add_custom_variant_endpoint(
             workspace_id=workspace_id,
             campaign_id=payload.campaign_id,
             name=payload.name,
-            template_text=payload.template_text,
+            template_text=payload.template_text or "",
             arm_type=payload.arm_type or "full_message",
-            supabase=supabase
+            supabase=supabase,
+            banned_phrases=payload.banned_phrases,
+            use_ai=bool(payload.use_ai),
+            ai_model=payload.ai_model,
+            channel=payload.channel or "linkedin",
         )
         return result
     except HTTPException:

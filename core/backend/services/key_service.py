@@ -11,14 +11,52 @@ KEYS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 
 def get_current_keys() -> dict[str, str]:
-    if not os.path.exists(KEYS_FILE):
-        return {}
-    try:
-        with open(KEYS_FILE) as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error("api_keys_read_error", error=str(e))
-        return {}
+    keys: dict[str, str] = {}
+    if os.path.exists(KEYS_FILE):
+        try:
+            with open(KEYS_FILE) as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    keys = dict(loaded)
+        except Exception as e:
+            logger.error("api_keys_read_error", error=str(e))
+
+    # Paranoia Layer 1: Environment variable fallback for missing or unconfigured keys
+    env_mappings = {
+        "api_key_openai": ["OPENAI_API_KEY"],
+        "api_key_nvidia": ["NVIDIA_API_KEY"],
+        "api_key_anthropic": ["ANTHROPIC_API_KEY"],
+        "api_key_gemini": ["GEMINI_API_KEY"],
+        "api_key_openrouter": ["OPENROUTER_API_KEY"],
+        "api_key_apify": ["APIFY_TOKEN", "APIFY_API_KEY"],
+        "api_key_mailsso": ["MAILSSO_KEY", "MAILSSO_API_KEY"],
+        "llm_provider": ["LLM_PROVIDER"],
+        "llm_model": ["LLM_MODEL"],
+    }
+
+    for key_name, env_vars in env_mappings.items():
+        if not keys.get(key_name):
+            for var in env_vars:
+                val = os.getenv(var)
+                if val:
+                    keys[key_name] = val.strip()
+                    break
+
+    # If api_key_llm is missing, resolve it from the active provider's key
+    if not keys.get("api_key_llm"):
+        provider = (keys.get("llm_provider") or "openai").lower()
+        provider_key_map = {
+            "openai": "api_key_openai",
+            "nvidia": "api_key_nvidia",
+            "anthropic": "api_key_anthropic",
+            "gemini": "api_key_gemini",
+            "openrouter": "api_key_openrouter",
+        }
+        active_key_attr = provider_key_map.get(provider, "api_key_openai")
+        if keys.get(active_key_attr):
+            keys["api_key_llm"] = keys[active_key_attr]
+
+    return keys
 
 def update_keys(keys_data: dict[str, str]) -> bool:
     try:

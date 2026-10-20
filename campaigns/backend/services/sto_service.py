@@ -23,24 +23,27 @@ def compute_lead_jitter_minutes(lead_id: Optional[str], min_jitter: int = 5, max
     Horizon 28: Anti-bot human pacing jitter.
     Layer 0 (Foundational): Computes deterministic pseudo-random minute offset from lead ID hash.
     Layer 1 (Environmental): Ensures spread between min_jitter and max_jitter to eliminate burst dispatch.
-    Layer 2 (Paranoia): Safely handles None or empty lead_id with standard fallback.
+    Layer 2 (Paranoia): Safely handles None or empty lead_id with standard fallback, and clamps numerical bounds.
     """
+    safe_min = max(1, min(60, int(min_jitter if min_jitter is not None else 5)))
+    safe_max = max(safe_min, min(60, int(max_jitter if max_jitter is not None else 25)))
     if not lead_id or not isinstance(lead_id, str):
-        return 12
+        return min(safe_max, max(safe_min, 12))
     try:
         h = int(hashlib.md5(f"sto_jitter_{lead_id}".encode("utf-8")).hexdigest(), 16)
-        span = max(1, max_jitter - min_jitter + 1)
-        return min_jitter + (h % span)
+        span = max(1, safe_max - safe_min + 1)
+        return safe_min + (h % span)
     except Exception as e:
         logger.debug(f"compute_lead_jitter_minutes hash fallback: {e}")
-        return 12
+        return min(safe_max, max(safe_min, 12))
 
 
 def compute_lead_sto_window(
     supabase=None,
     lead_id: Optional[str] = None,
     tz_str: str = "UTC",
-    schedule: Optional[dict] = None
+    schedule: Optional[dict] = None,
+    workspace_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Horizon 28: Prospect Activity-Aware Send-Time Optimization Analysis.
@@ -48,7 +51,8 @@ def compute_lead_sto_window(
                             Clusters events into hours of the day and finds peak engagement hour.
     Layer 1 (Environmental): Catches missing tables, database connection errors, and query timeouts.
                              Falls back to B2B Industry Prior distributions seamlessly.
-    Layer 2 (Paranoia): Bounds recommended hour to active working hours (start_hour <= hour < end_hour).
+    Layer 2 (Paranoia): Bounds recommended hour to active working hours (start_hour <= hour < end_hour)
+                        and scopes queries by workspace_id for multi-tenant isolation.
     """
     start_hour, end_hour, active_days = parse_schedule_config(schedule)
     valid_tz = tz_str if is_valid_iana_timezone(tz_str) else "UTC"
@@ -64,8 +68,10 @@ def compute_lead_sto_window(
     if supabase and lead_id:
         try:
             # 1. Query email engagement events (opens = 1.0, clicks = 2.0)
-            ev_res = supabase.table("email_events").select("created_at, event_type") \
-                .eq("lead_id", lead_id).in_("event_type", ["open", "click"]).limit(100).execute()
+            q = supabase.table("email_events").select("created_at, event_type").eq("lead_id", lead_id)
+            if workspace_id:
+                q = q.eq("workspace_id", workspace_id)
+            ev_res = q.in_("event_type", ["open", "click"]).limit(100).execute()
             if isinstance(ev_res.data, list):
                 for ev in ev_res.data:
                     dt_str = ev.get("created_at")
@@ -90,8 +96,10 @@ def compute_lead_sto_window(
 
         try:
             # 2. Query inbound messages (reply = 3.0 weight)
-            msg_res = supabase.table("messages").select("created_at") \
-                .eq("lead_id", lead_id).eq("direction", "inbound").limit(50).execute()
+            mq = supabase.table("messages").select("created_at").eq("lead_id", lead_id)
+            if workspace_id:
+                mq = mq.eq("workspace_id", workspace_id)
+            msg_res = mq.eq("direction", "inbound").limit(50).execute()
             if isinstance(msg_res.data, list):
                 for msg in msg_res.data:
                     dt_str = msg.get("created_at")
@@ -151,14 +159,16 @@ def calculate_sto_next_run(
     lead_id: Optional[str] = None,
     schedule: Optional[dict] = None,
     supabase=None,
-    min_gap_minutes: int = 15
+    min_gap_minutes: int = 15,
+    workspace_id: Optional[str] = None
 ) -> datetime:
     """
     Horizon 28: Calculates the optimal next run time using Send-Time Optimization.
     Layer 0 (Foundational): Computes best engagement hour + anti-bot jitter, targeting peak engagement.
     Layer 1 (Environmental): Localizes cleanly with safe_localize across DST shifts; enforces active days.
-    Layer 2 (Paranoia): Clamps to working window and ensures next_run is strictly in the future.
+    Layer 2 (Paranoia): Clamps to working window and ensures next_run is strictly in the future with bounded gap.
     """
+    safe_gap = max(1, min(1440, int(min_gap_minutes if min_gap_minutes is not None else 15)))
     valid_tz = target_tz if is_valid_iana_timezone(target_tz) else "UTC"
     try:
         tz = pytz.timezone(valid_tz)
@@ -167,7 +177,7 @@ def calculate_sto_next_run(
 
     # Ensure base_time is UTC-aware
     if base_time is None:
-        base_time = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        base_time = datetime.now(timezone.utc)
     elif base_time.tzinfo is None:
         base_time = pytz.UTC.localize(base_time)
     else:
@@ -177,9 +187,10 @@ def calculate_sto_next_run(
     start_hour, end_hour, active_days = parse_schedule_config(schedule)
 
     # 1. Compute lead STO window and anti-bot jitter
-    sto_info = compute_lead_sto_window(supabase=supabase, lead_id=lead_id, tz_str=valid_tz, schedule=schedule)
+    sto_info = compute_lead_sto_window(supabase=supabase, lead_id=lead_id, tz_str=valid_tz, schedule=schedule, workspace_id=workspace_id)
     best_hour = sto_info["best_hour"]
-    jitter_mins = compute_lead_jitter_minutes(lead_id)
+    # Layer 1 (Flaw 4.1): Distribute STO jitter across the full 2–55 min spectrum to eliminate burst clustering signatures
+    jitter_mins = compute_lead_jitter_minutes(lead_id, min_jitter=2, max_jitter=55)
 
     # 2. Clamp target minute so it never overflows past end_hour
     target_minute = jitter_mins
@@ -213,7 +224,7 @@ def calculate_sto_next_run(
     utc_target = localized_target.astimezone(pytz.UTC)
 
     # 5. Ensure minimum gap from base_time
-    min_required_time = base_time + timedelta(minutes=min_gap_minutes)
+    min_required_time = base_time + timedelta(minutes=safe_gap)
     if utc_target < min_required_time:
         # If target has passed or is too close, advance to next active day
         next_day = None

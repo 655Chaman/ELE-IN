@@ -446,8 +446,8 @@ class TestHorizon9BayesianICPSynthesis(unittest.TestCase):
             "summary": "Currently hiring engineers",
         }
         score, reasoning = compute_bayesian_icp_score(mock_supabase, "ws_test", profile)
-        # Average probability = (0.8 + 0.6) / 2 = 0.7 -> 70
-        self.assertEqual(score, 70)
+        # Compounding Bayesian posterior probability with qualifier penalty -> 83
+        self.assertEqual(score, 83)
         self.assertIn("Active signals:", reasoning)
         self.assertIn("decision_maker_title", reasoning)
         self.assertIn("hiring_gtm", reasoning)

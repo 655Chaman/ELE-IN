@@ -8,11 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 def sanitize_text(val: Optional[str]) -> str:
-    """Neutralizes spreadsheet formula injection (=, +, -, @, \t, \r)."""
+    """Neutralizes spreadsheet formula injection (=, +, -, @, \t, \r, %)."""
     if not val:
         return ""
     cleaned = str(val).strip()
-    while cleaned and cleaned[0] in ('=', '+', '-', '@', '\t', '\r'):
+    while cleaned and cleaned[0] in ('=', '+', '-', '@', '\t', '\r', '%'):
         cleaned = cleaned[1:].strip()
     return cleaned
 
@@ -24,7 +24,7 @@ def normalize_domain(domain: Optional[str]) -> str:
     d = str(domain).lower().strip()
     d = re.sub(r"^https?://", "", d)
     d = re.sub(r"^www\.", "", d)
-    return d.split("/")[0].split("?")[0].strip()
+    return d.split("/")[0].split("?")[0].split(":")[0].strip()
 
 
 # Paranoia Layer 1: In-memory fallback stores for zero-migration resilience
@@ -106,13 +106,21 @@ def calculate_daily_ramp_limit(current_day: int, strategy: str = "balanced", max
     Paranoia Layer 0 & 2: Calculates progressive daily warmup send limits based on ramp day.
     Caps volume strictly at 50/day to eliminate Google/Yahoo spam penalties.
     """
-    day = max(1, int(current_day or 1))
-    cap = min(50, max(10, int(max_limit or 40)))
+    try:
+        day = max(1, int(current_day or 1))
+    except (ValueError, TypeError):
+        day = 1
 
-    if strategy == "gentle":
+    try:
+        cap = min(50, max(10, int(max_limit if max_limit is not None else 40)))
+    except (ValueError, TypeError):
+        cap = 40
+
+    strat = str(strategy or "balanced").lower().strip()
+    if strat in ("gentle", "slow"):
         # Starts at 3, +1 every 2 days
         limit = 3 + (day // 2)
-    elif strategy == "aggressive":
+    elif strat in ("aggressive", "fast"):
         # Starts at 8, +3 every day
         limit = 8 + (day * 3)
     else:  # balanced (default)
@@ -243,15 +251,15 @@ def simulate_swarm_cycle(workspace_id: str, supabase: Optional[Any] = None) -> D
 
 def sanitize_csv_field(val: Any) -> str:
     """
-    Paranoia Layer 2: Neutralizes spreadsheet formula injection (=, +, -, @, \t, \r)
+    Paranoia Layer 2: Neutralizes spreadsheet formula injection (=, +, -, @, \t, \r, %)
     by prepending a single quote when exporting CSV cells, and escapes double quotes.
     """
     if val is None:
         return '""'
-    s = str(val).strip()
-    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
-        s = "'" + s
-    return f'"{s.replace(chr(34), chr(34) + chr(34))}"'
+    raw = str(val)
+    if raw and (raw[0] in ("=", "+", "-", "@", "\t", "\r", "%") or (raw.strip() and raw.strip()[0] in ("=", "+", "-", "@", "\t", "\r", "%"))):
+        raw = "'" + raw
+    return f'"{raw.replace(chr(34), chr(34) + chr(34))}"'
 
 
 def list_warmup_mailboxes(workspace_id: str, supabase: Optional[Any] = None) -> List[Dict[str, Any]]:
@@ -282,20 +290,34 @@ def create_warmup_mailbox(
 ) -> Dict[str, Any]:
     """Creates or updates a mailbox record in the warmup fleet with email deduplication."""
     clean_email = sanitize_text(email_address).lower()
+    if not clean_email or "@" not in clean_email or clean_email.startswith("@") or clean_email.endswith("@"):
+        raise ValueError("Valid email address is required (must contain '@' and domain).")
+
     clean_name = sanitize_text(sender_name) or clean_email.split("@")[0]
-    initial_daily_limit = calculate_daily_ramp_limit(1, ramp_strategy, max_daily_limit)
+    strat = str(ramp_strategy or "balanced").lower().strip()
+    safe_strat = strat if strat in ('gentle', 'balanced', 'aggressive') else 'balanced'
+
+    try:
+        safe_max = min(50, max(10, int(max_daily_limit if max_daily_limit is not None else 40)))
+    except (ValueError, TypeError):
+        safe_max = 40
+
+    initial_daily_limit = calculate_daily_ramp_limit(1, safe_strat, safe_max)
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    prov = str(provider or "google_workspace").lower().strip()
+    safe_prov = prov if prov in ('google_workspace', 'microsoft_365', 'smtp_imap', 'custom') else 'google_workspace'
 
     record = {
         "id": f"wm-{uuid.uuid4().hex[:8]}",
         "workspace_id": workspace_id,
         "email_address": clean_email,
         "sender_name": clean_name,
-        "provider": provider if provider in ('google_workspace', 'microsoft_365', 'smtp_imap', 'custom') else 'google_workspace',
+        "provider": safe_prov,
         "warmup_status": "warming",
-        "ramp_strategy": ramp_strategy if ramp_strategy in ('gentle', 'balanced', 'aggressive') else 'balanced',
+        "ramp_strategy": safe_strat,
         "current_daily_limit": initial_daily_limit,
-        "max_daily_limit": min(50, max(10, int(max_daily_limit or 40))),
+        "max_daily_limit": safe_max,
         "current_ramp_day": 1,
         "target_reply_rate_pct": 35,
         "inbox_placement_rate_pct": 98.5,
@@ -325,7 +347,8 @@ def create_warmup_mailbox(
 
 def toggle_warmup_status(mailbox_id: str, workspace_id: str, new_status: str, supabase: Optional[Any] = None) -> Dict[str, Any]:
     """Pauses, resumes, or sets cooling-down status on a mailbox with workspace_id isolation."""
-    status = new_status if new_status in ('warming', 'paused', 'graduated', 'cooling_down') else 'paused'
+    status_lower = str(new_status or "paused").lower().strip()
+    status = status_lower if status_lower in ('warming', 'paused', 'graduated', 'cooling_down') else 'paused'
 
     if supabase:
         try:

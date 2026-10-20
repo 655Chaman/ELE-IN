@@ -517,11 +517,15 @@ def generate_social_icebreaker(
         return f"Loved following your recent updates at {company_name}, {first_name}."
 
 
-def get_mock_social_posts_for_lead(lead_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def get_live_or_stored_social_posts(lead_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Returns empty list when no real posts exist, removing simulated activity fixtures.
+    Returns empty list when no real posts exist, guaranteeing zero mock/simulated fixtures.
     """
     return []
+
+
+# Backwards compatibility alias
+get_mock_social_posts_for_lead = get_live_or_stored_social_posts
 
 
 def scan_lead_social_feed(
@@ -575,8 +579,16 @@ def scan_lead_social_feed(
         except Exception as e:
             logger.warning(f"Error checking cooldown timestamp: {e}")
 
-    # 3. Obtain posts (either passed, or mock/voyager fallback)
-    posts = raw_posts if raw_posts is not None else get_mock_social_posts_for_lead(lead)
+    # 3. Obtain posts (either passed in, or fetched from stored lead_social_posts)
+    if raw_posts is not None:
+        posts = raw_posts
+    else:
+        try:
+            posts_res = supabase.table("lead_social_posts").select("*").eq("lead_id", lead_id).eq("workspace_id", workspace_id).execute()
+            posts = posts_res.data or []
+        except Exception as e:
+            logger.debug(f"Failed to query stored social posts for lead {lead_id}: {e}")
+            posts = []
 
     # 4. Extract signals and score
     signals = extract_intent_signals(posts)

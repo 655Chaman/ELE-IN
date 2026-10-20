@@ -116,6 +116,25 @@ class TestBYOKVaultHardening(unittest.TestCase):
         valid_ant = validate_byok_key("anthropic", "sk-ant-api03-validanthropickey12345678")
         self.assertEqual(valid_ant, "sk-ant-api03-validanthropickey12345678")
 
+    def test_secret_rotation_waterfall_decrypts_successfully(self):
+        """Layer 1: Decryption waterfalls across historical rotated secrets without failing."""
+        raw_key = "sk-proj-rotation-test-secret-1234567890"
+        with patch.dict(os.environ, {"BYOK_VAULT_SECRET": "secret_version_1", "BYOK_PREVIOUS_VAULT_SECRETS": ""}):
+            ciphertext = encrypt_byok_key(raw_key)
+
+        # Now rotate to secret_version_2, keeping secret_version_1 in previous secrets
+        with patch.dict(os.environ, {"BYOK_VAULT_SECRET": "secret_version_2", "BYOK_PREVIOUS_VAULT_SECRETS": "secret_version_1"}):
+            decrypted = decrypt_byok_key(ciphertext)
+            self.assertEqual(decrypted, raw_key)
+
+    def test_validate_byok_key_strips_quotes_and_bearer(self):
+        """Layer 2: Strips wrapping quotes and Bearer header copied from cURL."""
+        cleaned = validate_byok_key("openai", "'Bearer sk-proj-1234567890abcdef1234567890'")
+        self.assertEqual(cleaned, "sk-proj-1234567890abcdef1234567890")
+
+        cleaned_double = validate_byok_key("openai", '"sk-proj-1234567890abcdef1234567890"')
+        self.assertEqual(cleaned_double, "sk-proj-1234567890abcdef1234567890")
+
     # =========================================================================
     # Endpoint Integration Tests
     # =========================================================================

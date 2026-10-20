@@ -388,37 +388,70 @@ def approve_reply(
                 "resolved_at": now_iso
             }).eq("id", approval_id).execute()
             
+        approval_vars_update = {
+            "approved_ai_reply": final_message,
+            "approval_delivered_via_job": True,
+            "ai_reply_sent": True
+        }
+
         exec_state_id = item.get("execution_state_id")
         if exec_state_id:
+            st_vars = {}
+            try:
+                st_res = supabase.table("campaign_execution_states").select("variables").eq("id", exec_state_id).limit(1).execute()
+                if st_res.data and isinstance(st_res.data[0].get("variables"), dict):
+                    st_vars = dict(st_res.data[0]["variables"])
+            except Exception:
+                pass
+            st_vars.update(approval_vars_update)
             supabase.table("campaign_execution_states").update({
                 "status": "pending",
-                "next_run_at": now_iso
+                "next_run_at": now_iso,
+                "variables": st_vars
             }).eq("id", exec_state_id).execute()
         else:
+            target_exec_rows = []
             if item.get("enrollment_id"):
-                supabase.table("campaign_execution_states").update({
-                    "status": "pending",
-                    "next_run_at": now_iso
-                }).eq("enrollment_id", item["enrollment_id"]).eq("status", "awaiting_approval").execute()
+                try:
+                    q_res = supabase.table("campaign_execution_states").select("id, variables").eq("enrollment_id", item["enrollment_id"]).eq("status", "awaiting_approval").execute()
+                    target_exec_rows = q_res.data or []
+                except Exception:
+                    pass
             elif item.get("lead_id"):
-                enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", item["lead_id"]).execute()
-                enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict)]
-                if enr_ids:
-                    supabase.table("campaign_execution_states").update({
-                        "status": "pending",
-                        "next_run_at": now_iso
-                    }).in_("enrollment_id", enr_ids).eq("status", "awaiting_approval").execute()
-            elif item.get("account_id") and item.get("sender_name"):
-                msg_res = supabase.table("messages").select("lead_id").eq("account_id", item["account_id"]).eq("sender_name", item["sender_name"]).not_.is_("lead_id", "null").limit(1).execute()
-                if isinstance(msg_res.data, list) and len(msg_res.data) > 0 and isinstance(msg_res.data[0], dict) and msg_res.data[0].get("lead_id"):
-                    lead_id = msg_res.data[0]["lead_id"]
-                    enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+                try:
+                    enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", item["lead_id"]).execute()
                     enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict)]
                     if enr_ids:
+                        q_res = supabase.table("campaign_execution_states").select("id, variables").in_("enrollment_id", enr_ids).eq("status", "awaiting_approval").execute()
+                        target_exec_rows = q_res.data or []
+                except Exception:
+                    pass
+            elif item.get("account_id") and item.get("sender_name"):
+                try:
+                    msg_res = supabase.table("messages").select("lead_id").eq("account_id", item["account_id"]).eq("sender_name", item["sender_name"]).not_.is_("lead_id", "null").limit(1).execute()
+                    if isinstance(msg_res.data, list) and len(msg_res.data) > 0 and isinstance(msg_res.data[0], dict) and msg_res.data[0].get("lead_id"):
+                        lead_id = msg_res.data[0]["lead_id"]
+                        enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+                        enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict)]
+                        if enr_ids:
+                            q_res = supabase.table("campaign_execution_states").select("id, variables").in_("enrollment_id", enr_ids).eq("status", "awaiting_approval").execute()
+                            target_exec_rows = q_res.data or []
+                except Exception:
+                    pass
+
+            for tgt in target_exec_rows:
+                t_id = tgt.get("id")
+                if t_id:
+                    t_vars = dict(tgt.get("variables") or {}) if isinstance(tgt.get("variables"), dict) else {}
+                    t_vars.update(approval_vars_update)
+                    try:
                         supabase.table("campaign_execution_states").update({
                             "status": "pending",
-                            "next_run_at": now_iso
-                        }).in_("enrollment_id", enr_ids).eq("status", "awaiting_approval").execute()
+                            "next_run_at": now_iso,
+                            "variables": t_vars
+                        }).eq("id", t_id).execute()
+                    except Exception:
+                        pass
         
         return {"status": "success", "message": "Reply approved and queued for delivery"}
     except HTTPException:

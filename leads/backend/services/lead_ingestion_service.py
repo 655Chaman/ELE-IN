@@ -264,24 +264,6 @@ def execute_bulk_import_leads(
                 processed_lead["is_disposable"] = False
                 processed_lead["deliverability_risk"] = "SAFE"
 
-        # Paranoia Layer 1 & 2: Suppression list pre-flight check (DNC / Unsubscribe / Competitor Domains)
-        if processed_lead.get("status") != "QUARANTINED" and (norm_url or email or lead_domain):
-            try:
-                from leads.backend.services.suppression_service import check_lead_suppression
-                # When check_lead_suppression is mocked in unit tests, invoke it to honor pre-flight quarantine assertions
-                if hasattr(check_lead_suppression, "mock_calls") or getattr(check_lead_suppression, "_mock_self", None) is not None:
-                    supp_res = check_lead_suppression(
-                        supabase=supabase,
-                        workspace_id=workspace_id,
-                        linkedin_url=norm_url,
-                        email=email,
-                        domain=lead_domain
-                    )
-                    if isinstance(supp_res, dict) and supp_res.get("suppressed"):
-                        processed_lead["status"] = "QUARANTINED"
-                        processed_lead["quarantine_reason"] = f"SUPPRESSION_LIST_MATCH ({supp_res.get('matched_by')}: {supp_res.get('matched_value')})"
-            except Exception as supp_err:
-                logger.debug(f"[LeadIngest] Suppression check skipped or errored: {supp_err}")
 
         deduped_leads.append(processed_lead)
 
@@ -497,6 +479,7 @@ def execute_bulk_import_leads(
                         if lead.get("company_name"): update_payload["company_name"] = lead["company_name"]
                         if lead.get("job_title"): update_payload["job_title"] = lead["job_title"]
                         if lead.get("location"): update_payload["location"] = lead["location"]
+                        if lead.get("domain"): update_payload["domain"] = lead["domain"]
                         if lead.get("timezone"): update_payload["timezone"] = lead["timezone"]
                         if "is_open_profile" in lead: update_payload["is_open_profile"] = lead["is_open_profile"]
                         if lead.get("status"): update_payload["status"] = lead["status"]
@@ -505,6 +488,13 @@ def execute_bulk_import_leads(
                         if lead.get("is_role_based") is not None: update_payload["is_role_based"] = lead["is_role_based"]
                         if lead.get("is_disposable") is not None: update_payload["is_disposable"] = lead["is_disposable"]
                         if lead.get("deliverability_risk"): update_payload["deliverability_risk"] = lead["deliverability_risk"]
+
+                        # Paranoia Layer 1 & 2: Bidirectional contact enrichment
+                        existing_match = existing_leads_map.get(str(eid))
+                        if lead.get("email") and not (existing_match and existing_match.get("email")):
+                            update_payload["email"] = lead["email"]
+                        if lead.get("norm_url") and not (existing_match and existing_match.get("linkedin_url")):
+                            update_payload["linkedin_url"] = lead["norm_url"]
 
                         # Paranoia Layer 1 & 2: Non-destructive metadata and custom_variables merging
                         existing_match = existing_leads_map.get(str(eid))

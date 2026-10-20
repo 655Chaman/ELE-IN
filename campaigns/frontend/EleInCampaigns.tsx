@@ -36,13 +36,14 @@ const STATUS_CONFIG: Record<string, any> = {
   ACTIVE: { label: "Active", dot: "bg-success", text: "text-success", badgeBg: "bg-success/10 border-success/20" },
   PAUSED: { label: "Paused", dot: "bg-warning", text: "text-warning", badgeBg: "bg-warning/10 border-warning/20" },
   DRAFT: { label: "Draft", dot: "bg-muted-foreground", text: "text-muted-foreground", badgeBg: "bg-muted border-border/50" },
+  COMPLETED: { label: "Completed", dot: "bg-indigo-500", text: "text-indigo-600 dark:text-indigo-400", badgeBg: "bg-indigo-500/10 border-indigo-500/20" },
 }
 
 export interface Campaign {
   id: string
   name: string
   description?: string
-  status: "ACTIVE" | "PAUSED" | "DRAFT" | string
+  status: "ACTIVE" | "PAUSED" | "DRAFT" | "COMPLETED" | string
   sent?: number
   accepted?: number
   replies?: number
@@ -83,8 +84,20 @@ export function EleInCampaigns() {
 
   // ─── Filter & Search State ───
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED' | 'DRAFT'>('ALL')
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED' | 'DRAFT' | 'COMPLETED'>('ALL')
   const [sortBy, setSortBy] = useState<'created_desc' | 'created_asc' | 'leads_desc' | 'conversion_desc' | 'name_asc'>('created_desc')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 15
+
+  // 200ms debounced search to eliminate keystroke jank
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [search])
 
   // ─── Draft State ───
   const [draftExists, setDraftExists] = useState(false)
@@ -101,6 +114,18 @@ export function EleInCampaigns() {
 
   // ─── Modals State ───
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null)
+
+  // Layer 2 Human Paranoia: Escape key dismissal for confirmation modal
+  useEffect(() => {
+    if (!confirmModal || !confirmModal.isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setConfirmModal(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [confirmModal?.isOpen]);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [preflightCampaign, setPreflightCampaign] = useState<{ id: string; name: string } | null>(null)
   const [selectedCertCampaign, setSelectedCertCampaign] = useState<{ id: string; name: string } | null>(null)
@@ -253,11 +278,12 @@ export function EleInCampaigns() {
 
   // ─── Status Counts ───
   const statusCounts = useMemo(() => {
-    const counts = { ALL: campaigns.length, ACTIVE: 0, PAUSED: 0, DRAFT: 0 };
+    const counts = { ALL: campaigns.length, ACTIVE: 0, PAUSED: 0, DRAFT: 0, COMPLETED: 0 };
     campaigns.forEach(c => {
       if (c.status === 'ACTIVE') counts.ACTIVE++;
       else if (c.status === 'PAUSED') counts.PAUSED++;
-      else if (c.status === 'DRAFT') counts.DRAFT++;
+      else if (c.status === 'COMPLETED') counts.COMPLETED++;
+      else counts.DRAFT++;
     });
     return counts;
   }, [campaigns]);
@@ -314,10 +340,12 @@ export function EleInCampaigns() {
 
   // ─── Filter & Sort ───
   const filtered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
     const result = campaigns.filter(c => {
       const matchesSearch = 
-        (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
-        (c.description || "").toLowerCase().includes(search.toLowerCase());
+        !q ||
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q);
       const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -342,7 +370,13 @@ export function EleInCampaigns() {
     });
 
     return result;
-  }, [campaigns, search, statusFilter, sortBy]);
+  }, [campaigns, debouncedSearch, statusFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginatedCampaigns = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page]);
 
   // ─── Single Campaign Toggle ───
   const executeToggleStatus = async (id: string, action: 'activate' | 'pause') => {
@@ -877,13 +911,18 @@ export function EleInCampaigns() {
                 { key: 'ACTIVE', label: 'Active', count: statusCounts.ACTIVE, dot: 'bg-success' },
                 { key: 'PAUSED', label: 'Paused', count: statusCounts.PAUSED, dot: 'bg-warning' },
                 { key: 'DRAFT', label: 'Drafts', count: statusCounts.DRAFT, dot: 'bg-muted-foreground' },
+                { key: 'COMPLETED', label: 'Completed', count: statusCounts.COMPLETED, dot: 'bg-indigo-500' },
               ].map(tab => {
                 const isActive = statusFilter === tab.key;
                 return (
                   <button
                     type="button"
                     key={tab.key}
-                    onClick={() => setStatusFilter(tab.key as any)}
+                    onClick={() => {
+                      setStatusFilter(tab.key as any)
+                      setSelectedIds(new Set())
+                      setPage(1)
+                    }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border cursor-pointer ${
                       isActive
                         ? 'bg-muted border-border text-foreground'
@@ -1053,12 +1092,12 @@ export function EleInCampaigns() {
                       </tr>
                     </thead>
                   <tbody className="divide-y divide-border">
-                    {filtered.map((c) => {
+                    {paginatedCampaigns.map((c) => {
                       const statusCfg = STATUS_CONFIG[c.status] || STATUS_CONFIG["DRAFT"]
                       const isSelected = selectedIds.has(c.id)
                       const hasZeroSenders = c.status === 'ACTIVE' && (!c.senders || c.senders.length === 0)
                       const dateStr = c.created_at 
-                        ? new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+                        ? new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) 
                         : "Recently"
 
                       const sc = scorecardMap.get(c.id) || {}
@@ -1300,6 +1339,38 @@ export function EleInCampaigns() {
                     })}
                   </tbody>
                 </table>
+                {filtered.length > PAGE_SIZE && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3.5 border-t border-border bg-card/50 text-xs text-muted-foreground">
+                    <div>
+                      Showing <span className="font-semibold text-foreground">{(page - 1) * PAGE_SIZE + 1}</span> to{" "}
+                      <span className="font-semibold text-foreground">{Math.min(page * PAGE_SIZE, filtered.length)}</span> of{" "}
+                      <span className="font-semibold text-foreground">{filtered.length}</span> campaigns
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1 cursor-pointer"
+                      >
+                        <ChevronLeft size={13} />
+                        <span>Previous</span>
+                      </button>
+                      <span className="px-2 font-medium">
+                        Page {page} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Next</span>
+                        <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1339,6 +1410,9 @@ export function EleInCampaigns() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setConfirmModal(null)
+            }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs"
           >
             <motion.div

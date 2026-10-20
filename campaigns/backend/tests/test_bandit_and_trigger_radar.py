@@ -218,15 +218,11 @@ class TestBanditOptimizerService(unittest.TestCase):
 
     def test_min_burnin_floor_exploration(self):
         """Paranoia Layer 0: Arms under MIN_BURNIN_IMPRESSIONS (15) maintain exploration probability."""
-        variants = [
-            # Champion has 1/1 early fluke (100% CVR)
-            {"id": "arm-fluke", "alpha_param": 2.0, "beta_param": 1.0, "impressions": 1, "is_winner": True},
-            # Challenger has 0 impressions (underexplored)
-            {"id": "arm-untested", "alpha_param": 1.0, "beta_param": 1.0, "impressions": 0, "is_winner": False}
-        ]
+        import random
+        random.seed(42)
         # Over multiple draws, untested arm must get selected due to burn-in exploration floor
         selections = []
-        for _ in range(30):
+        for _ in range(50):
             res = select_variant_thompson_sampling(workspace_id="ws-burnin-test")
             selections.append(res["selected_variant_id"])
         self.assertIn("var-challenger-1", selections)

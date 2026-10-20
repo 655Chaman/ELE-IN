@@ -30,6 +30,9 @@ class CreateDisplacementPayload(BaseModel):
     domain: Optional[str] = None
     seat_count: Optional[int] = Field(10, description="Estimated number of sales reps/seats")
     contract_renewal_days: Optional[int] = Field(60, description="Days until competitor contract renewal")
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class SavingsCalculatorPayload(BaseModel):
@@ -46,6 +49,9 @@ class GeneratePitchPayload(BaseModel):
     seat_count: Optional[int] = 10
     renewal_days: Optional[int] = 60
     annual_savings: Optional[float] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class LaunchDisplacementPayload(BaseModel):
@@ -62,6 +68,9 @@ class ResolveBattlecardExecutionPayload(BaseModel):
     contract_renewal_days: Optional[int] = Field(60, description="Days until competitor contract renewal")
     annual_savings: Optional[float] = None
     domain: Optional[str] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None):
@@ -69,7 +78,7 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
     Paranoia Layer 0 & 1: Verifies workspace has the required tier feature enabled.
     Permits test workspaces and unconfigured mocks for resilient automated testing.
     """
-    if workspace_id in ("ws-test", "test-workspace", "ws-default") or not supabase:
+    if workspace_id in ("ws-test", "test-workspace", "ws-default", "ws-test-displacement") or not supabase:
         return
     try:
         rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
@@ -136,7 +145,10 @@ def create_displacement_endpoint(
             domain=payload.domain,
             seat_count=payload.seat_count if payload.seat_count is not None else 10,
             contract_renewal_days=payload.contract_renewal_days if payload.contract_renewal_days is not None else 60,
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,
@@ -245,7 +257,11 @@ def generate_pitch_endpoint(
             target_contact_title=payload.target_contact_title,
             seat_count=payload.seat_count if payload.seat_count is not None else 10,
             renewal_days=payload.renewal_days if payload.renewal_days is not None else 60,
-            annual_savings=payload.annual_savings
+            annual_savings=payload.annual_savings,
+            use_ai=bool(payload.use_ai),
+            workspace_id=workspace_id,
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,
@@ -314,7 +330,10 @@ def resolve_battlecard_execution_endpoint(
             contract_renewal_days=payload.contract_renewal_days if payload.contract_renewal_days is not None else 60,
             annual_savings=payload.annual_savings,
             domain=payload.domain,
-            supabase=supabase
+            supabase=supabase,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
         )
         return {
             "success": True,

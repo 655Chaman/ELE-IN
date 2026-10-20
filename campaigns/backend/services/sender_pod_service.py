@@ -6,6 +6,7 @@ thread affinity locks, and autonomous fleet failover.
 Rigorously designed under the Three-Layer Logic Architecture (Paranoia Framework).
 """
 
+import math
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, Tuple
@@ -32,8 +33,13 @@ def _get_utc_now() -> datetime:
 
 def _is_account_quarantined(account: Dict[str, Any]) -> bool:
     """Checks if an account is currently quarantined or in cooling down period."""
-    if account.get("status") in ["QUARANTINED", "COOLING_DOWN", "RESTRICTED", "DISCONNECTED"]:
+    if not isinstance(account, dict):
+        return False
+
+    status = account.get("status")
+    if status in ["RESTRICTED", "DISCONNECTED"]:
         return True
+
     quarantined_until = account.get("quarantined_until")
     if quarantined_until:
         try:
@@ -43,8 +49,15 @@ def _is_account_quarantined(account: Dict[str, Any]) -> bool:
                 until_dt = quarantined_until
             if until_dt > _get_utc_now():
                 return True
+            else:
+                # Cooldown period has elapsed!
+                return False
         except Exception as e:
             logger.warning(f"Error parsing quarantined_until date: {e}")
+
+    if status in ["QUARANTINED", "COOLING_DOWN"]:
+        return True
+
     return False
 
 
@@ -67,18 +80,33 @@ def _calculate_account_action_capacity(
     limits_spec = DEFAULT_LIMITS.get(action_type, {"mature": 35, "warmup": 20})
     if is_warmup:
         if action_type == "connection_request":
-            max_limit = account.get("warmup_max_connections") or limits_spec["warmup"]
+            raw_limit = account.get("warmup_max_connections")
+            max_limit = raw_limit if raw_limit is not None else limits_spec["warmup"]
         elif action_type == "message":
-            max_limit = account.get("warmup_max_messages") or limits_spec["warmup"]
+            raw_limit = account.get("warmup_max_messages")
+            max_limit = raw_limit if raw_limit is not None else limits_spec["warmup"]
+        elif action_type == "inmail":
+            raw_limit = account.get("warmup_max_inmails")
+            max_limit = raw_limit if raw_limit is not None else limits_spec["warmup"]
         else:
             max_limit = limits_spec["warmup"]
     else:
         if action_type == "connection_request":
-            max_limit = account.get("daily_connection_limit") or limits_spec["mature"]
+            raw_limit = account.get("daily_connection_limit")
+            max_limit = raw_limit if raw_limit is not None else limits_spec["mature"]
         elif action_type == "message":
-            max_limit = account.get("daily_message_limit") or limits_spec["mature"]
+            raw_limit = account.get("daily_message_limit")
+            max_limit = raw_limit if raw_limit is not None else limits_spec["mature"]
+        elif action_type == "inmail":
+            raw_limit = account.get("daily_inmail_limit")
+            max_limit = raw_limit if raw_limit is not None else limits_spec["mature"]
         else:
             max_limit = limits_spec["mature"]
+
+    try:
+        max_limit_int = max(0, int(max_limit))
+    except (ValueError, TypeError):
+        max_limit_int = limits_spec.get("warmup" if is_warmup else "mature", 35)
 
     # Layer 1 Paranoia (ENG-10): Determine usage date by account's local timezone
     acc_tz = account.get("timezone")
@@ -98,11 +126,11 @@ def _calculate_account_action_capacity(
     except Exception as ex:
         logger.warning(f"Failed to query account_daily_action_counts for {account_id}: {ex}")
 
-    remaining = max(0, int(max_limit) - consumed)
-    utilization_pct = round((consumed / int(max_limit)) * 100, 1) if max_limit > 0 else 100.0
+    remaining = max(0, max_limit_int - consumed)
+    utilization_pct = round((consumed / max_limit_int) * 100, 1) if max_limit_int > 0 else 100.0
 
     return {
-        "daily_limit": int(max_limit),
+        "daily_limit": max_limit_int,
         "consumed_today": consumed,
         "remaining_headroom": remaining,
         "utilization_pct": utilization_pct,
@@ -363,11 +391,18 @@ def select_pod_sender(
                 if initiating_acc_id not in exclude_set:
                     # Fetch initiating account status
                     acc_res = supabase.table("accounts") \
-                        .select("id, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason") \
+                        .select("id, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, workspace_id, timezone") \
                         .eq("id", initiating_acc_id) \
                         .execute()
                     if acc_res.data:
                         init_acc = acc_res.data[0]
+                        # Verify tenant isolation for initiating account
+                        if workspace_id and init_acc.get("workspace_id") and str(init_acc["workspace_id"]).strip() != str(workspace_id).strip():
+                            return {
+                                "account_id": None,
+                                "status": "UNAUTHORIZED_WORKSPACE",
+                                "message": "Initiating account belongs to another workspace."
+                            }
                         if not _is_account_quarantined(init_acc):
                             # Check capacity
                             cap = _calculate_account_action_capacity(init_acc, action_type, supabase, effective_date)
@@ -432,10 +467,18 @@ def select_pod_sender(
 
     # Fetch candidate accounts
     candidates_res = supabase.table("accounts") \
-        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, timezone") \
+        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, timezone, workspace_id") \
         .in_("id", account_ids) \
         .execute()
     candidate_accounts = candidates_res.data or []
+
+    # Enforce workspace isolation on candidate accounts
+    if workspace_id:
+        clean_ws = str(workspace_id).strip()
+        candidate_accounts = [
+            acc for acc in candidate_accounts
+            if not acc.get("workspace_id") or str(acc.get("workspace_id")).strip() == clean_ws
+        ]
 
     # Filter out quarantined, degraded, or ineligible accounts
     healthy_candidates = []
@@ -457,7 +500,17 @@ def select_pod_sender(
 
     # Evaluate capacity headroom for each healthy candidate
     scored_candidates = []
-    weight_map = {l["account_id"]: l.get("weight", 100) for l in assigned_links}
+    weight_map = {}
+    for l in assigned_links:
+        if isinstance(l, dict) and l.get("account_id"):
+            raw_w = l.get("weight")
+            try:
+                w_val = float(raw_w) if raw_w is not None else 100.0
+                if w_val < 0 or math.isnan(w_val):
+                    w_val = 100.0
+            except (ValueError, TypeError):
+                w_val = 100.0
+            weight_map[l["account_id"]] = w_val
 
     for acc in healthy_candidates:
         cap = _calculate_account_action_capacity(acc, action_type, supabase, effective_date)
@@ -465,7 +518,7 @@ def select_pod_sender(
             scored_candidates.append({
                 "account": acc,
                 "capacity": cap,
-                "weight": weight_map.get(acc["id"], 100)
+                "weight": weight_map.get(acc["id"], 100.0)
             })
 
     # Layer 1 Paranoia: What if all accounts reached limit for today?
@@ -481,21 +534,23 @@ def select_pod_sender(
     # Strategy Dispatching
     # =========================================================================
     selected = None
-    strategy_upper = (strategy or "CAPACITY_WEIGHTED").upper()
+    strategy_upper = str(strategy or "CAPACITY_WEIGHTED").upper().replace("-", "_").strip()
+    if strategy_upper not in DISPATCH_STRATEGIES:
+        strategy_upper = "CAPACITY_WEIGHTED"
 
     if strategy_upper == "ROUND_ROBIN":
         # Sort by least consumed today, then by weight
-        scored_candidates.sort(key=lambda x: (x["capacity"]["consumed_today"], -x["weight"]))
+        scored_candidates.sort(key=lambda x: (x["capacity"]["consumed_today"], -float(x.get("weight", 100.0))))
         selected = scored_candidates[0]
 
     elif strategy_upper == "WARMUP_CONSTRAINED":
         # Separate mature vs warmup accounts. Prioritize mature accounts with headroom
         mature_candidates = [c for c in scored_candidates if not c["capacity"]["is_warmup"]]
         if mature_candidates:
-            mature_candidates.sort(key=lambda x: (-x["capacity"]["remaining_headroom"], -x["weight"]))
+            mature_candidates.sort(key=lambda x: (-x["capacity"]["remaining_headroom"], -float(x.get("weight", 100.0))))
             selected = mature_candidates[0]
         else:
-            scored_candidates.sort(key=lambda x: (-x["capacity"]["remaining_headroom"], -x["weight"]))
+            scored_candidates.sort(key=lambda x: (-x["capacity"]["remaining_headroom"], -float(x.get("weight", 100.0))))
             selected = scored_candidates[0]
 
     else:
@@ -503,7 +558,7 @@ def select_pod_sender(
         # Highest remaining headroom * (weight / 100)
         scored_candidates.sort(
             key=lambda x: (
-                -(x["capacity"]["remaining_headroom"] * (x["weight"] / 100.0)),
+                -(x["capacity"]["remaining_headroom"] * (float(x.get("weight", 100.0)) / 100.0)),
                 x["capacity"]["utilization_pct"]
             )
         )
@@ -669,24 +724,39 @@ def trigger_pod_failover(
         # 4. Enqueue in-app alert notification
         try:
             supabase.table("outbox_events").insert({
-                "workspace_id": workspace_id,
+                "workspace_id": clean_ws,
                 "event_type": "notification.in_app",
                 "payload": {
                     "title": "Sender Pod Failover Triggered",
-                    "message": f"Account {failed_account_id[:8]} quarantined ({failure_reason}). Reassigned {reassigned_count} leads to backup sender {backup_account_id[:8]}.",
-                    "campaign_id": campaign_id,
+                    "message": f"Account {clean_aid[:8]} quarantined ({failure_reason}). Reassigned {reassigned_count} leads to backup sender {backup_account_id[:8]}.",
+                    "campaign_id": clean_cid,
                     "severity": "warning"
                 }
             }).execute()
         except Exception as ex:
             logger.warning(f"Failed to queue outbox event during failover: {ex}")
+    else:
+        # Layer 1 Paranoia: No backup senders available! Emit critical alert
+        try:
+            supabase.table("outbox_events").insert({
+                "workspace_id": clean_ws,
+                "event_type": "notification.in_app",
+                "payload": {
+                    "title": "Sender Pod Failover Exhausted - All Senders Offline",
+                    "message": f"Account {clean_aid[:8]} quarantined ({failure_reason}), but no healthy backup senders remain in pod for campaign {clean_cid[:8]}. Pod dispatches halted.",
+                    "campaign_id": clean_cid,
+                    "severity": "critical"
+                }
+            }).execute()
+        except Exception as ex:
+            logger.warning(f"Failed to queue outbox event during failover exhaustion: {ex}")
 
     # 5. Record audit trail
     try:
         supabase.table("sender_pod_audit_logs").insert({
-            "workspace_id": workspace_id,
-            "campaign_id": campaign_id,
-            "account_id": failed_account_id,
+            "workspace_id": clean_ws,
+            "campaign_id": clean_cid,
+            "account_id": clean_aid,
             "event_type": "FAILOVER",
             "details": {
                 "failure_reason": failure_reason,
@@ -699,7 +769,7 @@ def trigger_pod_failover(
 
     return {
         "status": "FAILOVER_EXECUTED" if backup_account_id else "FAILOVER_EXHAUSTED",
-        "failed_account_id": failed_account_id,
+        "failed_account_id": clean_aid,
         "backup_account_id": backup_account_id,
         "reassigned_count": reassigned_count,
         "quarantined_until": quarantine_until,
@@ -717,35 +787,49 @@ def quarantine_sender_account(
     """
     Layer 1: Explicitly isolates a sender account from all pod rotations.
     """
-    quarantine_until = (_get_utc_now() + timedelta(hours=hours)).isoformat()
+    clean_aid = str(account_id or "").strip()
+    clean_ws = str(workspace_id or "").strip()
+    if not clean_aid or not clean_ws:
+        return {
+            "account_id": clean_aid,
+            "status": "ERROR",
+            "message": "Missing account_id or workspace_id"
+        }
+
+    try:
+        hours_int = max(1, min(168, int(hours if hours is not None else 24)))
+    except (ValueError, TypeError):
+        hours_int = 24
+
+    quarantine_until = (_get_utc_now() + timedelta(hours=hours_int)).isoformat()
     try:
         supabase.table("accounts").update({
             "status": "QUARANTINED",
             "quarantined_until": quarantine_until,
             "quarantine_reason": reason,
             "status_changed_at": _get_utc_now().isoformat()
-        }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+        }).eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
     except Exception as ex:
         logger.warning(f"Failed to update accounts with quarantine columns: {ex}")
         try:
             supabase.table("accounts").update({
                 "status": "QUARANTINED"
-            }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            }).eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
         except Exception as ex2:
             logger.error(f"Failed fallback account status update: {ex2}")
 
     try:
         supabase.table("sender_pod_audit_logs").insert({
-            "workspace_id": workspace_id,
-            "account_id": account_id,
+            "workspace_id": clean_ws,
+            "account_id": clean_aid,
             "event_type": "QUARANTINE",
-            "details": {"hours": hours, "reason": reason, "until": quarantine_until}
+            "details": {"hours": hours_int, "reason": reason, "until": quarantine_until}
         }).execute()
     except Exception as ex:
         logger.warning(f"Failed to log quarantine: {ex}")
 
     return {
-        "account_id": account_id,
+        "account_id": clean_aid,
         "status": "QUARANTINED",
         "quarantined_until": quarantine_until,
         "reason": reason
@@ -760,26 +844,35 @@ def release_quarantine(
     """
     Layer 1: Releases quarantine on a cooled-down sender and restores it to active rotation.
     """
+    clean_aid = str(account_id or "").strip()
+    clean_ws = str(workspace_id or "").strip()
+    if not clean_aid or not clean_ws:
+        return {
+            "account_id": clean_aid,
+            "status": "ERROR",
+            "message": "Missing account_id or workspace_id"
+        }
+
     try:
         supabase.table("accounts").update({
             "status": "ACTIVE",
             "quarantined_until": None,
             "quarantine_reason": None,
             "status_changed_at": _get_utc_now().isoformat()
-        }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+        }).eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
     except Exception as ex:
         logger.warning(f"Failed to update accounts with release columns: {ex}")
         try:
             supabase.table("accounts").update({
                 "status": "ACTIVE"
-            }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            }).eq("id", clean_aid).eq("workspace_id", clean_ws).execute()
         except Exception as ex2:
             logger.error(f"Failed fallback release update: {ex2}")
 
     try:
         supabase.table("sender_pod_audit_logs").insert({
-            "workspace_id": workspace_id,
-            "account_id": account_id,
+            "workspace_id": clean_ws,
+            "account_id": clean_aid,
             "event_type": "RELEASE",
             "details": {"released_at": _get_utc_now().isoformat()}
         }).execute()
@@ -787,7 +880,7 @@ def release_quarantine(
         logger.warning(f"Failed to log quarantine release: {ex}")
 
     return {
-        "account_id": account_id,
+        "account_id": clean_aid,
         "status": "ACTIVE",
         "message": "Quarantine released. Account restored to pod rotation."
     }
@@ -802,23 +895,32 @@ def emergency_pause_pod(
     """
     Layer 2: Instantly pauses all pod outreach dispatches for a campaign.
     """
+    clean_cid = str(campaign_id or "").strip()
+    clean_ws = str(workspace_id or "").strip()
+    if not clean_cid or not clean_ws:
+        return {
+            "campaign_id": clean_cid,
+            "pod_emergency_paused": False,
+            "message": "Missing campaign_id or workspace_id"
+        }
+
     try:
         supabase.table("campaigns").update({
             "pod_emergency_paused": True
-        }).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+        }).eq("id", clean_cid).eq("workspace_id", clean_ws).execute()
     except Exception as ex:
         logger.warning(f"Failed to update pod_emergency_paused on campaign: {ex}")
         try:
             supabase.table("campaigns").update({
                 "status": "PAUSED"
-            }).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+            }).eq("id", clean_cid).eq("workspace_id", clean_ws).execute()
         except Exception as ex2:
             logger.error(f"Failed fallback pause on campaign: {ex2}")
 
     try:
         supabase.table("sender_pod_audit_logs").insert({
-            "workspace_id": workspace_id,
-            "campaign_id": campaign_id,
+            "workspace_id": clean_ws,
+            "campaign_id": clean_cid,
             "event_type": "EMERGENCY_PAUSE",
             "details": {"reason": reason, "paused_at": _get_utc_now().isoformat()}
         }).execute()
@@ -826,7 +928,7 @@ def emergency_pause_pod(
         logger.warning(f"Failed to log emergency pause: {ex}")
 
     return {
-        "campaign_id": campaign_id,
+        "campaign_id": clean_cid,
         "pod_emergency_paused": True,
         "message": "Sender pod dispatches emergency paused."
     }
@@ -840,23 +942,32 @@ def resume_pod(
     """
     Layer 2: Resumes pod dispatches after emergency pause.
     """
+    clean_cid = str(campaign_id or "").strip()
+    clean_ws = str(workspace_id or "").strip()
+    if not clean_cid or not clean_ws:
+        return {
+            "campaign_id": clean_cid,
+            "pod_emergency_paused": False,
+            "message": "Missing campaign_id or workspace_id"
+        }
+
     try:
         supabase.table("campaigns").update({
             "pod_emergency_paused": False
-        }).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+        }).eq("id", clean_cid).eq("workspace_id", clean_ws).execute()
     except Exception as ex:
         logger.warning(f"Failed to clear pod_emergency_paused on campaign: {ex}")
         try:
             supabase.table("campaigns").update({
                 "status": "ACTIVE"
-            }).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+            }).eq("id", clean_cid).eq("workspace_id", clean_ws).execute()
         except Exception as ex2:
             logger.error(f"Failed fallback resume on campaign: {ex2}")
 
     try:
         supabase.table("sender_pod_audit_logs").insert({
-            "workspace_id": workspace_id,
-            "campaign_id": campaign_id,
+            "workspace_id": clean_ws,
+            "campaign_id": clean_cid,
             "event_type": "RESUME",
             "details": {"resumed_at": _get_utc_now().isoformat()}
         }).execute()
@@ -864,7 +975,7 @@ def resume_pod(
         logger.warning(f"Failed to log pod resume: {ex}")
 
     return {
-        "campaign_id": campaign_id,
+        "campaign_id": clean_cid,
         "pod_emergency_paused": False,
         "message": "Sender pod dispatches resumed."
     }

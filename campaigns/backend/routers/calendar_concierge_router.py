@@ -13,6 +13,7 @@ from campaigns.backend.services.calendar_concierge_service import (
     format_frictionless_calendar_reply,
     extract_scheduling_intent,
     resolve_calendar_slots_for_execution,
+    negotiate_meeting_slot,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,12 @@ class ProposeSlotsPayload(BaseModel):
     rep_name: Optional[str] = "Marcus Vance"
     rep_email: Optional[str] = "marcus@ele-in.com"
     duration_minutes: Optional[int] = 30
+    company_name: Optional[str] = ""
+    lead_email: Optional[str] = ""
+    inbound_reply: Optional[str] = ""
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = ""
+    ai_model: Optional[str] = ""
 
 
 class ConfirmBookingPayload(BaseModel):
@@ -59,6 +66,23 @@ class ResolveExecutionSlotsPayload(BaseModel):
     rep_email: Optional[str] = "marcus@ele-in.com"
     duration_minutes: Optional[int] = 30
     hold_ttl_hours: Optional[int] = 72
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = ""
+    ai_model: Optional[str] = ""
+
+
+class NegotiateSlotPayload(BaseModel):
+    inbound_reply: str = Field(..., description="Inbound email or LinkedIn reply text from prospect")
+    prospect_name: str = Field(..., description="Prospect full name")
+    lead_email: Optional[str] = "prospect@company.com"
+    company_name: Optional[str] = "Enterprise"
+    rep_name: Optional[str] = "Marcus Vance"
+    rep_email: Optional[str] = "marcus@ele-in.com"
+    duration_minutes: Optional[int] = 30
+    confirmation_token: Optional[str] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = ""
+    ai_model: Optional[str] = ""
 
 
 def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None):
@@ -186,7 +210,15 @@ def propose_slots_endpoint(
             prospect_name=payload.prospect_name,
             slots=slots,
             rep_name=payload.rep_name or "Marcus Vance",
-            confirmation_token=token
+            confirmation_token=token,
+            company_name=payload.company_name or "",
+            lead_email=payload.lead_email or "",
+            inbound_reply=payload.inbound_reply or "",
+            use_ai=bool(payload.use_ai),
+            workspace_id=workspace_id,
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
+            meeting_duration_minutes=payload.duration_minutes or 30
         )
         return {
             "success": True,
@@ -269,6 +301,9 @@ def resolve_execution_slots_endpoint(
             rep_email=payload.rep_email or "marcus@ele-in.com",
             duration_minutes=payload.duration_minutes or 30,
             hold_ttl_hours=payload.hold_ttl_hours or 72,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
             supabase=supabase
         )
         return {
@@ -277,4 +312,41 @@ def resolve_execution_slots_endpoint(
         }
     except Exception as e:
         logger.exception("Failed to resolve execution calendar slots: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/negotiate")
+def negotiate_slots_endpoint(
+    payload: NegotiateSlotPayload,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase=Depends(get_service_client)
+):
+    """
+    Autonomous negotiation of calendar slots based on inbound prospect replies.
+    Recalculates conflict-free options based on requested days/timeframes or confirms selected options.
+    """
+    _check_workspace_tier_permission(workspace_id, "can_calendar_concierge", supabase)
+    try:
+        res = negotiate_meeting_slot(
+            workspace_id=workspace_id,
+            prospect_name=payload.prospect_name,
+            inbound_reply=payload.inbound_reply,
+            lead_email=payload.lead_email or "prospect@company.com",
+            company_name=payload.company_name or "Enterprise",
+            rep_email=payload.rep_email or "marcus@ele-in.com",
+            rep_name=payload.rep_name or "Marcus Vance",
+            duration_minutes=payload.duration_minutes or 30,
+            confirmation_token=payload.confirmation_token,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
+            supabase=supabase
+        )
+        return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to negotiate calendar slot: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

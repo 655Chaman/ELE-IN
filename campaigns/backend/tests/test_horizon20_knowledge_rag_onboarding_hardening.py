@@ -25,6 +25,10 @@ class TestHorizon20KnowledgeAssetTierLimitsAndSSRF(unittest.IsolatedAsyncioTestC
     def setUp(self):
         self.workspace_id = "ws_kb_202"
         self.supabase = MagicMock()
+        # Ensure chained .neq() calls route to the same mock execution chain as .eq()
+        self.supabase.table.return_value.select.return_value.eq.return_value.neq.return_value = (
+            self.supabase.table.return_value.select.return_value.eq.return_value
+        )
 
     async def test_add_knowledge_text_enforces_tier_limit(self):
         """Layer 1: Free tier workspaces cannot exceed max_knowledge_assets (3 documents)."""
@@ -159,6 +163,9 @@ class TestHorizon20OnboardingPersonaIntegration(unittest.IsolatedAsyncioTestCase
     def setUp(self):
         self.workspace_id = "ws_onboard_202"
         self.supabase = MagicMock()
+        self.supabase.table.return_value.select.return_value.eq.return_value.neq.return_value = (
+            self.supabase.table.return_value.select.return_value.eq.return_value
+        )
 
     def test_persona_service_create_persona_schema_fidelity(self):
         """Layer 0: PersonaService.create_persona formats title, JSONB pain points, value_prop, and tone_tweaks."""
@@ -273,6 +280,31 @@ class TestHorizon20OnboardingPersonaIntegration(unittest.IsolatedAsyncioTestCase
         self.assertIsNone(sanitize_linkedin_url("file:///etc/passwd"))
 
 
+    async def test_add_knowledge_asset_ignores_failed_assets_in_quota(self):
+        """
+        Layer 0 & 1 Paranoia (Flaw 5):
+        When a workspace has failed ingestion assets, they must NOT count towards
+        the maximum document quota, preventing Free Tier users from getting locked out.
+        """
+        mock_ws = MagicMock(data=[{"tier": "FREE"}])
+        # Suppose exact count without 'failed' returns 2 (active/synced), so space remains!
+        mock_active_count = MagicMock(count=2)
+        
+        # Reset side effect
+        self.supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+            mock_ws,
+            mock_active_count
+        ]
+        self.supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "new-asset-id", "name": "Valid Doc"}]
+        )
+
+        with patch("knowledge.backend.routers.assets.enqueue_job", return_value={"id": "job-1"}):
+            payload = TextUpload(title="Valid Doc", text="This is valid company documentation.")
+            res = await add_knowledge_text(payload, self.supabase, self.workspace_id)
+            self.assertEqual(res["status"], "success")
+
 if __name__ == "__main__":
     unittest.main()
+
 

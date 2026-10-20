@@ -101,32 +101,22 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
       onDrop={handleDrop}
       aria-label={isCapped ? "Upgrade to Upload Docs" : "Upload a Document"}
       className={cn(
-        "relative border border-border/60 bg-muted/20 hover:bg-muted/30 hover:border-primary/50 transition-all rounded-xl p-5 flex flex-col justify-between cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group",
-        isDragging && "border-primary bg-primary/5 ring-2 ring-primary/20",
+        "relative border border-border/50 bg-card/40 hover:bg-card/70 hover:border-border/80 transition-all rounded-xl p-5 flex flex-col justify-between min-h-[200px] cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group",
+        isDragging && "border-foreground/30 bg-muted/30 ring-1 ring-foreground/10",
         isUploading && "opacity-50 cursor-not-allowed"
       )}
     >
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); toast.info("Upload a PDF document or pitch deck about your company. Good examples: your sales pitch, capabilities one-pager, case studies, or product overview."); }}
-        className="absolute top-4 right-4 w-6 h-6 rounded-full bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex items-center justify-center transition-colors z-10"
-        title="What should I upload?"
-        aria-label="What should I upload?"
-      >
-        <Info size={13} />
-      </button>
-
       <div>
-        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-2">
-          {isCapped ? <Lock size={18} className="text-amber-600 dark:text-amber-400" /> : <UploadCloud size={18} className={isUploading ? 'animate-pulse' : ''} />}
+        <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 mb-3">
+          {isCapped ? <Lock size={15} className="text-amber-500" /> : <UploadCloud size={15} className={isUploading ? 'animate-pulse' : ''} />}
         </div>
-        <h3 className="font-semibold text-sm text-foreground">
-          {isUploading ? "Uploading..." : isCapped ? "Upgrade to Upload Docs" : "Upload a Document"}
+        <h3 className="font-medium text-sm text-foreground">
+          {isUploading ? "Uploading..." : isCapped ? "Upload Document" : "Upload Document"}
         </h3>
-        <p className="text-xs text-muted-foreground mt-1 mb-3">
+        <p className="text-xs text-muted-foreground mt-1 mb-3 leading-relaxed">
           {isCapped
-            ? `Limit reached (${currentCount}/${maxAssets} docs)`
-            : "Sales deck, pitch doc, PDF up to 10MB"}
+            ? `Plan limit reached (${currentCount}/${maxAssets} docs)`
+            : "Upload pitch decks or case studies so AI can cite real customer ROI in emails."}
         </p>
       </div>
 
@@ -135,22 +125,22 @@ export function UploadPdfModal({ mutateAssets }: { mutateAssets: () => void }) {
         tabIndex={-1}
         disabled={isUploading}
         className={cn(
-          "w-full py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer",
+          "w-full py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border cursor-pointer",
           isCapped
-            ? "bg-muted text-foreground border border-border hover:bg-muted/80"
-            : "bg-primary text-primary-foreground hover:bg-primary/90"
+            ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60"
+            : "border-border/70 bg-background/60 hover:bg-muted/60 text-foreground"
         )}
       >
         {isUploading ? (
           <span>Uploading...</span>
         ) : isCapped ? (
           <>
-            <Lock size={12} className="text-amber-600 dark:text-amber-400" />
-            <span>Unlock More Docs</span>
+            <Lock size={12} className="text-amber-500" />
+            <span>Quota Reached</span>
           </>
         ) : (
           <>
-            <UploadCloud size={12} />
+            <UploadCloud size={13} className="text-muted-foreground" />
             <span>Choose PDF</span>
           </>
         )}

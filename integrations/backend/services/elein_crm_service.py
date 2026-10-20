@@ -64,21 +64,22 @@ def _safe_refund_credits(workspace_id: str, amount: int, idempotency_key: str, s
 
 def push_to_hubspot(workspace_id: str, lead_data: dict, lifecycle_stage: str = "lead", api_key: str = None, supabase=None) -> bool:
     """Pushes a lead to HubSpot Contacts API, creates a Deal, and associates them."""
+    from integrations.backend.services.credential_vault import vault
     is_platform = False
+    supabase_client = supabase
     if not api_key:
-        api_key = os.environ.get("HUBSPOT_ACCESS_TOKEN")
+        api_key = vault.resolve_credential(workspace_id, "hubspot", env_fallback="HUBSPOT_ACCESS_TOKEN", supabase_client=supabase_client)
         is_platform = True
     if not api_key:
-        logger.warning("[CRM] No HUBSPOT_ACCESS_TOKEN set. Skipping HubSpot push.")
+        logger.warning(f"[CRM] No HubSpot credential found for workspace {workspace_id}. Skipping HubSpot push.")
         return False
         
     idempotency_key = None
-    supabase_client = None
     deducted = False
     if is_platform and workspace_id:
         from core.backend.api.auth_dep import get_service_client
         import time
-        supabase_client = supabase or get_service_client()
+        supabase_client = supabase_client or get_service_client()
         import uuid
         lead_ident = lead_data.get('id') or lead_data.get('lead_id') or lead_data.get('linkedin_url') or lead_data.get('email') or uuid.uuid4().hex
         idempotency_key = f"hubspot_{workspace_id}_{lead_ident}"
@@ -120,6 +121,13 @@ def push_to_hubspot(workspace_id: str, lead_data: dict, lifecycle_stage: str = "
             if deducted:
                 _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
             raise RateLimitExceeded("HubSpot Rate Limit 429")
+
+        if res.status_code == 401:
+            logger.error(f"[CRM] HubSpot 401 Unauthorized for workspace {workspace_id}. Quarantining key: {res.text}")
+            vault.quarantine_credential(workspace_id, "hubspot", "HTTP 401 Unauthorized")
+            if deducted:
+                _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
+            return False
             
         if res.status_code in (200, 201):
             contact_id = res.json().get("id")
@@ -238,9 +246,10 @@ def add_to_smartlead(workspace_id: str, leads: list, campaign_id: str) -> bool:
         logger.error("[CRM] Smartlead circuit breaker is OPEN. Skipping push.")
         return False
 
-    api_key = os.environ.get("SMARTLEAD_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "smartlead", env_fallback="SMARTLEAD_API_KEY")
     if not api_key:
-        logger.warning("[CRM] No SMARTLEAD_API_KEY set. Skipping Smartlead push.")
+        logger.warning(f"[CRM] No Smartlead credential found for workspace {workspace_id}. Skipping Smartlead push.")
         return False
         
     if not leads:
@@ -310,6 +319,9 @@ def add_to_smartlead(workspace_id: str, leads: list, campaign_id: str) -> bool:
                 return requests.post(url, headers=headers, json=payload, timeout=20)
 
             res = execute_with_resilience("smartlead", request_fn, max_retries=3, circuit_breaker=cb)
+            if res.status_code == 401:
+                logger.error(f"[CRM] Smartlead 401 Unauthorized for workspace {workspace_id}. Quarantining credential.")
+                vault.quarantine_credential(workspace_id, "smartlead", "HTTP 401 Unauthorized")
             if res.status_code not in (200, 201):
                 unpushed = deducted_count - pushed_count
                 if unpushed > 0 and workspace_id and idempotency_key and supabase_client:
@@ -355,8 +367,12 @@ def add_to_instantly(workspace_id: str, leads: list, campaign_id: str) -> bool:
         logger.error("[CRM] Instantly circuit breaker is OPEN. Skipping push.")
         return False
 
-    api_key = os.environ.get("INSTANTLY_API_KEY")
-    if not api_key or not campaign_id:
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "instantly", env_fallback="INSTANTLY_API_KEY")
+    if not api_key:
+        logger.warning(f"[CRM] No Instantly credential found for workspace {workspace_id}. Skipping Instantly push.")
+        return False
+    if not campaign_id:
         return False
     
     if not leads:
@@ -418,6 +434,9 @@ def add_to_instantly(workspace_id: str, leads: list, campaign_id: str) -> bool:
                 return requests.post(url, json=payload, timeout=20)
 
             res = execute_with_resilience("instantly", request_fn, max_retries=3, circuit_breaker=cb)
+            if res.status_code == 401:
+                logger.error(f"[CRM] Instantly 401 Unauthorized for workspace {workspace_id}. Quarantining credential.")
+                vault.quarantine_credential(workspace_id, "instantly", "HTTP 401 Unauthorized")
             if res.status_code not in (200, 201):
                 unpushed = deducted_count - pushed_count
                 if unpushed > 0 and workspace_id and idempotency_key and supabase_client:
@@ -466,9 +485,10 @@ def unsubscribe_from_smartlead(workspace_id: str, email: str, campaign_id: Optio
         logger.warning("[CRM] Smartlead circuit breaker is OPEN. Skipping unsubscribe.")
         return False
 
-    api_key = os.environ.get("SMARTLEAD_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "smartlead", env_fallback="SMARTLEAD_API_KEY")
     if not api_key:
-        logger.warning("[CRM] No SMARTLEAD_API_KEY set. Skipping Smartlead unsubscribe.")
+        logger.warning(f"[CRM] No Smartlead credential found for workspace {workspace_id}. Skipping Smartlead unsubscribe.")
         return False
 
     if not email:
@@ -505,9 +525,10 @@ def pause_lead_in_smartlead(workspace_id: str, email: str, campaign_id: str) -> 
         logger.warning("[CRM] Smartlead circuit breaker is OPEN. Skipping pause.")
         return False
 
-    api_key = os.environ.get("SMARTLEAD_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "smartlead", env_fallback="SMARTLEAD_API_KEY")
     if not api_key:
-        logger.warning("[CRM] No SMARTLEAD_API_KEY set. Skipping Smartlead pause.")
+        logger.warning(f"[CRM] No Smartlead credential found for workspace {workspace_id}. Skipping Smartlead pause.")
         return False
 
     if not campaign_id or not email:
@@ -544,9 +565,10 @@ def unsubscribe_from_instantly(workspace_id: str, email: str) -> bool:
         logger.warning("[CRM] Instantly circuit breaker is OPEN. Skipping unsubscribe.")
         return False
 
-    api_key = os.environ.get("INSTANTLY_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "instantly", env_fallback="INSTANTLY_API_KEY")
     if not api_key:
-        logger.warning("[CRM] No INSTANTLY_API_KEY set. Skipping Instantly unsubscribe.")
+        logger.warning(f"[CRM] No Instantly credential found for workspace {workspace_id}. Skipping Instantly unsubscribe.")
         return False
 
     if not email:
@@ -571,7 +593,8 @@ def unsubscribe_from_instantly(workspace_id: str, email: str) -> bool:
 
 
 def add_to_lemlist(workspace_id: str, lead_data: dict, campaign_id: str) -> bool:
-    api_key = os.environ.get("LEMLIST_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "lemlist", env_fallback="LEMLIST_API_KEY")
     if not api_key or not campaign_id: return False
     
     idempotency_key = None
@@ -609,20 +632,20 @@ def add_to_lemlist(workspace_id: str, lead_data: dict, campaign_id: str) -> bool
             _safe_refund_credits(workspace_id, cost, idempotency_key, supabase_client)
         return False
 
-def push_to_salesforce(workspace_id: str, lead_data: dict) -> bool:
-    # Requires OAuth/Bearer token which usually rotates. Assuming static for now via integration user.
-    access_token = os.environ.get("SALESFORCE_ACCESS_TOKEN")
-    instance_url = os.environ.get("SALESFORCE_INSTANCE_URL")
+def push_to_salesforce(workspace_id: str, lead_data: dict, supabase=None) -> bool:
+    from integrations.backend.services.credential_vault import vault
+    supabase_client = supabase
+    access_token = vault.resolve_credential(workspace_id, "salesforce", env_fallback="SALESFORCE_ACCESS_TOKEN", supabase_client=supabase_client)
+    instance_url = vault.resolve_credential(workspace_id, "salesforce_instance", env_fallback="SALESFORCE_INSTANCE_URL", supabase_client=supabase_client)
     if not access_token or not instance_url: return False
     
     idempotency_key = None
-    supabase_client = None
     deducted = False
     
     if workspace_id:
         from core.backend.api.auth_dep import get_service_client
         import time
-        supabase_client = get_service_client()
+        supabase_client = supabase_client or get_service_client()
         import uuid
         lead_ident = lead_data.get('id') or lead_data.get('lead_id') or lead_data.get('linkedin_url') or lead_data.get('email') or uuid.uuid4().hex
         idempotency_key = f"salesforce_{workspace_id}_{lead_ident}"
@@ -647,29 +670,42 @@ def push_to_salesforce(workspace_id: str, lead_data: dict) -> bool:
     }
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=10)
+        if res.status_code == 429:
+            if deducted:
+                _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
+            raise RateLimitExceeded("Salesforce Rate Limit 429")
+        if res.status_code == 401:
+            logger.error(f"[CRM] Salesforce 401 Unauthorized for workspace {workspace_id}. Quarantining key: {res.text}")
+            vault.quarantine_credential(workspace_id, "salesforce", "HTTP 401 Unauthorized")
+            if deducted:
+                _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
+            return False
         success = res.status_code in (200, 201, 204)
         if not success and deducted:
             _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
         return success
+    except RateLimitExceeded:
+        raise
     except Exception as e:
         logger.error(f"[CRM] Salesforce API error: {e}")
         if deducted:
             _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
         return False
 
-def push_to_pipedrive(workspace_id: str, lead_data: dict) -> bool:
-    api_key = os.environ.get("PIPEDRIVE_API_KEY")
+def push_to_pipedrive(workspace_id: str, lead_data: dict, supabase=None) -> bool:
+    from integrations.backend.services.credential_vault import vault
+    supabase_client = supabase
+    api_key = vault.resolve_credential(workspace_id, "pipedrive", env_fallback="PIPEDRIVE_API_KEY", supabase_client=supabase_client)
     if not api_key: return False
     
     idempotency_key = None
-    supabase_client = None
     deducted = False
     cost = 1
     
     if workspace_id:
         from core.backend.api.auth_dep import get_service_client
         import uuid
-        supabase_client = get_service_client()
+        supabase_client = supabase_client or get_service_client()
         lead_ident = lead_data.get('id') or lead_data.get('lead_id') or lead_data.get('linkedin_url') or lead_data.get('email') or uuid.uuid4().hex
         idempotency_key = f"pipedrive_{workspace_id}_{lead_ident}"
         
@@ -691,10 +727,22 @@ def push_to_pipedrive(workspace_id: str, lead_data: dict) -> bool:
     }
     try:
         res = requests.post(url, json=payload, timeout=10)
+        if res.status_code == 429:
+            if deducted:
+                _safe_refund_credits(workspace_id, cost, idempotency_key, supabase_client)
+            raise RateLimitExceeded("Pipedrive Rate Limit 429")
+        if res.status_code == 401:
+            logger.error(f"[CRM] Pipedrive 401 Unauthorized for workspace {workspace_id}. Quarantining key: {res.text}")
+            vault.quarantine_credential(workspace_id, "pipedrive", "HTTP 401 Unauthorized")
+            if deducted:
+                _safe_refund_credits(workspace_id, cost, idempotency_key, supabase_client)
+            return False
         success = res.status_code in (200, 201)
         if not success and deducted:
             _safe_refund_credits(workspace_id, cost, idempotency_key, supabase_client)
         return success
+    except RateLimitExceeded:
+        raise
     except Exception as e:
         logger.error(f"[CRM] Pipedrive API error: {e}")
         if deducted:
@@ -716,7 +764,8 @@ def send_slack_alert(message: str, webhook_url: str = None) -> bool:
         return False
 
 def push_to_notion(workspace_id: str, lead_data: dict, database_id: str) -> bool:
-    api_key = os.environ.get("NOTION_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "notion", env_fallback="NOTION_API_KEY")
     if not api_key or not database_id: return False
     
     idempotency_key = None
@@ -765,7 +814,8 @@ def push_to_notion(workspace_id: str, lead_data: dict, database_id: str) -> bool
         return False
 
 def push_to_airtable(workspace_id: str, lead_data: dict, base_id: str, table_name: str) -> bool:
-    api_key = os.environ.get("AIRTABLE_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "airtable", env_fallback="AIRTABLE_API_KEY")
     if not api_key or not base_id or not table_name: return False
     
     idempotency_key = None
@@ -832,7 +882,8 @@ def send_webhook(lead_data: dict, webhook_url: str) -> bool:
         return False
 
 def add_to_emailbison(workspace_id: str, lead_data: dict, campaign_id: str) -> bool:
-    api_key = os.environ.get("EMAILBISON_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "emailbison", env_fallback="EMAILBISON_API_KEY")
     if not api_key: return False
     
     idempotency_key = None
@@ -876,15 +927,16 @@ class ApolloRateLimitException(Exception):
 def add_to_apollo(workspace_id: str, lead_data: dict, sequence_id: str = None) -> bool:
     import requests
     from integrations.backend.services.circuit_breaker import get_circuit_breaker, execute_with_resilience, CircuitBreakerOpenException
+    from integrations.backend.services.credential_vault import vault
 
     cb = get_circuit_breaker("apollo")
     if not cb.can_execute():
         logger.warning("[Apollo] Circuit breaker is OPEN. Skipping Apollo sync to protect system.")
         return False
 
-    api_key = os.environ.get("APOLLO_API_KEY")
+    api_key = vault.resolve_credential(workspace_id, "apollo", env_fallback="APOLLO_API_KEY")
     if not api_key: 
-        logger.error("[Apollo] No API Key found.")
+        logger.error(f"[Apollo] No API Key found for workspace {workspace_id}.")
         return False
         
     idempotency_key = None
@@ -927,6 +979,11 @@ def add_to_apollo(workspace_id: str, lead_data: dict, sequence_id: str = None) -
         
         if res.status_code in (200, 201):
             contact_id = res.json().get("contact", {}).get("id")
+        elif res.status_code == 429:
+            logger.warning(f"[Apollo] Rate limit 429 hit for workspace {workspace_id}")
+            if deducted:
+                _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
+            raise ApolloRateLimitException("Apollo rate limit (429) exceeded")
         elif res.status_code == 422:
             # Duplicate email likely. Idempotency recovery: search the contact to get the ID.
             search_url = "https://api.apollo.io/v1/contacts/search"
@@ -954,6 +1011,8 @@ def add_to_apollo(workspace_id: str, lead_data: dict, sequence_id: str = None) -
                 _safe_refund_credits(workspace_id, 1, idempotency_key, supabase_client)
             return False
             
+    except ApolloRateLimitException:
+        raise
     except CircuitBreakerOpenException as e:
         logger.warning(f"[Apollo] Circuit breaker opened during execution: {e}")
         if deducted:
@@ -1017,7 +1076,8 @@ def enrich_with_apollo(
         logger.warning("[Apollo] Circuit breaker is OPEN. Skipping Apollo enrichment.")
         return None
 
-    api_key = os.environ.get("APOLLO_API_KEY")
+    from integrations.backend.services.credential_vault import vault
+    api_key = vault.resolve_credential(workspace_id, "apollo", env_fallback="APOLLO_API_KEY")
     if not api_key:
         return None
 
@@ -1059,6 +1119,11 @@ def enrich_with_apollo(
             return requests.post(match_url, json=payload, timeout=12)
 
         res = execute_with_resilience("apollo", request_fn, max_retries=2, circuit_breaker=cb)
+        if res.status_code == 429:
+            logger.warning(f"[Apollo] Rate limit 429 hit during enrichment for workspace {workspace_id}")
+            if kwargs.get("raise_on_rate_limit"):
+                raise ApolloRateLimitException("Apollo rate limit (429) exceeded")
+            return None
         if res.status_code != 200:
             logger.warning(f"[Apollo] Match returned status {res.status_code}")
             return None
@@ -1096,6 +1161,8 @@ def enrich_with_apollo(
             "state": person.get("state"),
             "country": person.get("country")
         }
+    except ApolloRateLimitException:
+        raise
     except CircuitBreakerOpenException:
         logger.warning("[Apollo] Circuit breaker opened during enrichment")
         return None

@@ -1,4 +1,5 @@
 from knowledge.backend.services.prompt_safety import sanitize_for_prompt, truncate_to_context_limit, truncate_to_tokens
+from knowledge.backend.services.ai_output_guard import PREAMBLE_PATTERNS, REFUSAL_PATTERN
 import logging
 import os
 from pathlib import Path
@@ -45,19 +46,28 @@ class LLMGenerator:
         nvidia_api_key = os.environ.get("NVIDIA_API_KEY")
         openai_api_key = os.environ.get("OPENAI_API_KEY")
 
+        if not (nvidia_api_key or openai_api_key):
+            try:
+                from core.backend.services.key_service import get_current_keys
+                keys = get_current_keys()
+                nvidia_api_key = keys.get("api_key_nvidia")
+                openai_api_key = keys.get("api_key_openai") or keys.get("api_key_llm")
+            except Exception as e:
+                logger.debug(f"Could not load keys from key_service: {e}")
+
         if nvidia_api_key:
             self.client = AsyncOpenAI(
                 base_url="https://integrate.api.nvidia.com/v1",
-                api_key=nvidia_api_key
+                api_key=str(nvidia_api_key).strip().strip("'\"")
             )
             self.model_name = "meta/llama-3.1-8b-instruct"
             logger.info("NVIDIA client initialized for LLM Generator.")
         elif openai_api_key:
-            self.client = AsyncOpenAI(api_key=openai_api_key)
+            self.client = AsyncOpenAI(api_key=str(openai_api_key).strip().strip("'\""))
             self.model_name = "gpt-4o-mini"
             logger.info("OpenAI client initialized for LLM Generator.")
         else:
-            logger.error("No API keys (NVIDIA or OPENAI) found in environment. LLM generation will fail.")
+            logger.warning("No API keys (NVIDIA or OPENAI) found in environment or system keys. LLM generation will fail until keys are provided.")
 
     def _get_system_prompt(self, rag_context: str = "") -> str:
         base_prompt = f"""You are 'Elemeet', an elite sales meeting co-pilot for a Market Maker / Connector business.
@@ -114,6 +124,9 @@ CRITICAL INSTRUCTIONS:
             yield f"[System Error: Credit check failed - {e!s}]"
             return
 
+        if self.client is None:
+            self._init_client()
+
         if self.client:
             try:
                 # 1. Retrieve specific protocols via Vector Semantic RAG using the latest phrase
@@ -150,13 +163,38 @@ CRITICAL INSTRUCTIONS:
                 
                 final_usage = None
                 full_output = []
+                buffer = ""
+                preamble_checked = False
+
                 async for chunk in response:
                     if hasattr(chunk, 'usage') and chunk.usage:
                         final_usage = chunk.usage
                     if chunk.choices and chunk.choices[0].delta.content:
                         token = chunk.choices[0].delta.content
                         full_output.append(token)
-                        yield token
+
+                        # Paranoia Layer 0 & 1: Buffer initial tokens to neutralize AI conversational preambles
+                        if not preamble_checked:
+                            buffer += token
+                            if len(buffer) >= 60 or "\n" in buffer:
+                                cleaned_buf = buffer
+                                for p in PREAMBLE_PATTERNS:
+                                    cleaned_buf = p.sub("", cleaned_buf).lstrip()
+                                if REFUSAL_PATTERN.search(cleaned_buf):
+                                    cleaned_buf = "[Address objection directly based on value proposition]"
+                                buffer = ""
+                                preamble_checked = True
+                                if cleaned_buf:
+                                    yield cleaned_buf
+                        else:
+                            yield token
+
+                if buffer and not preamble_checked:
+                    cleaned_buf = buffer
+                    for p in PREAMBLE_PATTERNS:
+                        cleaned_buf = p.sub("", cleaned_buf).lstrip()
+                    if cleaned_buf:
+                        yield cleaned_buf
                         
                 if final_usage:
                     p_toks = getattr(final_usage, 'prompt_tokens', 0)

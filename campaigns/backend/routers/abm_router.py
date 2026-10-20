@@ -57,6 +57,9 @@ class GenerateCopyPayload(BaseModel):
     title: str
     role_archetype: str
     cross_thread_peer: Optional[str] = None
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = ""
+    ai_model: Optional[str] = ""
 
 
 class ResolveAbmExecutionContextPayload(BaseModel):
@@ -67,6 +70,9 @@ class ResolveAbmExecutionContextPayload(BaseModel):
     prospect_name: Optional[str] = Field("Executive", description="Prospect full name")
     title: Optional[str] = Field("VP of Sales", description="Prospect job title")
     staggered_interval_hours: Optional[int] = Field(4, description="Staggered interval in hours between same-account touches (1-24)")
+    use_ai: Optional[bool] = False
+    banned_phrases: Optional[str] = ""
+    ai_model: Optional[str] = ""
 
 
 ResolveExecutionContextPayload = ResolveAbmExecutionContextPayload
@@ -346,6 +352,9 @@ def resolve_abm_execution_context_endpoint(
             prospect_name=payload.prospect_name,
             title=payload.title,
             staggered_interval_hours=payload.staggered_interval_hours or 4,
+            use_ai=bool(payload.use_ai),
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or "",
             supabase=supabase
         )
         return {
@@ -378,7 +387,11 @@ def generate_copy_endpoint(
             prospect_name=payload.prospect_name,
             title=payload.title,
             role_archetype=payload.role_archetype,
-            cross_thread_peer=payload.cross_thread_peer
+            cross_thread_peer=payload.cross_thread_peer,
+            use_ai=bool(payload.use_ai),
+            workspace_id=workspace_id,
+            banned_phrases=payload.banned_phrases or "",
+            ai_model=payload.ai_model or ""
         )
         return {
             "success": True,

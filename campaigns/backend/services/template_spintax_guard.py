@@ -217,10 +217,21 @@ def resolve_spintax(text: str, seed: Optional[str] = None, timeout_ms: int = 100
             break
 
         def _spin_replace(m: re.Match) -> str:
-            raw_opts = m.group(1).split("|")
+            # Layer 1 & 2 (Flaw 4.2): Preserve intentional empty alternatives for optional spintax (e.g. {word|})
+            content = m.group(1)
+            raw_opts = content.split("|")
+            has_optional_end = content.endswith("|") or (len(raw_opts) > 1 and not raw_opts[-1].strip())
+            has_optional_start = content.startswith("|") or (len(raw_opts) > 1 and not raw_opts[0].strip())
+            
             non_empty = [o for o in raw_opts if o.strip()]
-            choices = non_empty if non_empty else raw_opts
-            return rng.choice(choices) if choices else ""
+            if not non_empty:
+                return ""
+            
+            choices = list(non_empty)
+            if has_optional_end or has_optional_start:
+                choices.append("")
+                
+            return rng.choice(choices)
 
         working = pattern.sub(_spin_replace, working)
 
@@ -601,6 +612,48 @@ def preview_spintax_variants(text: str, count: int = 5, seed: Optional[str] = No
         variants = [resolve_spintax(text, seed=f"{seed}_0" if seed is not None else None)]
 
     return variants
+
+
+def ensure_minimum_entropy(
+    template: str,
+    required_variants: int = 10,
+    auto_upgrade: bool = True
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0 & 2: Pre-activation verification that guarantees outreach templates
+    have sufficient variation entropy to prevent ESP cluster bans.
+    If total variations < required_variants and auto_upgrade is True, automatically injects
+    safe spintax variations.
+    """
+    if not template or not isinstance(template, str):
+        return {"compliant": True, "variants": 1, "upgraded": False, "template": template or ""}
+
+    current_variants = calculate_spintax_combinations(template)
+    if current_variants >= required_variants:
+        return {
+            "compliant": True,
+            "variants": current_variants,
+            "upgraded": False,
+            "template": template
+        }
+    
+    if auto_upgrade:
+        upgraded_res = generate_linguistic_spintax(template, intensity="balanced")
+        upgraded_template = upgraded_res.get("spintax_text", template)
+        new_variants = calculate_spintax_combinations(upgraded_template)
+        return {
+            "compliant": new_variants >= required_variants,
+            "variants": new_variants,
+            "upgraded": True,
+            "template": upgraded_template
+        }
+
+    return {
+        "compliant": False,
+        "variants": current_variants,
+        "upgraded": False,
+        "template": template
+    }
 
 
 def validate_campaign_nodes_templates(nodes: list) -> List[str]:

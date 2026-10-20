@@ -131,7 +131,29 @@ def interpolate(template: str, opportunity: Dict[str, Any]) -> str:
         key_lower = key.lower()
         inline_fallback = clean_enrichment_value(parts[1]) if len(parts) > 1 else ("there" if key_lower in ("first_name", "firstname", "name") else ("your company" if key_lower in ("company", "company_name") else ("your role" if key_lower in ("job_title", "title") else "")))
 
-        actual_val = mapping.get(key_lower) or opportunity.get(key) or opportunity.get(key_lower)
+        # Paranoia Layer 0 & 1 (Flaw 30): Resolve custom variables from lead metadata or variables
+        cv_map = {}
+        if isinstance(opportunity.get("metadata"), dict):
+            cv_map = opportunity["metadata"].get("custom_variables") or {}
+        elif isinstance(opportunity.get("custom_variables"), dict):
+            cv_map = opportunity["custom_variables"]
+
+        vars_map = opportunity.get("variables") if isinstance(opportunity.get("variables"), dict) else {}
+
+        actual_val = (
+            mapping.get(key_lower)
+            or opportunity.get(key)
+            or opportunity.get(key_lower)
+            or (cv_map.get(key) if isinstance(cv_map, dict) else None)
+            or (cv_map.get(key_lower) if isinstance(cv_map, dict) else None)
+            or (vars_map.get(key) if isinstance(vars_map, dict) else None)
+            or (vars_map.get(key_lower) if isinstance(vars_map, dict) else None)
+        )
+        if not actual_val and isinstance(cv_map, dict):
+            for cv_k, cv_v in cv_map.items():
+                if str(cv_k).strip().lower() == key_lower:
+                    actual_val = cv_v
+                    break
         cleaned_val = clean_enrichment_value(actual_val)
 
         if cleaned_val:
@@ -629,10 +651,11 @@ class EleInOrchestrator:
             now_iso = now_dt.isoformat()
             REPLY_WAIT_TIMEOUT_HOURS = max(int(os.getenv("REPLY_WAIT_TIMEOUT_HOURS", "72")), 24)
 
-            # Query leads currently in waiting_for_reply
+            # Query leads currently in waiting_for_reply (bounded batch limit to protect event loop)
             waiting_res = self.supabase.table("campaign_execution_states") \
                 .select("id, enrollment_id, workspace_id, current_node_id, variables, updated_at, next_run_at") \
                 .eq("status", "waiting_for_reply") \
+                .limit(500) \
                 .execute()
 
             waiting_states = waiting_res.data or []
@@ -855,12 +878,37 @@ class EleInOrchestrator:
 
                 # Transition to COMPLETED
                 logger.info(f"[Orchestrator] All {total_count} leads finished for campaign {cid} ('{camp.get('name')}'). Transitioning status to COMPLETED.")
+                now_iso = datetime.now(timezone.utc).isoformat()
                 upd = self.supabase.table("campaigns").update({
                     "status": "COMPLETED",
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "updated_at": now_iso
                 }).eq("id", cid).eq("status", "ACTIVE").execute()
                 if upd.data:
                     completed_ids.append(cid)
+                    # Paranoia Layer 1 & 2: Emit campaign.completed event and invalidate analytics cache
+                    try:
+                        wid = camp.get("workspace_id")
+                        if wid:
+                            self.supabase.table("outbox_events").insert({
+                                "workspace_id": wid,
+                                "event_type": "campaign.completed",
+                                "payload": {
+                                    "campaign_id": cid,
+                                    "name": camp.get("name"),
+                                    "total_leads": total_count,
+                                    "completed_at": now_iso
+                                },
+                                "status": "pending"
+                            }).execute()
+                    except Exception as _ob_err:
+                        logger.debug(f"[Orchestrator] campaign.completed outbox event emission notice: {_ob_err}")
+
+                    try:
+                        from campaigns.backend.routers.master_view import invalidate_master_view_cache
+                        if camp.get("workspace_id"):
+                            invalidate_master_view_cache(camp["workspace_id"])
+                    except Exception as _inv_err:
+                        logger.debug(f"[Orchestrator] master view cache invalidation notice: {_inv_err}")
 
             return completed_ids
         except Exception as e:
@@ -1027,13 +1075,15 @@ class EleInOrchestrator:
                         .execute()
                     if enr_active.data:
                         active_enr_ids = [r["id"] for r in enr_active.data]
+                        now_utc = datetime.now(timezone.utc).isoformat()
                         self.supabase.table("campaign_execution_states") \
                             .update({
                                 "status": "pending",
-                                "next_run_at": datetime.utcnow().isoformat()
+                                "next_run_at": now_utc
                             }) \
                             .in_("enrollment_id", active_enr_ids) \
                             .eq("status", "paused") \
+                            .neq("error_reason", "Paused to prevent cross-campaign collision with active campaign") \
                             .execute()
                         logger.info(f"Auto-resumed paused execution states for active campaigns: {active_enr_ids}")
         except Exception as e:
@@ -1041,7 +1091,7 @@ class EleInOrchestrator:
 
         # Horizon 30 (Paranoia Layer 0 & 1): Auto-resume execution states marked 'snoozed_ooo' whose snooze elapsed
         try:
-            now_utc = datetime.utcnow().isoformat()
+            now_utc = datetime.now(timezone.utc).isoformat()
             ooo_res = self.supabase.table("campaign_execution_states") \
                 .select("id") \
                 .eq("status", "snoozed_ooo") \
@@ -1132,9 +1182,24 @@ class EleInOrchestrator:
             version_graphs = {}
             for vid in version_ids:
                 version_graphs[vid] = {
-                    "nodes": [n for n in (nodes_res.data or []) if n["campaign_version_id"] == vid],
-                    "edges": [e for e in (edges_res.data or []) if e["campaign_version_id"] == vid]
+                    "nodes": [n for n in (nodes_res.data or []) if n.get("campaign_version_id") == vid],
+                    "edges": [e for e in (edges_res.data or []) if e.get("campaign_version_id") == vid]
                 }
+
+            # Paranoia Layer 1: Fallback for version graphs if relational campaign_nodes rows are empty
+            for vid, g in version_graphs.items():
+                if not g["nodes"]:
+                    try:
+                        cv_row = self.supabase.table("campaign_versions").select("nodes_json, edges_json, campaign_id").eq("id", vid).execute()
+                        if cv_row.data:
+                            r = cv_row.data[0]
+                            n_raw = json.loads(r["nodes_json"]) if isinstance(r.get("nodes_json"), str) else (r.get("nodes_json") or [])
+                            e_raw = json.loads(r["edges_json"]) if isinstance(r.get("edges_json"), str) else (r.get("edges_json") or [])
+                            if n_raw:
+                                g["nodes"] = n_raw
+                                g["edges"] = e_raw
+                    except Exception as _fb_err:
+                        logger.debug(f"[Orchestrator] Fallback to campaign_versions for graph {vid} error: {_fb_err}")
                 
             # Fetch campaign metadata again just to be safe
             campaign_map = {c["id"]: c for c in campaigns_res.data}
@@ -1142,10 +1207,30 @@ class EleInOrchestrator:
             for state in states:
                 enrollment = enrollment_map.get(state["enrollment_id"])
                 if not enrollment:
+                    logger.warning(f"[Orchestrator] Claimed state {state['id']} has no matching enrollment. Marking as exited.")
+                    self.update_state(
+                        state["id"],
+                        None,
+                        "exited",
+                        None,
+                        state.get("lease_token"),
+                        error_reason="Orphaned state: campaign enrollment not found",
+                        enrollment_id=state.get("enrollment_id")
+                    )
                     continue
                 
                 campaign = campaign_map.get(enrollment["campaign_id"])
                 if not campaign:
+                    logger.warning(f"[Orchestrator] Claimed state {state['id']} has no matching campaign. Marking as exited.")
+                    self.update_state(
+                        state["id"],
+                        None,
+                        "exited",
+                        None,
+                        state.get("lease_token"),
+                        error_reason="Orphaned state: campaign not found or deleted",
+                        enrollment_id=state.get("enrollment_id")
+                    )
                     continue
 
                 # PARANOIA LAYER 0 & 1: Credit Preflight Guard
@@ -1172,18 +1257,20 @@ class EleInOrchestrator:
                 meta = campaign.get("metadata") or {}
                 schedule = meta.get("schedule") or {}
                 enforce_working_hours = meta.get("enforce_working_hours", True)
-                if enforce_working_hours and not is_working_hours(tz_str, schedule=schedule):
+                base_now = datetime.now(timezone.utc)
+                if enforce_working_hours and not is_working_hours(tz_str, schedule=schedule, now_dt=base_now):
                     from campaigns.backend.services.sto_service import should_use_sto, calculate_sto_next_run
                     if should_use_sto(campaign, schedule):
+                        ws_id = campaign.get("workspace_id") or enrollment.get("workspace_id")
                         next_run = calculate_sto_next_run(
-                            datetime.utcnow().replace(tzinfo=pytz.UTC),
+                            base_now,
                             tz_str,
                             lead_id=enrollment.get("lead_id"),
                             schedule=schedule,
-                            supabase=self.supabase
+                            supabase=self.supabase,
+                            workspace_id=ws_id
                         )
                     else:
-                        base_now = datetime.utcnow().replace(tzinfo=pytz.UTC)
                         lead_seed = str(enrollment.get("lead_id") or state.get("id") or "")
                         try:
                             next_run = calculate_next_run_with_jitter(
@@ -1202,14 +1289,30 @@ class EleInOrchestrator:
                     continue
                 
                 vid = enrollment["campaign_version_id"]
-                graph = version_graphs.get(vid, {"nodes": [], "edges": []})
+                graph = dict(version_graphs.get(vid, {"nodes": [], "edges": []}))
+                if not graph.get("nodes") and campaign:
+                    c_nodes = campaign.get("nodes_json") or []
+                    c_edges = campaign.get("edges_json") or []
+                    if isinstance(c_nodes, str):
+                        try:
+                            c_nodes = json.loads(c_nodes)
+                        except Exception:
+                            c_nodes = []
+                    if isinstance(c_edges, str):
+                        try:
+                            c_edges = json.loads(c_edges)
+                        except Exception:
+                            c_edges = []
+                    if c_nodes:
+                        graph["nodes"] = c_nodes
+                        graph["edges"] = c_edges
                 
                 leads_to_process.append({
                     "id":                      state["id"],
                     "campaign_id":             enrollment["campaign_id"],
                     "opportunity_id":          enrollment["lead_id"],
                     "lead_id":                 enrollment["lead_id"],
-                    "updated_at":              state["updated_at"],
+                    "updated_at":              state.get("updated_at"),
                     "current_node_id":         state["current_node_id"],
                     "status":                  state["status"],
                     "next_run_at":             state["next_run_at"],
@@ -1232,6 +1335,20 @@ class EleInOrchestrator:
                 })
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator"})
+            # Paranoia Layer 1: Release any claimed states back to pending
+            for s in states:
+                try:
+                    self.update_state(
+                        s["id"],
+                        s.get("current_node_id"),
+                        "pending",
+                        None,
+                        s.get("lease_token"),
+                        error_reason=f"Batch prep failure: {e}",
+                        enrollment_id=s.get("enrollment_id")
+                    )
+                except Exception:
+                    pass
             return []
 
         def _process_single_lead(row):
@@ -1243,7 +1360,17 @@ class EleInOrchestrator:
                 capture_error(e, context={"service": "elein_orchestrator"})
                 attempts = row.get("attempts", 0)
                 max_attempts = row.get("max_attempts", 5)
-                self.mark_error(row["id"], str(e), attempts, max_attempts, lease_token=lease_token, node_id=row.get("current_node_id"), tz_str=row.get("tz_str", "UTC"), enforce_working_hours=row.get("enforce_working_hours", True))
+                self.mark_error(
+                    row["id"], 
+                    str(e), 
+                    attempts, 
+                    max_attempts, 
+                    lease_token=lease_token, 
+                    node_id=row.get("current_node_id"), 
+                    tz_str=row.get("tz_str", "UTC"), 
+                    enforce_working_hours=row.get("enforce_working_hours", True),
+                    enrollment_id=row.get("enrollment_id")
+                )
                 return {"id": row["id"], "status": "error", "error": str(e)}
 
         results = []
@@ -1285,7 +1412,7 @@ class EleInOrchestrator:
     def get_outgoing_edges(self, edges: List[Dict], node_id: str) -> List[Dict]:
         return [e for e in edges if (e.get("source_node_id") or e.get("source")) == node_id]
 
-    def resolve_branch_edge(self, outgoing_edges: List[Dict[str, Any]], branch_handle: Optional[str]) -> Tuple[Optional[Dict[str, Any]], bool]:
+    def resolve_branch_edge(self, outgoing_edges: List[Dict[str, Any]], branch_handle: Optional[Any]) -> Tuple[Optional[Dict[str, Any]], bool]:
         """
         Resolves outgoing edge matching branch_handle using exact matching, case-insensitivity,
         behavioral synonym sets (including Horizon 27 triggers and omnichannel routes), and single-edge fallbacks.
@@ -1293,6 +1420,10 @@ class EleInOrchestrator:
         """
         def _get_h(e):
             return e.get("source_handle") or e.get("sourceHandle") or e.get("label") or ""
+
+        # Paranoia Layer 1 & 2: Boolean coercion to standard branch string
+        if isinstance(branch_handle, bool):
+            branch_handle = "Matches" if branch_handle else "Does not match"
 
         branch_edge = None
         # 1. Exact match on source_handle or label
@@ -1306,26 +1437,26 @@ class EleInOrchestrator:
                 (e for e in outgoing_edges if str(_get_h(e)).strip().lower() == norm_b), None
             )
         # 3. Synonym match for timeout
-        if not branch_edge and branch_handle in ("Timeout", "Timed Out", "No Reply"):
+        if not branch_edge and str(branch_handle).strip().lower() in ("timeout", "timed out", "timed_out", "no reply", "no_reply"):
             timeout_synonyms = {"timeout", "timed out", "timed_out", "no reply", "no_reply", "other", "default"}
             branch_edge = next(
                 (e for e in outgoing_edges if str(_get_h(e)).strip().lower() in timeout_synonyms), None
             )
         # 4. Synonym match for reply
-        if not branch_edge and branch_handle in ("Replied", "replied"):
+        if not branch_edge and str(branch_handle).strip().lower() in ("replied", "reply", "yes", "connected"):
             replied_synonyms = {"replied", "reply", "yes", "connected"}
             branch_edge = next(
                 (e for e in outgoing_edges if str(_get_h(e)).strip().lower() in replied_synonyms), None
             )
         # 5. Synonym match for found / phone found
-        if not branch_edge and branch_handle in ("Found", "Phone found"):
-            found_synonyms = {"found", "phone found", "phone_found"}
+        if not branch_edge and str(branch_handle).strip().lower() in ("found", "phone found", "phone_found", "email found"):
+            found_synonyms = {"found", "phone found", "phone_found", "email found", "discovered", "has email"}
             branch_edge = next(
                 (e for e in outgoing_edges if str(_get_h(e)).strip().lower() in found_synonyms), None
             )
         # 6. Synonym match for not found
-        if not branch_edge and branch_handle in ("Not found", "not found"):
-            not_found_synonyms = {"not found", "not_found", "phone not found"}
+        if not branch_edge and str(branch_handle).strip().lower() in ("not found", "not_found", "phone not found", "email not found"):
+            not_found_synonyms = {"not found", "not_found", "phone not found", "email not found", "missing", "no email"}
             branch_edge = next(
                 (e for e in outgoing_edges if str(_get_h(e)).strip().lower() in not_found_synonyms), None
             )
@@ -1335,7 +1466,7 @@ class EleInOrchestrator:
             branch_edge = next(
                 (e for e in outgoing_edges if str(_get_h(e)).strip().lower() in sent_synonyms), None
             )
-        # 8. Synonym match for AI Intelligence & Multichannel/Enrichment Branches (Families E & F + Horizon 27)
+        # 8. Synonym match for AI Intelligence, Omnichannel, and Condition/Criteria Branches
         if not branch_edge and branch_handle:
             bh_norm = str(branch_handle).strip().lower()
             ai_synonyms_map = {
@@ -1377,7 +1508,29 @@ class EleInOrchestrator:
                 "routed": {"routed", "retargeted", "dispatched", "then", "next", "default", "success"},
                 "linkedin": {"linkedin", "linkedin_dm", "dm", "message", "channel_linkedin"},
                 "email": {"email", "send_email", "mail", "channel_email"},
-                "inmail": {"inmail", "paid_inmail", "sponsored_inmail", "channel_inmail"}
+                "inmail": {"inmail", "paid_inmail", "sponsored_inmail", "channel_inmail"},
+                # A/B Split and Multi-Variant Testing Branches
+                "path a": {"path a", "path_a", "a", "variant a", "variant_a", "arm_a", "branch a", "branch_a", "arm a", "50% a", "test a"},
+                "path b": {"path b", "path_b", "b", "variant b", "variant_b", "arm_b", "branch b", "branch_b", "arm b", "50% b", "test b"},
+                # Condition & Criteria Matches
+                "matches": {"matches", "match", "matched", "yes", "true", "pass", "in range", "fit"},
+                "match": {"matches", "match", "matched", "yes", "true", "pass", "in range", "fit"},
+                "does not match": {"does not match", "does_not_match", "no match", "no_match", "mismatch", "no", "false", "fail", "out of range"},
+                "no match": {"no match", "no_match", "does not match", "does_not_match", "mismatch", "no", "false", "fail", "out of range"},
+                "in range": {"in range", "in_range", "within range", "matches", "match", "yes", "true"},
+                "out of range": {"out of range", "out_of_range", "beyond range", "does not match", "no match", "no", "false"},
+                "open": {"open", "open profile", "is open", "open_profile", "yes", "true"},
+                "not open": {"not open", "not_open", "closed", "closed profile", "not open profile", "no", "false"},
+                "booked": {"booked", "meeting booked", "yes", "true", "scheduled"},
+                "not booked": {"not booked", "no meeting", "no", "false", "unbooked"},
+                "high following": {"high following", "high_following", "large following", "popular", "yes", "true"},
+                "normal following": {"normal following", "normal_following", "standard following", "regular following", "no", "false"},
+                "has posts": {"has posts", "has_posts", "recent posts", "active", "yes", "true"},
+                "no posts": {"no posts", "no_posts", "zero posts", "inactive", "no", "false"},
+                "true": {"true", "yes", "1", "matches", "match", "connected", "hiring", "valid", "open", "booked"},
+                "false": {"false", "no", "0", "does not match", "no match", "not connected", "not hiring", "invalid", "not open", "not booked"},
+                "yes": {"yes", "true", "1", "matches", "match", "connected", "hiring", "valid", "open", "booked"},
+                "no": {"no", "false", "0", "does not match", "no match", "not connected", "not hiring", "invalid", "not open", "not booked"}
             }
             syn_set = ai_synonyms_map.get(bh_norm)
             if syn_set:
@@ -1398,7 +1551,10 @@ class EleInOrchestrator:
             "not hiring", "no recent funding", "no mutuals", "not booked", "not connected",
             "not detected", "no competitor", "negative", "failed",
             "invalid / risky", "invalid", "risky",
-            "not opened", "not clicked", "bounced", "pending"
+            "not opened", "not clicked", "bounced", "pending",
+            "not open", "not_open", "no posts", "no_posts",
+            "normal following", "normal_following", "does_not_match", "no_match",
+            "out_of_range", "not_booked", "not_connected", "not_hiring", "false", "no"
         }
         is_terminal = bool(branch_handle and str(branch_handle).strip().lower() in terminal_branches)
         return branch_edge, is_terminal
@@ -1455,8 +1611,8 @@ class EleInOrchestrator:
             self.mark_error(state["id"], f"Node {current_node_id} not found in graph", lease_token=lease_token)
             return
 
-        action = current_node.get("node_type")
-        data = current_node.get("config", {})
+        action = current_node.get("node_type") or current_node.get("type")
+        data = current_node.get("config") or current_node.get("data") or {}
 
         # --- PHASE 7: REPLY DETECTION (Paranoia Layer) ---
         stop_on_reply = state.get("campaign_metadata", {}).get("stop_on_reply", True)
@@ -1474,7 +1630,22 @@ class EleInOrchestrator:
                         .execute()
                     if inbound_msg_res.data:
                         logger.info(f"Reply or manual intervention detected for lead {state['opportunity_id']}! Pausing campaign execution.")
-                        self.update_state(state["id"], current_node_id, "completed", None, lease_token, error_reason="Lead replied or manual intervention (paused)")
+                        self.update_state(
+                            state["id"], 
+                            current_node_id, 
+                            "completed", 
+                            None, 
+                            lease_token, 
+                            error_reason="Lead replied or manual intervention (completed)",
+                            enrollment_id=state.get("enrollment_id")
+                        )
+                        # Also sync lead status to 'replied' if appropriate
+                        try:
+                            target_lead_id = state.get("lead_id") or state.get("opportunity_id")
+                            if target_lead_id:
+                                self.supabase.table("leads").update({"status": "replied"}).eq("id", target_lead_id).execute()
+                        except Exception as lead_err:
+                            logger.debug(f"[Orchestrator] Lead status update to replied skipped: {lead_err}")
                         return
             except Exception as e:
                 capture_error(e, context={"service": "elein_orchestrator"})
@@ -1502,11 +1673,20 @@ class EleInOrchestrator:
             else:
                 delta = timedelta(days=delay_val)
             
-            next_run = datetime.utcnow() + delta
+            next_run = datetime.now(timezone.utc) + delta
             
             outgoing_edges = self.get_outgoing_edges(edges, current_node["id"])
             if not outgoing_edges:
-                self.update_state(state["id"], None, "completed", None, lease_token, variables=state.get("variables"), tz_str=state.get('tz_str', 'UTC'))
+                self.update_state(
+                    state["id"], 
+                    None, 
+                    "completed", 
+                    None, 
+                    lease_token, 
+                    variables=state.get("variables"), 
+                    tz_str=state.get('tz_str', 'UTC'),
+                    enrollment_id=state.get("enrollment_id")
+                )
                 return
                 
             next_node_id = outgoing_edges[0].get("target_node_id") or outgoing_edges[0].get("target")
@@ -1514,14 +1694,56 @@ class EleInOrchestrator:
             if not self._validate_and_prepare_hop(state, current_node["id"], next_node_id, nodes, lease_token, out_vars):
                 return
 
-            # ENG-03: Check if campaign was paused during execution before scheduling next step
+            # ENG-03: Check if campaign was paused or deleted during execution before scheduling next step
             next_status = "pending"
-            camp_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
-            if camp_check.data and camp_check.data[0].get("status") != "ACTIVE":
-                logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE ({camp_check.data[0].get('status')}). Setting lead state to paused instead of pending.")
-                next_status = "paused"
+            camp_id = state.get("campaign_id")
+            if camp_id:
+                camp_check = self.supabase.table("campaigns").select("status").eq("id", camp_id).execute()
+                if not camp_check.data:
+                    logger.info(f"Campaign {camp_id} was deleted or not found. Halting lead {state['id']} as exited.")
+                    self.update_state(
+                        state["id"], 
+                        None, 
+                        "exited", 
+                        None, 
+                        lease_token, 
+                        error_reason="Campaign deleted or not found", 
+                        tz_str=state.get('tz_str', 'UTC'),
+                        enrollment_id=state.get("enrollment_id")
+                    )
+                    return
 
-            self.update_state(state["id"], next_node_id, next_status, next_run, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'), use_sto=False)
+                camp_status = (camp_check.data[0].get("status") or "").upper()
+                if camp_status in ("ARCHIVED", "DELETED", "CANCELLED", "STOPPED"):
+                    logger.info(f"Campaign {camp_id} is terminal ({camp_status}). Halting lead {state['id']} as exited.")
+                    self.update_state(
+                        state["id"], 
+                        None, 
+                        "exited", 
+                        None, 
+                        lease_token, 
+                        error_reason=f"Campaign is {camp_status}", 
+                        tz_str=state.get('tz_str', 'UTC'),
+                        enrollment_id=state.get("enrollment_id")
+                    )
+                    return
+
+                if camp_status != "ACTIVE":
+                    logger.info(f"Campaign {camp_id} is no longer ACTIVE ({camp_status}). Setting lead state to paused instead of pending.")
+                    next_status = "paused"
+
+            self.update_state(
+                state["id"], 
+                next_node_id, 
+                next_status, 
+                next_run, 
+                lease_token, 
+                variables=out_vars, 
+                tz_str=state.get('tz_str', 'UTC'), 
+                schedule=state.get('schedule'), 
+                use_sto=False,
+                enrollment_id=state.get("enrollment_id")
+            )
             return
 
         # Live check to prevent ghost execution after Panic Pause or Circuit Breaker Trip
@@ -1539,6 +1761,21 @@ class EleInOrchestrator:
                 logger.warning(f"Failed to fetch campaign status: {e}")
 
         if not camp_row or str(camp_row.get("status") or "").upper() != "ACTIVE":
+            if not camp_row:
+                logger.info(f"Campaign {state.get('campaign_id')} was deleted or not found. Halting lead {state['id']} as exited.")
+                self.update_state(
+                    state["id"],
+                    current_node_id,
+                    "exited",
+                    None,
+                    lease_token,
+                    error_reason="Campaign deleted or not found",
+                    variables=state.get("variables"),
+                    tz_str=state.get("tz_str", "UTC"),
+                    enrollment_id=state.get("enrollment_id")
+                )
+                return
+
             camp_status = str((camp_row or {}).get("status") or "").lower()
             camp_reason = str(
                 (camp_row or {}).get("status_reason")
@@ -1547,6 +1784,21 @@ class EleInOrchestrator:
                 or ((camp_row or {}).get("metadata") or {}).get("status_reason", "")
                 or ""
             ).upper()
+
+            if camp_status in ("archived", "deleted", "cancelled", "stopped"):
+                logger.info(f"Campaign {state.get('campaign_id')} is terminal ({camp_status}). Halting lead {state['id']} as exited.")
+                self.update_state(
+                    state["id"],
+                    current_node_id,
+                    "exited",
+                    None,
+                    lease_token,
+                    error_reason=f"Campaign is {camp_status}",
+                    variables=state.get("variables"),
+                    tz_str=state.get("tz_str", "UTC"),
+                    enrollment_id=state.get("enrollment_id")
+                )
+                return
 
             # Phase 40: Runaway Bounce & Spam Circuit Breaker Check
             if (camp_status == "paused" and "CIRCUIT_BREAKER" in camp_reason) or ("CIRCUIT_BREAKER" in camp_reason):
@@ -1562,21 +1814,23 @@ class EleInOrchestrator:
                     lease_token,
                     error_reason=f"Campaign paused by circuit breaker: {camp_reason}",
                     variables=state.get("variables"),
-                    tz_str=state.get("tz_str", "UTC")
+                    tz_str=state.get("tz_str", "UTC"),
+                    enrollment_id=state.get("enrollment_id")
                 )
                 return
 
-            logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE. Skipping execution for lead {state['opportunity_id']}.")
-            next_run = datetime.utcnow() + timedelta(hours=6)
+            logger.info(f"Campaign {state.get('campaign_id')} is no longer ACTIVE ({camp_status}). Skipping execution for lead {state.get('opportunity_id')}.")
+            next_run = datetime.now(timezone.utc) + timedelta(hours=6)
             self.update_state(
                 state["id"],
                 current_node_id,
                 "paused",
                 next_run,
                 lease_token,
-                error_reason="Campaign is no longer ACTIVE",
+                error_reason=f"Campaign is {camp_status}",
                 variables=state.get("variables"),
-                tz_str=state.get("tz_str", "UTC")
+                tz_str=state.get("tz_str", "UTC"),
+                enrollment_id=state.get("enrollment_id")
             )
             return
 
@@ -1613,7 +1867,7 @@ class EleInOrchestrator:
                         active_statuses=["pending", "processing", "running", "waiting_for_reply", "awaiting_approval"]
                     ):
                         logger.warning(f"[CollisionGuard] Friendly fire prevented for lead {lead_id}!")
-                        next_run = datetime.utcnow() + timedelta(hours=24)
+                        next_run = datetime.now(timezone.utc) + timedelta(hours=24)
                         self.update_state(
                             state["id"],
                             current_node_id,
@@ -1698,12 +1952,12 @@ class EleInOrchestrator:
 
             resume_at = action_result.get("resume_at")
             if not resume_at:
-                resume_at = (datetime.utcnow() + timedelta(minutes=5))
+                resume_at = (datetime.now(timezone.utc) + timedelta(minutes=5))
             elif isinstance(resume_at, str):
                 try:
                     resume_at = datetime.fromisoformat(resume_at.replace('Z', '+00:00'))
                 except ValueError:
-                    resume_at = (datetime.utcnow() + timedelta(minutes=5))
+                    resume_at = (datetime.now(timezone.utc) + timedelta(minutes=5))
             self.update_state(state["id"], current_node_id, "pending", resume_at, lease_token=lease_token, variables=state.get("variables"))
             return
 
@@ -1741,9 +1995,9 @@ class EleInOrchestrator:
                     from dateutil.parser import parse
                     timeout_deadline = parse(existing_deadline)
                 except Exception:
-                    timeout_deadline = datetime.utcnow() + timedelta(hours=timeout_hours)
+                    timeout_deadline = datetime.now(timezone.utc) + timedelta(hours=timeout_hours)
             else:
-                timeout_deadline = datetime.utcnow() + timedelta(hours=timeout_hours)
+                timeout_deadline = datetime.now(timezone.utc) + timedelta(hours=timeout_hours)
                 vars_dict[f"wait_reply_deadline_{current_node_id}"] = timeout_deadline.isoformat()
 
             self.update_state(state["id"], current_node_id, "waiting_for_reply", timeout_deadline, lease_token=lease_token, variables=vars_dict)
@@ -1763,7 +2017,7 @@ class EleInOrchestrator:
         if action_result.get("status") == "account_disconnected":
             broken_account_id = state.get("account_id") or action_result.get("account_id")
             logger.warning(f"Account {broken_account_id} is disconnected. Marking as DISCONNECTED.")
-            now_iso = datetime.utcnow().isoformat()
+            now_iso = datetime.now(timezone.utc).isoformat()
             if broken_account_id:
                 try:
                     self.supabase.table("accounts").update({
@@ -1815,7 +2069,7 @@ class EleInOrchestrator:
                     state["id"],
                     current_node_id,
                     "pending",
-                    datetime.utcnow() + timedelta(seconds=30),
+                    datetime.now(timezone.utc) + timedelta(seconds=30),
                     lease_token,
                     error_reason=f"Account failover to {backup_account_id}",
                     tz_str=state.get("tz_str", "UTC"),
@@ -1867,7 +2121,7 @@ class EleInOrchestrator:
         if action_result.get("status") == "pool_exhausted":
             import random
             backoff_secs = random.randint(30, 60)
-            next_retry = datetime.utcnow() + timedelta(seconds=backoff_secs)
+            next_retry = datetime.now(timezone.utc) + timedelta(seconds=backoff_secs)
             logger.info(f"Browser pool exhausted for lead {state.get('opportunity_id')}. Rescheduling in {backoff_secs}s.")
             self.update_state(state["id"], current_node_id, "pending", next_retry, lease_token=lease_token, variables=state.get("variables"))
             return
@@ -1931,11 +2185,11 @@ class EleInOrchestrator:
             # Paranoia Layer 1 (AUDIT-05): Desynchronize thundering herd with randomized backoff jitter (30s - 90s)
             import random
             jitter_seconds = random.randint(30, 90)
-            self.update_state(state["id"], current_node["id"], "pending", datetime.utcnow() + timedelta(seconds=jitter_seconds), lease_token=lease_token)
+            self.update_state(state["id"], current_node["id"], "pending", datetime.now(timezone.utc) + timedelta(seconds=jitter_seconds), lease_token=lease_token)
             return
 
         if action == "mark_converted":
-            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token, error_reason="mark_converted")
+            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token, error_reason="mark_converted", enrollment_id=state.get("enrollment_id"))
             try:
                 from knowledge.backend.services.bayesian_icp_service import record_outcome, _extract_signals
                 variables = state.get("variables", {})
@@ -1953,7 +2207,7 @@ class EleInOrchestrator:
             return
 
         if action == "sequence_end":
-            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token, error_reason="sequence_completed")
+            self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token, error_reason="sequence_completed", enrollment_id=state.get("enrollment_id"))
             return
 
         if action == "retry_step":
@@ -1979,7 +2233,7 @@ class EleInOrchestrator:
             
             # If max retries exceeded or no parent, halt lead
             logger.info("Max retries exceeded or no parent on retry_step. Halting lead in error state.")
-            self.update_state(state["id"], current_node["id"], "error", None, lease_token, error_reason="Max retries exceeded on retry_step")
+            self.update_state(state["id"], current_node["id"], "error", None, lease_token, error_reason="Max retries exceeded on retry_step", enrollment_id=state.get("enrollment_id"))
             return
 
 
@@ -1991,12 +2245,12 @@ class EleInOrchestrator:
 
         if not outgoing_edges:
             logger.info(f"C5: Terminal node '{current_node['id']}' — marking lead_state {state['id']} completed")
-            self.update_state(state["id"], None, "completed", None, lease_token, variables=state.get("variables"), tz_str=state.get('tz_str', 'UTC'))
+            self.update_state(state["id"], None, "completed", None, lease_token, variables=state.get("variables"), tz_str=state.get('tz_str', 'UTC'), enrollment_id=state.get("enrollment_id"))
             return
 
 
-        if "branch" in action_result:
-            branch_handle = action_result["branch"]
+        branch_handle = action_result.get("branch") if "branch" in action_result else (action_result.get("output") or action_result.get("result"))
+        if branch_handle is not None:
             logger.debug(f"Node {current_node_id} returned branch '{branch_handle}'. Available edges: {[e.get('source_handle', e.get('sourceHandle', e.get('label', ''))) for e in outgoing_edges]}")
             
             branch_edge, is_terminal = self.resolve_branch_edge(outgoing_edges, branch_handle)
@@ -2004,17 +2258,17 @@ class EleInOrchestrator:
             if not branch_edge:
                 if is_terminal:
                     logger.info(f"Lead {state['opportunity_id']} reached terminal branch '{branch_handle}' on node {current_node_id}. Completing campaign.")
-                    self.update_state(state["id"], None, "completed", None, lease_token, error_reason=f"Reached terminal branch '{branch_handle}'", variables=state.get("variables"), tz_str=state.get('tz_str', 'UTC'))
+                    self.update_state(state["id"], None, "completed", None, lease_token, error_reason=f"Reached terminal branch '{branch_handle}'", variables=state.get("variables"), tz_str=state.get('tz_str', 'UTC'), enrollment_id=state.get("enrollment_id"))
                     return
                 err_msg = f"Lead {state['opportunity_id']} stuck: node {current_node_id} returned branch '{branch_handle}' but no matching edge found. Marking lead as ERROR."
                 logger.error(err_msg)
-                self.update_state(state["id"], current_node_id, "error", None, lease_token, error_reason=err_msg, tz_str=state.get('tz_str', 'UTC'))
+                self.update_state(state["id"], current_node_id, "error", None, lease_token, error_reason=err_msg, tz_str=state.get('tz_str', 'UTC'), enrollment_id=state.get("enrollment_id"))
                 return
             next_node_id = branch_edge.get("target_node_id") or branch_edge.get("target")
         elif len(outgoing_edges) == 1:
             next_node_id = outgoing_edges[0].get("target_node_id") or outgoing_edges[0].get("target")
         else:
-            self.mark_error(state["id"], f"Node {current_node['id']} has multiple edges but no branch returned", lease_token=lease_token, node_id=current_node_id, tz_str=state.get('tz_str', 'UTC'))
+            self.mark_error(state["id"], f"Node {current_node['id']} has multiple edges but no branch returned", lease_token=lease_token, node_id=current_node_id, tz_str=state.get('tz_str', 'UTC'), enrollment_id=state.get("enrollment_id"))
             return
 
         # Evasion jitter: randomly delay (45-120s) before executing the next node
@@ -2029,13 +2283,54 @@ class EleInOrchestrator:
             return
 
         # ENG-03: Campaign pause check during execution to prevent running leads from re-entering pending
+        camp_id = state.get("campaign_id")
         next_status = "pending"
-        camp_check = self.supabase.table("campaigns").select("status").eq("id", state["campaign_id"]).execute()
-        if camp_check.data and camp_check.data[0].get("status") != "ACTIVE":
-            logger.info(f"Campaign {state['campaign_id']} is no longer ACTIVE ({camp_check.data[0].get('status')}). Setting lead state to paused instead of pending.")
-            next_status = "paused"
+        if camp_id:
+            camp_check = self.supabase.table("campaigns").select("status").eq("id", camp_id).execute()
+            if not camp_check.data:
+                logger.info(f"Campaign {camp_id} was deleted or not found. Halting lead {state['id']} as exited.")
+                self.update_state(
+                    state["id"], 
+                    None, 
+                    "exited", 
+                    None, 
+                    lease_token, 
+                    error_reason="Campaign deleted or not found", 
+                    tz_str=state.get('tz_str', 'UTC'),
+                    enrollment_id=state.get("enrollment_id")
+                )
+                return
 
-        self.update_state(state["id"], next_node_id, next_status, datetime.utcnow() + jitter, lease_token, variables=out_vars, tz_str=state.get('tz_str', 'UTC'), schedule=state.get('schedule'))
+            camp_status = (camp_check.data[0].get("status") or "").upper()
+            if camp_status in ("ARCHIVED", "DELETED", "CANCELLED", "STOPPED"):
+                logger.info(f"Campaign {camp_id} is terminal ({camp_status}). Halting lead {state['id']} as exited.")
+                self.update_state(
+                    state["id"], 
+                    None, 
+                    "exited", 
+                    None, 
+                    lease_token, 
+                    error_reason=f"Campaign is {camp_status}", 
+                    tz_str=state.get('tz_str', 'UTC'),
+                    enrollment_id=state.get("enrollment_id")
+                )
+                return
+
+            if camp_status != "ACTIVE":
+                logger.info(f"Campaign {camp_id} is no longer ACTIVE ({camp_status}). Setting lead state to paused instead of pending.")
+                next_status = "paused"
+
+        self.update_state(
+            state["id"], 
+            next_node_id, 
+            next_status, 
+            datetime.now(timezone.utc) + jitter, 
+            lease_token, 
+            variables=out_vars, 
+            tz_str=state.get('tz_str', 'UTC'), 
+            schedule=state.get('schedule'),
+            enrollment_id=state.get("enrollment_id")
+        )
 
     def execute_node_action(
         self, action: str, data: dict, opportunity_id: str, account_id: str, state: dict, lease_token: str, current_node_id: str
@@ -2059,13 +2354,24 @@ class EleInOrchestrator:
             except Exception as e:
                 logger.debug(f"[Orchestrator] Circuit breaker check fallback in execute_node_action: {e}")
 
-        res = self.supabase.table("leads").select("id, first_name, last_name, company_name, job_title, linkedin_url, domain, email").eq("id", opportunity_id).eq("workspace_id", state["workspace_id"]).execute()
+        res = self.supabase.table("leads").select("id, first_name, last_name, company_name, job_title, linkedin_url, domain, email, metadata").eq("id", opportunity_id).eq("workspace_id", state["workspace_id"]).execute()
         opportunity = res.data[0] if res.data else {}
     
         if opportunity:
             opportunity["kdm_first"] = opportunity.get("first_name", "")
             opportunity["kdm_last"] = opportunity.get("last_name", "")
             opportunity["verified_email"] = opportunity.get("email", "")
+            # Paranoia Layer 1: Merge execution state variables into opportunity so previous step outputs interpolate
+            st_vars = state.get("variables") or {}
+            if isinstance(st_vars, str):
+                try:
+                    import json
+                    st_vars = json.loads(st_vars)
+                except Exception:
+                    st_vars = {}
+            if isinstance(st_vars, dict):
+                cur_opp_vars = opportunity.get("variables") if isinstance(opportunity.get("variables"), dict) else {}
+                opportunity["variables"] = {**cur_opp_vars, **st_vars}
         linkedin_url = opportunity.get("linkedin_url")
     
         resolved_data = interpolate_node_data(data, opportunity)
@@ -2095,10 +2401,18 @@ class EleInOrchestrator:
                 pod_status = pod_decision.get("status") if isinstance(pod_decision, dict) else None
                 if pod_status == "EMERGENCY_PAUSED":
                     logger.warning(f"[Orchestrator] Sender pod emergency paused for campaign {state.get('campaign_id')}")
-                    return {"status": "skipped"}
-                elif pod_status in ("EXHAUSTED", "QUARANTINED", "NO_ACTIVE_SENDERS") and not account_id:
-                    logger.warning(f"[Orchestrator] Sender pod capacity unavailable: {pod_decision.get('message')}")
-                    return {"status": "skipped"}
+                    return {"status": "skipped", "message": "Sender pod emergency paused"}
+                elif pod_status in (
+                    "THREAD_AFFINITY_CAPACITY_WAIT",
+                    "ALL_CAPACITIES_EXHAUSTED",
+                    "POD_HEALTH_CRITICAL",
+                    "NO_SENDERS_ASSIGNED",
+                    "EXHAUSTED",
+                    "QUARANTINED",
+                    "NO_ACTIVE_SENDERS"
+                ):
+                    logger.warning(f"[Orchestrator] Sender pod capacity unavailable ({pod_status}): {pod_decision.get('message')}")
+                    return {"status": "deferred", "message": pod_decision.get("message") or pod_status}
                 elif isinstance(pod_decision, dict) and pod_decision.get("account_id"):
                     chosen_sender_id = pod_decision["account_id"]
             except Exception as pod_err:
@@ -2179,9 +2493,9 @@ class EleInOrchestrator:
                             if status_changed_at.tzinfo is None:
                                 status_changed_at = status_changed_at.replace(tzinfo=pytz.UTC)
                             
-                            if datetime.utcnow().replace(tzinfo=pytz.UTC) - status_changed_at >= timedelta(hours=6):
+                            if datetime.now(timezone.utc) - status_changed_at >= timedelta(hours=6):
                                 # Cooling period elapsed, auto-resume to ACTIVE!
-                                now_iso = datetime.utcnow().replace(tzinfo=pytz.UTC).isoformat()
+                                now_iso = datetime.now(timezone.utc).isoformat()
                                 self.supabase.table("accounts").update({
                                     "status": "ACTIVE",
                                     "status_changed_at": now_iso
@@ -2208,7 +2522,7 @@ class EleInOrchestrator:
                                 status_changed_at = parse(status_changed_at_str)
                                 if status_changed_at.tzinfo is None:
                                     status_changed_at = status_changed_at.replace(tzinfo=pytz.UTC)
-                                if datetime.utcnow().replace(tzinfo=pytz.UTC) - status_changed_at > timedelta(hours=48):
+                                if datetime.now(timezone.utc) - status_changed_at > timedelta(hours=48):
                                     is_stale_unhealthy = True
                             except Exception as e:
                                 logger.error(f"Failed to parse status_changed_at {status_changed_at_str}: {e}")
@@ -2278,7 +2592,7 @@ class EleInOrchestrator:
                         worker = LinkedInWorker(cookies, proxy_url=proxy_url, account_id=chosen_sender_id)
                     except (crypto.VaultDecryptionError, Exception) as e:
                         logger.error(f"Account {chosen_sender_id} decryption failed: {e}.")
-                        now = datetime.utcnow().isoformat()
+                        now = datetime.now(timezone.utc).isoformat()
                         self.supabase.table("account_health_checks").insert({
                             "account_id": chosen_sender_id, "check_type": "decryption", "result": "fail",
                             "detail": {"message": "Decryption Failed / Corrupted"}, "checked_at": now
@@ -2467,7 +2781,7 @@ class EleInOrchestrator:
                 if res.get("status") in ("account_disconnected", "session_expired"):
                     self.supabase.table("accounts").update({
                         "status": "DISCONNECTED",
-                        "status_changed_at": datetime.utcnow().isoformat()
+                        "status_changed_at": datetime.now(timezone.utc).isoformat()
                     }).eq("id", chosen_sender_id).execute()
                     if idemp_key:
                         self.supabase.table("campaign_node_executions").update({
@@ -2494,7 +2808,7 @@ class EleInOrchestrator:
 
                     self.supabase.table("accounts").update({
                         "status": "SUSPENDED",
-                        "status_changed_at": datetime.utcnow().isoformat()
+                        "status_changed_at": datetime.now(timezone.utc).isoformat()
                     }).eq("id", chosen_sender_id).execute()
                     if idemp_key:
                         self.supabase.table("campaign_node_executions").update({
@@ -2605,7 +2919,7 @@ class EleInOrchestrator:
                 except Exception as rel_err:
                     logger.warning(f"Failed to release un-executed action quota: {rel_err}")
 
-    def update_state(self, state_id: str, node_id: str, status: str, next_run_at: Optional[datetime], lease_token: str, error_reason: str = None, attempts: int = None, variables: dict = None, tz_str: str = "UTC", enforce_working_hours: bool = True, schedule: dict = None, lead_id: Optional[str] = None, use_sto: bool = False):
+    def update_state(self, state_id: str, node_id: str, status: str, next_run_at: Optional[datetime], lease_token: str, error_reason: str = None, attempts: int = None, variables: dict = None, tz_str: str = "UTC", enforce_working_hours: bool = True, schedule: dict = None, lead_id: Optional[str] = None, use_sto: bool = False, enrollment_id: Optional[str] = None) -> bool:
         # PARANOIA LAYER 2: Prevent developers from adding un-requeuable waiting statuses
         VALID_WAITING_STATUSES = {"waiting_for_reply", "waiting_for_approval"}
         if status.startswith("waiting_") and status not in VALID_WAITING_STATUSES:
@@ -2616,9 +2930,12 @@ class EleInOrchestrator:
             # ENG-08 Paranoia Layer 1: Apply STO strictly when explicitly requested (use_sto=True)
             # or when configured in schedule. Never inflate tactical delay nodes or jitter transitions with STO windows.
             if use_sto or (use_sto is not False and should_use_sto(schedule=schedule)):
-                next_run_at = calculate_sto_next_run(next_run_at, tz_str, lead_id=lead_id, schedule=schedule, supabase=self.supabase).replace(tzinfo=None)
+                ws_id = getattr(self, "workspace_id", None)
+                next_run_at = calculate_sto_next_run(next_run_at, tz_str, lead_id=lead_id, schedule=schedule, supabase=self.supabase, workspace_id=ws_id).replace(tzinfo=None)
             else:
                 next_run_at = adjust_to_working_hours(next_run_at, tz_str, schedule=schedule)
+        
+        success = False
         try:
             res = self.supabase.rpc("release_lead_claim", {
                 "p_state_id": state_id,
@@ -2632,6 +2949,8 @@ class EleInOrchestrator:
             }).execute()
             if not res.data:
                 logger.warning(f"Failed to advance state {state_id} - lease {lease_token} may have expired.")
+                return False
+            success = True
         except Exception as e:
             logger.warning(f"[Orchestrator] release_lead_claim RPC failed for state {state_id}: {e}. Attempting direct table fallback.")
             capture_error(e, context={"service": "elein_orchestrator"})
@@ -2657,17 +2976,52 @@ class EleInOrchestrator:
                 q = self.supabase.table("campaign_execution_states").update(upd_payload).eq("id", state_id)
                 if lease_token:
                     q = q.eq("lease_token", lease_token)
-                q.execute()
+                res_fb = q.execute()
+                if res_fb.data:
+                    success = True
+                else:
+                    logger.warning(f"[Orchestrator] Direct table update matched 0 rows for state {state_id} with lease {lease_token}.")
+                    return False
             except Exception as fb_err:
                 logger.error(f"[Orchestrator] Direct table update fallback also failed for state {state_id}: {fb_err}")
+                return False
 
-    def mark_error(self, state_id: str, error_msg: str, attempts: int = 0, max_attempts: int = 5, hard_error: bool = False, lease_token: str = None, node_id: str = None, tz_str: str = "UTC", enforce_working_hours: bool = True, schedule: dict = None):
+        # Paranoia Layer 1: Synchronize campaign_enrollments status if enrollment_id provided
+        if success and enrollment_id and status in ("completed", "exited", "error", "failed", "bounced"):
+            try:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                enr_payload = {"status": status, "updated_at": now_iso}
+                if status == "completed":
+                    enr_payload["completed_at"] = now_iso
+                self.supabase.table("campaign_enrollments").update(enr_payload).eq("id", enrollment_id).execute()
+
+                # Bi-directional sync to leads table upon sequence completion
+                if status == "completed":
+                    try:
+                        enr_rec = self.supabase.table("campaign_enrollments").select("lead_id").eq("id", enrollment_id).execute()
+                        if enr_rec.data:
+                            target_lid = enr_rec.data[0].get("lead_id")
+                            if target_lid:
+                                lead_res = self.supabase.table("leads").select("status").eq("id", target_lid).execute()
+                                if lead_res.data and lead_res.data[0].get("status") in ("contacted", "enrolled", "extracted", "pending", "open"):
+                                    self.supabase.table("leads").update({
+                                        "status": "completed",
+                                        "updated_at": now_iso
+                                    }).eq("id", target_lid).execute()
+                    except Exception as _st_err:
+                        logger.debug(f"[Orchestrator] Non-fatal leads.status completion sync: {_st_err}")
+            except Exception as enr_err:
+                logger.debug(f"[Orchestrator] campaign_enrollments sync skipped/failed for enrollment {enrollment_id}: {enr_err}")
+
+        return success
+
+    def mark_error(self, state_id: str, error_msg: str, attempts: int = 0, max_attempts: int = 5, hard_error: bool = False, lease_token: str = None, node_id: str = None, tz_str: str = "UTC", enforce_working_hours: bool = True, schedule: dict = None, enrollment_id: Optional[str] = None):
         logger.error(f"Lead state {state_id} errored: {error_msg} (Attempt {attempts + 1}/{max_attempts})")
         new_attempts = max_attempts if hard_error else attempts + 1
         
         if new_attempts >= max_attempts:
             # Exhausted retries -> hard error
-            self.update_state(state_id, node_id, "error", None, lease_token, error_reason=error_msg, attempts=new_attempts)
+            self.update_state(state_id, node_id, "error", None, lease_token, error_reason=error_msg, attempts=new_attempts, enrollment_id=enrollment_id)
             try:
                 res = self.supabase.table("campaign_execution_states").select("workspace_id, enrollment_id, variables").eq("id", state_id).execute()
                 if res.data:
@@ -2690,8 +3044,8 @@ class EleInOrchestrator:
         else:
             # Exponential backoff (e.g. 15m, 1h, 4h, etc) -> back to pending
             backoff_minutes = 15 * (4 ** attempts)
-            next_run = (datetime.utcnow() + timedelta(minutes=backoff_minutes))
-            self.update_state(state_id, node_id, "pending", next_run, lease_token, error_reason=error_msg, attempts=new_attempts, tz_str=tz_str, enforce_working_hours=enforce_working_hours, schedule=schedule)
+            next_run = (datetime.now(timezone.utc) + timedelta(minutes=backoff_minutes))
+            self.update_state(state_id, node_id, "pending", next_run, lease_token, error_reason=error_msg, attempts=new_attempts, tz_str=tz_str, enforce_working_hours=enforce_working_hours, schedule=schedule, enrollment_id=enrollment_id)
 
 
 def _build_proxy_url(account_row: dict, supabase_client):

@@ -42,6 +42,14 @@ class PersonaService:
         res["toneTweaks"] = res.get("tone_tweaks") or ""
         return res
 
+    @staticmethod
+    def _invalidate_brain_cache(workspace_id: str):
+        try:
+            from campaigns.backend.services.elein_executor import invalidate_brain_cache
+            invalidate_brain_cache(workspace_id)
+        except Exception:
+            pass
+
     # ──────────────────────────────────────────────────────────────────────────
     # Personas
     # ──────────────────────────────────────────────────────────────────────────
@@ -93,6 +101,7 @@ class PersonaService:
             raise Exception("Failed to create persona")
 
         created = res.data[0]
+        PersonaService._invalidate_brain_cache(workspace_id)
         return PersonaService._format_persona_output(created)
 
     @staticmethod
@@ -133,13 +142,17 @@ class PersonaService:
         if not res.data:
             return None
         updated = res.data[0]
+        PersonaService._invalidate_brain_cache(workspace_id)
         return PersonaService._format_persona_output(updated)
 
     @staticmethod
     def delete_persona(supabase: Client, workspace_id: str, persona_id: str) -> bool:
         try:
             res = supabase.table("personas").delete().eq("id", persona_id).eq("workspace_id", workspace_id).execute()
-            return len(res.data) > 0
+            deleted = bool(res and res.data and len(res.data) > 0)
+            if deleted:
+                PersonaService._invalidate_brain_cache(workspace_id)
+            return deleted
         except Exception as e:
             logger.error(f"[PersonaService] Error deleting persona {persona_id}: {e}")
             return False
@@ -160,20 +173,49 @@ class PersonaService:
 
     @staticmethod
     def get_objections(supabase: Client, workspace_id: str) -> List[Dict]:
-        """Fetches objections from knowledge_objections with automatic fallback to objections."""
-        try:
-            res = supabase.table("knowledge_objections").select("*").eq("workspace_id", workspace_id).order("created_at", desc=False).execute()
-            if res.data:
-                return res.data
-        except Exception as e:
-            logger.debug(f"[PersonaService] knowledge_objections query failed, trying legacy: {e}")
+        """
+        Layer 0 & 1 Paranoia (Flaw 4): Fetches objections across both knowledge_objections and legacy objections tables.
+        Merges results seamlessly, deduplicating by ID and normalized trigger to prevent data blindness
+        when migrating or having historical rows in both tables.
+        """
+        combined = []
+        seen_ids = set()
+        seen_triggers = set()
 
+        # 1. Query modern table first (canonical precedence)
         try:
-            res = supabase.table("objections").select("*").eq("workspace_id", workspace_id).order("created_at", desc=False).execute()
-            return res.data or []
+            res_modern = supabase.table("knowledge_objections").select("*").eq("workspace_id", workspace_id).order("created_at", desc=False).execute()
+            for row in (res_modern.data or []):
+                rid = str(row.get("id") or "")
+                trig = str(row.get("trigger") or row.get("name") or "").strip().lower()
+                if rid:
+                    seen_ids.add(rid)
+                if trig:
+                    seen_triggers.add(trig)
+                combined.append(row)
         except Exception as e:
-            logger.error(f"[PersonaService] Error fetching objections: {e}")
-            return []
+            logger.debug(f"[PersonaService] knowledge_objections query failed (schema/table might be pending): {e}")
+
+        # 2. Query legacy objections table and merge non-duplicate historical rows
+        try:
+            res_legacy = supabase.table("objections").select("*").eq("workspace_id", workspace_id).order("created_at", desc=False).execute()
+            for row in (res_legacy.data or []):
+                rid = str(row.get("id") or "")
+                trig = str(row.get("trigger") or row.get("name") or "").strip().lower()
+                # Skip if already present from canonical knowledge_objections
+                if rid and rid in seen_ids:
+                    continue
+                if trig and trig in seen_triggers:
+                    continue
+                if rid:
+                    seen_ids.add(rid)
+                if trig:
+                    seen_triggers.add(trig)
+                combined.append(row)
+        except Exception as e:
+            logger.debug(f"[PersonaService] legacy objections query failed (table might be absent): {e}")
+
+        return combined
 
     @staticmethod
     def create_objection(supabase: Client, workspace_id: str, data: dict) -> dict:
@@ -185,8 +227,10 @@ class PersonaService:
             try:
                 existing = supabase.table(tbl).select("*").eq("workspace_id", workspace_id).eq("trigger", trigger).maybe_single().execute()
                 if existing and existing.data:
-                    # Update existing objection instead of creating duplicate
+                    # Layer 1 & 2 Paranoia (Flaw 17): Update existing objection instead of creating duplicate
+                    # and immediately invalidate brain cache so in-memory nodes don't serve stale playbooks.
                     upd = supabase.table(tbl).update({"playbook": playbook}).eq("id", existing.data["id"]).eq("workspace_id", workspace_id).execute()
+                    PersonaService._invalidate_brain_cache(workspace_id)
                     return upd.data[0] if upd.data else existing.data
             except Exception:
                 pass
@@ -220,6 +264,7 @@ class PersonaService:
         except Exception:
             pass
 
+        PersonaService._invalidate_brain_cache(workspace_id)
         return created
 
     @staticmethod
@@ -243,6 +288,8 @@ class PersonaService:
             except Exception:
                 pass
 
+        if updated_row:
+            PersonaService._invalidate_brain_cache(workspace_id)
         return updated_row
 
     @staticmethod
@@ -255,4 +302,6 @@ class PersonaService:
                     deleted = True
             except Exception:
                 pass
+        if deleted:
+            PersonaService._invalidate_brain_cache(workspace_id)
         return deleted

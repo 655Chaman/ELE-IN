@@ -445,15 +445,21 @@ async def seed_demo_data(request: Request) -> Dict[str, Any]:
         for n in nodes:
             db_node_id = str(uuid.uuid4())
             node_id_map[n["id"]] = db_node_id
+            pos = n.get("position") or {}
+            node_key = n.get("key") or n.get("node_key") or n.get("id") or db_node_id
             node_inserts.append({
                 "id": db_node_id,
                 "campaign_version_id": version_id,
+                "campaign_id": campaign_id,
+                "node_key": str(node_key),
                 "node_type": n["type"],
-                "config": n["data"],
-                "ui_position": n["position"]
+                "config": n.get("data") or {},
+                "ui_position": pos,
+                "position_x": pos.get("x", 0),
+                "position_y": pos.get("y", 0)
             })
         if node_inserts:
-            supabase.table("campaign_nodes").insert(node_inserts).execute()
+            svc.table("campaign_nodes").insert(node_inserts).execute()
 
         edge_inserts = []
         for e in edges:
@@ -464,10 +470,12 @@ async def seed_demo_data(request: Request) -> Dict[str, Any]:
                     "campaign_version_id": version_id,
                     "source_node_id": src_uuid,
                     "target_node_id": tgt_uuid,
-                    "condition": e.get("sourceHandle")
+                    "source_handle": e.get("sourceHandle") or e.get("source_handle"),
+                    "target_handle": e.get("targetHandle") or e.get("target_handle"),
+                    "condition": e.get("sourceHandle") or e.get("condition")
                 })
         if edge_inserts:
-            supabase.table("campaign_edges").insert(edge_inserts).execute()
+            svc.table("campaign_edges").insert(edge_inserts).execute()
 
         if valid_sender_id:
             svc.table("campaign_accounts").insert({

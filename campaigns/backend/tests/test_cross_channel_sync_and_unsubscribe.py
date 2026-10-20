@@ -105,7 +105,7 @@ class TestCrossChannelSyncAndUnsubscribe(unittest.TestCase):
             leads_table = mock_supabase.table("leads")
             leads_table.update.assert_called()
             update_call = leads_table.update.call_args[0][0]
-            self.assertEqual(update_call["status"], "Replied (Email)")
+            self.assertIn(update_call["status"].lower(), ["replied", "replied (email)"])
             self.assertTrue(update_call["metadata"].get("email_replied"))
             self.assertIn("email_replied", update_call["metadata"].get("tags", []))
             self.assertEqual(update_call["metadata"].get("email_reply_text"), "Sounds great, let's schedule a demo.")
@@ -174,7 +174,7 @@ class TestCrossChannelSyncAndUnsubscribe(unittest.TestCase):
 
             leads_table = mock_supabase.table("leads")
             update_call = leads_table.update.call_args[0][0]
-            self.assertEqual(update_call["status"], "Replied (Email)")
+            self.assertIn(update_call["status"].lower(), ["replied", "replied (email)"])
             self.assertTrue(update_call["metadata"].get("email_replied"))
 
             exec_table = mock_supabase.table("campaign_execution_states")

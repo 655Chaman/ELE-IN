@@ -85,102 +85,68 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
   return (
     <div className="lg:col-span-1 group outline-none">
-      <div className="h-full bg-card border border-border/60 rounded-xl p-6 lg:p-8 overflow-hidden relative shadow-xs">
+      <div className="h-full bg-card/40 border border-border/50 rounded-xl p-6 lg:p-7 overflow-hidden relative">
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-muted/60 border border-border/60 flex items-center justify-center shadow-xs">
-              <ElesiumLogo size={20} />
+            <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80 shadow-2xs">
+              <ElesiumLogo size={16} />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-foreground">What the AI understood</h3>
-              <p className="text-xs text-muted-foreground">Auto-generated from your content</p>
+              <h3 className="text-sm font-medium text-foreground">AI Understanding</h3>
+              <p className="text-xs text-muted-foreground">What the AI learned from your sources</p>
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-5">
             {(synthesis?.is_draft || synthesis?.status === "pending_review") && (
-              <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 flex flex-col gap-2.5">
+              <div className="p-3 rounded-lg bg-muted/40 border border-border/60 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <ElesiumLogo size={13} /> Draft Ready for Review
+                  <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-muted-foreground" />
+                    <span>Draft Ready for Review</span>
                   </span>
                   <button
                     type="button"
                     onClick={handleApproveSynthesis}
                     disabled={isApproving}
-                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1 shadow-xs cursor-pointer"
+                    className="px-2.5 py-1 bg-foreground text-background hover:bg-foreground/90 rounded-md text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    {isApproving ? "Locking in..." : "Approve & Lock In"}
+                    {isApproving ? "Locking in..." : "Approve"}
                   </button>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Generated from your documents. Review the values below and click "Approve & Lock In" to make this the active constitution for all automated outreach.
+                  Review values extracted from your sources and click Approve to lock in for outreach.
                 </p>
               </div>
             )}
 
-            <div>
-              <div className="flex justify-between items-center text-xs mb-2">
-                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                  <ElesiumLogo size={13} />
-                  <span>AI Readiness</span>
-                </span>
-                <span className={`font-bold ${
-                  readinessScore >= 80 
-                    ? 'text-emerald-600 dark:text-emerald-400' 
-                    : readinessScore > 0 
-                      ? 'text-amber-600 dark:text-amber-400' 
-                      : 'text-muted-foreground'
-                }`}>
-                  {readinessScore >= 80 
-                    ? 'Ready to write outreach' 
-                    : readinessScore > 0 
-                      ? `${readinessScore}% Grounded` 
-                      : 'Needs Knowledge Input'}
+            <div className="space-y-1.5 pb-2 border-b border-border/40">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground text-[11px] uppercase tracking-wider font-medium">Calibrated Context</span>
+                <span className="font-mono text-xs text-foreground font-medium">
+                  {readinessScore >= 80 ? "Calibrated" : readinessScore > 0 ? `${readinessScore}%` : "Awaiting Sources"}
                 </span>
               </div>
-              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div className="h-1 w-full bg-muted/60 rounded-full overflow-hidden">
                 <div 
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    readinessScore >= 80 
-                      ? 'bg-emerald-500' 
-                      : readinessScore > 0 
-                        ? 'bg-amber-500' 
-                        : 'bg-transparent w-0'
-                  }`}
+                  className="h-full bg-foreground transition-all duration-500 rounded-full"
                   style={{ width: `${readinessScore}%` }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                {readinessScore >= 80
-                  ? "Your AI is grounded with verified differentiators and ready to personalize outreach sequences."
-                  : readinessScore > 0
-                    ? "Partially grounded. Add more company proof points and differentiators for highest response rates."
-                    : "Without context, the AI writes generic emails. Add your website or documents on the left to calibrate."}
-              </p>
             </div>
 
-            {/* Empty State Callout without duplicating 3 full preset cards */}
             {!hasValueProp && !isEditingSynthesis && (
-              <div className="p-4 rounded-xl bg-muted/30 border border-border/60 flex flex-col gap-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <ElesiumLogo size={13} />
-                  </div>
-                  <h4 className="text-xs font-bold text-foreground">AI Knowledge Profile</h4>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Once you upload a document or link your website on the left, the AI will automatically synthesize your value proposition, tone, and customer personas here.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Add your website or upload a document on the left. The AI will extract and structure your core value proposition, tone, and proof points here so outreach cites real data.
+              </p>
             )}
             
-            <div className="pt-6 border-t border-border/60">
-               <div className="flex justify-between items-center mb-2">
-                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block">Core Value Prop</span>
+            <div className="pt-2">
+               <div className="flex justify-between items-center mb-1.5">
+                 <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">Core Value Prop</span>
                  {synthesis?.core_value_prop && !isEditingSynthesis && (
-                   <button type="button" onClick={() => setIsEditingSynthesis(true)} className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer">
-                     <ElesiumLogo size={11} /> Override AI
+                   <button type="button" onClick={() => setIsEditingSynthesis(true)} className="text-[10px] text-muted-foreground hover:text-foreground font-medium flex items-center gap-1 cursor-pointer">
+                     <Edit2 size={11} /> Edit
                    </button>
                  )}
                </div>
@@ -190,42 +156,42 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
                    disabled={isSaving}
                    value={editedValueProp}
                    onChange={(e) => setEditedValueProp(e.target.value)}
-                   className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px] disabled:opacity-50"
+                   className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[80px] disabled:opacity-50"
                  />
                ) : (
-                 <p className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-lg border border-border/60">
-                   {synthesis?.core_value_prop || "Awaiting asset analysis..."}
+                 <p className="text-xs text-foreground/80 bg-muted/20 p-3 rounded-lg border border-border/40 leading-relaxed font-normal">
+                   {synthesis?.core_value_prop || <span className="text-muted-foreground/60">Awaiting company sources...</span>}
                  </p>
                )}
             </div>
 
             <div>
-               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Brand Tone</span>
+               <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Brand Tone</span>
                {isEditingSynthesis ? (
                  <textarea 
                    value={editedTone}
                    onChange={(e) => setEditedTone(e.target.value)}
-                   className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[60px]"
+                   className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[60px]"
                  />
                ) : (
-                 <p className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-lg border border-border/60">
-                   {Array.isArray(synthesis?.identified_tone) ? synthesis.identified_tone.join(", ") : (synthesis?.identified_tone || "Awaiting asset analysis...")}
+                 <p className="text-xs text-foreground/80 bg-muted/20 p-3 rounded-lg border border-border/40 leading-relaxed font-normal">
+                   {Array.isArray(synthesis?.identified_tone) ? synthesis.identified_tone.join(", ") : (synthesis?.identified_tone || <span className="text-muted-foreground/60">Awaiting company sources...</span>)}
                  </p>
                )}
             </div>
 
             {(synthesis?.target_customer_profile || isEditingSynthesis) && (
-              <div className="pt-6 border-t border-border/60">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Target Customer</span>
+              <div className="pt-4 border-t border-border/40">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Target Customer</span>
                 {isEditingSynthesis ? (
                   <textarea 
                     disabled={isSaving}
                     value={editedTargetCustomer}
                     onChange={(e) => setEditedTargetCustomer(e.target.value)}
-                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[60px]"
+                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[60px]"
                   />
                 ) : (
-                  <p className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-lg border border-border/60">
+                  <p className="text-xs text-foreground/80 bg-muted/20 p-3 rounded-lg border border-border/40 leading-relaxed font-normal">
                     {synthesis.target_customer_profile}
                   </p>
                 )}
@@ -233,20 +199,20 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
             )}
 
             {(hasDifferentiators || isEditingSynthesis) && (
-              <div className="pt-6 border-t border-border/60">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Key Differentiators {isEditingSynthesis && "(One per line)"}</span>
+              <div className="pt-4 border-t border-border/40">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Key Differentiators {isEditingSynthesis && "(One per line)"}</span>
                 {isEditingSynthesis ? (
                   <textarea 
                     disabled={isSaving}
                     value={editedDifferentiators}
                     onChange={(e) => setEditedDifferentiators(e.target.value)}
-                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px]"
+                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[80px]"
                     placeholder="Enter one differentiator per line..."
                   />
                 ) : (
-                  <div className="flex flex-row flex-wrap gap-2">
+                  <div className="flex flex-row flex-wrap gap-1.5">
                     {synthesis?.key_differentiators?.map((diff: string, i: number) => (
-                      <span key={i} className="px-2 py-1 text-xs rounded-md bg-primary/10 text-primary border border-primary/20">
+                      <span key={i} className="px-2 py-0.5 text-xs rounded-md bg-muted/50 text-foreground/90 border border-border/50">
                         {diff}
                       </span>
                     ))}
@@ -256,21 +222,21 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
             )}
 
             {(hasProofPoints || isEditingSynthesis) && (
-              <div className="pt-6 border-t border-border/60">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Proof Points {isEditingSynthesis && "(One per line)"}</span>
+              <div className="pt-4 border-t border-border/40">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Proof Points {isEditingSynthesis && "(One per line)"}</span>
                 {isEditingSynthesis ? (
                   <textarea 
                     disabled={isSaving}
                     value={editedProofPoints}
                     onChange={(e) => setEditedProofPoints(e.target.value)}
-                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px]"
+                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[80px]"
                     placeholder="Enter one proof point per line..."
                   />
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-1.5">
                     {synthesis?.proof_points?.map((pt: string, i: number) => (
-                      <li key={i} className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-lg border border-border/60 flex items-start gap-2">
-                        <Check size={13} className="text-emerald-500 shrink-0 mt-0.5" /> <span>{pt}</span>
+                      <li key={i} className="text-xs text-foreground/80 bg-muted/20 p-2.5 rounded-lg border border-border/40 flex items-start gap-2">
+                        <Check size={13} className="text-muted-foreground shrink-0 mt-0.5" /> <span>{pt}</span>
                       </li>
                     ))}
                   </ul>
@@ -279,21 +245,21 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
             )}
 
             {(synthesis?.primary_pain_points_solved?.length > 0 || isEditingSynthesis) && (
-              <div className="pt-6 border-t border-border/60">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">Pain Points Solved {isEditingSynthesis && "(One per line)"}</span>
+              <div className="pt-4 border-t border-border/40">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Pain Points Solved {isEditingSynthesis && "(One per line)"}</span>
                 {isEditingSynthesis ? (
                   <textarea 
                     disabled={isSaving}
                     value={editedPainPoints}
                     onChange={(e) => setEditedPainPoints(e.target.value)}
-                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px]"
+                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[80px]"
                     placeholder="Enter one pain point per line..."
                   />
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-1.5">
                     {synthesis.primary_pain_points_solved?.map((pt: string, i: number) => (
-                      <li key={i} className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-lg border border-border/60 flex items-start gap-2">
-                        <span className="text-primary font-bold">→</span> <span>{pt}</span>
+                      <li key={i} className="text-xs text-foreground/80 bg-muted/20 p-2.5 rounded-lg border border-border/40 flex items-start gap-2">
+                        <span className="text-muted-foreground font-mono">→</span> <span>{pt}</span>
                       </li>
                     ))}
                   </ul>
@@ -303,18 +269,18 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
             {/* BANNED PHRASES UI */}
             {(synthesis?.banned_phrases?.length > 0 || isEditingSynthesis) && (
-              <div className="pt-6 border-t border-border/60">
-                <span className="text-[10px] font-bold text-destructive uppercase tracking-widest block mb-2">Banned Phrases / Negative Constraints</span>
+              <div className="pt-4 border-t border-border/40">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Banned Phrases</span>
                 {isEditingSynthesis ? (
                   <textarea 
                     disabled={isSaving}
                     value={editedBannedPhrases}
                     onChange={(e) => setEditedBannedPhrases(e.target.value)}
-                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-destructive/40 focus:outline-none focus:ring-1 focus:ring-destructive min-h-[80px]"
-                    placeholder="Enter phrases the AI should NEVER use (e.g. 'Hope this finds you well', 'synergy')..."
+                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[80px]"
+                    placeholder="Enter phrases the AI should never use..."
                   />
                 ) : (
-                  <div className="text-xs text-destructive italic bg-destructive/10 p-4 rounded-lg border border-destructive/20">
+                  <div className="text-xs text-muted-foreground/90 bg-muted/20 p-3 rounded-lg border border-border/40">
                     {synthesis.banned_phrases}
                   </div>
                 )}
@@ -323,18 +289,18 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
 
             {/* OBJECTION PLAYBOOK UI */}
             {(synthesis?.objection_playbook || isEditingSynthesis) && (
-              <div className="pt-6 border-t border-border/60">
-                <span className="text-[10px] font-bold text-primary uppercase tracking-widest block mb-2">Objection Handling Playbook</span>
+              <div className="pt-4 border-t border-border/40">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1.5">Objection Handling Playbook</span>
                 {isEditingSynthesis ? (
                   <textarea 
                     disabled={isSaving}
                     value={editedObjectionPlaybook}
                     onChange={(e) => setEditedObjectionPlaybook(e.target.value)}
-                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[120px]"
-                    placeholder="How should the AI respond to negative intent? (e.g., 'If they say too expensive, pivot to our ROI case study...')"
+                    className="w-full text-xs text-foreground bg-background p-3 rounded-lg border border-border/70 focus:outline-none focus:border-foreground/40 min-h-[100px]"
+                    placeholder="How should the AI respond to negative intent?..."
                   />
                 ) : (
-                  <div className="text-xs text-foreground italic bg-muted/20 p-4 rounded-lg border border-border/60">
+                  <div className="text-xs text-foreground/80 bg-muted/20 p-3 rounded-lg border border-border/40">
                     {synthesis.objection_playbook}
                   </div>
                 )}
@@ -342,10 +308,10 @@ export function SynthesisEditor({ synthesis, mutateSynthesis }: { synthesis: any
             )}
             
             {isEditingSynthesis && (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setIsEditingSynthesis(false)} disabled={isSaving} className="flex-1 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-lg disabled:opacity-50 cursor-pointer transition-colors">Cancel</button>
-                <button type="button" onClick={handleSaveSynthesis} disabled={isSaving} className="flex-1 py-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg shadow-xs disabled:opacity-50 flex items-center justify-center cursor-pointer transition-colors">
-                  {isSaving ? <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : 'Save Overrides'}
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setIsEditingSynthesis(false)} disabled={isSaving} className="flex-1 py-1.5 text-xs font-medium text-muted-foreground bg-muted hover:bg-muted/80 rounded-lg disabled:opacity-50 cursor-pointer transition-colors">Cancel</button>
+                <button type="button" onClick={handleSaveSynthesis} disabled={isSaving} className="flex-1 py-1.5 text-xs font-medium text-background bg-foreground hover:bg-foreground/90 rounded-lg disabled:opacity-50 flex items-center justify-center cursor-pointer transition-colors">
+                  {isSaving ? <div className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" /> : "Save Changes"}
                 </button>
               </div>
             )}

@@ -10,8 +10,15 @@ import json
 from collections import deque
 from typing import List, Dict, Any, Set, Optional, Tuple
 
-TOUCHPOINT_KEYWORDS = ("message", "connection", "inmail", "followup", "invite", "voice_note")
-BRANCH_NODE_TYPES = {"if_connected", "if_replied", "if_icp_score", "ab_split", "icp_score_gate"}
+TOUCHPOINT_KEYWORDS = (
+    "message", "connection", "inmail", "followup", "invite", "voice_note",
+    "email", "mail", "multimodal", "video_card", "voice_script", "call", "sms"
+)
+BRANCH_NODE_TYPES = {
+    "if_connected", "if_replied", "if_icp_score", "ab_split", "weighted_split",
+    "icp_score_gate", "open_profile_check", "retarget_omnichannel",
+    "fallback_to_inmail", "abm_multithread", "displacement", "boomerang_revival"
+}
 
 
 def _extract_edge_endpoints(edge: Any) -> tuple:
@@ -28,6 +35,17 @@ def _extract_edge_endpoints(edge: Any) -> tuple:
     return src_str, tgt_str
 
 
+def _normalize_edges_list(raw_edges: Any) -> List[dict]:
+    if isinstance(raw_edges, str):
+        try:
+            raw_edges = json.loads(raw_edges)
+        except Exception:
+            return []
+    if not isinstance(raw_edges, list):
+        return []
+    return [e for e in raw_edges if isinstance(e, dict)]
+
+
 def _is_touchpoint_node(node: dict) -> bool:
     ntype = str(node.get("type") or node.get("node_type") or "").lower()
     return any(k in ntype for k in TOUCHPOINT_KEYWORDS)
@@ -38,19 +56,22 @@ def _is_branch_node(node: dict) -> bool:
     return ntype in BRANCH_NODE_TYPES or ntype.startswith("if_")
 
 
-def has_cycle(nodes: list, edges: list) -> bool:
+def has_cycle(nodes: Any, edges: Any) -> bool:
     """
     Iterative Kahn's topological sort + self-loop guard.
     Returns True if the directed graph contains any cycle.
     Supports both (source, target) and (source_node_id, target_node_id).
     Never raises RecursionError regardless of graph depth.
+    Resilient to raw JSON strings or malformed payloads.
     """
-    if not nodes or not isinstance(nodes, list):
+    safe_nodes = _normalize_nodes_list(nodes)
+    safe_edges = _normalize_edges_list(edges)
+    if not safe_nodes:
         return False
 
     node_ids: List[str] = []
     seen_ids: Set[str] = set()
-    for n in nodes:
+    for n in safe_nodes:
         if isinstance(n, dict) and n.get("id") is not None:
             nid = str(n["id"]).strip()
             if nid and nid not in seen_ids:
@@ -64,7 +85,7 @@ def has_cycle(nodes: list, edges: list) -> bool:
     in_degree: Dict[str, int] = {nid: 0 for nid in node_ids}
 
     seen_edges: Set[Tuple[str, str]] = set()
-    for e in (edges or []):
+    for e in safe_edges:
         src, tgt = _extract_edge_endpoints(e)
         if not src or not tgt:
             continue
@@ -93,20 +114,28 @@ def has_cycle(nodes: list, edges: list) -> bool:
     return visited_count < len(node_ids)
 
 
-def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
+def validate_sequence_dag(nodes: Any, edges: Any) -> Dict[str, Any]:
     """
     Performs full DAG structural and reachability analysis.
+    Resilient to raw JSON strings or malformed node/edge items.
     """
-    safe_nodes = [n for n in (nodes or []) if isinstance(n, dict) and n.get("id") is not None]
-    safe_edges = [e for e in (edges or []) if isinstance(e, dict)]
+    safe_nodes = _normalize_nodes_list(nodes)
+    safe_edges = _normalize_edges_list(edges)
 
     node_map: Dict[str, dict] = {}
     node_order: List[str] = []
+    duplicate_node_ids: List[str] = []
+    seen_raw_ids: Set[str] = set()
+
     for n in safe_nodes:
         nid = str(n["id"]).strip()
-        if nid and nid not in node_map:
-            node_map[nid] = n
-            node_order.append(nid)
+        if nid:
+            if nid in seen_raw_ids and nid not in duplicate_node_ids:
+                duplicate_node_ids.append(nid)
+            seen_raw_ids.add(nid)
+            if nid not in node_map:
+                node_map[nid] = n
+                node_order.append(nid)
 
     if not node_order:
         return {
@@ -118,6 +147,8 @@ def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
             "dead_end_branch_nodes": [],
             "total_touchpoints": 0,
             "reachable_touchpoints": 0,
+            "invalid_webhook_urls": [],
+            "duplicate_node_ids": duplicate_node_ids,
         }
 
     adj: Dict[str, List[str]] = {nid: [] for nid in node_order}
@@ -221,6 +252,7 @@ def validate_sequence_dag(nodes: list, edges: list) -> Dict[str, Any]:
         "total_touchpoints": total_touchpoints,
         "reachable_touchpoints": reachable_touchpoints,
         "invalid_webhook_urls": invalid_webhook_urls,
+        "duplicate_node_ids": duplicate_node_ids,
     }
 
 

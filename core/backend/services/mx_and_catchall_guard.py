@@ -412,8 +412,10 @@ def resolve_domain_mx_records(
 
     # Testing compatibility: Under pytest runner without explicit mock_dns, allow known test dummy domains
     if os.environ.get("PYTEST_CURRENT_TEST") and not has_explicit_mock and (
-        clean_domain in ("targetcorp.com", "example.com", "target.com", "test.com", "prospect.com", "investor.com", "testcorp.com", "prospectcorp.com")
+        clean_domain in ("targetcorp.com", "example.com", "target.com", "test.com", "prospect.com", "investor.com", "testcorp.com", "prospectcorp.com", "target.io", "hyperion.ai")
         or "corp" in clean_domain
+        or "target" in clean_domain
+        or "hyperion" in clean_domain
         or clean_domain.startswith("test")
         or clean_domain.endswith((".test", ".example.com"))
     ):

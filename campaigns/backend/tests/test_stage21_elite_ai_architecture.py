@@ -174,6 +174,57 @@ class TestStage21EliteAIArchitecture(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn(self.asset_id, brain._asset_name_cache)
 
+    def test_retrieve_bypasses_pgvector_when_fallback_embeddings(self):
+        """
+        Layer 1 & 2 Paranoia:
+        When neural embedding API is unavailable (fallback pseudo-embeddings generated),
+        retrieve must NOT call pgvector match_knowledge RPC to avoid meaningless cosine noise.
+        """
+        mock_supabase = MagicMock()
+        brain = SemanticBrain(mock_supabase)
+        
+        # Mock _generate_embeddings_with_status to return is_fallback=True
+        with patch.object(brain, "_generate_embeddings_with_status", return_value=([[0.1] * 2048], True)):
+            # Seed in-memory chunk to satisfy fallback search
+            with _in_memory_chunks_lock:
+                _IN_MEMORY_CHUNKS.append({
+                    "id": "chunk_kw_1",
+                    "asset_id": "kw_asset",
+                    "workspace_id": self.workspace_id,
+                    "content": "Outreach sequences for enterprise sales teams",
+                    "source": "Outreach Guide"
+                })
+
+            res = brain.retrieve("enterprise sales", self.workspace_id)
+            # Verify RPC was NEVER called
+            mock_supabase.rpc.assert_not_called()
+            self.assertGreater(len(res), 0)
+            self.assertIn("enterprise sales", res[0]["content"])
+
+    def test_tenant_safe_in_memory_eviction_protects_other_workspaces(self):
+        """
+        Layer 1 Paranoia:
+        A tenant uploading chunks must not evict chunks belonging to other tenants.
+        """
+        brain = SemanticBrain(None)
+        # Pre-populate Workspace B chunks
+        with _in_memory_chunks_lock:
+            _IN_MEMORY_CHUNKS.append({
+                "id": "chunk_ws_b_1",
+                "asset_id": "asset_b",
+                "workspace_id": "ws_b",
+                "content": "Critical knowledge for Tenant B",
+                "embedding": [0.1] * 2048
+            })
+
+        # Workspace A indexes content
+        with patch.object(brain, "_generate_embeddings_with_status", return_value=([[0.2] * 2048], False)):
+            brain.index_document("Tenant A content", "Doc A", "ws_a", asset_id="asset_a")
+
+        with _in_memory_chunks_lock:
+            ws_b_chunks = [c for c in _IN_MEMORY_CHUNKS if c.get("workspace_id") == "ws_b"]
+            self.assertEqual(len(ws_b_chunks), 1, "Tenant B's chunk must never be evicted by Tenant A's indexing")
+
     # ─── 4. THREAD CONCURRENCY & ASSET CACHE FIFO BOUNDARY ───────────────────
 
     def test_asset_cache_fifo_eviction_and_thread_safety(self):

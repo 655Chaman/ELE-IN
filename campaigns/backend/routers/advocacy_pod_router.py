@@ -146,6 +146,8 @@ def submit_post_boost_endpoint(
             supabase=supabase
         )
         return {"success": True, "boost": boost}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Error submitting post for boost: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

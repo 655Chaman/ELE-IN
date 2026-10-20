@@ -12,10 +12,14 @@ Rigorously built under the Three-Layer Logic Architecture (Paranoia Framework).
 import re
 import math
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Tuple, Any, Optional, List
 
 logger = logging.getLogger(__name__)
+
+# Re-entrant thread lock for in-process atomic feedback updates (Flaw 3.5)
+_icp_feedback_lock = threading.RLock()
 
 # Standard ICP Signal Metadata Registry
 DEFAULT_ICP_SIGNALS: Dict[str, Dict[str, Any]] = {
@@ -415,59 +419,60 @@ def record_adaptive_feedback(
     delta_alpha, delta_beta = valid_events[clean_event]
     signals_updated = []
 
-    for raw_sig_name, is_present in signal_flags.items():
-        if not is_present or not raw_sig_name:
-            continue
+    with _icp_feedback_lock:
+        for raw_sig_name, is_present in signal_flags.items():
+            if not is_present or not raw_sig_name:
+                continue
 
-        clean_sig = re.sub(r'[^a-zA-Z0-9_\-]', '', str(raw_sig_name).strip().lower())[:64]
-        if not clean_sig:
-            continue
+            clean_sig = re.sub(r'[^a-zA-Z0-9_\-]', '', str(raw_sig_name).strip().lower())[:64]
+            if not clean_sig:
+                continue
 
-        try:
-            # Check if signal is frozen (Layer 2 Human Lock Guard)
-            res = supabase.table("icp_signal_weights").select("prior_alpha, prior_beta, is_frozen").eq("workspace_id", workspace_id).eq("signal_name", clean_sig).limit(1).execute()
-            if res.data and len(res.data) > 0:
-                row = res.data[0]
-                if row.get("is_frozen", False):
-                    logger.info(f"[BayesianICP] Signal '{clean_sig}' is FROZEN by operator. Skipping automated update.")
-                    continue
+            try:
+                # Check if signal is frozen (Layer 2 Human Lock Guard)
+                res = supabase.table("icp_signal_weights").select("prior_alpha, prior_beta, is_frozen").eq("workspace_id", workspace_id).eq("signal_name", clean_sig).limit(1).execute()
+                if res.data and len(res.data) > 0:
+                    row = res.data[0]
+                    if row.get("is_frozen", False):
+                        logger.info(f"[BayesianICP] Signal '{clean_sig}' is FROZEN by operator. Skipping automated update.")
+                        continue
 
-                cur_a = int(row.get("prior_alpha") or 2)
-                cur_b = int(row.get("prior_beta") or 2)
+                    cur_a = int(row.get("prior_alpha") or 2)
+                    cur_b = int(row.get("prior_beta") or 2)
 
-                # Damping factor: scale down when total observations >= 200 to maintain agility
-                if (cur_a + cur_b) >= 200:
-                    cur_a = max(2, int(cur_a * 0.5))
-                    cur_b = max(2, int(cur_b * 0.5))
+                    # Damping factor: scale down when total observations >= 200 to maintain agility
+                    if (cur_a + cur_b) >= 200:
+                        cur_a = max(2, int(cur_a * 0.5))
+                        cur_b = max(2, int(cur_b * 0.5))
 
-                new_a = cur_a + delta_alpha
-                new_b = cur_b + delta_beta
+                    new_a = cur_a + delta_alpha
+                    new_b = cur_b + delta_beta
 
-                supabase.table("icp_signal_weights").update({
-                    "prior_alpha": new_a,
-                    "prior_beta": new_b,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }).eq("workspace_id", workspace_id).eq("signal_name", clean_sig).execute()
+                    supabase.table("icp_signal_weights").update({
+                        "prior_alpha": new_a,
+                        "prior_beta": new_b,
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }).eq("workspace_id", workspace_id).eq("signal_name", clean_sig).execute()
+                    signals_updated.append(clean_sig)
+                else:
+                    # Insert initial prior with observation
+                    init_a = 2 + delta_alpha
+                    init_b = 2 + delta_beta
+                    supabase.table("icp_signal_weights").insert({
+                        "workspace_id": workspace_id,
+                        "signal_name": clean_sig,
+                        "prior_alpha": init_a,
+                        "prior_beta": init_b,
+                        "is_frozen": False,
+                        "weight_multiplier": 1.0,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }).execute()
+                    signals_updated.append(clean_sig)
+
+            except Exception as e:
+                logger.warning(f"[BayesianICP] Could not persist signal update for '{clean_sig}': {e}")
                 signals_updated.append(clean_sig)
-            else:
-                # Insert initial prior with observation
-                init_a = 2 + delta_alpha
-                init_b = 2 + delta_beta
-                supabase.table("icp_signal_weights").insert({
-                    "workspace_id": workspace_id,
-                    "signal_name": clean_sig,
-                    "prior_alpha": init_a,
-                    "prior_beta": init_b,
-                    "is_frozen": False,
-                    "weight_multiplier": 1.0,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }).execute()
-                signals_updated.append(clean_sig)
-
-        except Exception as e:
-            logger.warning(f"[BayesianICP] Could not persist signal update for '{clean_sig}': {e}")
-            signals_updated.append(clean_sig)
 
     # Log to icp_feedback_events audit ledger
     try:
@@ -687,19 +692,41 @@ def compute_bayesian_icp_score(
 
         matched_probs = []
         reasoning_parts = []
+        absent_penalties = []
+
+        # Key signals whose absence should exert negative pressure (Flaw 3.4)
+        CRITICAL_QUALIFIERS = {"is_decision_maker", "decision_maker_title", "is_target_industry"}
 
         for sig_name, is_present in eval_signals.items():
             if is_present:
                 prob = weights.get(sig_name, 0.5)
                 matched_probs.append(prob)
                 reasoning_parts.append(f"{sig_name} (weight: {prob:.2f})")
+            elif sig_name in CRITICAL_QUALIFIERS and sig_name in weights:
+                neg_weight = weights.get(sig_name, 0.5)
+                if neg_weight > 0.5:
+                    absent_penalties.append((sig_name, neg_weight))
 
         if not matched_probs:
             return 50, "No significant ICP signals detected; using neutral prior."
 
-        # Average probability of present signals
-        avg_prob = sum(matched_probs) / len(matched_probs)
-        score = int(round(avg_prob * 100))
+        # Flaw 3.3: True Bayesian log-odds accumulation (prevents Multi-Signal Penalty)
+        # Prior is neutral P(ICP) = 0.5 -> logit = 0
+        total_logit = 0.0
+        for prob in matched_probs:
+            clamped_p = max(0.01, min(0.99, prob))
+            total_logit += math.log(clamped_p / (1.0 - clamped_p))
+
+        # Apply absence penalties for missing critical qualifiers (Flaw 3.4)
+        for sig_name, weight in absent_penalties:
+            clamped_w = max(0.01, min(0.99, weight))
+            penalty = 0.5 * math.log(clamped_w / (1.0 - clamped_w))
+            total_logit -= penalty
+            reasoning_parts.append(f"missing_{sig_name} (penalty: -{penalty:.2f})")
+
+        # Convert posterior log-odds back to probability [0, 1]
+        posterior_p = 1.0 / (1.0 + math.exp(-total_logit))
+        score = int(round(posterior_p * 100))
         score = max(0, min(100, score))
 
         reasoning = f"Bayesian Score {score}. Active signals: " + ", ".join(reasoning_parts)

@@ -5,7 +5,7 @@ import csv
 import io
 import urllib.parse
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ _IN_MEMORY_EVENTS: List[Dict[str, Any]] = [
         "event_type": "event",
         "attendee_count": 842,
         "status": "completed",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     },
     {
         "id": "evt-202",
@@ -87,7 +87,7 @@ _IN_MEMORY_EVENTS: List[Dict[str, Any]] = [
         "event_type": "group",
         "attendee_count": 1250,
         "status": "completed",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
 ]
 
@@ -246,7 +246,7 @@ def harvest_event_attendees(
     # Paranoia Layer 1: Deduplication lock check (2-hour window)
     if lock_key in _HARVESTED_EVENT_LOCKS:
         lock_entry = _HARVESTED_EVENT_LOCKS[lock_key]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if (now - lock_entry["timestamp"]).total_seconds() < 7200:  # 2 hours
             cached = dict(lock_entry["result"])
             cached["duplicate_harvest_prevented"] = True
@@ -266,7 +266,7 @@ def harvest_event_attendees(
         "event_type": parsed.get("event_type", "event"),
         "attendee_count": 142,
         "status": "completed",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
 
     # Generate sample harvested attendees
@@ -322,7 +322,7 @@ def harvest_event_attendees(
     }
 
     _HARVESTED_EVENT_LOCKS[lock_key] = {
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
         "result": dict(result)
     }
 

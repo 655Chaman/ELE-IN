@@ -122,25 +122,25 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
   const activeStageInfo = SCRAPER_STAGES.find(s => s.step === currentStage) || SCRAPER_STAGES[0]
 
   return (
-    <div className="border border-border/60 bg-muted/20 hover:bg-muted/30 transition-all rounded-xl p-5 flex flex-col justify-between">
+    <div className="border border-border/50 bg-card/40 hover:bg-card/70 hover:border-border/80 transition-all rounded-xl p-5 flex flex-col justify-between min-h-[200px]">
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-            {isCapped ? <Lock size={18} className="text-amber-500" /> : <LinkIcon size={18} />}
+        <div className="flex items-center justify-between mb-3">
+          <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center text-foreground/80">
+            {isCapped ? <Lock size={15} className="text-amber-500" /> : <LinkIcon size={15} />}
           </div>
           {isScraping && (
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold flex items-center gap-1">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-muted border border-border/60 text-muted-foreground font-medium flex items-center gap-1">
               <RefreshCw size={10} className="animate-spin" />
               {elapsedSeconds}s
             </span>
           )}
         </div>
-        <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
-          <span>Add your website</span>
-          {scrapeSuccess && <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />}
+        <h3 className="font-medium text-sm text-foreground flex items-center gap-1.5">
+          <span>Connect Website</span>
+          {scrapeSuccess && <CheckCircle2 size={14} className="text-emerald-500" />}
         </h3>
-        <p className="text-xs text-muted-foreground mt-1 mb-3">
-          {isCapped ? `Limit reached (${currentCount}/${maxAssets} docs)` : "Live extraction & vector indexing."}
+        <p className="text-xs text-muted-foreground mt-1 mb-3 leading-relaxed">
+          {isCapped ? `Plan limit reached (${currentCount}/${maxAssets} docs)` : "Extract company positioning and offerings directly from your URL."}
         </p>
       </div>
 
@@ -156,16 +156,16 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
             }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleScrape() }}
             placeholder="https://company.com"
-            className="bg-background border border-border/60 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary w-full shadow-2xs text-foreground placeholder:text-muted-foreground"
+            className="bg-background/80 border border-border/70 rounded-lg px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-foreground/40 w-full"
           />
         )}
 
         {/* Live Scraper Progress Telemetry (Area 4: Eliminating the Black Box) */}
         {isScraping && (
-          <div className="p-3 rounded-xl border border-primary/20 bg-background/80 space-y-2 text-left">
+          <div className="p-3 rounded-xl border border-border/60 bg-muted/30 space-y-2 text-left">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Globe size={12} className="text-primary animate-pulse" />
+              <span className="font-medium text-foreground flex items-center gap-1.5">
+                <Globe size={12} className="text-muted-foreground animate-pulse" />
                 {activeStageInfo.label}
               </span>
               <span className="font-mono text-muted-foreground text-[10px]">
@@ -174,9 +174,9 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
             </div>
 
             {/* Smooth Progress Bar */}
-            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
               <div 
-                className="h-full bg-primary transition-all duration-300 rounded-full"
+                className="h-full bg-foreground transition-all duration-300 rounded-full"
                 style={{ width: `${scrapeSuccess ? 100 : activeStageInfo.pct}%` }}
               />
             </div>
@@ -190,24 +190,21 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
 
         {/* Success State Confirmation */}
         {scrapeSuccess && (
-          <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <div className="font-semibold text-[11px] flex items-center gap-1.5">
-              <span>Website scraped &amp; added to AI memory!</span>
-              <ElesiumLogo size={13} />
-            </div>
+          <div className="p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 text-xs flex items-center gap-2">
+            <CheckCircle2 size={15} className="shrink-0" />
+            <span className="text-[11px] font-medium">Website indexed into AI memory!</span>
           </div>
         )}
 
-        {/* Error / Anti-Bot Fallback Notice (Layer 1 Paranoia) */}
+        {/* Error / Anti-Bot Fallback Notice */}
         {scrapeError && !isScraping && (
-          <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-              <AlertTriangle size={14} className="shrink-0" />
+          <div className="p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/10 text-left space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-500">
+              <AlertTriangle size={13} className="shrink-0" />
               <span>Scraping Notice</span>
             </div>
-            <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
-              Site may be protected by anti-bot verification or requires JavaScript. You can paste your text directly into the Text tab.
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Site may be protected by anti-bot firewalls. You can paste your text directly into the Text option.
             </p>
           </div>
         )}
@@ -218,10 +215,10 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
             disabled={isScraping || !scrapeUrl.trim()}
             onClick={handleScrape}
             className={cn(
-              "py-2 rounded-lg text-xs font-semibold transition-all w-full disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer",
+              "py-1.5 rounded-lg text-xs font-medium transition-colors w-full disabled:opacity-40 flex items-center justify-center gap-1.5 cursor-pointer",
               isCapped
-                ? "bg-muted text-foreground border border-border hover:bg-muted/80"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
+                ? "border border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                : "bg-foreground text-background hover:bg-foreground/90"
             )}
           >
             {isScraping ? (
@@ -232,11 +229,11 @@ export function AddUrlModal({ mutateAssets }: { mutateAssets?: () => void }) {
             ) : isCapped ? (
               <>
                 <Lock size={12} className="text-amber-500" />
-                <span>Unlock More Docs</span>
+                <span>Quota Reached</span>
               </>
             ) : (
               <>
-                <span>Read Website</span>
+                <span>Scan Website</span>
                 <ArrowRight size={12} />
               </>
             )}

@@ -17,6 +17,9 @@ from campaigns.backend.services.boomerang_revival_service import (
     _IN_MEMORY_JOB_CHANGES,
     _IN_MEMORY_WARM_PATHS,
     _IN_MEMORY_REVIVALS,
+    _SEED_JOB_CHANGES,
+    _SEED_WARM_PATHS,
+    _SEED_REVIVALS,
     _ENROLLED_BOOMERANG_LOCKS,
 )
 
@@ -41,8 +44,11 @@ class TestStage22EliteAIArchitecture(unittest.TestCase):
     def tearDown(self):
         with _boomerang_lock:
             _IN_MEMORY_JOB_CHANGES.clear()
+            _IN_MEMORY_JOB_CHANGES.extend([dict(x) for x in _SEED_JOB_CHANGES])
             _IN_MEMORY_WARM_PATHS.clear()
+            _IN_MEMORY_WARM_PATHS.extend([dict(x) for x in _SEED_WARM_PATHS])
             _IN_MEMORY_REVIVALS.clear()
+            _IN_MEMORY_REVIVALS.extend([dict(x) for x in _SEED_REVIVALS])
             _ENROLLED_BOOMERANG_LOCKS.clear()
 
     # ─── 1. BUYING WINDOW SCORING & INTERNAL PROMOTION PARANOIA ──────────────

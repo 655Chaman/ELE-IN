@@ -100,7 +100,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       whileHover={{ scale: isDragging ? 1.05 : 1.01 }}
-      className={`absolute rounded-lg border  transition-colors group ${activeStyle} ${isDragging ? 'cursor-grabbing z-[100] ring-2 ring-white/20' : 'cursor-grab z-40'}`}
+      className={`sticky-note absolute rounded-lg border transition-colors group ${activeStyle} ${isDragging ? 'cursor-grabbing z-[100] ring-2 ring-white/20' : 'cursor-grab z-40'}`}
       style={{ left: note.x, top: note.y, minWidth: 240, maxWidth: 320 }}
       onMouseDown={handleMouseDown}
       onClick={(e) => e.stopPropagation()}
