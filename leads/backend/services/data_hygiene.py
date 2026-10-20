@@ -115,7 +115,10 @@ class DataHygieneService:
         # Format casing
         final_candidate = DataHygieneService._format_name_casing(final_candidate)
 
-        return final_candidate.strip()
+        # Paranoia Layer 1 & 2 (B1-F09): Strip leading/trailing single/double quotes and hyphens so formula protection or CSV escaping does not leak into names
+        final_candidate = final_candidate.strip().strip("'\"-").strip()
+
+        return final_candidate
 
     @staticmethod
     def clean_first_name(name: Any) -> str:
@@ -229,7 +232,8 @@ class DataHygieneService:
             else:
                 cleaned = cleaned.title()
 
-        return cleaned.strip()
+        # Paranoia Layer 1 & 2 (B1-F09): Strip leading/trailing quotes and hyphens so formula defense never leaks into company tokens
+        return cleaned.strip().strip("'\"-").strip()
 
     @staticmethod
     def is_search_url(url: Any) -> bool:
@@ -285,6 +289,9 @@ class DataHygieneService:
         if not url:
             return ""
         raw = str(url).strip()
+        # Paranoia Layer 1: Bound input length to 2048 chars to prevent ReDoS on dirty inputs
+        if len(raw) > 2048:
+            return ""
         # Strip enclosing wrappers from markdown, lists, or quotes
         for _ in range(3):
             raw = raw.strip()
@@ -364,7 +371,8 @@ class DataHygieneService:
         if email is None:
             return ""
         raw = str(email).strip()
-        if not raw:
+        # Paranoia Layer 1: Bound input length to 320 chars (RFC 5321 limit) to prevent ReDoS
+        if not raw or len(raw) > 320:
             return ""
 
         # Layer 0 & 2: Strip wrappers: quotes, angle brackets, mailto:
@@ -402,6 +410,14 @@ class DataHygieneService:
         if ".." in domain or domain.startswith(".") or domain.endswith("."):
             return ""
 
+        # Validate TLD: must have at least 2 characters, alpha or valid punycode (e.g. .technology, .consulting, .ai, .co.uk)
+        domain_labels = domain.split(".")
+        if len(domain_labels) < 2:
+            return ""
+        tld = domain_labels[-1]
+        if len(tld) < 2 or not re.match(r'^(?:[a-zA-Z]{2,}|xn--[a-zA-Z0-9]+)$', tld):
+            return ""
+
         return raw
 
     @staticmethod
@@ -415,7 +431,8 @@ class DataHygieneService:
         if phone is None:
             return ""
         raw = str(phone).strip()
-        if not raw:
+        # Paranoia Layer 1: Bound input length to 50 chars to prevent ReDoS
+        if not raw or len(raw) > 50:
             return ""
 
         # Strip extensions like ext. 123, x456, extension 789, x 101

@@ -23,6 +23,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
+import { useWorkspace } from "@/contexts/WorkspaceContext"
+import { leadKeys } from "./leadKeys"
 import { Linkedin } from "../icons/Linkedin"
 import { CustomSelect } from "@/components/ui/select"
 
@@ -177,14 +179,16 @@ export function SocialSignalRadarView({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [cooldownWarning, collisionWarning, enrollingLead, showBatchModal, draftLead])
 
-  // API Queries
-  const feedEndpoint = tierFilter !== "ALL"
-    ? `/api/leads/social-radar/feed?tier=${tierFilter}`
-    : "/api/leads/social-radar/feed"
+  const { activeWorkspaceId } = useWorkspace()
+  // API Queries via canonical leadKeys
+  const feedEndpoint = leadKeys.radarFeed(activeWorkspaceId, tierFilter)
   const { data: feedData, isLoading, mutate: mutateFeed } = useSWR<{ feed: FeedItem[]; total_items: number }>(feedEndpoint, fetcher)
-  const { data: lists } = useSWR<any[]>('/api/elein/leads/lists', fetcher)
-  const { data: campaigns } = useSWR<any[]>('/api/elein/campaigns', fetcher)
-  const { data: accounts } = useSWR<any[]>('/api/elein/accounts', fetcher)
+  const listsKey = leadKeys.lists(activeWorkspaceId)
+  const { data: lists } = useSWR<any[]>(listsKey, fetcher)
+  const campaignsKey = leadKeys.campaigns(activeWorkspaceId)
+  const { data: campaigns } = useSWR<any[]>(campaignsKey, fetcher)
+  const accountsKey = leadKeys.accounts(activeWorkspaceId)
+  const { data: accounts } = useSWR<any[]>(accountsKey, fetcher)
 
   const rawFeed = feedData?.feed || []
 

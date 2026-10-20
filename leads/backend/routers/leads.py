@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from core.backend.api.auth_dep import get_supabase_client, get_async_supabase_client, get_current_workspace
 import uuid
+import re
 
 router = APIRouter()
 
@@ -44,13 +45,22 @@ def mask_email(email: Optional[str]) -> str:
         masked_user = user[:2] + "***"
     return f"{masked_user}@{domain}"
 
+def mask_phone(phone: Optional[str]) -> str:
+    if not phone or not isinstance(phone, str):
+        return ""
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) < 4:
+        return "***"
+    return f"***-***-{digits[-4:]}"
+
 def sanitize_csv_value(val: Any) -> Any:
     if val is None:
         return ""
     s = str(val)
     s_clean = s.lstrip(" ")
     if s_clean and s_clean[0] in ("=", "+", "-", "@", "\t", "\r"):
-        return "'" + s
+        if not s.startswith("'"):
+            return "'" + s
     return s
 
 @router.get("/lists/{list_id}/export", response_model=dict)
@@ -62,9 +72,13 @@ async def export_leads_in_list(
 ):
     """
     Exports leads with tier-based quota enforcement and privacy masking (Paranoia Layer 1).
-    - FREE tier: capped to 25 leads, emails masked.
+    - FREE tier: capped to 25 leads, emails and phones masked.
     - PRO / ENTERPRISE tier: unlimited leads up to list capacity, full unmasked contacts.
     """
+    clean_list_id = list_id.strip() if isinstance(list_id, str) else ""
+    if not clean_list_id:
+        raise HTTPException(status_code=400, detail="Invalid list ID.")
+
     can_unmask = False
     try:
         from core.backend.services.credit_service import TIER_LIMITS
@@ -72,7 +86,7 @@ async def export_leads_in_list(
         # 1. Verify list ownership
         list_res = await supabase.table("lead_lists") \
             .select("id, name, workspace_id") \
-            .eq("id", list_id) \
+            .eq("id", clean_list_id) \
             .eq("workspace_id", workspace_id) \
             .single() \
             .execute()
@@ -88,33 +102,37 @@ async def export_leads_in_list(
 
         # 3. Build query
         query = supabase.table("leads") \
-            .select("id, first_name, last_name, job_title, company_name, linkedin_url, email, location, list_members!inner(list_id)") \
-            .eq("list_members.list_id", list_id) \
+            .select("id, first_name, last_name, job_title, company_name, linkedin_url, email, phone, location, list_members!inner(list_id)") \
+            .eq("list_members.list_id", clean_list_id) \
             .eq("workspace_id", workspace_id) \
             .order("created_at", desc=True)
 
         if selected_ids and isinstance(selected_ids, str):
             clean_ids = [i.strip() for i in selected_ids.split(",") if i.strip()]
             if clean_ids:
+                # Bound to max 1,000 items (Paranoia Layer 1)
+                clean_ids = clean_ids[:1000]
                 query = query.in_("id", clean_ids)
-
 
         # Physical clamp (Paranoia Layer 1)
         query = query.limit(max_export)
         leads_res = await query.execute()
         leads_data = leads_res.data or []
 
-        # 4. Mask data if Free and sanitize formula injection
+        # 4. Mask data if Free and sanitize formula injection across all export fields
         sanitized = []
         for lead in leads_data:
             lead_copy = dict(lead)
-            if not can_unmask and lead_copy.get("email"):
-                lead_copy["email"] = mask_email(lead_copy["email"])
+            if not can_unmask:
+                if lead_copy.get("email"):
+                    lead_copy["email"] = mask_email(lead_copy["email"])
+                if lead_copy.get("phone"):
+                    lead_copy["phone"] = mask_phone(lead_copy["phone"])
             # Remove internal join artifact
             lead_copy.pop("list_members", None)
-            for k in ("first_name", "last_name", "job_title", "company_name", "location"):
-                if k in lead_copy:
-                    lead_copy[k] = sanitize_csv_value(lead_copy[k])
+            for k, v in list(lead_copy.items()):
+                if isinstance(v, str):
+                    lead_copy[k] = sanitize_csv_value(v)
             sanitized.append(lead_copy)
 
         return {
@@ -132,17 +150,20 @@ async def export_leads_in_list(
         import logging
         logging.getLogger(__name__).warning(f"Error exporting leads ({e}); checking in-memory fallback")
         from leads.backend.services.lead_ingestion_service import get_in_memory_leads_for_list
-        in_mem = get_in_memory_leads_for_list(workspace_id, list_id)
+        in_mem = get_in_memory_leads_for_list(workspace_id, clean_list_id)
         if in_mem:
             sanitized = []
             for lead in in_mem[:25]:
                 lead_copy = dict(lead)
-                if not can_unmask and lead_copy.get("email"):
-                    lead_copy["email"] = mask_email(lead_copy["email"])
+                if not can_unmask:
+                    if lead_copy.get("email"):
+                        lead_copy["email"] = mask_email(lead_copy["email"])
+                    if lead_copy.get("phone"):
+                        lead_copy["phone"] = mask_phone(lead_copy["phone"])
                 lead_copy.pop("list_members", None)
-                for k in ("first_name", "last_name", "job_title", "company_name", "location"):
-                    if k in lead_copy:
-                        lead_copy[k] = sanitize_csv_value(lead_copy[k])
+                for k, v in list(lead_copy.items()):
+                    if isinstance(v, str):
+                        lead_copy[k] = sanitize_csv_value(v)
                 sanitized.append(lead_copy)
             return {
                 "status": "success",
@@ -169,6 +190,7 @@ async def get_leads_in_list(
     list_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=MAX_LEADS_PER_PAGE),
+    q: Optional[str] = Query(default=None),
     workspace_id: str = Depends(get_current_workspace),
     supabase: AsyncClient = Depends(get_async_supabase_client)
 ):
@@ -178,24 +200,63 @@ async def get_leads_in_list(
         if not l_check.data:
             raise HTTPException(status_code=404, detail="Lead list not found or unauthorized.")
 
-        safe_page_size = min(max(1, page_size), MAX_LEADS_PER_PAGE)
-        safe_page = max(1, page)
+        safe_page_size = min(max(1, page_size if isinstance(page_size, int) else 100), MAX_LEADS_PER_PAGE)
+        safe_page = max(1, page if isinstance(page, int) else 1)
         offset = (safe_page - 1) * safe_page_size
 
         # Avoid N+1: Use inner join over list_members to fetch leads directly in 1 query
         # PARANOIA LAYER 1: Explicit ordering is MANDATORY for cursor/offset pagination
         # to prevent page drift when concurrent inserts happen. Enforce workspace_id isolation.
-        leads_res = await supabase.table("leads") \
+        query = supabase.table("leads") \
             .select("*, list_members!inner(list_id)", count="estimated") \
             .eq("list_members.list_id", list_id) \
-            .eq("workspace_id", workspace_id) \
+            .eq("workspace_id", workspace_id)
+
+        clean_q = q.strip() if isinstance(q, str) else ""
+        if clean_q:
+            import re
+            safe_q = re.sub(r'[,()"\']', '', clean_q)[:100]
+            if safe_q:
+                query = query.or_(f"first_name.ilike.%{safe_q}%,last_name.ilike.%{safe_q}%,email.ilike.%{safe_q}%,company_name.ilike.%{safe_q}%,job_title.ilike.%{safe_q}%")
+
+        leads_res = await query \
             .order("created_at", desc=True) \
             .range(offset, offset + safe_page_size - 1) \
             .execute()
         
+        raw_leads = leads_res.data or []
+        lead_ids = [l["id"] for l in raw_leads if l.get("id")]
+        enrollment_map = {}
+        if lead_ids:
+            try:
+                enr_res = await supabase.table("campaign_enrollments") \
+                    .select("id, campaign_id, lead_id, status") \
+                    .eq("workspace_id", workspace_id) \
+                    .in_("lead_id", lead_ids[:100]) \
+                    .execute()
+                for enr in (enr_res.data or []):
+                    lid = enr.get("lead_id")
+                    if lid and lid not in enrollment_map:
+                        enrollment_map[lid] = {
+                            "enrollment_id": enr.get("id"),
+                            "campaign_id": enr.get("campaign_id"),
+                            "status": enr.get("status")
+                        }
+            except Exception as enr_err:
+                import logging
+                logging.getLogger(__name__).debug(f"Optional enrollment fetch skipped: {enr_err}")
+
+        for l in raw_leads:
+            enr_info = enrollment_map.get(l.get("id"))
+            if enr_info:
+                l["campaign_enrollment"] = enr_info
+                l["enrollment_id"] = enr_info["enrollment_id"]
+                l["campaign_id"] = enr_info["campaign_id"]
+                l["enrollment_status"] = enr_info["status"]
+
         total = leads_res.count or 0
         return {
-            "data": leads_res.data or [],
+            "data": raw_leads,
             "total": total,
             "page": safe_page,
             "page_size": safe_page_size,
@@ -209,6 +270,16 @@ async def get_leads_in_list(
         from leads.backend.services.lead_ingestion_service import get_in_memory_leads_for_list
         in_mem = get_in_memory_leads_for_list(workspace_id, list_id)
         if in_mem:
+            if clean_q:
+                q_low = clean_q.lower()
+                in_mem = [
+                    l for l in in_mem
+                    if q_low in str(l.get("first_name", "")).lower()
+                    or q_low in str(l.get("last_name", "")).lower()
+                    or q_low in str(l.get("email", "")).lower()
+                    or q_low in str(l.get("company_name", "")).lower()
+                    or q_low in str(l.get("job_title", "")).lower()
+                ]
             safe_page_size = min(max(1, page_size), MAX_LEADS_PER_PAGE)
             safe_page = max(1, page)
             offset = (safe_page - 1) * safe_page_size
@@ -306,6 +377,26 @@ async def bulk_remove_leads_from_list(
             await supabase.table("list_members").delete().eq("list_id", list_id).in_("opportunity_id", chunk).execute()
             removed_count += len(chunk)
 
+        # Layer 1 Paranoia: Auto-pause any in-flight campaign execution states for bulk removed leads
+        try:
+            from campaigns.backend.routers.elein import _pause_lead_execution_core
+            from core.backend.api.auth_dep import get_service_client
+            sync_client = get_service_client()
+            for lid in clean_ids:
+                try:
+                    _pause_lead_execution_core(
+                        lead_id=lid,
+                        workspace_id=workspace_id,
+                        client=sync_client,
+                        status_override="paused",
+                        error_reason_override=f"Lead bulk-removed from source list {list_id}"
+                    )
+                except Exception:
+                    pass
+        except Exception as pause_batch_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to auto-pause leads on bulk list removal: {pause_batch_err}")
+
         try:
             count_res = await supabase.table("list_members").select("id", count="exact").eq("list_id", list_id).execute()
             new_count = count_res.count if hasattr(count_res, "count") and count_res.count is not None else 0
@@ -337,9 +428,43 @@ async def delete_lead_list_async(
             raise HTTPException(status_code=404, detail="Lead list not found or unauthorized.")
         list_name = list_res.data[0].get("name", "Untitled List")
 
-        active_camps = await supabase.table("campaigns").select("id, name").eq("workspace_id", workspace_id).eq("status", "ACTIVE").eq("lead_list_id", list_id).execute()
-        if active_camps.data and len(active_camps.data) > 0:
-            camp_name = active_camps.data[0].get("name", "Active Campaign")
+        # Check both top-level column and metadata fallback for active, running, or scheduled campaigns (Paranoia Layer 1)
+        active_camps = await supabase.table("campaigns") \
+            .select("id, name, status, lead_list_id, metadata") \
+            .eq("workspace_id", workspace_id) \
+            .eq("status", "ACTIVE") \
+            .eq("lead_list_id", list_id) \
+            .execute()
+        blocking_camps = list(active_camps.data or [])
+        if not blocking_camps:
+            try:
+                active_statuses = ["RUNNING", "SCHEDULED", "running", "scheduled", "ACTIVE", "active"]
+                other_camps = await supabase.table("campaigns") \
+                    .select("id, name, status, lead_list_id, metadata") \
+                    .eq("workspace_id", workspace_id) \
+                    .in_("status", active_statuses) \
+                    .eq("lead_list_id", list_id) \
+                    .execute()
+                blocking_camps = list(other_camps.data or [])
+            except Exception:
+                pass
+
+        if not blocking_camps:
+            try:
+                meta_camps = await supabase.table("campaigns") \
+                    .select("id, name, status, metadata") \
+                    .eq("workspace_id", workspace_id) \
+                    .eq("status", "ACTIVE") \
+                    .execute()
+                blocking_camps = [
+                    c for c in (meta_camps.data or [])
+                    if str((c.get("metadata") or {}).get("lead_list_id")) == str(list_id)
+                ]
+            except Exception:
+                pass
+
+        if blocking_camps:
+            camp_name = blocking_camps[0].get("name", "Active Campaign")
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot delete list '{list_name}': It is currently being used by active campaign '{camp_name}'. Please pause the campaign before deleting this list."
@@ -615,6 +740,7 @@ class DynamicRulesConfigRequest(BaseModel):
 
 class DynamicRulesEvaluateRequest(BaseModel):
     rules: Optional[Dict[str, Any]] = None
+    list_id: Optional[str] = None
     limit: int = 500
 
 class DynamicRulesSyncRequest(BaseModel):
@@ -751,6 +877,51 @@ def set_list_dynamic_rules_endpoint(
         raise HTTPException(status_code=500, detail="Failed to configure dynamic rules.")
 
 
+@router.post("/segments/preview", response_model=dict)
+def preview_segment_rules_endpoint(
+    payload: Optional[DynamicRulesEvaluateRequest] = None,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Dry-run preview evaluating dynamic segmentation rules in real-time across workspace leads.
+    Supports previewing rules with or without an existing list_id.
+    Returns match counts, seniority/company size breakdown, and sample prospect cards without DB mutations.
+    """
+    _check_workspace_tier_permission(workspace_id, "can_dynamic_lead_segmentation", supabase)
+    from leads.backend.services.lead_segmentation_service import preview_dynamic_segment
+    try:
+        list_id = payload.list_id if payload and payload.list_id else None
+        rules = payload.rules if payload and payload.rules else None
+
+        # If list_id provided but rules omitted, load saved rules from list metadata
+        if list_id and not rules:
+            list_res = supabase.table("lead_lists").select("id, metadata").eq("id", list_id).eq("workspace_id", workspace_id).execute()
+            if list_res.data:
+                meta = list_res.data[0].get("metadata") if isinstance(list_res.data[0].get("metadata"), dict) else {}
+                rules = meta.get("dynamic_rules") or meta.get("dynamic_segmentation") or {}
+
+        rules = rules or {}
+        limit = payload.limit if payload and payload.limit else 500
+        # Layer 1 Paranoia: Bound limit to prevent memory exhaustion
+        limit = max(1, min(limit, 2000))
+
+        result = preview_dynamic_segment(
+            workspace_id=workspace_id,
+            list_id=list_id,
+            rule_config=rules,
+            supabase=supabase,
+            limit=limit
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error evaluating dynamic segment preview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to preview dynamic segment rules.")
+
+
 @router.post("/lists/{list_id}/evaluate-rules", response_model=dict)
 def evaluate_list_rules_preview_endpoint(
     list_id: str,
@@ -776,6 +947,7 @@ def evaluate_list_rules_preview_endpoint(
         # Use provided rules or fallback to saved rules
         rules = (payload.rules if payload and payload.rules else None) or meta.get("dynamic_rules") or meta.get("dynamic_segmentation") or {}
         limit = payload.limit if payload and payload.limit else 500
+        limit = max(1, min(limit, 2000))
 
         result = preview_dynamic_segment(
             workspace_id=workspace_id,
@@ -844,18 +1016,23 @@ def export_dynamic_segment_csv_endpoint(
     if not list_res.data:
         raise HTTPException(status_code=404, detail="Lead list not found or unauthorized.")
 
-    from leads.backend.services.lead_segmentation_service import export_dynamic_segment_csv
-    csv_data = export_dynamic_segment_csv(
-        workspace_id=workspace_id,
-        list_id=list_id,
-        rule_config=None,
-        supabase=supabase
-    )
-    return Response(
-        content=csv_data,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=dynamic_segment_{list_id}.csv"}
-    )
+    try:
+        from leads.backend.services.lead_segmentation_service import export_dynamic_segment_csv
+        csv_data = export_dynamic_segment_csv(
+            workspace_id=workspace_id,
+            list_id=list_id,
+            rule_config=None,
+            supabase=supabase
+        )
+        return Response(
+            content=csv_data,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=dynamic_segment_{list_id}.csv"}
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error exporting dynamic segment CSV for list {list_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to export dynamic segment CSV.")
 
 
 class SuppressionEntryRequest(BaseModel):
@@ -988,7 +1165,14 @@ def check_suppression_endpoint(
             email=payload.email,
             domain=payload.domain,
         )
+        if res.get("fail_closed"):
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to verify suppression status due to service error. Outreach blocked for compliance safety."
+            )
         return res
+    except HTTPException:
+        raise
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"[SuppressionCheck] Error checking suppression: {e}", exc_info=True)

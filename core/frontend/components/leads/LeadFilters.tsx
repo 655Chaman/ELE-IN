@@ -1,4 +1,6 @@
-import { Search, Plus, X, Layers, CheckCircle2, FileSpreadsheet, Compass, Globe, Link2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useDebounce } from "use-debounce"
+import { Search, Plus, X, Layers, CheckCircle2, FileSpreadsheet, Compass, Globe, Link2, Sliders, Database } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface LeadTypeCounts {
@@ -7,6 +9,8 @@ export interface LeadTypeCounts {
   sales_nav?: number
   search?: number
   linkedin_url?: number
+  dynamic?: number
+  hubspot?: number
 }
 
 export interface CampaignCounts {
@@ -35,6 +39,8 @@ const LIST_TYPE_TABS = [
   { id: "sales_nav", label: "Sales Navigator", icon: Compass },
   { id: "search", label: "Native Search", icon: Search },
   { id: "linkedin_url", label: "Raw URLs", icon: Globe },
+  { id: "dynamic", label: "Dynamic", icon: Sliders },
+  { id: "hubspot", label: "HubSpot CRM", icon: Database },
 ]
 
 const CAMPAIGN_TABS = [
@@ -56,6 +62,20 @@ export function LeadFilters({
   totalFilteredLeads = 0,
   totalFilteredLists = 0,
 }: LeadFiltersProps) {
+  // Paranoia Layer 1 & 2: Local search state with 300ms debounce to eliminate keystroke API spam and URL thrashing
+  const [localSearch, setLocalSearch] = useState(search)
+  const [debouncedSearch] = useDebounce(localSearch, 300)
+
+  useEffect(() => {
+    setLocalSearch(search)
+  }, [search])
+
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch)
+    }
+  }, [debouncedSearch, search, setSearch])
+
   return (
     <div className="space-y-4 mb-6">
       {/* ─── Top Row: Search Bar & Primary CTA ─── */}
@@ -63,15 +83,18 @@ export function LeadFilters({
         <div className="relative flex-1 max-w-md flex items-center rounded-xl border border-border/50 bg-background/60 backdrop-blur-md px-3.5 py-2.5 shadow-sm focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
           <Search size={14} className="text-muted-foreground shrink-0 mr-2.5" />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             placeholder="Search lists by name, type, or tags..."
             className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none"
           />
-          {search && (
+          {localSearch && (
             <button
-              onClick={() => setSearch("")}
-              className="text-muted-foreground hover:text-foreground p-0.5 rounded-full hover:bg-muted/50 transition-colors"
+              onClick={() => {
+                setLocalSearch("")
+                setSearch("")
+              }}
+              className="text-muted-foreground hover:text-foreground p-0.5 rounded-full hover:bg-muted/50 transition-colors cursor-pointer"
               aria-label="Clear search"
             >
               <X size={13} />

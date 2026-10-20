@@ -82,8 +82,10 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
 
     setIsSubmitting(true)
     try {
+      const isAuto = targetTimezone === "auto";
       const selectedRegion = TARGET_REGIONS.find(r => r.timezone === targetTimezone);
-      const regionLabel = selectedRegion ? selectedRegion.label : "";
+      const regionLabel = isAuto ? "Auto-detect / Multi-region" : (selectedRegion ? selectedRegion.label : "");
+      const effectiveTz = isAuto ? "UTC" : targetTimezone;
       
       if (method === "search") {
         if (!liveUrl) { toast.error("Please select at least one search filter"); setIsSubmitting(false); return; }
@@ -92,7 +94,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         const res = await fetchWithAuth("/api/elein/leads/upload_sales_nav", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, url: liveUrl, account_id: activeAccount.id, max_results: Math.min(100, budget.remaining), target_timezone: targetTimezone, target_region_label: regionLabel })
+          body: JSON.stringify({ name, url: liveUrl, account_id: activeAccount.id, max_results: Math.min(100, budget.remaining), target_timezone: effectiveTz, target_region_label: regionLabel })
         })
         if (!res.ok) {
           let errDetail = "Search import failed";
@@ -111,7 +113,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         formData.append("file", file!)
         formData.append("list_name", name)
         formData.append("name", name)
-        formData.append("target_timezone", targetTimezone)
+        formData.append("target_timezone", effectiveTz)
         formData.append("target_region_label", regionLabel)
         formData.append("mappings", JSON.stringify(mappings))
         formData.append("clean_data", String(cleanData))
@@ -132,7 +134,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         const urls = urlList.split("\n").map(u => u.trim()).filter(Boolean)
         if (urls.length === 0) { toast.error("Please enter at least one URL"); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_urls", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls, target_timezone: targetTimezone, target_region_label: regionLabel })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls, target_timezone: effectiveTz, target_region_label: regionLabel })
         })
         if (!res.ok) {
           let errDetail = "Failed to upload profile URLs";
@@ -149,9 +151,20 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         toast.success(`${data.row_count || urls.length} URLs uploaded successfully to "${name}"!`)
       } else if (method === "sales_nav") {
         if (!salesNavUrl.trim()) { toast.error("Please enter a Sales Navigator URL"); setIsSubmitting(false); return; }
+        const trimmedNav = salesNavUrl.trim().toLowerCase();
+        if (!trimmedNav.includes("linkedin.com")) {
+          toast.error("Please enter a valid LinkedIn search or Sales Navigator URL");
+          setIsSubmitting(false);
+          return;
+        }
+        if (trimmedNav.includes("/in/") || trimmedNav.includes("/sales/lead/") || trimmedNav.includes("/sales/people/")) {
+          toast.error("This is a single personal profile URL. Please switch to 'Raw Profiles' to import individuals.");
+          setIsSubmitting(false);
+          return;
+        }
         if (!activeAccount) { toast.error("No active LinkedIn account connected. Go to Accounts to connect one."); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_sales_nav", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl, account_id: activeAccount.id, max_results: salesNavMaxResults || 50, target_timezone: targetTimezone, target_region_label: regionLabel })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, url: salesNavUrl, account_id: activeAccount.id, max_results: salesNavMaxResults || 50, target_timezone: effectiveTz, target_region_label: regionLabel })
         })
         if (!res.ok) {
           let errDetail = "Failed to import Sales Navigator query";
@@ -352,7 +365,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
                 <button 
                   type="button"
                   onClick={handleSubmit} 
-                  disabled={!name.trim() || isUploading || (method === 'search' && !liveUrl) || (method === 'sales_nav' && !salesNavUrl.trim()) || (method === 'linkedin_url' && !urlList.trim()) || (method === 'csv' && step === 1 && !file) || (method === 'csv' && step === 2 && !mappings.linkedin_url && !mappings.email)} 
+                  disabled={!name.trim() || isUploading || (method === 'search' && !liveUrl) || (method === 'sales_nav' && (!salesNavUrl.trim() || !salesNavUrl.toLowerCase().includes("linkedin.com") || salesNavUrl.toLowerCase().includes("/in/") || salesNavUrl.toLowerCase().includes("/sales/lead/") || salesNavUrl.toLowerCase().includes("/sales/people/"))) || (method === 'linkedin_url' && !urlList.trim()) || (method === 'csv' && step === 1 && !file) || (method === 'csv' && step === 2 && !mappings.linkedin_url && !mappings.email)} 
                   className="px-8 py-2.5 text-sm font-bold bg-foreground hover:bg-foreground/90 rounded-lg text-background transition-all disabled:opacity-50 flex justify-center items-center gap-2 shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {isUploading ? (

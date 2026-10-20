@@ -13,6 +13,15 @@ except ImportError:
     pytz = None
     logger.warning("pytz is not installed; timezone validation will use fallback mode.")
 
+# Paranoia Layer 0: Safely import Google's phonenumbers library
+try:
+    import phonenumbers
+    from phonenumbers import timezone as phone_timezone
+except ImportError:
+    phonenumbers = None
+    phone_timezone = None
+    logger.warning("phonenumbers is not installed; phone timezone inference will use fallback table.")
+
 # ---------------------------------------------------------------------------
 # Paranoia Layer 0: Built-in Geography-to-IANA Reference Mappings
 # ---------------------------------------------------------------------------
@@ -57,6 +66,14 @@ ABBREV_TO_IANA = {
     "jst": "Asia/Tokyo",
     "kst": "Asia/Seoul",
     "hkt": "Asia/Hong_Kong",
+    "asia/calcutta": "Asia/Kolkata",
+    "us/pacific": "America/Los_Angeles",
+    "us/eastern": "America/New_York",
+    "us/central": "America/Chicago",
+    "us/mountain": "America/Denver",
+    "us/arizona": "America/Phoenix",
+    "us/alaska": "America/Anchorage",
+    "us/hawaii": "Pacific/Honolulu",
 }
 
 # US States & Territories (2-letter postal codes & full names)
@@ -589,6 +606,246 @@ PHONE_DIAL_CODES: List[Tuple[str, str]] = [
     ("+1", "America/New_York"),       # US / Canada default
 ]
 
+# ---------------------------------------------------------------------------
+# Country Name & Alias to ISO 3166-1 alpha-2 Region Codes (for phone parsing)
+# ---------------------------------------------------------------------------
+COUNTRY_TO_ISO2: Dict[str, str] = {
+    # North America
+    "united states": "US", "us": "US", "usa": "US", "united states of america": "US", "u.s.": "US", "u.s.a.": "US",
+    "canada": "CA", "ca": "CA", "can": "CA",
+    "mexico": "MX", "mx": "MX", "mex": "MX",
+
+    # Europe
+    "united kingdom": "GB", "uk": "GB", "gb": "GB", "gbr": "GB", "great britain": "GB", "england": "GB", "scotland": "GB", "wales": "GB",
+    "germany": "DE", "de": "DE", "deu": "DE", "deutschland": "DE",
+    "france": "FR", "fr": "FR", "fra": "FR",
+    "ireland": "IE", "ie": "IE", "irl": "IE",
+    "netherlands": "NL", "nl": "NL", "nld": "NL", "holland": "NL",
+    "switzerland": "CH", "ch": "CH", "che": "CH",
+    "spain": "ES", "es": "ES", "esp": "ES", "españa": "ES",
+    "italy": "IT", "it": "IT", "ita": "IT", "italia": "IT",
+    "sweden": "SE", "se": "SE", "swe": "SE", "sverige": "SE",
+    "norway": "NO", "no": "NO", "nor": "NO", "norge": "NO",
+    "denmark": "DK", "dk": "DK", "dnk": "DK", "danmark": "DK",
+    "finland": "FI", "fi": "FI", "fin": "FI", "suomi": "FI",
+    "poland": "PL", "pl": "PL", "pol": "PL", "polska": "PL",
+    "austria": "AT", "at": "AT", "aut": "AT", "österreich": "AT",
+    "belgium": "BE", "be": "BE", "bel": "BE", "belgique": "BE",
+    "portugal": "PT", "pt": "PT", "prt": "PT",
+    "czech republic": "CZ", "czechia": "CZ", "cz": "CZ", "cze": "CZ",
+    "hungary": "HU", "hu": "HU", "hun": "HU",
+    "romania": "RO", "ro": "RO", "rou": "RO",
+    "greece": "GR", "gr": "GR", "grc": "GR",
+    "turkey": "TR", "turkiye": "TR", "türkiye": "TR", "tr": "TR", "tur": "TR",
+    "estonia": "EE", "ee": "EE", "est": "EE",
+    "latvia": "LV", "lv": "LV", "lva": "LV",
+    "lithuania": "LT", "lt": "LT", "ltu": "LT",
+    "ukraine": "UA", "ua": "UA", "ukr": "UA",
+    "croatia": "HR", "hr": "HR", "hrv": "HR",
+    "serbia": "RS", "rs": "RS", "srb": "RS",
+    "slovakia": "SK", "sk": "SK", "svk": "SK",
+    "slovenia": "SI", "si": "SI", "svn": "SI",
+    "bulgaria": "BG", "bg": "BG", "bgr": "BG",
+    "luxembourg": "LU", "lu": "LU", "lux": "LU",
+    "iceland": "IS", "is": "IS", "isl": "IS",
+    "malta": "MT", "mt": "MT", "mlt": "MT",
+    "cyprus": "CY", "cy": "CY", "cyp": "CY",
+
+    # Asia & Pacific
+    "india": "IN", "in": "IN", "ind": "IN", "bharat": "IN",
+    "australia": "AU", "au": "AU", "aus": "AU",
+    "japan": "JP", "jp": "JP", "jpn": "JP", "nippon": "JP",
+    "singapore": "SG", "sg": "SG", "sgp": "SG",
+    "south korea": "KR", "korea": "KR", "kr": "KR", "kor": "KR",
+    "china": "CN", "cn": "CN", "chn": "CN",
+    "taiwan": "TW", "tw": "TW", "twn": "TW",
+    "hong kong": "HK", "hk": "HK", "hkg": "HK",
+    "new zealand": "NZ", "nz": "NZ", "nzl": "NZ",
+    "indonesia": "ID", "id": "ID", "idn": "ID",
+    "malaysia": "MY", "my": "MY", "mys": "MY",
+    "philippines": "PH", "ph": "PH", "phl": "PH",
+    "thailand": "TH", "th": "TH", "tha": "TH",
+    "vietnam": "VN", "vn": "VN", "vnm": "VN",
+    "pakistan": "PK", "pk": "PK", "pak": "PK",
+    "bangladesh": "BD", "bd": "BD", "bgd": "BD",
+    "sri lanka": "LK", "lk": "LK", "lka": "LK",
+    "nepal": "NP", "np": "NP", "npl": "NP",
+
+    # Middle East
+    "israel": "IL", "il": "IL", "isr": "IL",
+    "united arab emirates": "AE", "uae": "AE", "ae": "AE", "are": "AE",
+    "saudi arabia": "SA", "sa": "SA", "sau": "SA",
+    "qatar": "QA", "qa": "QA", "qat": "QA",
+    "kuwait": "KW", "kw": "KW", "kwt": "KW",
+    "bahrain": "BH", "bh": "BH", "bhr": "BH",
+    "oman": "OM", "om": "OM", "omn": "OM",
+    "jordan": "JO", "jo": "JO", "jor": "JO",
+    "lebanon": "LB", "lb": "LB", "lbn": "LB",
+
+    # Latin America
+    "brazil": "BR", "br": "BR", "bra": "BR", "brasil": "BR",
+    "argentina": "AR", "ar": "AR", "arg": "AR",
+    "chile": "CL", "cl": "CL", "chl": "CL",
+    "colombia": "CO", "co": "CO", "col": "CO",
+    "peru": "PE", "pe": "PE", "per": "PE",
+    "panama": "PA", "pa": "PA", "pan": "PA",
+    "costa rica": "CR", "cr": "CR", "cri": "CR",
+    "uruguay": "UY", "uy": "UY", "ury": "UY",
+    "venezuela": "VE", "ve": "VE", "ven": "VE",
+    "puerto rico": "PR", "pr": "PR", "pri": "PR",
+
+    # Africa
+    "south africa": "ZA", "za": "ZA", "zaf": "ZA",
+    "nigeria": "NG", "ng": "NG", "nga": "NG",
+    "kenya": "KE", "ke": "KE", "ken": "KE",
+    "egypt": "EG", "eg": "EG", "egy": "EG",
+    "ghana": "GH", "gh": "GH", "gha": "GH",
+    "morocco": "MA", "ma": "MA", "mar": "MA",
+    "ethiopia": "ET", "et": "ET", "eth": "ET",
+    "rwanda": "RW", "rw": "RW", "rwa": "RW",
+    "uganda": "UG", "ug": "UG", "uga": "UG",
+    "tanzania": "TZ", "tz": "TZ", "tza": "TZ",
+    "tunisia": "TN", "tn": "TN", "tun": "TN",
+}
+
+# ---------------------------------------------------------------------------
+# Fallback North American Numbering Plan (NANP) 3-digit Area Code Mappings
+# Used when phonenumbers library is missing or fails on an area code lookup.
+# ---------------------------------------------------------------------------
+NANP_AREA_CODES: Dict[str, str] = {
+    # Pacific Time (America/Los_Angeles)
+    "206": "America/Los_Angeles", "209": "America/Los_Angeles", "213": "America/Los_Angeles",
+    "253": "America/Los_Angeles", "310": "America/Los_Angeles", "323": "America/Los_Angeles",
+    "360": "America/Los_Angeles", "408": "America/Los_Angeles", "415": "America/Los_Angeles",
+    "425": "America/Los_Angeles", "442": "America/Los_Angeles", "503": "America/Los_Angeles",
+    "509": "America/Los_Angeles", "510": "America/Los_Angeles", "530": "America/Los_Angeles",
+    "541": "America/Los_Angeles", "559": "America/Los_Angeles", "562": "America/Los_Angeles",
+    "564": "America/Los_Angeles", "619": "America/Los_Angeles", "626": "America/Los_Angeles",
+    "628": "America/Los_Angeles", "650": "America/Los_Angeles", "657": "America/Los_Angeles",
+    "661": "America/Los_Angeles", "669": "America/Los_Angeles", "702": "America/Los_Angeles",
+    "707": "America/Los_Angeles", "714": "America/Los_Angeles", "725": "America/Los_Angeles",
+    "747": "America/Los_Angeles", "760": "America/Los_Angeles", "775": "America/Los_Angeles",
+    "805": "America/Los_Angeles", "818": "America/Los_Angeles", "820": "America/Los_Angeles",
+    "831": "America/Los_Angeles", "840": "America/Los_Angeles", "858": "America/Los_Angeles",
+    "909": "America/Los_Angeles", "916": "America/Los_Angeles", "925": "America/Los_Angeles",
+    "949": "America/Los_Angeles", "951": "America/Los_Angeles", "971": "America/Los_Angeles",
+    # Canadian Pacific (America/Vancouver)
+    "604": "America/Vancouver", "778": "America/Vancouver", "236": "America/Vancouver",
+    "672": "America/Vancouver", "250": "America/Vancouver",
+
+    # Mountain Time (America/Denver)
+    "303": "America/Denver", "307": "America/Denver", "385": "America/Denver",
+    "406": "America/Denver", "435": "America/Denver", "505": "America/Denver",
+    "575": "America/Denver", "719": "America/Denver", "720": "America/Denver",
+    "801": "America/Denver", "970": "America/Denver",
+    # Canadian Mountain (America/Edmonton)
+    "403": "America/Edmonton", "587": "America/Edmonton", "825": "America/Edmonton", "780": "America/Edmonton",
+
+    # Arizona Time - No DST (America/Phoenix)
+    "480": "America/Phoenix", "520": "America/Phoenix", "602": "America/Phoenix",
+    "623": "America/Phoenix", "928": "America/Phoenix",
+
+    # Central Time (America/Chicago)
+    "205": "America/Chicago", "210": "America/Chicago", "214": "America/Chicago",
+    "217": "America/Chicago", "218": "America/Chicago", "224": "America/Chicago",
+    "225": "America/Chicago", "251": "America/Chicago", "254": "America/Chicago",
+    "256": "America/Chicago", "262": "America/Chicago", "281": "America/Chicago",
+    "308": "America/Chicago", "309": "America/Chicago", "312": "America/Chicago",
+    "314": "America/Chicago", "316": "America/Chicago", "318": "America/Chicago",
+    "319": "America/Chicago", "320": "America/Chicago", "325": "America/Chicago",
+    "331": "America/Chicago", "334": "America/Chicago", "346": "America/Chicago",
+    "361": "America/Chicago", "402": "America/Chicago", "405": "America/Chicago",
+    "409": "America/Chicago", "414": "America/Chicago", "417": "America/Chicago",
+    "430": "America/Chicago", "432": "America/Chicago", "469": "America/Chicago",
+    "479": "America/Chicago", "501": "America/Chicago", "504": "America/Chicago",
+    "507": "America/Chicago", "512": "America/Chicago", "515": "America/Chicago",
+    "531": "America/Chicago", "534": "America/Chicago", "539": "America/Chicago",
+    "563": "America/Chicago", "573": "America/Chicago", "601": "America/Chicago",
+    "605": "America/Chicago", "608": "America/Chicago", "612": "America/Chicago",
+    "615": "America/Chicago", "618": "America/Chicago", "620": "America/Chicago",
+    "629": "America/Chicago", "630": "America/Chicago", "636": "America/Chicago",
+    "641": "America/Chicago", "651": "America/Chicago", "660": "America/Chicago",
+    "662": "America/Chicago", "682": "America/Chicago", "701": "America/Chicago",
+    "708": "America/Chicago", "712": "America/Chicago", "713": "America/Chicago",
+    "715": "America/Chicago", "731": "America/Chicago", "737": "America/Chicago",
+    "763": "America/Chicago", "769": "America/Chicago", "773": "America/Chicago",
+    "779": "America/Chicago", "806": "America/Chicago", "815": "America/Chicago",
+    "816": "America/Chicago", "817": "America/Chicago", "830": "America/Chicago",
+    "832": "America/Chicago", "847": "America/Chicago", "870": "America/Chicago",
+    "901": "America/Chicago", "903": "America/Chicago", "913": "America/Chicago",
+    "918": "America/Chicago", "920": "America/Chicago", "931": "America/Chicago",
+    "936": "America/Chicago", "940": "America/Chicago", "952": "America/Chicago",
+    "956": "America/Chicago", "972": "America/Chicago", "979": "America/Chicago",
+    "985": "America/Chicago",
+    # Canadian Central (America/Winnipeg)
+    "204": "America/Winnipeg", "431": "America/Winnipeg", "306": "America/Regina", "639": "America/Regina",
+
+    # Eastern Time (America/New_York)
+    "201": "America/New_York", "202": "America/New_York", "203": "America/New_York",
+    "207": "America/New_York", "212": "America/New_York", "215": "America/New_York",
+    "216": "America/New_York", "227": "America/New_York", "229": "America/New_York",
+    "231": "America/New_York", "234": "America/New_York", "239": "America/New_York",
+    "240": "America/New_York", "248": "America/New_York", "252": "America/New_York",
+    "267": "America/New_York", "269": "America/New_York", "272": "America/New_York",
+    "276": "America/New_York", "301": "America/New_York", "302": "America/New_York",
+    "304": "America/New_York", "305": "America/New_York", "315": "America/New_York",
+    "321": "America/New_York", "330": "America/New_York", "336": "America/New_York",
+    "339": "America/New_York", "347": "America/New_York", "351": "America/New_York",
+    "352": "America/New_York", "386": "America/New_York", "401": "America/New_York",
+    "404": "America/New_York", "407": "America/New_York", "410": "America/New_York",
+    "412": "America/New_York", "413": "America/New_York", "419": "America/New_York",
+    "434": "America/New_York", "440": "America/New_York", "443": "America/New_York",
+    "445": "America/New_York", "470": "America/New_York", "475": "America/New_York",
+    "478": "America/New_York", "484": "America/New_York", "508": "America/New_York",
+    "513": "America/New_York", "516": "America/New_York", "518": "America/New_York",
+    "540": "America/New_York", "561": "America/New_York", "567": "America/New_York",
+    "570": "America/New_York", "571": "America/New_York", "585": "America/New_York",
+    "586": "America/New_York", "603": "America/New_York", "607": "America/New_York",
+    "609": "America/New_York", "610": "America/New_York", "614": "America/New_York",
+    "617": "America/New_York", "631": "America/New_York", "646": "America/New_York",
+    "678": "America/New_York", "680": "America/New_York", "681": "America/New_York",
+    "703": "America/New_York", "704": "America/New_York", "706": "America/New_York",
+    "716": "America/New_York", "717": "America/New_York", "718": "America/New_York",
+    "724": "America/New_York", "727": "America/New_York", "732": "America/New_York",
+    "740": "America/New_York", "754": "America/New_York", "757": "America/New_York",
+    "770": "America/New_York", "772": "America/New_York", "774": "America/New_York",
+    "781": "America/New_York", "786": "America/New_York", "802": "America/New_York",
+    "803": "America/New_York", "804": "America/New_York", "813": "America/New_York",
+    "814": "America/New_York", "828": "America/New_York", "838": "America/New_York",
+    "843": "America/New_York", "845": "America/New_York", "848": "America/New_York",
+    "854": "America/New_York", "856": "America/New_York", "857": "America/New_York",
+    "860": "America/New_York", "862": "America/New_York", "863": "America/New_York",
+    "864": "America/New_York", "865": "America/New_York", "878": "America/New_York",
+    "904": "America/New_York", "908": "America/New_York", "910": "America/New_York",
+    "912": "America/New_York", "914": "America/New_York", "917": "America/New_York",
+    "919": "America/New_York", "929": "America/New_York", "937": "America/New_York",
+    "941": "America/New_York", "947": "America/New_York", "954": "America/New_York",
+    "959": "America/New_York", "973": "America/New_York", "978": "America/New_York",
+    "980": "America/New_York", "984": "America/New_York", "989": "America/New_York",
+    # Canadian Eastern (America/Toronto / Montreal)
+    "416": "America/Toronto", "647": "America/Toronto", "437": "America/Toronto",
+    "905": "America/Toronto", "289": "America/Toronto", "365": "America/Toronto",
+    "742": "America/Toronto", "613": "America/Toronto", "343": "America/Toronto",
+    "753": "America/Toronto", "519": "America/Toronto", "226": "America/Toronto",
+    "548": "America/Toronto", "705": "America/Toronto", "249": "America/Toronto",
+    "807": "America/Toronto", "514": "America/Montreal", "438": "America/Montreal",
+    "263": "America/Montreal", "450": "America/Montreal", "579": "America/Montreal",
+    "354": "America/Montreal", "418": "America/Montreal", "581": "America/Montreal",
+    "367": "America/Montreal", "819": "America/Montreal", "873": "America/Montreal",
+
+    # Canadian Atlantic (America/Halifax)
+    "902": "America/Halifax", "782": "America/Halifax", "506": "America/Halifax",
+
+    # Canadian Newfoundland (America/St_Johns)
+    "709": "America/St_Johns",
+
+    # Alaska Time (America/Anchorage)
+    "907": "America/Anchorage",
+
+    # Hawaii Time (Pacific/Honolulu)
+    "808": "Pacific/Honolulu",
+}
+
 
 class LocationTimezoneService:
     """
@@ -646,6 +903,7 @@ class LocationTimezoneService:
         Cleans and standardizes an international phone number string.
         Paranoia Layer 1 & 2: Prevents 10-digit US/Canada numbers (e.g. 415, 917, 330)
         from inverting into European/Asian country dial codes (+41 Switzerland, +91 India, +33 France).
+        Also handles domestic trunk prefixes (e.g. 0 in UK, FR, DE, IN) when country_hint is provided.
         """
         if not phone:
             return None
@@ -653,25 +911,96 @@ class LocationTimezoneService:
         if not raw:
             return None
         
+        # Strip common trailing extension markers like 'ext 123', 'x45', 'post 12'
+        raw = re.sub(r"(?i)\s*(?:ext|x|post)[\s.:]*\d+.*$", "", raw).strip()
+
         digits_only = re.sub(r"\D", "", raw)
         if not digits_only:
             return None
 
+        norm_c = LocationTimezoneService.normalize_text(country_hint) if country_hint else ""
+
+        # Normalize 00 international prefix to +
         if raw.startswith("00"):
-            return "+" + digits_only[2:]
+            raw = "+" + raw[2:].lstrip()
+            digits_only = digits_only[2:]
+
+        # If raw starts with '+', check for false '+' prepended to 10-digit US numbers
         if raw.startswith("+"):
+            # Paranoia Layer 2 Check:
+            # Did a CRM or script prepend '+' to a 10-digit US number?
+            # e.g. '+4155550199' (415 San Francisco area code -> mistaken for +41 Switzerland)
+            # or '+9175550199' (917 New York area code -> mistaken for +91 India)
+            # or '+3305550199' (330 Ohio area code -> mistaken for +33 France)
+            if len(digits_only) == 10 and digits_only[0] in "23456789":
+                if norm_c in ("united states", "us", "usa", "canada", "ca"):
+                    return "+1" + digits_only
+                # If no country hint or ambiguous country:
+                if not norm_c:
+                    if phonenumbers is not None:
+                        try:
+                            direct_obj = phonenumbers.parse("+" + digits_only, None)
+                            if not phonenumbers.is_valid_number(direct_obj):
+                                us_obj = phonenumbers.parse("+1" + digits_only, None)
+                                if phonenumbers.is_valid_number(us_obj):
+                                    return "+1" + digits_only
+                        except Exception:
+                            pass
+                    # Fallback check against known NANP area codes
+                    if digits_only[:3] in NANP_AREA_CODES:
+                        return "+1" + digits_only
+
             return "+" + digits_only
 
         # If phone did NOT explicitly start with + or 00:
-        if country_hint:
-            norm_c = LocationTimezoneService.normalize_text(country_hint)
+        if norm_c:
             if norm_c in ("united states", "us", "usa", "canada", "ca"):
-                if len(digits_only) == 10:
+                if len(digits_only) == 10 and digits_only[0] in "23456789":
                     return "+1" + digits_only
                 if len(digits_only) == 11 and digits_only.startswith("1"):
                     return "+" + digits_only
+            elif norm_c in ("india", "in", "ind", "bharat"):
+                if len(digits_only) == 10 and digits_only[0] in "6789":
+                    return "+91" + digits_only
+                if len(digits_only) == 11 and digits_only.startswith("0"):
+                    return "+91" + digits_only[1:]
+                if len(digits_only) == 12 and digits_only.startswith("91"):
+                    return "+" + digits_only
+            elif norm_c in ("united kingdom", "uk", "gb", "great britain", "england", "scotland", "wales"):
+                if digits_only.startswith("0") and len(digits_only) in (10, 11):
+                    return "+44" + digits_only[1:]
+                if len(digits_only) == 10:
+                    return "+44" + digits_only
+                if len(digits_only) == 12 and digits_only.startswith("44"):
+                    return "+" + digits_only
+            elif norm_c in ("france", "fr", "fra"):
+                if digits_only.startswith("0") and len(digits_only) == 10:
+                    return "+33" + digits_only[1:]
+                if len(digits_only) == 9:
+                    return "+33" + digits_only
+                if len(digits_only) == 11 and digits_only.startswith("33"):
+                    return "+" + digits_only
+            elif norm_c in ("germany", "de", "deu", "deutschland"):
+                if digits_only.startswith("0") and len(digits_only) >= 10:
+                    return "+49" + digits_only[1:]
+                if len(digits_only) >= 11 and digits_only.startswith("49"):
+                    return "+" + digits_only
+            elif norm_c in ("australia", "au", "aus"):
+                if digits_only.startswith("0") and len(digits_only) == 10:
+                    return "+61" + digits_only[1:]
+                if len(digits_only) == 9:
+                    return "+61" + digits_only
+                if len(digits_only) == 11 and digits_only.startswith("61"):
+                    return "+" + digits_only
+            elif norm_c in ("switzerland", "ch", "che"):
+                if digits_only.startswith("0") and len(digits_only) == 10:
+                    return "+41" + digits_only[1:]
+                if len(digits_only) == 9:
+                    return "+41" + digits_only
+                if len(digits_only) == 11 and digits_only.startswith("41"):
+                    return "+" + digits_only
 
-        # 10-digit North American Numbering Plan (NANP): Area code [2-9]xx
+        # 10-digit North American Numbering Plan (NANP): Area code [2-9]xx (when no non-US country specified)
         if len(digits_only) == 10 and digits_only[0] in "23456789":
             return "+1" + digits_only
 
@@ -682,6 +1011,140 @@ class LocationTimezoneService:
         # Fallback for international numbers lacking leading plus
         if len(digits_only) >= 11:
             return "+" + digits_only
+
+        return None
+
+    @classmethod
+    def resolve_phone_timezone(
+        cls,
+        phone: Optional[str],
+        country_hint: Optional[str] = None,
+        location_hint: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Paranoia Layer 0, 1 & 2: Resolves an IANA timezone from a phone number using:
+        - Google phonenumbers library with regional and validation checks.
+        - Geographic country/state/city context to disambiguate area codes vs dial codes.
+        - Hardened NANP area code fallback table for US/Canada.
+        - International dial code fallback table.
+        """
+        if not phone:
+            return None
+        raw_phone = str(phone).strip()
+        if not raw_phone:
+            return None
+
+        # Clean trailing extension markers
+        raw_phone = re.sub(r"(?i)\s*(?:ext|x|post)[\s.:]*\d+.*$", "", raw_phone).strip()
+        if raw_phone.startswith("00"):
+            raw_phone = "+" + raw_phone[2:].lstrip()
+        digits = re.sub(r"\D", "", raw_phone)
+        if not digits:
+            return None
+
+        norm_c = cls.normalize_text(country_hint) if country_hint else ""
+        norm_l = cls.normalize_text(location_hint) if location_hint else ""
+
+        # Determine ISO-2 region hint
+        region_hint = None
+        if norm_c and norm_c in COUNTRY_TO_ISO2:
+            region_hint = COUNTRY_TO_ISO2[norm_c]
+
+        if not region_hint and norm_l and norm_l not in POISON_LOCATIONS:
+            tokens = [t.strip() for t in re.split(r"[\,\;\/\|\-\(\)\[\]]", norm_l) if t.strip()]
+            for t in tokens:
+                if t in US_STATES:
+                    region_hint = "US"
+                    break
+                elif t in CANADIAN_PROVINCES:
+                    region_hint = "CA"
+                    break
+                elif t in AUSTRALIAN_STATES:
+                    region_hint = "AU"
+                    break
+                elif t in COUNTRY_TO_ISO2:
+                    region_hint = COUNTRY_TO_ISO2[t]
+                    break
+                elif t in GLOBAL_METRO_AREAS:
+                    metro_tz = GLOBAL_METRO_AREAS[t]
+                    if metro_tz.startswith("America/"):
+                        region_hint = "US"
+                    elif metro_tz.startswith("Europe/London"):
+                        region_hint = "GB"
+                    elif metro_tz.startswith("Europe/Paris"):
+                        region_hint = "FR"
+                    elif metro_tz.startswith("Europe/Berlin"):
+                        region_hint = "DE"
+                    elif metro_tz.startswith("Asia/Kolkata"):
+                        region_hint = "IN"
+                    elif metro_tz.startswith("Australia/"):
+                        region_hint = "AU"
+                    break
+
+        cleaned_phone = cls._clean_phone(raw_phone, country_hint=norm_c)
+
+        # -------------------------------------------------------------------
+        # Paranoia Layer 0: phonenumbers Library Inference
+        # -------------------------------------------------------------------
+        if phonenumbers is not None and phone_timezone is not None:
+            candidates: List[Tuple[str, Optional[str]]] = []
+            if cleaned_phone:
+                candidates.append((cleaned_phone, None))
+            if region_hint:
+                candidates.append((raw_phone, region_hint))
+            if not region_hint and len(digits) == 10 and digits[0] in "23456789":
+                candidates.append((raw_phone, "US"))
+            candidates.append((raw_phone, None))
+
+            for p_candidate, r_candidate in candidates:
+                try:
+                    parsed = phonenumbers.parse(p_candidate, r_candidate)
+                    if phonenumbers.is_valid_number(parsed) or phonenumbers.is_possible_number(parsed):
+                        tzs = [
+                            tz for tz in phone_timezone.time_zones_for_number(parsed)
+                            if tz and tz != "Etc/Unknown"
+                        ]
+                        if tzs:
+                            # Prioritize major canonical timezones for multi-territory codes
+                            selected_tz = None
+                            if "Europe/London" in tzs:
+                                selected_tz = "Europe/London"
+                            elif "America/Anchorage" in tzs:
+                                selected_tz = "America/Anchorage"
+                            elif "Asia/Kolkata" in tzs or "Asia/Calcutta" in tzs:
+                                selected_tz = "Asia/Kolkata"
+                            else:
+                                for cand in tzs:
+                                    val = cls.validate_iana_timezone(cand)
+                                    if val:
+                                        selected_tz = val
+                                        break
+                            if selected_tz:
+                                val = cls.validate_iana_timezone(selected_tz)
+                                if val:
+                                    return val
+                except Exception:
+                    continue
+
+        # -------------------------------------------------------------------
+        # Paranoia Layer 1: Built-in NANP & International Table Fallback
+        # -------------------------------------------------------------------
+        if cleaned_phone:
+            clean_digits = re.sub(r"\D", "", cleaned_phone)
+            # If +1 (US / Canada)
+            if cleaned_phone.startswith("+1") and len(clean_digits) >= 4:
+                area_code = clean_digits[1:4]
+                if area_code in NANP_AREA_CODES:
+                    val = cls.validate_iana_timezone(NANP_AREA_CODES[area_code])
+                    if val:
+                        return val
+
+            # Check international dial codes
+            for prefix, dial_tz in PHONE_DIAL_CODES:
+                if cleaned_phone.startswith(prefix):
+                    val = cls.validate_iana_timezone(dial_tz)
+                    if val:
+                        return val
 
         return None
 
@@ -823,16 +1286,29 @@ class LocationTimezoneService:
                             return validated
 
         # -------------------------------------------------------------------
-        # Phase 3: Country Matching
+        # Phase 3: Phone Dial Code / Regional Area Code Matching (Granular)
         # -------------------------------------------------------------------
-        # 3a. Check explicit country argument
+        # High-precision phone resolution (with area code mapping & country anchor)
+        # resolves the lead's exact regional timezone before coarse national fallback.
+        phone_tz = LocationTimezoneService.resolve_phone_timezone(
+            phone=phone,
+            country_hint=norm_country or country,
+            location_hint=norm_loc or location
+        )
+        if phone_tz:
+            return phone_tz
+
+        # -------------------------------------------------------------------
+        # Phase 4: Coarse Country Matching (National Fallback)
+        # -------------------------------------------------------------------
+        # 4a. Check explicit country argument
         if norm_country and norm_country not in POISON_LOCATIONS:
             if norm_country in COUNTRIES:
                 validated = LocationTimezoneService.validate_iana_timezone(COUNTRIES[norm_country])
                 if validated:
                     return validated
 
-        # 3b. Check tokens in location for country match
+        # 4b. Check tokens in location for country match
         if tokens:
             for token in tokens:
                 if token in COUNTRIES:
@@ -847,17 +1323,6 @@ class LocationTimezoneService:
                         validated = LocationTimezoneService.validate_iana_timezone(c_tz)
                         if validated:
                             return validated
-
-        # -------------------------------------------------------------------
-        # Phase 4: Phone Dial Code Matching
-        # -------------------------------------------------------------------
-        cleaned_phone = LocationTimezoneService._clean_phone(phone, norm_country)
-        if cleaned_phone:
-            for prefix, dial_tz in PHONE_DIAL_CODES:
-                if cleaned_phone.startswith(prefix):
-                    validated = LocationTimezoneService.validate_iana_timezone(dial_tz)
-                    if validated:
-                        return validated
 
         return None
 

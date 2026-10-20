@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react"
-import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download, RotateCw, Sliders } from "lucide-react"
+import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download, RotateCw, Sliders, Send } from "lucide-react"
 import { TableSkeleton } from "../EleInSkeleton"
 import type { LeadList } from "./leads.types"
 
@@ -32,6 +32,7 @@ interface LeadTableProps {
   onDeleteList: (list: LeadList) => void
   onRetryList?: (list: LeadList) => void
   onOpenSegmentation?: (list: LeadList) => void
+  onEnrollList?: (list: LeadList) => void
 }
 
 export function LeadTable({
@@ -43,7 +44,8 @@ export function LeadTable({
   onSelectList,
   onDeleteList,
   onRetryList,
-  onOpenSegmentation
+  onOpenSegmentation,
+  onEnrollList
 }: LeadTableProps) {
     return (
       <AnimatePresence mode="wait">
@@ -107,13 +109,11 @@ export function LeadTable({
           <div 
             className="relative overflow-hidden flex items-center justify-between gap-4 px-4 sm:px-5 py-3.5 border border-border/50 bg-card/40 backdrop-blur-sm hover:border-border hover:bg-card/70 transition-all rounded-xl shadow-xs group" 
           >
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               aria-label={`Open lead list ${list.name}`}
               onClick={() => onSelectList(list)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectList(list); } }}
-              className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-lg py-1"
+              className="text-left bg-transparent border-0 p-0 flex items-center gap-4 flex-1 min-w-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-lg py-1"
             >
               <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${(() => {
                 switch(list.type) {
@@ -176,9 +176,23 @@ export function LeadTable({
                       return `${list.row_count.toLocaleString()} leads`
                     })()}
                   </span>
+                  {list.campaign && (
+                    <>
+                      <span className="text-[11px] text-border">•</span>
+                      <span 
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 shadow-xs"
+                        title={typeof list.campaign === 'object' ? `Assigned to ${list.campaign.status || 'ACTIVE'} campaign: ${list.campaign.name}` : `Assigned to campaign: ${list.campaign}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                          Campaign: {typeof list.campaign === 'object' ? list.campaign.name : list.campaign}
+                        </span>
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
-            </div>
+            </button>
             <div className="flex items-center justify-end gap-2 pr-1 relative z-10">
               {(() => {
                 const st = (list as any).status || (list.row_count === -1 ? 'importing' : list.row_count === -2 ? 'error' : 'completed')
@@ -214,11 +228,26 @@ export function LeadTable({
                   <span>Dynamic Rules</span>
                 </button>
               )}
+              {onEnrollList && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEnrollList(list);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 text-[11px] font-semibold flex items-center gap-1 transition-all shadow-xs cursor-pointer"
+                  title="Enroll this list into an automated outreach campaign"
+                >
+                  <Send size={11} />
+                  <span>Enroll in Campaign</span>
+                </button>
+              )}
               <span className="text-[11px] text-muted-foreground font-medium mr-1 hidden sm:inline">
                 {new Date(list.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
               <button
                 type="button"
+                aria-label={`Delete list ${list.name}`}
                 onClick={(e) => { e.stopPropagation(); onDeleteList(list); }}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                 title="Delete list"

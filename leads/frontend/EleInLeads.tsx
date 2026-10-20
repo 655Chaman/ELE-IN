@@ -1,5 +1,5 @@
-// ORCHESTRATOR: This file coordinates state only. Do NOT add UI rendering here. Add new UI sections as separate components in components/leads/
 import { useState, useEffect, useRef, useMemo } from "react"
+import { useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "motion/react"
 import useSWR from "swr"
 import { Database, Users, AlertTriangle, ArrowRight, Zap, Radio, Flame, Brain, Mic, Sliders, Building2, Repeat, Target, Calendar, Workflow, Link2, Rocket, Sparkles, ChevronDown } from "lucide-react"
@@ -9,6 +9,7 @@ import { usePaywall } from "@/contexts/PaywallContext"
 import { supabase } from "@/lib/supabase"
 import { fetcher } from "@/lib/apiClient"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
+import { leadKeys } from "@/components/leads/leadKeys"
 
 import type { LeadList } from "@/components/leads/leads.types"
 import { LeadFilters } from "@/components/leads/LeadFilters"
@@ -17,6 +18,7 @@ import { ImportLeadsModal } from "@/components/leads/ImportLeadsModal"
 import { ListLeadsDrawer } from "@/components/leads/ListLeadsDrawer"
 import { DeleteConfirmationModal } from "@/components/leads/DeleteConfirmationModal"
 import { SocialSignalRadarView } from "@/components/leads/SocialSignalRadarView"
+import { EnrollListInCampaignModal } from "@/components/leads/EnrollListInCampaignModal"
 import { PreWarmStudioModal } from "@/components/campaigns/PreWarmStudioModal"
 import { BanditOptimizerStudioModal } from "@/components/campaigns/BanditOptimizerStudioModal"
 import { EventMultimodalStudioModal } from "@/components/campaigns/EventMultimodalStudioModal"
@@ -64,22 +66,29 @@ const STUDIOS = [
 
 export function EleInLeads() {
   const { activeWorkspaceId } = useWorkspace()
-  const [activeTab, setActiveTab] = useState<"lists" | "radar" | "prewarm" | "bandit" | "events" | "segmentation" | "abm" | "boomerang" | "omnichannel" | "displacement" | "calendar" | "waterfall" | "warmup" | "crm" | "advocacy">("lists")
-  const [segmentationListId, setSegmentationListId] = useState<string | undefined>(undefined)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Layer 0 & Layer 2: Synchronize Navigation & Tab State from URL Search Params
+  const urlTab = searchParams.get("tab")
+  const [primaryTab, setPrimaryTab] = useState<"lists" | "radar">(urlTab === "radar" ? "radar" : "lists")
+  const [activeStudio, setActiveStudio] = useState<string | null>(searchParams.get("studio") || null)
+  const [segmentationListId, setSegmentationListId] = useState<string | undefined>(searchParams.get("segmentListId") || undefined)
   const [isStudiosOpen, setIsStudiosOpen] = useState(false)
   const studiosMenuRef = useRef<HTMLDivElement>(null)
-  const [search, setSearch] = useState("")
-  const [listTypeFilter, setListTypeFilter] = useState("all")
-  const [campaignFilter, setCampaignFilter] = useState("all")
+
+  const [search, setSearch] = useState(searchParams.get("search") || "")
+  const [listTypeFilter, setListTypeFilter] = useState(searchParams.get("type") || "all")
+  const [campaignFilter, setCampaignFilter] = useState(searchParams.get("campaign") || "all")
   const [showModal, setShowModal] = useState(false)
   const [selectedList, setSelectedList] = useState<LeadList | null>(null)
   const [listToDelete, setListToDelete] = useState<LeadList | null>(null)
+  const [enrollListTarget, setEnrollListTarget] = useState<LeadList | null>(null)
 
   const prevListsRef = useRef<Map<string, LeadList>>(new Map())
   const errorShownRef = useRef<Set<string>>(new Set())
   
-  // Paranoia Layer 1: Scope SWR cache to activeWorkspaceId to eliminate stale cache display on workspace switch
-  const listsKey = activeWorkspaceId ? `/api/elein/leads/lists?workspace_id=${activeWorkspaceId}` : '/api/elein/leads/lists'
+  // Paranoia Layer 1: Scope SWR cache via canonical leadKeys
+  const listsKey = leadKeys.lists(activeWorkspaceId)
   const { data: lists, error, isLoading, mutate } = useSWR<LeadList[]>(
     listsKey, 
     fetcher,
@@ -87,10 +96,10 @@ export function EleInLeads() {
       refreshInterval: (latestData?: LeadList[]) => (latestData || []).some((l: any) => l.row_count === -1 || l.status === 'importing' || l.status === 'processing') ? 3000 : 0
     }
   )
-  const radarKey = activeWorkspaceId ? `/api/leads/social-radar/feed?workspace_id=${activeWorkspaceId}` : '/api/leads/social-radar/feed'
+  const radarKey = leadKeys.radarFeed(activeWorkspaceId)
   const { data: radarData } = useSWR<{ feed?: any[]; total_items?: number }>(radarKey, fetcher)
   const { openPaywall } = usePaywall()
-  const billingKey = activeWorkspaceId ? `/api/elein/workspaces/billing?workspace_id=${activeWorkspaceId}` : '/api/elein/workspaces/billing'
+  const billingKey = leadKeys.billing(activeWorkspaceId)
   const { data: billingData } = useSWR<{ tier?: string; tier_limits?: any }>(billingKey, fetcher)
   const tier = billingData?.tier || 'FREE'
   const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
@@ -99,6 +108,35 @@ export function EleInLeads() {
   const hotCount = useMemo(() => {
     return (radarData?.feed || []).filter((f: any) => f.lead?.social_intent_tier === 'HOT').length
   }, [radarData])
+
+  // Paranoia Layer 1 & 2: Restore selectedList if URL contains listId
+  const urlListId = searchParams.get("listId")
+  useEffect(() => {
+    if (urlListId && !selectedList && safeLists.length > 0) {
+      const match = safeLists.find(l => l.id === urlListId)
+      if (match) {
+        setSelectedList(match)
+      }
+    }
+  }, [urlListId, safeLists, selectedList])
+
+  // Paranoia Layer 2: Bi-directional sync of view state to URL query parameters
+  useEffect(() => {
+    const nextParams = new URLSearchParams()
+    if (primaryTab === "radar") nextParams.set("tab", "radar")
+    if (activeStudio) nextParams.set("studio", activeStudio)
+    if (segmentationListId) nextParams.set("segmentListId", segmentationListId)
+    if (search.trim()) nextParams.set("search", search.trim())
+    if (listTypeFilter !== "all") nextParams.set("type", listTypeFilter)
+    if (campaignFilter !== "all") nextParams.set("campaign", campaignFilter)
+    if (selectedList?.id) nextParams.set("listId", selectedList.id)
+
+    const cur = searchParams.toString()
+    const nxt = nextParams.toString()
+    if (cur !== nxt) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [primaryTab, activeStudio, segmentationListId, search, listTypeFilter, campaignFilter, selectedList?.id])
 
   useEffect(() => {
     if (!safeLists || safeLists.length === 0) return
@@ -195,7 +233,7 @@ export function EleInLeads() {
   const importingCount = safeLists.filter(l => (l as any).status === 'importing' || l.row_count === -1).length;
 
   const typeCounts = useMemo(() => {
-    const counts = { all: safeLists.length, csv: 0, sales_nav: 0, search: 0, linkedin_url: 0 }
+    const counts = { all: safeLists.length, csv: 0, sales_nav: 0, search: 0, linkedin_url: 0, dynamic: 0, hubspot: 0 }
     safeLists.forEach(l => {
       if (l.type && (counts as any)[l.type] !== undefined) {
         (counts as any)[l.type]++
@@ -270,14 +308,14 @@ export function EleInLeads() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/40 border border-border/50">
           <button
-            onClick={() => setActiveTab("lists")}
+            onClick={() => setPrimaryTab("lists")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === "lists"
+              primaryTab === "lists"
                 ? "bg-card text-foreground shadow-xs border border-border/60"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Database size={13} className={activeTab === "lists" ? "text-primary" : ""} />
+            <Database size={13} className={primaryTab === "lists" ? "text-primary" : ""} />
             <span>Lead Lists</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-muted font-mono text-muted-foreground">
               {totalLists}
@@ -285,14 +323,14 @@ export function EleInLeads() {
           </button>
 
           <button
-            onClick={() => setActiveTab("radar")}
+            onClick={() => setPrimaryTab("radar")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === "radar"
+              primaryTab === "radar"
                 ? "bg-card text-foreground shadow-xs border border-border/60"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Radio size={13} className={activeTab === "radar" ? "text-primary animate-pulse" : ""} />
+            <Radio size={13} className={primaryTab === "radar" ? "text-primary animate-pulse" : ""} />
             <span>Social Signal Radar</span>
             {hotCount > 0 ? (
               <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 font-bold">
@@ -346,7 +384,7 @@ export function EleInLeads() {
                               if (item.id === "segmentation") {
                                 setSegmentationListId(undefined)
                               }
-                              setActiveTab(item.id as any)
+                              setActiveStudio(item.id)
                               setIsStudiosOpen(false)
                             }}
                             className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-muted/50 transition-colors cursor-pointer group"
@@ -374,39 +412,9 @@ export function EleInLeads() {
         </div>
       </div>
 
-      {activeTab === "advocacy" ? (
-        <AdvocacyPodStudioModal onClose={() => setActiveTab("lists")} canAdvocacyPod={isPro} />
-      ) : activeTab === "crm" ? (
-        <CrmAttributionStudioModal onClose={() => setActiveTab("lists")} canCrmSync={isPro} />
-      ) : activeTab === "warmup" ? (
-        <WarmupStudioModal onClose={() => setActiveTab("lists")} canWarmup={isPro} />
-      ) : activeTab === "waterfall" ? (
-        <WaterfallEnrichmentStudioModal onClose={() => setActiveTab("lists")} canWaterfallEnrichment={isPro} />
-      ) : activeTab === "calendar" ? (
-        <CalendarConciergeStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "displacement" ? (
-        <DisplacementStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "omnichannel" ? (
-        <OmnichannelRetargetingStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "boomerang" ? (
-        <BoomerangRevivalStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "abm" ? (
-        <AbmMultithreadStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "segmentation" ? (
-        <DynamicSegmentationStudioModal 
-          initialListId={segmentationListId}
-          onClose={() => setActiveTab("lists")} 
-          onRulesSaved={() => mutate()}
-          canDynamicSegmentation={isPro}
-        />
-      ) : activeTab === "events" ? (
-        <EventMultimodalStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "bandit" ? (
-        <BanditOptimizerStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "prewarm" ? (
-        <PreWarmStudioModal onClose={() => setActiveTab("lists")} />
-      ) : activeTab === "radar" ? (
-        <SocialSignalRadarView onSwitchToLists={() => setActiveTab("lists")} />
+      {/* Primary Views: Lists vs Social Signal Radar */}
+      {primaryTab === "radar" ? (
+        <SocialSignalRadarView onSwitchToLists={() => setPrimaryTab("lists")} />
       ) : (
         <>
           {/* In-Situ Pay Ramp: Lead Intelligence & Unlimited Export */}
@@ -503,11 +511,60 @@ export function EleInLeads() {
             onRetryList={handleRetryList}
             onOpenSegmentation={(list) => {
               setSegmentationListId(list.id);
-              setActiveTab("segmentation");
+              setActiveStudio("segmentation");
             }}
+            onEnrollList={(list) => setEnrollListTarget(list)}
           />
         </>
       )}
+
+      {/* Non-Destructive Growth Studio Overlay Modals (Mounted as Dialog Overlays) */}
+      <AnimatePresence>
+        {activeStudio === "advocacy" && (
+          <AdvocacyPodStudioModal onClose={() => setActiveStudio(null)} canAdvocacyPod={isPro} />
+        )}
+        {activeStudio === "crm" && (
+          <CrmAttributionStudioModal onClose={() => setActiveStudio(null)} canCrmSync={isPro} />
+        )}
+        {activeStudio === "warmup" && (
+          <WarmupStudioModal onClose={() => setActiveStudio(null)} canWarmup={isPro} />
+        )}
+        {activeStudio === "waterfall" && (
+          <WaterfallEnrichmentStudioModal onClose={() => setActiveStudio(null)} canWaterfallEnrichment={isPro} />
+        )}
+        {activeStudio === "calendar" && (
+          <CalendarConciergeStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "displacement" && (
+          <DisplacementStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "omnichannel" && (
+          <OmnichannelRetargetingStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "boomerang" && (
+          <BoomerangRevivalStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "abm" && (
+          <AbmMultithreadStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "segmentation" && (
+          <DynamicSegmentationStudioModal 
+            initialListId={segmentationListId}
+            onClose={() => { setActiveStudio(null); setSegmentationListId(undefined); }} 
+            onRulesSaved={() => mutate()}
+            canDynamicSegmentation={isPro}
+          />
+        )}
+        {activeStudio === "events" && (
+          <EventMultimodalStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "bandit" && (
+          <BanditOptimizerStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+        {activeStudio === "prewarm" && (
+          <PreWarmStudioModal onClose={() => setActiveStudio(null)} />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showModal && (
@@ -524,6 +581,18 @@ export function EleInLeads() {
       <AnimatePresence>
         {listToDelete && (
           <DeleteConfirmationModal list={listToDelete} onClose={() => setListToDelete(null)} onConfirm={() => mutate()} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {enrollListTarget && (
+          <EnrollListInCampaignModal
+            isOpen={Boolean(enrollListTarget)}
+            onClose={() => setEnrollListTarget(null)}
+            listId={enrollListTarget.id}
+            listName={enrollListTarget.name}
+            onSuccess={() => mutate()}
+          />
         )}
       </AnimatePresence>
     </div>

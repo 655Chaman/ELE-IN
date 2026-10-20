@@ -22,10 +22,16 @@ export const TargetRegionSelector: React.FC<TargetRegionSelectorProps> = ({ valu
         onValueChange={onChange}
         placeholder="Select a region..."
         triggerClassName={`h-9 ${error ? 'border-destructive focus-visible:ring-destructive' : 'border-input'}`}
-        options={TARGET_REGIONS.map((region) => ({
-          value: region.timezone,
-          label: `${region.label} | ${region.timezone}`,
-        }))}
+        options={[
+          {
+            value: "auto",
+            label: "Auto-detect / Global (Multi-region by Lead Location)",
+          },
+          ...TARGET_REGIONS.map((region) => ({
+            value: region.timezone,
+            label: `${region.label} | ${region.timezone}`,
+          })),
+        ]}
       />
       {error && <span className="text-xs text-destructive">{error}</span>}
     </div>

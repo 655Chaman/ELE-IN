@@ -1,24 +1,48 @@
 import React, { useState, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import useSWR from "swr"
-import { Users, X, Trash2, Search, Download, CheckSquare, Square, Check, AlertTriangle, Loader2, Lock, ArrowRight, Zap } from "lucide-react"
+import useSWRInfinite from "swr/infinite"
+import { useDebounce } from "use-debounce"
+import { Users, X, Trash2, Search, Download, CheckSquare, Square, Check, AlertTriangle, Loader2, Lock, ArrowRight, Zap, BrainCircuit, Send } from "lucide-react"
 import { Linkedin } from "../icons/Linkedin"
 import { toast } from "sonner"
 import { friendlyToast } from "../FriendlyError"
 import { fetchWithAuth, fetcher } from "@/lib/apiClient"
 import { usePaywall } from "@/contexts/PaywallContext"
+import { useWorkspace } from "@/contexts/WorkspaceContext"
 import { TableSkeleton } from "../EleInSkeleton"
 import { Virtuoso } from "react-virtuoso"
+import { LeadTraceDrawer } from "./LeadTraceDrawer"
+import { EnrollListInCampaignModal } from "./EnrollListInCampaignModal"
+import { leadKeys } from "./leadKeys"
 
 export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onClose: () => void; mutateLists: () => void }) {
-  const { data: leads, error, isLoading, mutate } = useSWR(`/api/leads/lists/${list.id}/leads`, fetcher)
   const [search, setSearch] = useState("")
+  const [debouncedSearch] = useDebounce(search, 300)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
+  const [showEnrollModal, setShowEnrollModal] = useState(false)
   const [isBatchRemoving, setIsBatchRemoving] = useState(false)
+  const [selectedLeadForTrace, setSelectedLeadForTrace] = useState<any | null>(null)
+
+  const PAGE_SIZE = 50
+
+  const getKey = (pageIndex: number, previousPageData: any) => {
+    // Reached the end
+    if (previousPageData && (!previousPageData.data || previousPageData.data.length === 0)) return null
+    const qParam = debouncedSearch.trim() ? `&q=${encodeURIComponent(debouncedSearch.trim())}` : ""
+    return `/api/leads/lists/${list.id}/leads?page=${pageIndex + 1}&page_size=${PAGE_SIZE}${qParam}`
+  }
+
+  const { data, error, isLoading, size, setSize, mutate, isValidating } = useSWRInfinite(
+    getKey,
+    fetcher,
+    { revalidateFirstPage: false }
+  )
 
   const { openPaywall } = usePaywall()
-  const { data: billingData } = useSWR<{ tier?: string; tier_limits?: any }>('/api/elein/workspaces/billing', fetcher)
+  const { activeWorkspaceId } = useWorkspace()
+  const { data: billingData } = useSWR<{ tier?: string; tier_limits?: any }>(leadKeys.billing(activeWorkspaceId), fetcher)
   const tier = billingData?.tier || 'FREE'
   const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
 
@@ -26,7 +50,11 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showConfirmDelete) {
+        if (showEnrollModal) {
+          setShowEnrollModal(false)
+        } else if (selectedLeadForTrace) {
+          setSelectedLeadForTrace(null)
+        } else if (showConfirmDelete) {
           if (!isBatchRemoving) setShowConfirmDelete(false)
         } else {
           onClose()
@@ -35,11 +63,17 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [showConfirmDelete, isBatchRemoving, onClose])
+  }, [showEnrollModal, selectedLeadForTrace, showConfirmDelete, isBatchRemoving, onClose])
 
-  const leadList = leads?.data || []
+  const leadList = useMemo(() => {
+    return data ? data.flatMap(page => page?.data || []) : []
+  }, [data])
 
-  // Filtered leads based on search query
+  const totalCount = data?.[0]?.total ?? list.row_count ?? leadList.length
+  const isReachingEnd = Boolean(data && (data[data.length - 1]?.data?.length === 0 || leadList.length >= totalCount))
+  const isLoadingMore = Boolean(isLoading || (size > 0 && data && typeof data[size - 1] === "undefined"))
+
+  // Filtered leads based on search query for instant responsiveness while debounce resolves
   const filteredLeads = useMemo(() => {
     if (!search.trim()) return leadList
     const q = search.toLowerCase()
@@ -47,7 +81,8 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
       const name = `${lead.first_name || ""} ${lead.last_name || ""}`.toLowerCase()
       const company = (lead.company_name || "").toLowerCase()
       const title = (lead.job_title || "").toLowerCase()
-      return name.includes(q) || company.includes(q) || title.includes(q)
+      const email = (lead.email || "").toLowerCase()
+      return name.includes(q) || company.includes(q) || title.includes(q) || email.includes(q)
     })
   }, [leadList, search])
 
@@ -73,8 +108,15 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
   const handleRemoveLead = async (leadId: string) => {
     const lead = leadList.find((l: any) => l.id === leadId)
     try {
-      // Optimistic update
-      mutate((current: any) => ({ ...current, data: current?.data?.filter((l: any) => l.id !== leadId) }), false)
+      // Optimistic update across infinite pages
+      mutate((currentPages: any) => {
+        if (!currentPages) return currentPages
+        return currentPages.map((page: any) => ({
+          ...page,
+          data: (page?.data || []).filter((l: any) => l.id !== leadId),
+          total: Math.max(0, (page?.total || 1) - 1)
+        }))
+      }, false)
       if (selectedIds.has(leadId)) {
         const next = new Set(selectedIds)
         next.delete(leadId)
@@ -184,10 +226,14 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
     if (idsToRemove.length === 0) return
     setIsBatchRemoving(true)
     try {
-      mutate((current: any) => ({
-        ...current,
-        data: current?.data?.filter((l: any) => !selectedIds.has(l.id))
-      }), false)
+      mutate((currentPages: any) => {
+        if (!currentPages) return currentPages
+        return currentPages.map((page: any) => ({
+          ...page,
+          data: (page?.data || []).filter((l: any) => !selectedIds.has(l.id)),
+          total: Math.max(0, (page?.total || selectedIds.size) - selectedIds.size)
+        }))
+      }, false)
       
       // Paranoia Layer 1 & 2: Use bulk delete endpoint to eliminate browser socket exhaustion DoS
       const res = await fetchWithAuth(`/api/leads/lists/${list.id}/leads`, {
@@ -238,7 +284,7 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               {list.name}
             </h2>
             <p className="text-[12px] text-muted-foreground mt-0.5 font-medium">
-              {list.row_count === -1 ? "Extracting leads..." : `${leadList.length} leads loaded • ${list.row_count} total`}
+              {list.row_count === -1 ? "Extracting leads..." : `${leadList.length} leads loaded • ${totalCount} total`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -351,6 +397,28 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               <Virtuoso
                 className="w-full h-full"
                 data={filteredLeads}
+                endReached={() => {
+                  if (!isReachingEnd && !isLoadingMore && !isValidating) {
+                    setSize(prev => prev + 1)
+                  }
+                }}
+                components={{
+                  Footer: () => (
+                    <div className="py-4 text-center">
+                      {isLoadingMore && (
+                        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 size={14} className="animate-spin text-primary" />
+                          <span>Loading more leads...</span>
+                        </div>
+                      )}
+                      {isReachingEnd && leadList.length > 0 && (
+                        <span className="text-[11px] text-muted-foreground">
+                          All {leadList.length} leads loaded
+                        </span>
+                      )}
+                    </div>
+                  )
+                }}
                 itemContent={(index, lead: any) => {
                   const isSelected = selectedIds.has(lead.id)
                   return (
@@ -404,18 +472,33 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
                               </span>
                             )}
                           </div>
-                          {lead.linkedin_url && (
-                            <a 
-                              href={lead.linkedin_url.startsWith('http') ? lead.linkedin_url : `https://${lead.linkedin_url}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-muted-foreground hover:text-primary transition-colors p-1"
-                              title="Open LinkedIn Profile"
-                            >
-                              <Linkedin size={14} />
-                            </a>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {lead.enrollment_id && lead.campaign_id && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedLeadForTrace(lead)
+                                }}
+                                className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                                title="View Execution DAG Trace"
+                              >
+                                <BrainCircuit size={14} />
+                              </button>
+                            )}
+                            {lead.linkedin_url && (
+                              <a 
+                                href={lead.linkedin_url.startsWith('http') ? lead.linkedin_url : `https://${lead.linkedin_url}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-muted-foreground hover:text-primary transition-colors p-1"
+                                title="Open LinkedIn Profile"
+                              >
+                                <Linkedin size={14} />
+                              </a>
+                            )}
+                          </div>
                         </div>
                         <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                           {lead.job_title} {lead.company_name ? `at ${lead.company_name}` : ''}
@@ -456,6 +539,15 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEnrollModal(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Enroll selected leads into an outreach campaign"
+                >
+                  <Send size={13} />
+                  <span>Enroll ({selectedIds.size})</span>
+                </button>
                 <button
                   type="button"
                   onClick={exportSelectedCsv}
@@ -531,6 +623,29 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
             </div>
           )}
         </AnimatePresence>
+
+        {/* Lead Execution DAG Trace Drawer */}
+        {selectedLeadForTrace && (
+          <LeadTraceDrawer
+            campaignId={selectedLeadForTrace.campaign_id}
+            enrollmentId={selectedLeadForTrace.enrollment_id}
+            leadName={`${selectedLeadForTrace.first_name || ''} ${selectedLeadForTrace.last_name || ''}`.trim() || 'Lead'}
+            onClose={() => setSelectedLeadForTrace(null)}
+          />
+        )}
+
+        {/* Campaign Enrollment Modal for Selected Leads */}
+        <EnrollListInCampaignModal
+          isOpen={showEnrollModal}
+          onClose={() => setShowEnrollModal(false)}
+          leadIds={Array.from(selectedIds)}
+          listName={list.name}
+          onSuccess={() => {
+            setSelectedIds(new Set())
+            mutate()
+            mutateLists()
+          }}
+        />
       </motion.div>
     </div>
   )

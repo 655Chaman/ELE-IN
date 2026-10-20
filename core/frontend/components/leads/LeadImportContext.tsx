@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { ReactNode, RefObject } from "react"
 import useSWR from "swr"
 import { fetcher } from "@/lib/apiClient"
@@ -178,7 +178,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     location: ""
   })
 
-  const generateSearchUrl = () => {
+  const liveUrl = useMemo(() => {
     const params = new URLSearchParams();
     
     const formatOr = (val: string) => {
@@ -238,11 +238,9 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     
     if (Array.from(params.keys()).length === 0) return "";
     return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
-  }
+  }, [searchParams]);
 
-  const liveUrl = generateSearchUrl();
-
-  const value = {
+  const value = useMemo(() => ({
     method, setMethod,
     name, setName,
     urlList, setUrlList,
@@ -264,7 +262,13 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     billing, accounts, activeAccount, budget,
     isHubspotConnected, hubspotLists, mutateHubspotStatus,
     fileInputRef, liveUrl
-  };
+  }), [
+    method, name, urlList, salesNavUrl, salesNavMaxResults, targetTimezone,
+    file, cleanData, isSubmitting, step, headers, sampleRows, detectedRowCount,
+    mappings, searchParams, hubspotToken, hubspotConnecting, selectedHubspotList,
+    billing, accounts, activeAccount, budget, isHubspotConnected, hubspotLists,
+    mutateHubspotStatus, liveUrl
+  ]);
 
   return (
     <LeadImportContext.Provider value={value}>

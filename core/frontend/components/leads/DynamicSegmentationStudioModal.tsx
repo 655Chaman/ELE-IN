@@ -4,13 +4,15 @@ import {
   Filter, Layers, Sparkles, Plus, Trash2, Play, CheckCircle2, RefreshCw, 
   Sliders, X, ShieldCheck, AlertCircle, ArrowRight, Zap, Users, Target, 
   Compass, Lock, Building, UserCheck, Flame, Radio, Award, Check, ExternalLink, Download,
-  RotateCcw
+  RotateCcw, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import type { LeadList } from './leads.types';
+import { leadKeys } from './leadKeys';
 import { CustomSelect } from '@/components/ui/select';
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
@@ -72,13 +74,17 @@ export function DynamicSegmentationStudioModal({
   onRulesSaved,
   canDynamicSegmentation
 }: DynamicSegmentationStudioProps) {
+  const { activeWorkspaceId } = useWorkspace();
   const { openPaywall } = usePaywall();
-  const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher);
+  const billingKey = leadKeys.billing(activeWorkspaceId);
+  const { data: billingData } = useSWR<{ tier?: string }>(billingKey, fetcher);
   const isPro = canDynamicSegmentation ?? (billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE');
 
-  // Data fetching for lists and campaigns
-  const { data: listsData, mutate: mutateLists } = useSWR<LeadList[]>('/api/elein/leads/lists', fetcher);
-  const { data: campaignsData } = useSWR<any[]>('/api/elein/campaigns', fetcher);
+  // Data fetching for lists and campaigns scoped to active workspace via canonical leadKeys
+  const listsKey = leadKeys.lists(activeWorkspaceId);
+  const { data: listsData, mutate: mutateLists } = useSWR<LeadList[]>(listsKey, fetcher);
+  const campaignsKey = leadKeys.campaigns(activeWorkspaceId);
+  const { data: campaignsData } = useSWR<any[]>(campaignsKey, fetcher);
 
   const lists = Array.isArray(listsData) ? listsData : [];
   const campaigns = Array.isArray(campaignsData) ? campaignsData : [];
@@ -107,6 +113,20 @@ export function DynamicSegmentationStudioModal({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [previewData, setPreviewData] = useState<any>(null);
+  const [isStalePreview, setIsStalePreview] = useState(false);
+
+  // Paranoia Layer 2: Detect when rules are modified after an evaluation
+  const rulesFingerprint = useMemo(() => {
+    return JSON.stringify({ matchType, conditions: conditions.map(c => ({ field: c.field, op: c.operator, val: c.value })) });
+  }, [matchType, conditions]);
+
+  const lastEvaluatedFingerprintRef = React.useRef<string>('');
+
+  useEffect(() => {
+    if (lastEvaluatedFingerprintRef.current && rulesFingerprint !== lastEvaluatedFingerprintRef.current) {
+      setIsStalePreview(true);
+    }
+  }, [rulesFingerprint]);
 
   // Close on Escape key
   useEffect(() => {
@@ -221,7 +241,7 @@ export function DynamicSegmentationStudioModal({
     }));
   };
 
-  // Dry-Run Evaluation
+  // Dry-Run Evaluation (Real-Time Simulation)
   const handleRunEvaluation = async () => {
     if (!isPro) {
       openPaywall({
@@ -232,8 +252,15 @@ export function DynamicSegmentationStudioModal({
       return;
     }
 
-    if (!selectedListId) {
-      toast.error('Please select a target lead list first.');
+    // Paranoia Layer 2: Empty condition validation
+    const hasEmptyCondition = conditions.some(c => 
+      c.value === undefined || 
+      c.value === null || 
+      c.value === '' || 
+      (Array.isArray(c.value) && c.value.length === 0)
+    );
+    if (hasEmptyCondition) {
+      toast.error('Please configure valid criteria for all conditions before running evaluation.');
       return;
     }
 
@@ -248,10 +275,11 @@ export function DynamicSegmentationStudioModal({
             value: c.value
           }))
         },
+        list_id: selectedListId || undefined,
         limit: 500
       };
 
-      const res = await fetchWithAuth(`/api/leads/lists/${selectedListId}/evaluate-rules`, {
+      const res = await fetchWithAuth('/api/leads/segments/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -264,6 +292,8 @@ export function DynamicSegmentationStudioModal({
 
       const data = await res.json();
       setPreviewData(data);
+      lastEvaluatedFingerprintRef.current = rulesFingerprint;
+      setIsStalePreview(false);
       toast.success(`Evaluated ${data.total_workspace_leads.toLocaleString()} leads — ${data.matching_count.toLocaleString()} qualify!`);
     } catch (err: any) {
       toast.error(err.message || 'Evaluation failed. Checking defensive fallbacks.');
@@ -272,8 +302,48 @@ export function DynamicSegmentationStudioModal({
     }
   };
 
+  // Core save dynamic rules helper (shared between Save Rules and Save & Sync)
+  const saveRulesCore = async () => {
+    if (!selectedListId) {
+      throw new Error('Please select a target lead list.');
+    }
+
+    const hasEmptyCondition = conditions.some(c => 
+      c.value === undefined || 
+      c.value === null || 
+      c.value === '' || 
+      (Array.isArray(c.value) && c.value.length === 0)
+    );
+    if (hasEmptyCondition) {
+      throw new Error('Please configure valid criteria for all conditions before saving.');
+    }
+
+    const payload = {
+      match_type: matchType,
+      conditions: conditions.map(c => ({
+        field: c.field,
+        operator: c.operator,
+        value: c.value
+      })),
+      auto_enroll_campaign_id: autoEnrollEnabled && targetCampaignId ? targetCampaignId : null,
+      allow_re_enrollment: allowReEnrollment
+    };
+
+    const res = await fetchWithAuth(`/api/leads/lists/${selectedListId}/dynamic-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail?.message || err.detail || 'Failed to save dynamic rules.');
+    }
+  };
+
   // Save Dynamic Rules
   const handleSaveRules = async () => {
+    if (isSaving || isSyncing) return;
     if (!isPro) {
       openPaywall({
         featureName: "Smart Dynamic Audience Auto-Enrollment",
@@ -283,35 +353,9 @@ export function DynamicSegmentationStudioModal({
       return;
     }
 
-    if (!selectedListId) {
-      toast.error('Please select a target lead list.');
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const payload = {
-        match_type: matchType,
-        conditions: conditions.map(c => ({
-          field: c.field,
-          operator: c.operator,
-          value: c.value
-        })),
-        auto_enroll_campaign_id: autoEnrollEnabled && targetCampaignId ? targetCampaignId : null,
-        allow_re_enrollment: allowReEnrollment
-      };
-
-      const res = await fetchWithAuth(`/api/leads/lists/${selectedListId}/dynamic-rules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail?.message || err.detail || 'Failed to save dynamic rules.');
-      }
-
+      await saveRulesCore();
       toast.success('Dynamic segmentation rules successfully saved!');
       if (mutateLists) mutateLists();
       if (onRulesSaved) onRulesSaved();
@@ -324,6 +368,7 @@ export function DynamicSegmentationStudioModal({
 
   // Sync Segment Members Immediately
   const handleSyncNow = async () => {
+    if (isSaving || isSyncing) return;
     if (!isPro) {
       openPaywall({
         featureName: "Smart Dynamic Audience Auto-Enrollment",
@@ -333,15 +378,12 @@ export function DynamicSegmentationStudioModal({
       return;
     }
 
-    if (!selectedListId) {
-      toast.error('Please select a target lead list.');
-      return;
-    }
-
     setIsSyncing(true);
     try {
       // First ensure rules are saved
-      await handleSaveRules();
+      await saveRulesCore();
+      if (mutateLists) mutateLists();
+      if (onRulesSaved) onRulesSaved();
 
       const res = await fetchWithAuth(`/api/leads/lists/${selectedListId}/sync-members`, {
         method: 'POST',
@@ -548,7 +590,12 @@ export function DynamicSegmentationStudioModal({
               type="button"
               role="tab"
               aria-selected={activeTab === 'preview'}
-              onClick={() => setActiveTab('preview')}
+              onClick={() => {
+                setActiveTab('preview');
+                if ((!previewData || isStalePreview) && !isEvaluating) {
+                  handleRunEvaluation();
+                }
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'preview'
                   ? 'bg-card text-foreground shadow-xs border border-border/60'
@@ -557,6 +604,9 @@ export function DynamicSegmentationStudioModal({
             >
               <Users size={13} className={activeTab === 'preview' ? 'text-blue-600 dark:text-blue-400' : ''} />
               <span>Audience Radar ({previewData?.matching_count || 0})</span>
+              {isStalePreview && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Rules modified since last preview" />
+              )}
             </button>
           </div>
         </div>
@@ -1056,6 +1106,25 @@ export function DynamicSegmentationStudioModal({
               </div>
             ) : (
               <div className="space-y-6">
+                {/* Paranoia Layer 2: Stale Preview Indicator */}
+                {isStalePreview && (
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300">
+                    <div className="flex items-center gap-2 text-xs">
+                      <AlertCircle size={14} className="shrink-0" />
+                      <span>Rule criteria modified since last preview. Simulation results below may be outdated.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRunEvaluation}
+                      disabled={isEvaluating}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <RefreshCw size={12} className={isEvaluating ? 'animate-spin' : ''} />
+                      <span>Re-run Radar</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Distribution Stats Pills */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-3.5 rounded-lg bg-card border border-border/70 text-center">
@@ -1097,10 +1166,14 @@ export function DynamicSegmentationStudioModal({
                       </span>
                       <button
                         type="button"
-                        disabled={isExporting}
+                        disabled={isExporting || !previewData || previewData.matching_count === 0}
                         onClick={async () => {
                           if (!selectedListId) {
                             toast.error('Please select a lead list first.');
+                            return;
+                          }
+                          if (!previewData || previewData.matching_count === 0) {
+                            toast.error('No matching prospects qualify for export.');
                             return;
                           }
                           setIsExporting(true);
@@ -1211,16 +1284,17 @@ export function DynamicSegmentationStudioModal({
             <button
               type="button"
               onClick={handleSaveRules}
-              disabled={isSaving}
-              className="flex-1 sm:flex-none px-4 py-2 rounded-lg border border-border/80 hover:bg-muted/60 text-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50"
+              disabled={isSaving || isSyncing}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-border/80 hover:bg-muted/60 text-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50"
             >
-              {isSaving ? 'Saving Rules...' : 'Save Rules'}
+              {isSaving && <Loader2 size={13} className="animate-spin" />}
+              <span>{isSaving ? 'Saving Rules...' : 'Save Rules'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleSyncNow}
-              disabled={isSyncing}
+              disabled={isSaving || isSyncing}
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all cursor-pointer shadow-sm disabled:opacity-50"
             >
               <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />

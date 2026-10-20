@@ -234,23 +234,34 @@ def retroactive_purge_suppressed_leads(
         except Exception as e:
             logger.warning(f"[SuppressionPurge] Email lookup failed: {e}")
 
-    # 3. Match by Wildcard Domain (@domain.com)
+    # 3. Match by Wildcard Domain (@domain.com) across all paginated workspace leads
     if dom_set:
         try:
-            res = (
-                supabase.table("leads")
-                .select("id, email")
-                .eq("workspace_id", workspace_id)
-                .execute()
-            )
-            for row in (res.data or []):
-                if not isinstance(row, dict) or not row.get("id"):
-                    continue
-                lead_em = str(row.get("email") or "").strip().lower()
-                if "@" in lead_em:
-                    lead_dom = lead_em.rsplit("@", 1)[-1].strip()
-                    if lead_dom in dom_set:
+            start_row = 0
+            while True:
+                res = (
+                    supabase.table("leads")
+                    .select("id, email, domain")
+                    .eq("workspace_id", workspace_id)
+                    .range(start_row, start_row + 999)
+                    .execute()
+                )
+                batch = res.data or []
+                if not batch:
+                    break
+                for row in batch:
+                    if not isinstance(row, dict) or not row.get("id"):
+                        continue
+                    lead_dom = str(row.get("domain") or "").strip().lower()
+                    if not lead_dom:
+                        lead_em = str(row.get("email") or "").strip().lower()
+                        if "@" in lead_em:
+                            lead_dom = lead_em.rsplit("@", 1)[-1].strip()
+                    if lead_dom and lead_dom in dom_set:
                         matched_lead_ids.add(row["id"])
+                if len(batch) < 1000:
+                    break
+                start_row += 1000
         except Exception as e:
             logger.warning(f"[SuppressionPurge] Domain scan lookup failed: {e}")
 
@@ -377,10 +388,26 @@ def add_suppression_entries_bulk(
     for i in range(0, len(rows_to_insert), CHUNK_SIZE):
         chunk = rows_to_insert[i : i + CHUNK_SIZE]
         try:
-            res = supabase.table("suppression_list").insert(chunk).execute()
+            res = (
+                supabase.table("suppression_list")
+                .upsert(chunk, ignore_duplicates=True)
+                .execute()
+            )
             inserted_count += len(res.data) if (res and res.data) else len(chunk)
         except Exception as e:
-            logger.warning(f"[SuppressionBulk] Chunk insert error: {e}")
+            logger.warning(f"[SuppressionBulk] Chunk upsert error ({e}); attempting single-entry recovery")
+            # Layer 1 Paranoia (B2-F03): Single-entry recovery so 1 conflicting row does not drop 199 valid entries
+            for row in chunk:
+                try:
+                    res_single = (
+                        supabase.table("suppression_list")
+                        .upsert(row, ignore_duplicates=True)
+                        .execute()
+                    )
+                    if res_single and res_single.data:
+                        inserted_count += 1
+                except Exception:
+                    duplicate_count += 1
 
     purge_summary = {"matched_leads_count": 0, "halted_states_count": 0, "lead_ids": []}
     if trigger_retroactive_purge and (all_li or all_em or all_dom):
@@ -444,13 +471,20 @@ def check_lead_suppression(
         )
         rows = res.data or []
         if rows:
-            row = rows[0]
-            matched_by = "domain" if (clean_dom and (row.get("domain") == clean_dom or row.get("value") in (clean_dom, f"@{clean_dom}"))) else (
-                "email" if (clean_em and (row.get("email") == clean_em or row.get("value") == clean_em)) else "linkedin_url"
-            )
-            matched_value = clean_dom if matched_by == "domain" else (clean_em if matched_by == "email" else clean_li)
-            return {"suppressed": True, "matched_by": matched_by, "matched_value": matched_value, "reason": row.get("reason")}
+            for row in rows:
+                if clean_dom and (row.get("domain") == clean_dom or row.get("value") in (clean_dom, f"@{clean_dom}")):
+                    return {"suppressed": True, "matched_by": "domain", "matched_value": clean_dom, "reason": row.get("reason")}
+                if clean_em and (row.get("email") == clean_em or row.get("value") == clean_em):
+                    return {"suppressed": True, "matched_by": "email", "matched_value": clean_em, "reason": row.get("reason")}
+                if clean_li and (row.get("linkedin_url") == clean_li or row.get("value") == clean_li):
+                    return {"suppressed": True, "matched_by": "linkedin_url", "matched_value": clean_li, "reason": row.get("reason")}
         return {"suppressed": False, "matched_by": None, "matched_value": None, "reason": None}
     except Exception as e:
         logger.warning(f"[SuppressionCheck] Targeted suppression query failed: {e}")
-        raise
+        return {
+            "suppressed": True,
+            "fail_closed": True,
+            "matched_by": "service_error",
+            "matched_value": None,
+            "reason": f"Suppression check failed closed due to database error: {e}",
+        }

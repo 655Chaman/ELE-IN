@@ -10,6 +10,7 @@ Rigorously engineered under the Three-Layer Logic Architecture (Paranoia Framewo
 import re
 import csv
 import io
+import time
 import uuid
 import logging
 from typing import Dict, List, Any, Optional, Set, Tuple, Union
@@ -181,8 +182,9 @@ def normalize_company_size_tier(size_val: Any) -> str:
     if re.search(r"(?:[5-9]k\+|[1-9]\d+k\+|500[1-9]|50[1-9]\d|5[1-9]\d{2}|[6-9]\d{3}|\d{5,})", s) or "5000+" in s or "5001+" in s or "10000+" in s or "10k" in s:
         return COMPANY_SIZE_5001_PLUS
 
-    # Remove commas and clean words
-    cleaned = re.sub(r"[,\s]", "", s)
+    # Remove noise words, commas, and clean words
+    s_no_words = re.sub(r"\b(employees?|staff|people|members?|headcount|approx|about)\b", "", s).strip()
+    cleaned = re.sub(r"[,\s]", "", s_no_words)
     # Range formats like 11-50, 11to50, 11-50employees
     m_range = re.match(r"^(\d+)[-to]+(\d+)", cleaned)
     if m_range:
@@ -279,7 +281,15 @@ def extract_lead_attributes(lead: Dict[str, Any]) -> Dict[str, Any]:
     company_size_tier = normalize_company_size_tier(raw_size)
 
     # Intent score & tier
-    raw_intent = lead.get("intent_score") or metadata.get("intent_score") or metadata.get("icp_score")
+    raw_intent = (
+        lead.get("intent_score")
+        if lead.get("intent_score") is not None
+        else lead.get("social_intent_score")
+        if lead.get("social_intent_score") is not None
+        else metadata.get("intent_score")
+        if metadata.get("intent_score") is not None
+        else metadata.get("icp_score")
+    )
     if raw_intent is None and isinstance(metadata.get("buying_intent"), dict):
         raw_intent = metadata.get("buying_intent", {}).get("score")
     try:
@@ -505,50 +515,68 @@ def filter_leads_in_memory(leads: List[Dict[str, Any]], rule_config: Dict[str, A
 
 def preview_dynamic_segment(
     workspace_id: str,
-    list_id: str,
-    rule_config: Dict[str, Any],
-    supabase: Any,
+    list_id: Optional[str] = None,
+    rule_config: Optional[Dict[str, Any]] = None,
+    supabase: Any = None,
     limit: int = 500
 ) -> Dict[str, Any]:
     """
     Simulates evaluation of dynamic segmentation rules without mutating the database.
+    Paranoia Layer 0 & 1: Supports evaluating rules globally or scoped to a specific list.
+    Safely coalesces opportunity_id / lead_id for schema resilience and bounds query limit.
+
     Returns:
     - total_workspace_leads: Count of total leads inspected
+    - evaluated_leads_count: Count of evaluated in-memory sample leads
     - matching_count: Count of leads matching criteria
     - match_percentage: Percentage of workspace leads matching criteria
-    - current_list_members_count: Current count of members in the list
+    - current_list_members_count: Current count of members in the list (0 if list_id omitted)
     - potential_added_count: How many new leads would be added
     - potential_removed_count: How many existing leads would be removed
     - sample_leads: Enriched sample matching leads for UI preview
     - seniority_distribution / company_size_distribution / intent_distribution / breakdown
+    - execution_time_ms: Evaluation execution latency in milliseconds
     """
-    clean_ws = str(workspace_id).strip()
-    clean_lid = str(list_id).strip()
+    start_time = time.time()
+    clean_ws = str(workspace_id).strip() if workspace_id else ""
+    clean_lid = str(list_id).strip() if list_id else ""
+    rules = rule_config or {}
+    safe_limit = max(1, min(limit, 2000))
 
     leads: List[Dict[str, Any]] = []
     current_member_ids: Set[str] = set()
 
-    if supabase:
+    if supabase and clean_ws:
         try:
-            leads_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).limit(limit).execute()
+            leads_res = supabase.table("leads").select("*").eq("workspace_id", clean_ws).limit(safe_limit).execute()
             leads = leads_res.data or []
         except Exception as e:
             logger.warning(f"[LeadSegmentation] Leads query failed in preview: {e}")
             leads = []
 
-        try:
-            members_res = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).execute()
-            current_member_ids = {str(m.get("opportunity_id")).strip() for m in (members_res.data or []) if m.get("opportunity_id")}
-        except Exception as e:
-            logger.warning(f"[LeadSegmentation] List members query failed in preview: {e}")
-            current_member_ids = set()
+        if clean_lid:
+            try:
+                # Schema resilience: coalesce opportunity_id and lead_id
+                members_res = supabase.table("list_members").select("opportunity_id, lead_id").eq("list_id", clean_lid).execute()
+                current_member_ids = {
+                    str(m.get("opportunity_id") or m.get("lead_id")).strip()
+                    for m in (members_res.data or [])
+                    if m.get("opportunity_id") or m.get("lead_id")
+                }
+            except Exception as e:
+                try:
+                    members_res = supabase.table("list_members").select("opportunity_id").eq("list_id", clean_lid).execute()
+                    current_member_ids = {str(m.get("opportunity_id")).strip() for m in (members_res.data or []) if m.get("opportunity_id")}
+                except Exception as inner_e:
+                    logger.warning(f"[LeadSegmentation] List members query failed in preview: {inner_e}")
+                    current_member_ids = set()
 
     # 3. Evaluate matching leads
-    matching_leads = filter_leads_in_memory(leads, rule_config)
+    matching_leads = filter_leads_in_memory(leads, rules)
     matching_ids = {str(ld.get("id")).strip() for ld in matching_leads if ld.get("id")}
 
-    to_add = matching_ids - current_member_ids
-    to_remove = current_member_ids - matching_ids
+    to_add = matching_ids - current_member_ids if clean_lid else matching_ids
+    to_remove = current_member_ids - matching_ids if clean_lid else set()
 
     # Breakdown statistics & sample leads
     seniority_counts: Dict[str, int] = {}
@@ -584,12 +612,14 @@ def preview_dynamic_segment(
     total_leads = len(leads)
     matching_count = len(matching_leads)
     match_pct = round((matching_count / total_leads) * 100.0, 2) if total_leads > 0 else 0.0
+    elapsed_ms = round((time.time() - start_time) * 1000, 2)
 
     return {
         "status": "success",
         "workspace_id": clean_ws,
-        "list_id": clean_lid,
+        "list_id": clean_lid or None,
         "total_workspace_leads": total_leads,
+        "evaluated_leads_count": total_leads,
         "matching_count": matching_count,
         "match_percentage": match_pct,
         "current_list_members_count": len(current_member_ids),
@@ -599,6 +629,7 @@ def preview_dynamic_segment(
         "seniority_distribution": seniority_counts,
         "company_size_distribution": size_counts,
         "intent_distribution": intent_counts,
+        "execution_time_ms": elapsed_ms,
         "breakdown": {
             "seniority": seniority_counts,
             "company_size": size_counts,
@@ -774,13 +805,23 @@ def sync_dynamic_segment_members(
     # 5. Mutate list_members in batches
     batch_size = 100
 
-    # Add new members
+    # Add new members with conflict-tolerant batch upsert/insert (Paranoia Layer 1)
     added_count = 0
     to_add_list = list(to_add)
     for i in range(0, len(to_add_list), batch_size):
         chunk = to_add_list[i:i + batch_size]
         new_members = [{"workspace_id": clean_ws, "list_id": clean_lid, "opportunity_id": lid} for lid in chunk]
-        supabase.table("list_members").insert(new_members).execute()
+        try:
+            supabase.table("list_members").upsert(
+                new_members,
+                on_conflict="list_id,opportunity_id",
+                ignore_duplicates=True
+            ).execute()
+        except Exception as upsert_err:
+            try:
+                supabase.table("list_members").insert(new_members).execute()
+            except Exception as insert_err:
+                logger.warning(f"[LeadSegmentation] Member insert chunk {i} failed: {insert_err}")
         added_count += len(chunk)
 
     # Remove disqualified members
@@ -833,12 +874,36 @@ def sync_dynamic_segment_members(
             ver_res = supabase.table("campaign_versions").select("id").eq("campaign_id", auto_enroll_campaign_id).order("created_at", desc=True).limit(1).execute()
             version_id = ver_res.data[0]["id"] if (ver_res.data and len(ver_res.data) > 0) else None
 
+            # Paranoia Layer 1: Allocate active sender accounts to prevent account_id = None execution failure
+            assigned_accounts = []
+            try:
+                acc_res = supabase.table("campaign_accounts") \
+                    .select("account_id, accounts(id, name, status, is_warmup, warmup_max_connections)") \
+                    .eq("campaign_id", auto_enroll_campaign_id) \
+                    .execute()
+                raw_accs = acc_res.data or []
+                accounts_info = []
+                for row in raw_accs:
+                    acc_obj = row.get("accounts")
+                    if isinstance(acc_obj, dict):
+                        accounts_info.append(acc_obj)
+                    elif isinstance(acc_obj, list) and acc_obj:
+                        accounts_info.append(acc_obj[0])
+                    elif row.get("account_id"):
+                        accounts_info.append({"id": row.get("account_id"), "status": "ACTIVE"})
+
+                if accounts_info:
+                    from campaigns.backend.routers.elein import allocate_leads_weighted_across_fleet
+                    assigned_accounts = allocate_leads_weighted_across_fleet(accounts_info, len(fresh_leads))
+            except Exception as _acc_err:
+                logger.warning(f"Could not allocate sender accounts for auto-enrollment: {_acc_err}")
+
             # Bulk enroll
             enrollment_rows = []
             execution_rows = []
             action_logs = []
 
-            for lid in fresh_leads:
+            for idx, lid in enumerate(fresh_leads):
                 enr_id = str(uuid.uuid4())
                 enr_payload = {
                     "id": enr_id,
@@ -848,6 +913,8 @@ def sync_dynamic_segment_members(
                 }
                 if version_id:
                     enr_payload["campaign_version_id"] = version_id
+                if assigned_accounts and idx < len(assigned_accounts):
+                    enr_payload["account_id"] = assigned_accounts[idx]
                 enrollment_rows.append(enr_payload)
                 execution_rows.append({
                     "id": str(uuid.uuid4()),
@@ -878,6 +945,19 @@ def sync_dynamic_segment_members(
                     execution_rows[i:i + batch_size],
                     ignore_duplicates=True
                 ).execute()
+
+            # Paranoia Layer 1: Bi-directional lead status sync to 'enrolled'
+            try:
+                from datetime import datetime, timezone
+                now_iso = datetime.now(timezone.utc).isoformat()
+                for i in range(0, len(fresh_leads), batch_size):
+                    chunk_lids = fresh_leads[i:i + batch_size]
+                    supabase.table("leads").update({
+                        "status": "enrolled",
+                        "updated_at": now_iso
+                    }).in_("id", chunk_lids).eq("workspace_id", clean_ws).execute()
+            except Exception as _lead_st_err:
+                logger.warning(f"Non-fatal update leads to enrolled: {_lead_st_err}")
 
             if action_logs:
                 try:
