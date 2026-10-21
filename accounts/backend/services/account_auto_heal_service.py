@@ -288,6 +288,23 @@ def auto_heal_account(
                             "recommendation": "CHALLENGE_QUARANTINED",
                             "timestamp": now_iso
                         }
+                    else:
+                        # Quarantine timer expired
+                        if account.get("status") == "CHALLENGE_REQUIRED" or account.get("quarantine_reason") in ("security_challenge", "challenge cooldown"):
+                            # Layer 1 & 2: Quarantine expired but manual challenge resolution has not been confirmed.
+                            # Automated background checks must NOT probe LinkedIn to prevent turning soft checkpoints into hard bans.
+                            actions_taken.append("Quarantine cooldown period expired, but account was quarantined for a security challenge. Automated background probes blocked until manual browser login is verified.")
+                            return {
+                                "account_id": account_id,
+                                "previous_status": "CHALLENGE_REQUIRED",
+                                "new_status": "NEEDS_ATTENTION",
+                                "healed": False,
+                                "quarantined": False,
+                                "health_score": 20,
+                                "actions_taken": actions_taken,
+                                "recommendation": "MANUAL_CHALLENGE_RESOLUTION_REQUIRED",
+                                "timestamp": now_iso
+                            }
                 except Exception:
                     pass
 
@@ -415,6 +432,20 @@ def auto_heal_account(
                 else:
                     active_proxy_url = f"{proto}://{px['host']}:{px['port']}"
 
+        # Paranoia Layer 1: If account is configured to use a proxy, NEVER leak datacenter IP
+        if account.get("proxy_id") and not active_proxy_url:
+            actions_taken.append("Assigned proxy and all backup candidates are unavailable. Direct connection to LinkedIn blocked to protect account from datacenter IP flag.")
+            return {
+                "account_id": account_id,
+                "previous_status": previous_status,
+                "new_status": "NEEDS_ATTENTION",
+                "healed": False,
+                "health_score": 20,
+                "actions_taken": actions_taken,
+                "recommendation": "PROXY_FAILURE",
+                "timestamp": now_iso
+            }
+
         # 4. Probe LinkedIn Voyager API session with Security Challenge Detection
         session_valid = False
         is_rate_limited = False
@@ -501,7 +532,12 @@ def auto_heal_account(
             except Exception as outbox_err:
                 logger.warning(f"Could not queue outbox event: {outbox_err}")
         elif session_valid:
-            if previous_status in ("DISCONNECTED", "NEEDS_ATTENTION", "RATE_LIMITED", "PENDING", "CHALLENGE_REQUIRED"):
+            if previous_status == "CHALLENGE_REQUIRED" and not force:
+                new_status = "NEEDS_ATTENTION"
+                healed = False
+                recommendation = "MANUAL_CHALLENGE_RESOLUTION_REQUIRED"
+                actions_taken.append("Account was in CHALLENGE_REQUIRED. Automated background healing blocked from activating account without manual user verification.")
+            elif previous_status in ("DISCONNECTED", "NEEDS_ATTENTION", "RATE_LIMITED", "PENDING", "CHALLENGE_REQUIRED"):
                 new_status = "ACTIVE"
                 healed = True
                 actions_taken.append(f"Auto-healed account status from {previous_status} -> ACTIVE.")

@@ -88,7 +88,12 @@ class TestAccountFailover(unittest.TestCase):
             self.assertEqual(call_args[0][2], "pending")
             next_run = call_args[0][3]
             self.assertIsNotNone(next_run)
-            self.assertAlmostEqual((next_run - datetime.utcnow()).total_seconds(), 30, delta=5)
+            now_utc = datetime.now(timezone.utc)
+            if next_run.tzinfo is None:
+                diff_sec = (next_run - datetime.utcnow()).total_seconds()
+            else:
+                diff_sec = (next_run - now_utc).total_seconds()
+            self.assertAlmostEqual(diff_sec, 30, delta=5)
 
             # 4. Outbox events should NOT have been queued since failover succeeded
             outbox_table.insert.assert_not_called()
@@ -231,7 +236,8 @@ class TestAccountFailover(unittest.TestCase):
             "opportunity_id": "opp_1"
         }
 
-        with patch("campaigns.backend.services.elein_orchestrator.try_acquire_session_lock", return_value=True):
+        with patch("campaigns.backend.services.elein_orchestrator.try_acquire_session_lock", return_value=True), \
+             patch("campaigns.backend.services.sender_pod_service.select_pod_sender", return_value={"account_id": "acc_disc"}):
             res = self.orchestrator.execute_node_action(
                 action="send_message",
                 data={"body": "Hello"},
@@ -297,7 +303,8 @@ class TestAccountFailover(unittest.TestCase):
             "opportunity_id": "opp_1"
         }
 
-        with patch("campaigns.backend.services.elein_orchestrator.try_acquire_session_lock", return_value=True):
+        with patch("campaigns.backend.services.elein_orchestrator.try_acquire_session_lock", return_value=True), \
+             patch("campaigns.backend.services.sender_pod_service.select_pod_sender", return_value={"account_id": "acc_disc"}):
             res = self.orchestrator.execute_node_action(
                 action="send_message",
                 data={"body": "Hello"},
@@ -310,6 +317,72 @@ class TestAccountFailover(unittest.TestCase):
 
             # Returns account_disconnected so process_lead pauses and alerts via outbox
             self.assertEqual(res.get("status"), "account_disconnected")
+
+    @patch("campaigns.backend.services.elein_orchestrator.LinkedInWorker")
+    @patch("core.backend.core.crypto.decrypt_bytes")
+    def test_execute_node_action_configured_proxy_unavailable_halts_safely(self, mock_decrypt_bytes, mock_worker_cls):
+        """Paranoia Layer 1: When account has proxy_id configured but _build_proxy_url is None, halts outreach without launching worker."""
+        table_mock = MagicMock()
+        self.supabase.table = table_mock
+
+        leads_table = MagicMock()
+        leads_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": "opp_1", "first_name": "Bob", "linkedin_url": "https://linkedin.com/in/bob"}]
+        )
+
+        accounts_table = MagicMock()
+        accounts_table.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{
+                "id": "acc_with_dead_proxy",
+                "workspace_id": "ws_1",
+                "status": "ACTIVE",
+                "proxy_id": "proxy_dead",
+                "proxies": {"id": "proxy_dead", "status": "quarantined", "is_active": False},
+                "session_cookies_encrypted": "hex_cookies",
+                "is_warmup": False,
+                "warmup_max_connections": 20,
+                "warmup_max_messages": 20
+            }]
+        )
+
+        def table_side_effect(tbl_name):
+            if tbl_name == "leads":
+                return leads_table
+            elif tbl_name == "accounts":
+                return accounts_table
+            elif tbl_name == "account_health_checks":
+                return MagicMock()
+            return MagicMock()
+
+        table_mock.side_effect = table_side_effect
+        mock_decrypt_bytes.return_value = b'[{"name": "li_at", "value": "xyz"}]'
+
+        state = {
+            "id": "state_1",
+            "campaign_id": "camp_1",
+            "enrollment_id": "enroll_1",
+            "workspace_id": "ws_1",
+            "opportunity_id": "opp_1"
+        }
+
+        with patch("campaigns.backend.services.elein_orchestrator.try_acquire_session_lock", return_value=True), \
+             patch("campaigns.backend.services.elein_orchestrator._build_proxy_url", return_value=None), \
+             patch("campaigns.backend.services.sender_pod_service.select_pod_sender", return_value={"account_id": "acc_with_dead_proxy"}):
+            res = self.orchestrator.execute_node_action(
+                action="send_message",
+                data={"body": "Hello"},
+                opportunity_id="opp_1",
+                account_id="acc_with_dead_proxy",
+                state=state,
+                lease_token="lease_1",
+                current_node_id="node_1"
+            )
+
+            # Execution halts cleanly with account_disconnected / PROXY_UNAVAILABLE
+            self.assertEqual(res.get("status"), "account_disconnected")
+            self.assertEqual(res.get("reason"), "PROXY_UNAVAILABLE")
+            # LinkedInWorker is NEVER instantiated on bare datacenter IP
+            mock_worker_cls.assert_not_called()
 
 
 if __name__ == "__main__":

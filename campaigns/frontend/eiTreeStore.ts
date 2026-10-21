@@ -7,7 +7,12 @@ export interface StickyNote {
   x: number;
   y: number;
   text: string;
+  title?: string;
   color?: string;
+  category?: "note" | "todo" | "warning" | "strategy" | "handover";
+  isPinned?: boolean;
+  isCollapsed?: boolean;
+  updatedAt?: string;
 }
 
 export interface SeqTreeNode {
@@ -29,11 +34,14 @@ export interface EITreeStore {
   setFormState: (state: Record<string, any>) => void
   setCampaignStep: (step: number) => void
   
-  addStickyNote: (x: number, y: number) => void
+  addStickyNote: (x: number, y: number, color?: string, category?: string) => string
   updateStickyNote: (id: string, text: string) => void
+  updateStickyNoteFull: (id: string, patch: Partial<StickyNote>) => void
   removeStickyNote: (id: string) => void
   moveStickyNote: (id: string, x: number, y: number) => void
   changeStickyNoteColor: (id: string, color: string) => void
+  toggleStickyNoteCollapse: (id: string) => void
+  toggleStickyNotePin: (id: string) => void
   
   addRoot: (type: EINodeType | "sequence_end", data?: Record<string, any>) => void
   addChild: (parentId: string, branchLabel: string, type: EINodeType | "sequence_end", data?: Record<string, any>) => void
@@ -107,35 +115,51 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
   setFormState: (formState) => set({ formState }),
   setCampaignStep: (campaignStep) => set({ campaignStep }),
 
-  addStickyNote: (x, y) => set(state => {
+  addStickyNote: (x, y, color = "amber", category = "note") => {
     const id = uuidv4()
-    const newNote: StickyNote = { id, x, y, text: "", color: "bg-warning/20" }
-    return { stickyNotes: [...state.stickyNotes, newNote] }
-  }),
-  
-  updateStickyNote: (id, text) => set(state => {
-    return {
-      stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, text } : sn)
+    const newNote: StickyNote = {
+      id,
+      x: Math.round(x),
+      y: Math.round(y),
+      text: "",
+      title: "",
+      color,
+      category: category as any,
+      isPinned: false,
+      isCollapsed: false,
+      updatedAt: new Date().toISOString()
     }
-  }),
+    set(state => ({ stickyNotes: [...state.stickyNotes, newNote] }))
+    return id
+  },
   
-  removeStickyNote: (id) => set(state => {
-    return {
-      stickyNotes: state.stickyNotes.filter(sn => sn.id !== id)
-    }
-  }),
+  updateStickyNote: (id, text) => set(state => ({
+    stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, text, updatedAt: new Date().toISOString() } : sn)
+  })),
+
+  updateStickyNoteFull: (id, patch) => set(state => ({
+    stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, ...patch, updatedAt: new Date().toISOString() } : sn)
+  })),
   
-  moveStickyNote: (id, x, y) => set(state => {
-    return {
-      stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, x, y } : sn)
-    }
-  }),
+  removeStickyNote: (id) => set(state => ({
+    stickyNotes: state.stickyNotes.filter(sn => sn.id !== id)
+  })),
   
-  changeStickyNoteColor: (id, color) => set(state => {
-    return {
-      stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, color } : sn)
-    }
-  }),
+  moveStickyNote: (id, x, y) => set(state => ({
+    stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, x: Math.round(x), y: Math.round(y) } : sn)
+  })),
+  
+  changeStickyNoteColor: (id, color) => set(state => ({
+    stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, color } : sn)
+  })),
+
+  toggleStickyNoteCollapse: (id) => set(state => ({
+    stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, isCollapsed: !sn.isCollapsed } : sn)
+  })),
+
+  toggleStickyNotePin: (id) => set(state => ({
+    stickyNotes: state.stickyNotes.map(sn => sn.id === id ? { ...sn, isPinned: !sn.isPinned } : sn)
+  })),
 
   addRoot: (type, data) =>
     set(s => ({
@@ -585,6 +609,7 @@ export function saveDraftToLocalStorage(state: EITreeStore) {
     const draft = {
       nodes,
       edges,
+      stickyNotes: state.stickyNotes,
       formState: state.formState,
       step: state.campaignStep,
       timestamp: Date.now()

@@ -272,28 +272,35 @@ class LinkedInWorker:
         vendor, renderer = hardware_profiles[acc_hash % len(hardware_profiles)]
         
         script = """
-            // Spoof WebGL vendor and renderer
+            // Spoof WebGL vendor and renderer across WebGL and WebGL2
             const vendor = "V_REPLACE";
             const renderer = "R_REPLACE";
             
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) return vendor;
-                if (parameter === 37446) return renderer;
-                return getParameter.apply(this, arguments);
+            const patchWebGL = (proto) => {
+                if (!proto || !proto.getParameter) return;
+                const origGetParameter = proto.getParameter;
+                proto.getParameter = function(parameter) {
+                    if (parameter === 37445) return vendor; // UNMASKED_VENDOR_WEBGL
+                    if (parameter === 37446) return renderer; // UNMASKED_RENDERER_WEBGL
+                    return origGetParameter.apply(this, arguments);
+                };
+                try {
+                    Object.defineProperty(proto.getParameter, 'toString', {
+                        value: () => 'function getParameter() { [native code] }',
+                        configurable: true,
+                        writable: true
+                    });
+                } catch (e) {}
             };
+
+            if (typeof WebGLRenderingContext !== 'undefined') {
+                patchWebGL(WebGLRenderingContext.prototype);
+            }
+            if (typeof WebGL2RenderingContext !== 'undefined') {
+                patchWebGL(WebGL2RenderingContext.prototype);
+            }
             
-            // Add cryptographic noise to canvas read to prevent deterministic hashing
-            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function() {
-                const ctx = this.getContext('2d');
-                if (ctx) {
-                    ctx.fillStyle = `rgba(0, 0, 0, ${Math.random() * 0.01})`;
-                    ctx.fillRect(0, 0, 1, 1);
-                }
-                return originalToDataURL.apply(this, arguments);
-            };
-            
+            // Deterministic browser environment properties (no Math.random() canvas noise which triggers Arkose anti-bot flags)
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         """.replace("V_REPLACE", vendor).replace("R_REPLACE", renderer)

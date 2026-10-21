@@ -20,6 +20,7 @@ Layer 2: Human Paranoia
 """
 
 import unittest
+import json
 from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 
@@ -208,10 +209,11 @@ class TestOverdraftBoundaryConsistencyHardening(unittest.TestCase):
 
         client.table.side_effect = lambda name: tables[name]
         nodes = [{"id": "n1", "type": "linkedin_message", "data": {}}]
+        nodes_str = json.dumps(nodes)
 
         # 1. Free tier with negative balance (-10) is rejected
         tables["campaigns"].select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[{"id": "camp_free", "status": "DRAFT", "nodes_json": ""}]
+            data=[{"id": "camp_free", "status": "DRAFT", "nodes_json": nodes_str}]
         )
         tables["workspaces"].select.return_value.eq.return_value.execute.return_value = MagicMock(
             data=[{"tier": "FREE"}]
@@ -237,7 +239,7 @@ class TestOverdraftBoundaryConsistencyHardening(unittest.TestCase):
 
         # 2. Paid tier with -400 balance is allowed to activate
         tables["campaigns"].select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[{"id": "camp_pro", "status": "DRAFT", "nodes_json": ""}]
+            data=[{"id": "camp_pro", "status": "DRAFT", "nodes_json": nodes_str}]
         )
         tables["workspaces"].select.return_value.eq.return_value.execute.return_value = MagicMock(
             data=[{"tier": "PRO"}]

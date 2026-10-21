@@ -32,6 +32,9 @@ class TestHorizon24WebhookDispatcherDLQCircuitBreaker(unittest.TestCase):
     """
 
     def setUp(self):
+        from integrations.backend.services.webhook_service import _ENDPOINT_BACKPRESSURE, _BACKPRESSURE_LOCK
+        with _BACKPRESSURE_LOCK:
+            _ENDPOINT_BACKPRESSURE.clear()
         self.mock_supabase = MagicMock()
         self.workspace_id = "ws_test_horizon24"
         self.endpoint_id = "ep_test_24"

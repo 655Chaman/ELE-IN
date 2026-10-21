@@ -21,7 +21,7 @@ export function Login() {
   useEffect(() => {
     if (session) {
       const hasCompleted = localStorage.getItem("elein_has_completed_onboarding") === "true" || localStorage.getItem("onboarding_dismissed") === "true"
-      navigate(hasCompleted ? '/elein/campaigns' : '/onboarding', { replace: true })
+      navigate(hasCompleted ? '/elein' : '/onboarding', { replace: true })
     }
   }, [session, navigate])
 
@@ -103,7 +103,7 @@ export function Login() {
           }
         }
         const hasCompleted = localStorage.getItem("elein_has_completed_onboarding") === "true" || localStorage.getItem("onboarding_dismissed") === "true"
-        navigate(hasCompleted ? "/elein/campaigns" : "/onboarding")
+        navigate(hasCompleted ? "/elein" : "/onboarding")
       }
     } catch (error: any) {
       if (error.message.includes("fetch")) {

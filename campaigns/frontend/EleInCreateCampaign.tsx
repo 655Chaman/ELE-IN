@@ -2053,8 +2053,7 @@ function EleInCreateCampaignInner() {
       const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || Boolean(state.formState.campaignName)
       if (hasUnsavedWork && !isSavingRef.current) {
         e.preventDefault()
-        e.returnValue = "You have unsaved campaign changes. Are you sure you want to exit?"
-        return e.returnValue
+        e.returnValue = ""
       }
     }
     window.addEventListener("beforeunload", handleBeforeUnload)
@@ -2197,12 +2196,15 @@ function EleInCreateCampaignInner() {
     if (draftStr) {
       try {
         const draft = JSON.parse(draftStr)
-        if (draft.nodes && draft.nodes.length > 0) {
-          useHRTreeStore.getState().loadTree(dagToTree(draft.nodes, draft.edges || [], {
-            onCycleDetected: () => {
-              toast.warning("Sequence Loop Resolved", { description: "A loop in the draft sequence was automatically resolved." })
-            }
-          }), [])
+        const loadedNodes = (draft.nodes && draft.nodes.length > 0)
+          ? dagToTree(draft.nodes, draft.edges || [], {
+              onCycleDetected: () => {
+                toast.warning("Sequence Loop Resolved", { description: "A loop in the draft sequence was automatically resolved." })
+              }
+            })
+          : [];
+        if (loadedNodes.length > 0 || (draft.stickyNotes && draft.stickyNotes.length > 0)) {
+          useHRTreeStore.getState().loadTree(loadedNodes, draft.stickyNotes || []);
         }
         if (draft.formState) {
           useHRTreeStore.getState().setFormState(draft.formState)
@@ -2480,7 +2482,7 @@ function EleInCreateCampaignInner() {
           const [firstErrNodeId, firstErrMsgs] = errEntries[0]
           useHRTreeStore.getState().selectNode(firstErrNodeId)
           toast.error("Sequence Validation Incomplete", {
-            description: `Node ${firstErrNodeId}: ${firstErrMsgs[0] || "Incomplete node configuration."}`
+            description: firstErrMsgs[0] || "Incomplete node configuration. Please check the highlighted step."
           })
         } else {
           toast.error("There are unmet prerequisites in your sequence.", { description: "Please fix the red errors on the nodes before continuing." })
@@ -2815,3 +2817,5 @@ export function EleInCreateCampaign() {
     </CampaignErrorBoundary>
   )
 }
+
+export default EleInCreateCampaign;

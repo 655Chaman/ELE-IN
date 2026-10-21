@@ -24,7 +24,14 @@ from supabase import Client, AsyncClient
 from core.backend.api.auth_dep import get_supabase_client, verify_token_and_get_user_id, get_async_supabase_client, get_service_client
 from core.backend.services.job_queue import enqueue_job
 from core.backend.services import storage_service
-from campaigns.backend.schemas.elein import CampaignCreate, CampaignResponse, AccountCreate, AccountResponse
+from campaigns.backend.schemas.elein import (
+    CampaignCreate,
+    CampaignResponse,
+    AccountCreate,
+    AccountResponse,
+    WorkspaceBlueprintCreate,
+    WorkspaceBlueprintResponse,
+)
 from campaigns.backend.services.collision_guard import get_conflicting_active_leads
 from core.backend.services.email_shield_service import EmailShieldService
 from integrations.backend.services.esp_webhook_processor import (
@@ -3268,12 +3275,30 @@ from datetime import datetime
 from fastapi import HTTPException
 
 ALLOWED_TEMPLATE_VARS = {
-    'first_name', 'firstname', 'last_name', 'lastname', 'name',
-    'company', 'company_name', 'job_title', 'title', 'location',
-    'industry', 'mutual_connections', 'custom_1', 'custom_2',
-    'email', 'work_email', 'personal_email', 'phone', 'phone_number',
-    'ai_icebreaker', 'ai_sentiment', 'ai_brain_reply', 'best_send_time',
-    'competitor_detected', 'trigger_icebreaker', 'trigger_hook', 'trigger_event_type'
+    # Core contact identity
+    'first_name', 'firstname', 'last_name', 'lastname', 'name', 'full_name', 'fullname', 'contact_name',
+    'first_name_clean',
+    # Account & company details
+    'company', 'company_name', 'companyname', 'company_clean', 'org', 'organization', 'organization_name', 'website', 'domain',
+    # Role & geography
+    'job_title', 'jobtitle', 'title', 'role', 'position', 'headline', 'location', 'city', 'state', 'country',
+    'industry', 'sector', 'mutual_connections', 'mutuals', 'mutual_connections_count',
+    # Custom attributes & variables
+    'custom_1', 'custom_2', 'custom_3', 'custom_4', 'custom_5',
+    # Communication channels
+    'email', 'work_email', 'workemail', 'personal_email', 'phone', 'phone_number', 'phonenumber', 'mobile',
+    # AI & Enrichment Variables
+    'ai_icebreaker', 'ai_hook', 'ai_sentiment', 'ai_brain_reply', 'ai_objection_handler', 'ai_translated',
+    'best_send_time', 'competitor_detected', 'buying_signal', 'profile_summary', 'icp_score', 'tech_stack',
+    'funding_round', 'headcount', 'employees',
+    # Horizon 32 Trigger Radar
+    'trigger_icebreaker', 'trigger_hook', 'trigger_event_type',
+    # Horizon 34A & 34B Enterprise Studios
+    'abm_peer_reference', 'boomerang_hook', 'calendar_proposed_slots',
+    # Horizon 35A Competitive Displacement Battlecards
+    'displacement_wedge', 'displacement_hook', 'buyout_offer', 'annual_savings', 'competitor_name',
+    # Horizon 35B Social Pre-Warm & 35C Event Harvester
+    'prewarm_comment', 'prewarm_theme', 'event_icebreaker', 'multimodal_asset_url', 'multimodal_script', 'multimodal_duration'
 }
 
 def _extract_all_text_from_node_data(data: Any) -> List[str]:
@@ -3443,18 +3468,32 @@ def run_campaign_preflight_audit(
             for m in matches:
                 vname = m.group(1).strip()
                 variables_found.add(vname)
-                clean_vname = vname.lower()
-                if clean_vname not in ALLOWED_TEMPLATE_VARS:
-                    invalid_vars.add(vname)
-                
+                # Three-Layer Paranoia: Normalize camelCase, dashes, and object prefixes
+                decamel_vname = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", vname).lower()
+                clean_vname = decamel_vname.replace("-", "_")
+                if clean_vname.startswith(("lead.", "prospect.", "contact.", "recipient.")):
+                    clean_vname = clean_vname.split(".", 1)[1]
+
                 fallback_val = m.group(2)
-                if fallback_val is None or not fallback_val.strip():
+                has_fallback = bool(fallback_val and fallback_val.strip())
+
+                is_known = clean_vname in ALLOWED_TEMPLATE_VARS or clean_vname.startswith(("custom_", "csv_", "crm_"))
+
+                # Layer 1 & 2 Paranoia: Unrecognized variables are blocked ONLY if they lack a fallback.
+                # If a fallback is present (e.g. {{crm_score|Tier A}}), outreach will never fail or leak empty strings.
+                if not is_known and not has_fallback:
+                    invalid_vars.add(vname)
+
+                if not has_fallback:
                     unprotected_vars.add(vname)
 
             single_matches = re.finditer(r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})", t)
             for sm in single_matches:
                 sname = sm.group(1).strip()
-                if sname.lower() in ALLOWED_TEMPLATE_VARS:
+                decamel_sname = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", sname).lower().replace("-", "_")
+                if decamel_sname.startswith(("lead.", "prospect.", "contact.", "recipient.")):
+                    decamel_sname = decamel_sname.split(".", 1)[1]
+                if decamel_sname in ALLOWED_TEMPLATE_VARS:
                     single_brace_typos.add(sname)
 
     if invalid_vars:
@@ -4292,10 +4331,20 @@ def create_campaign(
                 db_client.table("campaign_edges").insert(edge_inserts).execute()
 
             # 4. Link Accounts (only if not already linked by atomic RPC)
+            # Paranoia Layer 1 & 2: Validate sender account IDs exist in this workspace
+            # to strictly prevent FK constraint violations that cause workflow graph save crashes.
             if not atomic_created and campaign.senders:
-                db_client.table("campaign_accounts").insert(
-                    [{"campaign_id": campaign_id, "account_id": s} for s in campaign.senders]
-                ).execute()
+                valid_senders = []
+                try:
+                    acc_check = db_client.table("accounts").select("id").eq("workspace_id", workspace_id).in_("id", [str(s) for s in campaign.senders]).execute()
+                    valid_senders = [r["id"] for r in (acc_check.data or []) if "id" in r]
+                except Exception as acc_err:
+                    logger.warning(f"create_campaign: sender account verification warning: {acc_err}")
+
+                if valid_senders:
+                    db_client.table("campaign_accounts").insert(
+                        [{"campaign_id": campaign_id, "account_id": s} for s in valid_senders]
+                    ).execute()
 
         except Exception as link_err:
             logger.error(
@@ -4633,9 +4682,17 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                 svc = supabase
             svc.table("campaign_accounts").delete().eq("campaign_id", campaign_id).execute()
             if payload.senders:
-                svc.table("campaign_accounts").insert(
-                    [{"campaign_id": campaign_id, "account_id": s} for s in payload.senders]
-                ).execute()
+                valid_senders = []
+                try:
+                    acc_check = svc.table("accounts").select("id").eq("workspace_id", workspace_id).in_("id", [str(s) for s in payload.senders]).execute()
+                    valid_senders = [r["id"] for r in (acc_check.data or []) if "id" in r]
+                except Exception as acc_err:
+                    logger.warning(f"update_campaign: sender account verification warning: {acc_err}")
+
+                if valid_senders:
+                    svc.table("campaign_accounts").insert(
+                        [{"campaign_id": campaign_id, "account_id": s} for s in valid_senders]
+                    ).execute()
         except Exception as link_err:
             # Layer 1: Update applied to campaigns table succeeded, but sender accounts
             logger.error(f"update_campaign: failed to link sender accounts: {link_err}", exc_info=True)
@@ -9000,3 +9057,124 @@ def api_get_inbox_bimi_status(
     result["workspace_id"] = workspace_id
     return result
 
+
+
+# ─── Phase 43: Workspace Cloud Blueprints Sync ──────────────────────────────
+
+@router.get("/blueprints", response_model=List[Dict[str, Any]])
+def api_list_workspace_blueprints(
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Lists all saved workflow blueprints for the caller's workspace,
+    plus any verified public community blueprints.
+    """
+    if not db:
+        return []
+
+    try:
+        res = (
+            db.table("workspace_blueprints")
+            .select("*")
+            .or_(f"workspace_id.eq.{workspace_id},is_public.eq.true")
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        return getattr(res, "data", []) or []
+    except Exception as e:
+        logger.debug(f"[Blueprints] Cloud fetch fallback (table may not yet be migrated): {e}")
+        return []
+
+
+@router.post("/blueprints", response_model=Dict[str, Any])
+def api_create_or_update_workspace_blueprint(
+    req: WorkspaceBlueprintCreate,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Saves or upserts a workflow blueprint into the workspace cloud library.
+    Guarantees strict tenant isolation by binding workspace_id.
+    """
+    if not db:
+        raise HTTPException(status_code=503, detail="Database service client unavailable")
+
+    clean_name = (req.name or "").strip()
+    if not clean_name:
+        raise HTTPException(status_code=422, detail="Blueprint name cannot be blank")
+
+    payload = {
+        "workspace_id": workspace_id,
+        "name": clean_name,
+        "description": req.description,
+        "version": req.version or "1.0.0",
+        "schema_version": req.schema_version or "elein-blueprint-v1",
+        "branding": req.branding or {},
+        "sequence_data": req.sequence_data or {},
+        "stats": req.stats or {},
+        "tags": req.tags or [],
+        "is_public": req.is_public or False,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        # Check if a blueprint with this name already exists in this workspace
+        existing = (
+            db.table("workspace_blueprints")
+            .select("id")
+            .eq("workspace_id", workspace_id)
+            .eq("name", clean_name)
+            .execute()
+        )
+        existing_rows = getattr(existing, "data", []) or []
+
+        if existing_rows:
+            bp_id = existing_rows[0]["id"]
+            res = (
+                db.table("workspace_blueprints")
+                .update(payload)
+                .eq("id", bp_id)
+                .eq("workspace_id", workspace_id)
+                .execute()
+            )
+        else:
+            res = db.table("workspace_blueprints").insert(payload).execute()
+
+        data = getattr(res, "data", []) or []
+        if data:
+            return data[0]
+        return payload
+    except Exception as e:
+        logger.error(f"[Blueprints] Cloud save failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save blueprint: {str(e)}")
+
+
+@router.delete("/blueprints/{blueprint_id}", response_model=Dict[str, Any])
+def api_delete_workspace_blueprint(
+    blueprint_id: str,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Deletes a blueprint from the cloud library, strictly scoped to caller's workspace.
+    """
+    if not db:
+        raise HTTPException(status_code=503, detail="Database service client unavailable")
+
+    bp_id_clean = (blueprint_id or "").strip()
+    if not bp_id_clean:
+        raise HTTPException(status_code=422, detail="Blueprint ID is required")
+
+    try:
+        res = (
+            db.table("workspace_blueprints")
+            .delete()
+            .eq("id", bp_id_clean)
+            .eq("workspace_id", workspace_id)
+            .execute()
+        )
+        return {"status": "success", "id": bp_id_clean}
+    except Exception as e:
+        logger.error(f"[Blueprints] Cloud delete failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete blueprint: {str(e)}")

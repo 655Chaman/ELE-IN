@@ -1,6 +1,6 @@
 import unittest
 import time as _t
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from integrations.backend.services.linkedin_pool import (
@@ -262,7 +262,11 @@ class TestBrowserPoolHardening(unittest.TestCase):
 
             next_retry = args[3]
             self.assertIsNotNone(next_retry)
-            delay = (next_retry - datetime.utcnow()).total_seconds()
+            now_utc = datetime.now(timezone.utc)
+            if next_retry.tzinfo is None:
+                delay = (next_retry - datetime.utcnow()).total_seconds()
+            else:
+                delay = (next_retry - now_utc).total_seconds()
             self.assertTrue(25 <= delay <= 65)
 
             self.assertEqual(kwargs.get("lease_token"), "lease_token_123")

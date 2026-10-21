@@ -19,6 +19,8 @@ MAX_CONCURRENT_BROWSERS = int(os.getenv("MAX_CONCURRENT_BROWSERS", 3))
 MAX_BROWSER_OPS = int(os.getenv("MAX_BROWSER_OPS", 30))
 MAX_BROWSER_AGE_SECONDS = int(os.getenv("MAX_BROWSER_AGE_SECONDS", 1800))
 IDLE_BROWSER_TTL_SECONDS = int(os.getenv("IDLE_BROWSER_TTL_SECONDS", 600))
+ACCOUNT_LOCK_TIMEOUT_SECONDS = float(os.getenv("ACCOUNT_LOCK_TIMEOUT_SECONDS", 60.0))
+BROWSER_ACQUIRE_TIMEOUT_SECONDS = float(os.getenv("BROWSER_ACQUIRE_TIMEOUT_SECONDS", 45.0))
 
 class BrowserPool:
     def __init__(self, max_size=MAX_CONCURRENT_BROWSERS):
@@ -33,7 +35,7 @@ class BrowserPool:
         """
         Acquires a browser context for the given account.
         Increments the active usage count so it won't be evicted while in use.
-        Blocks for up to 15 seconds.
+        Blocks for up to BROWSER_ACQUIRE_TIMEOUT_SECONDS.
         """
         # Paranoia Layer 2: Daemon Multiplexing (Strict Serialization)
         # Ensure that no two workers can ever interact with the same LinkedIn account simultaneously.
@@ -44,10 +46,10 @@ class BrowserPool:
             acc_lock = self.account_locks[account_id]
             
         # Block until this specific account is free from other workers
-        if not acc_lock.acquire(timeout=25.0):
+        if not acc_lock.acquire(timeout=ACCOUNT_LOCK_TIMEOUT_SECONDS):
             raise BrowserPoolExhaustedError(f"Account {account_id} is currently busy processing another task. Serialized queue timeout.")
 
-        if not self.semaphore.acquire(timeout=15.0):
+        if not self.semaphore.acquire(timeout=BROWSER_ACQUIRE_TIMEOUT_SECONDS):
             acc_lock.release()
             raise BrowserPoolExhaustedError(f"Browser pool exhausted. Max {self.max_size} concurrent browsers.")
         

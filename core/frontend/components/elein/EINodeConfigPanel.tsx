@@ -2135,9 +2135,25 @@ function CommentOnPostConfig({ data, onChange }: { data: any; onChange: (k: stri
   const commentText = data.comment || "";
   const fallbackComment = data.fallback_comment || "Great perspective, thanks for sharing this!";
   const aiTone = data.ai_tone || "Insightful Industry Perspective";
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const insertVar = (v: string) => {
-    onChange("comment", commentText + ` {{${v}}}`);
+    const el = textareaRef.current;
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? commentText.length;
+      const end = el.selectionEnd ?? commentText.length;
+      const before = commentText.substring(0, start);
+      const after = commentText.substring(end);
+      const updated = before + token + after;
+      onChange("comment", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("comment", commentText + ` ${token}`);
+    }
   };
 
   return (
@@ -2180,6 +2196,7 @@ function CommentOnPostConfig({ data, onChange }: { data: any; onChange: (k: stri
             <span className="text-[10px] text-muted-foreground">{commentText.length}/1000</span>
           </div>
           <textarea
+            ref={textareaRef}
             rows={4}
             maxLength={1000}
             value={commentText}
@@ -2389,9 +2406,25 @@ function FollowCompanyConfig({ data, onChange }: { data: any; onChange: (k: stri
 
 function SharePostConfig({ data, onChange }: { data: any; onChange: (k: string, v: any) => void }) {
   const shareComment = data.share_comment || "";
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const insertVar = (v: string) => {
-    onChange("share_comment", shareComment + ` {{${v}}}`);
+    const el = textareaRef.current;
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? shareComment.length;
+      const end = el.selectionEnd ?? shareComment.length;
+      const before = shareComment.substring(0, start);
+      const after = shareComment.substring(end);
+      const updated = before + token + after;
+      onChange("share_comment", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("share_comment", shareComment + ` ${token}`);
+    }
   };
 
   return (
@@ -2413,6 +2446,7 @@ function SharePostConfig({ data, onChange }: { data: any; onChange: (k: string, 
           <span className="text-[10px] text-muted-foreground">{shareComment.length}/700</span>
         </div>
         <textarea
+          ref={textareaRef}
           rows={3}
           maxLength={700}
           value={shareComment}
@@ -5222,11 +5256,28 @@ function SendVoiceNoteConfig({ data, onChange }: { data: any; onChange: (k: stri
   };
 
   const companionNote = data.note ?? data.body ?? "";
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const insertVariable = (varName: string) => {
-    const next = companionNote ? `${companionNote} {{${varName}}}` : `Hey {{${varName}}}, `;
-    onChange("note", next);
-    onChange("body", next);
+    const el = textareaRef.current;
+    const token = `{{${varName}}}`;
+    if (el) {
+      const start = el.selectionStart ?? companionNote.length;
+      const end = el.selectionEnd ?? companionNote.length;
+      const before = companionNote.substring(0, start);
+      const after = companionNote.substring(end);
+      const updated = before + token + after;
+      onChange("note", updated);
+      onChange("body", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      const next = companionNote ? `${companionNote} ${token}` : `Hey ${token}, `;
+      onChange("note", next);
+      onChange("body", next);
+    }
   };
 
   return (
@@ -5355,6 +5406,7 @@ function SendVoiceNoteConfig({ data, onChange }: { data: any; onChange: (k: stri
           <span className="text-[10px] text-muted-foreground">{companionNote.length}/500</span>
         </div>
         <textarea
+          ref={textareaRef}
           rows={3}
           maxLength={500}
           value={companionNote}
@@ -7088,6 +7140,7 @@ function CongratulateConfig({ data, onChange, mode }: { data: any; onChange: (k:
   const rawMsg: string = data.message || data.body || defaultMsg;
   const rawLength = rawMsg.length;
   const isOverLimit = rawLength > 300;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const presets = isNewJob ? [
     { label: "Role Promotion", text: "Congrats on the new role at {{company}}, {{first_name}}! Excited to see what you build there." },
@@ -7100,8 +7153,25 @@ function CongratulateConfig({ data, onChange, mode }: { data: any; onChange: (k:
   ];
 
   const insertVar = (v: string) => {
-    onChange("message", (data.message || data.body || "") + ` {{${v}}}`);
-    onChange("body", (data.message || data.body || "") + ` {{${v}}}`);
+    const el = textareaRef.current;
+    const currentMsg = data.message || data.body || "";
+    const token = `{{${v}}}`;
+    if (el) {
+      const start = el.selectionStart ?? currentMsg.length;
+      const end = el.selectionEnd ?? currentMsg.length;
+      const before = currentMsg.substring(0, start);
+      const after = currentMsg.substring(end);
+      const updated = before + token + after;
+      onChange("message", updated);
+      onChange("body", updated);
+      setTimeout(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + token.length;
+      }, 0);
+    } else {
+      onChange("message", currentMsg + ` ${token}`);
+      onChange("body", currentMsg + ` ${token}`);
+    }
   };
 
   return (
@@ -7182,6 +7252,7 @@ function CongratulateConfig({ data, onChange, mode }: { data: any; onChange: (k:
           </span>
         </div>
         <textarea
+          ref={textareaRef}
           rows={3}
           maxLength={300}
           value={data.message || data.body || ""}
@@ -8479,7 +8550,7 @@ export function EINodeConfigPanel() {
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: `${config.color}15`, border: `1px solid ${config.color}35` }}
+            style={{ background: `color-mix(in srgb, ${config.color || '#52525b'} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${config.color || '#52525b'} 35%, transparent)` }}
           >
             <Icon size={15} style={{ color: config.color }} />
           </div>
@@ -8764,7 +8835,7 @@ export function EITreeNodeConfigPanel() {
               <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: `${config.color}15`, border: `1px solid ${config.color}30` }}
+                  style={{ background: `color-mix(in srgb, ${config.color || '#52525b'} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${config.color || '#52525b'} 30%, transparent)` }}
                 >
                   {isElesiumNode ? (
                     <ElesiumLogo size={16} />

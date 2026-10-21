@@ -80,3 +80,32 @@ class AccountResponse(BaseModel):
     status: Optional[str] = "ACTIVE"
     manual_send_suspected: Optional[bool] = False
     last_health_check_at: Optional[str] = None
+
+
+class WorkspaceBlueprintCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    version: Optional[str] = "1.0.0"
+    schema_version: Optional[str] = "elein-blueprint-v1"
+    branding: Optional[Dict[str, Any]] = None
+    sequence_data: Dict[str, Any]
+    stats: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+    is_public: Optional[bool] = False
+
+
+class WorkspaceBlueprintResponse(BaseModel):
+    id: str
+    workspace_id: str
+    name: str
+    description: Optional[str] = None
+    version: str = "1.0.0"
+    schema_version: str = "elein-blueprint-v1"
+    branding: Optional[Dict[str, Any]] = None
+    sequence_data: Dict[str, Any]
+    stats: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+    is_public: bool = False
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+

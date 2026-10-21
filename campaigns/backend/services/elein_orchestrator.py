@@ -17,6 +17,7 @@ from core.backend.services.limits import get_effective_usage_date
 
 from core.backend.api.auth_dep import get_service_client
 from integrations.backend.services.linkedin_worker import LinkedInWorker
+from integrations.backend.services.linkedin_pool import BrowserPoolExhaustedError, MAX_CONCURRENT_BROWSERS
 from campaigns.backend.services.collision_guard import is_lead_active_in_other_campaign
 
 from core.backend.services.telemetry import capture_error
@@ -1114,13 +1115,32 @@ class EleInOrchestrator:
 
         leads_to_process = []
         states = []
+        # Multi-signature resilient RPC dequeue
         try:
             dequeue_res = self.supabase.rpc("dequeue_due_leads", {"p_batch_size": 50, "p_campaign_ids": active_campaign_ids}).execute()
             states = dequeue_res.data or []
         except Exception as rpc_e:
-            logger.warning(f"[Orchestrator] dequeue_due_leads RPC unavailable ({rpc_e}). Attempting direct table fallback.")
-            # Layer 1 Environmental Failure Fallback:
+            logger.debug(f"[Orchestrator] Primary dequeue_due_leads signature failed: {rpc_e}. Trying secondary worker_id signature.")
+            try:
+                dequeue_res = self.supabase.rpc("dequeue_due_leads", {"p_worker_id": "elein-worker", "p_batch_size": 50}).execute()
+                raw_states = dequeue_res.data or []
+                if raw_states:
+                    for row in raw_states:
+                        if isinstance(row, dict):
+                            # Normalize field names if returning table format
+                            if "execution_state_id" in row and "id" not in row:
+                                row["id"] = row["execution_state_id"]
+                            # Filter by active campaign if campaign_id is present
+                            if "campaign_id" in row and active_campaign_ids and row["campaign_id"] not in active_campaign_ids:
+                                continue
+                            states.append(row)
+            except Exception as rpc_alt_e:
+                logger.warning(f"[Orchestrator] dequeue_due_leads RPC unavailable ({rpc_alt_e}). Attempting direct table fallback.")
+
+        if not states:
+            # Layer 1 Environmental Failure Fallback (Anti-N+1 Query Collapse):
             # When the RPC does not exist in Supabase (unmigrated database), dequeue directly via table queries.
+            # Bounded chunking ensures zero risk of connection pool exhaustion even under 50,000+ enrolled leads.
             try:
                 now_dt = datetime.now(timezone.utc)
                 now_iso = now_dt.isoformat()
@@ -1131,7 +1151,12 @@ class EleInOrchestrator:
 
                 if active_enr_ids:
                     candidate_states = []
+                    # Bound chunks to prevent PostgREST connection pool saturation (max 5 chunks = 500 candidate enrollments)
+                    max_chunks = 5
+                    chunks_checked = 0
                     for i in range(0, len(active_enr_ids), 100):
+                        if chunks_checked >= max_chunks and candidate_states:
+                            break
                         enr_chunk = active_enr_ids[i:i+100]
                         st_query = self.supabase.table("campaign_execution_states") \
                             .select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, attempts, max_attempts, variables") \
@@ -1143,6 +1168,7 @@ class EleInOrchestrator:
                             .execute()
                         if st_query.data:
                             candidate_states.extend(st_query.data)
+                        chunks_checked += 1
                         if len(candidate_states) >= 50:
                             break
 
@@ -1356,6 +1382,26 @@ class EleInOrchestrator:
             try:
                 self.process_lead(row, lease_token)
                 return {"id": row["id"], "status": "advanced"}
+            except BrowserPoolExhaustedError as bpe:
+                logger.info(f"[Orchestrator] Browser pool congested for lead {row.get('id')}. Rescheduling in 30-60s without burning retry attempts: {bpe}")
+                import random
+                jitter = timedelta(seconds=random.randint(30, 60))
+                next_run = datetime.now(timezone.utc) + jitter
+                try:
+                    self.update_state(
+                        row["id"],
+                        row.get("current_node_id"),
+                        "pending",
+                        next_run,
+                        lease_token=lease_token,
+                        error_reason=None,
+                        tz_str=row.get("tz_str", "UTC"),
+                        enforce_working_hours=row.get("enforce_working_hours", True),
+                        enrollment_id=row.get("enrollment_id")
+                    )
+                except Exception as update_err:
+                    logger.warning(f"Could not reschedule congested lead {row.get('id')}: {update_err}")
+                return {"id": row["id"], "status": "pool_exhausted"}
             except Exception as e:
                 capture_error(e, context={"service": "elein_orchestrator"})
                 attempts = row.get("attempts", 0)
@@ -2181,7 +2227,30 @@ class EleInOrchestrator:
             self.update_state(state["id"], current_node["id"], "awaiting_approval", None, lease_token, tz_str=state.get('tz_str', 'UTC'))
             return
 
-        if action_result.get("status") == "skipped":
+        if action_result.get("status") in ("skipped", "suppressed"):
+            skip_reason = action_result.get("reason") or "action_skipped"
+            terminal_reasons = (
+                "prospect_unsubscribed",
+                "prospect_suppressed",
+                "spam_trap_detected",
+                "disposable_email_rejected",
+                "no_mail_exchanger",
+                "critical_spam_score",
+                "role_based_email_blocked",
+            )
+            if any(term in str(skip_reason).lower() for term in terminal_reasons) or action_result.get("status") == "suppressed":
+                logger.info(f"[Orchestrator] Lead {state.get('opportunity_id') or state.get('id')} skipped terminally ({skip_reason}). Halting execution state.")
+                self.update_state(
+                    state["id"],
+                    None,
+                    "exited",
+                    None,
+                    lease_token=lease_token,
+                    error_reason=f"Terminally skipped: {skip_reason}",
+                    enrollment_id=state.get("enrollment_id"),
+                )
+                return
+
             # Paranoia Layer 1 (AUDIT-05): Desynchronize thundering herd with randomized backoff jitter (30s - 90s)
             import random
             jitter_seconds = random.randint(30, 90)
@@ -2564,7 +2633,7 @@ class EleInOrchestrator:
                     logger.warning(f"Account {chosen_sender_id} has no proxy assigned — running without proxy (raw IP risk)")
                     
                 if account_row.get("session_cookies_encrypted"):
-                    from core.backend.services import crypto
+                    from core.backend.core import crypto
                     import base64
                     
                     dek_bytes = None
@@ -2589,6 +2658,17 @@ class EleInOrchestrator:
                         cookies_bytes = crypto.decrypt_bytes(_raw_bytes, dek=dek_bytes)
                         cookies = cookies_bytes.decode("utf-8")
                         proxy_url = _build_proxy_url(account_row, self.supabase)
+                        # Paranoia Layer 1: If account is configured with a proxy, NEVER fall back to bare datacenter IP
+                        if (account_row.get("proxy_id") or account_row.get("proxies")) and not proxy_url:
+                            logger.error(f"[Orchestrator] Sender {chosen_sender_id} has proxy configured but no healthy proxy or failover is available. Halting outreach to protect account from datacenter IP flag.")
+                            now = datetime.now(timezone.utc).isoformat()
+                            self.supabase.table("account_health_checks").insert({
+                                "account_id": chosen_sender_id, "check_type": "proxy_availability", "result": "warn",
+                                "detail": {"message": "Configured proxy unavailable and failover exhausted. Outreach halted to protect account."}, "checked_at": now
+                            }).execute()
+                            self.supabase.table("accounts").update({"status": "NEEDS_ATTENTION", "session_locked_until": None, "last_health_check_at": now}).eq("id", chosen_sender_id).execute()
+                            if dek_bytes: del dek_bytes
+                            return {"status": "account_disconnected", "reason": "PROXY_UNAVAILABLE", "account_id": chosen_sender_id}
                         worker = LinkedInWorker(cookies, proxy_url=proxy_url, account_id=chosen_sender_id)
                     except (crypto.VaultDecryptionError, Exception) as e:
                         logger.error(f"Account {chosen_sender_id} decryption failed: {e}.")

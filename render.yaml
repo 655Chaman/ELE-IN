@@ -34,7 +34,7 @@ services:
         sync: false
       - key: MAX_CONCURRENT_BROWSERS
         value: "3" # Prevent OOM crashes on Standard tier
-    startCommand: "python -m core.backend.workers.job_processor"
+    startCommand: "python -m core.backend.workers.runner"
 
   - type: web
     name: elein-frontend

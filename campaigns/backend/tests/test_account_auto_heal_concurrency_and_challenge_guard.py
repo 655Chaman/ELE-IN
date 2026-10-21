@@ -273,6 +273,68 @@ class TestAccountAutoHealConcurrencyAndChallengeGuard(unittest.TestCase):
         self.assertEqual(res["new_status"], "CHALLENGE_REQUIRED")
         self.assertEqual(res["recommendation"], "CHALLENGE_QUARANTINED")
 
+    @patch("accounts.backend.services.account_auto_heal_service.LinkedInWorker")
+    @patch("accounts.backend.services.account_auto_heal_service.crypto")
+    def test_quarantine_expired_without_force_requires_manual_challenge_resolution(self, mock_crypto, mock_worker_cls):
+        """Paranoia Layer 1 & 2: Quarantine expired on CHALLENGE_REQUIRED account blocks automated LinkedIn probe without force=True."""
+        past_iso = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        mock_acc_table = MagicMock()
+        mock_acc_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{
+                "id": self.account_id,
+                "workspace_id": self.workspace_id,
+                "status": "CHALLENGE_REQUIRED",
+                "quarantined_until": past_iso,
+                "quarantine_reason": "security_challenge",
+                "session_cookies_encrypted": "hex_abc",
+                "cookie_secret_ref": "ref_1"
+            }]
+        )
+        self.supabase.table.return_value = mock_acc_table
+
+        res = auto_heal_account(self.account_id, self.workspace_id, self.supabase, force=False)
+        self.assertEqual(res["new_status"], "NEEDS_ATTENTION")
+        self.assertEqual(res["recommendation"], "MANUAL_CHALLENGE_RESOLUTION_REQUIRED")
+        self.assertFalse(res["healed"])
+        # LinkedInWorker must NOT have been called
+        mock_worker_cls.assert_not_called()
+
+    @patch("accounts.backend.services.account_auto_heal_service.LinkedInWorker")
+    @patch("accounts.backend.services.account_auto_heal_service.crypto")
+    def test_auto_heal_proxied_account_without_healthy_proxy_halts_safely(self, mock_crypto, mock_worker_cls):
+        """Paranoia Layer 1: Configured proxy account halts with PROXY_FAILURE if proxy cannot be resolved, avoiding datacenter leak."""
+        mock_crypto.pg_hex_to_bytes.return_value = b"bytes"
+        mock_crypto.decrypt_bytes.return_value = b'[{"name": "li_at", "value": "123"}]'
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "accounts":
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+                    data=[{
+                        "id": self.account_id,
+                        "workspace_id": self.workspace_id,
+                        "status": "ACTIVE",
+                        "session_cookies_encrypted": "hex_abc",
+                        "cookie_secret_ref": "ref_1",
+                        "proxy_id": "proxy_dead_999"
+                    }]
+                )
+            elif name == "proxies":
+                # Proxy not found / dead
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            elif name == "account_health_checks":
+                m.select.return_value.eq.return_value.eq.return_value.gte.return_value.execute.return_value = MagicMock(data=[])
+            return m
+
+        self.supabase.table.side_effect = table_side_effect
+
+        res = auto_heal_account(self.account_id, self.workspace_id, self.supabase)
+        self.assertEqual(res["new_status"], "NEEDS_ATTENTION")
+        self.assertEqual(res["recommendation"], "PROXY_FAILURE")
+        self.assertFalse(res["healed"])
+        # LinkedInWorker must NOT have been called
+        mock_worker_cls.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

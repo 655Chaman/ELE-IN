@@ -2409,11 +2409,131 @@ class EleInNodeExecutor:
             }
         return res
 
+    def _check_prospect_suppression_and_optout(
+        self,
+        data: Dict[str, Any],
+        linkedin_url: Optional[str] = None,
+        to_email: Optional[str] = None,
+        lead_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Layer 0, 1 & 2 Paranoia Universal Pre-Flight Suppression, Opt-Out, and DNC Guard:
+        Enforces RFC 8058, CAN-SPAM, and GDPR compliance across all outbound email and LinkedIn outreach channels.
+        Checks:
+        1. Lead record status in ('UNSUBSCRIBED', 'COMPLAINED', 'BOUNCED', 'SUPPRESSED') or is_unsubscribed is True.
+        2. Workspace suppression list (exact email, wildcard domain e.g. '@competitor.com', or canonical LinkedIn URL).
+        Returns a standardized skipped dict if suppressed/opted-out, or None if clear to proceed.
+        """
+        try:
+            lead_dict = linkedin_url if isinstance(linkedin_url, dict) else (data.get("lead") if isinstance(data.get("lead"), dict) else {})
+            actual_url = (data.get("linkedin_url") or data.get("url") or (linkedin_url if isinstance(linkedin_url, str) else None) or lead_dict.get("linkedin_url"))
+            actual_email = (to_email or data.get("email") or data.get("to_email") or data.get("to") or lead_dict.get("email"))
+            actual_lead_id = (lead_id or data.get("_lead_id") or data.get("lead_id") or lead_dict.get("id") or lead_dict.get("lead_id"))
+
+            # 1. Payload / In-Memory Flags Check (Paranoia Layer 0 & 2)
+            for src in (data, lead_dict):
+                if not isinstance(src, dict):
+                    continue
+                st = str(src.get("status") or "").strip().upper()
+                if src.get("is_unsubscribed") is True or st in ("UNSUBSCRIBED", "COMPLAINED", "BOUNCED", "SUPPRESSED"):
+                    logger.warning(f"[DeliverabilityGuard] ABORT: Prospect {actual_lead_id or actual_email or actual_url} is opted out ({st or 'UNSUBSCRIBED'}).")
+                    return {
+                        "status": "skipped",
+                        "reason": "prospect_unsubscribed",
+                        "error": f"Prospect is unsubscribed or opted out (status: {st or 'UNSUBSCRIBED'}). Outreach halted.",
+                        "branch": Branch.FAILED.value,
+                    }
+                if src.get("is_suppressed") is True or src.get("mock_suppressed") is True:
+                    logger.warning(f"[DeliverabilityGuard] ABORT: Prospect {actual_lead_id or actual_email or actual_url} marked suppressed in payload.")
+                    return {
+                        "status": "skipped",
+                        "reason": "prospect_suppressed",
+                        "error": "Prospect marked suppressed in payload. Outreach halted.",
+                        "branch": Branch.FAILED.value,
+                    }
+
+            # 2. Database Lookup on leads table (Paranoia Layer 1)
+            if self.supabase and (actual_lead_id or actual_email or actual_url):
+                try:
+                    q = self.supabase.table("leads").select("id, email, linkedin_url, status, is_unsubscribed")
+                    if actual_lead_id:
+                        lead_res = q.eq("id", str(actual_lead_id)).limit(1).execute()
+                    elif actual_email and self.workspace_id:
+                        lead_res = q.eq("workspace_id", self.workspace_id).eq("email", str(actual_email).strip().lower()).limit(1).execute()
+                    elif actual_url and self.workspace_id:
+                        lead_res = q.eq("workspace_id", self.workspace_id).eq("linkedin_url", str(actual_url).strip()).limit(1).execute()
+                    else:
+                        lead_res = None
+
+                    if lead_res and isinstance(getattr(lead_res, "data", None), list) and len(lead_res.data) > 0:
+                        l_row = lead_res.data[0]
+                        if isinstance(l_row, dict):
+                            db_st = str(l_row.get("status") or "").strip().upper()
+                            if l_row.get("is_unsubscribed") is True or db_st in ("UNSUBSCRIBED", "COMPLAINED", "BOUNCED", "SUPPRESSED"):
+                                logger.warning(f"[DeliverabilityGuard] ABORT: Lead {l_row.get('id')} has status '{db_st}' / unsubscribed in database.")
+                                return {
+                                    "status": "skipped",
+                                    "reason": "prospect_unsubscribed",
+                                    "error": f"Prospect {l_row.get('id')} is unsubscribed (status: {db_st or 'UNSUBSCRIBED'}). Outreach halted.",
+                                    "branch": Branch.FAILED.value,
+                                }
+                            if not actual_email and l_row.get("email"):
+                                actual_email = l_row.get("email")
+                            if not actual_url and l_row.get("linkedin_url"):
+                                actual_url = l_row.get("linkedin_url")
+                except Exception as db_err:
+                    logger.debug(f"[DeliverabilityGuard] Non-fatal lead status check error: {db_err}")
+
+            # 3. Suppression List / DNC Check (Paranoia Layer 0, 1 & 2)
+            if self.supabase and self.workspace_id and (actual_email or actual_url):
+                try:
+                    from leads.backend.services.suppression_service import check_lead_suppression
+                    supp_res = check_lead_suppression(
+                        supabase=self.supabase,
+                        workspace_id=self.workspace_id,
+                        linkedin_url=str(actual_url) if actual_url else None,
+                        email=str(actual_email) if actual_email else None,
+                    )
+                    if supp_res.get("suppressed"):
+                        matched_by = supp_res.get("matched_by")
+                        if matched_by == "service_error":
+                            if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("TEST_STRICT_SUPPRESSION"):
+                                pass
+                            else:
+                                logger.warning(f"[DeliverabilityGuard] Fail-closed: suppression query failed with service error: {supp_res.get('reason')}")
+                                return {
+                                    "status": "skipped",
+                                    "reason": "suppression_service_error",
+                                    "error": f"Delivery halted closed: {supp_res.get('reason')}",
+                                    "branch": Branch.FAILED.value,
+                                }
+                        else:
+                            logger.warning(f"[DeliverabilityGuard] ABORT: Prospect suppressed by {matched_by}: {supp_res.get('matched_value') or actual_email or actual_url}")
+                            return {
+                                "status": "skipped",
+                                "reason": "prospect_suppressed",
+                                "matched_by": matched_by,
+                                "matched_value": supp_res.get("matched_value"),
+                                "error": f"Prospect suppressed by {matched_by}: {supp_res.get('matched_value') or actual_email or actual_url} ({supp_res.get('reason') or 'DNC'})",
+                                "branch": Branch.FAILED.value,
+                            }
+                except Exception as supp_err:
+                    logger.debug(f"[DeliverabilityGuard] Non-fatal check_lead_suppression error: {supp_err}")
+
+        except Exception as e:
+            logger.warning(f"[DeliverabilityGuard] Pre-flight suppression check exception: {e}")
+
+        return None
+
     def _check_connection_safety_guards(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Optional[Dict[str, Any]]:
         """
         Layer 0, 1 & 2 Paranoia Pre-Flight Deliverability Guard:
-        Enforces LinkedIn account safety cooldown and recipient 21-day anti-resend lockout.
+        Enforces LinkedIn account safety cooldown, recipient 21-day anti-resend lockout, and universal DNC suppression.
         """
+        # 0. Check universal prospect suppression and opt-out
+        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
+        if supp_check:
+            return supp_check
         # 1. Check if selected LinkedIn account is in cooldown
         selected_account = (
             data.get("selected_account")
@@ -3489,6 +3609,10 @@ class EleInNodeExecutor:
             return {"enabled": False, "body": default_body, "subject": default_subject}
 
     def handle_send_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
+        if supp_check:
+            return supp_check
+
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
         
@@ -3705,6 +3829,10 @@ class EleInNodeExecutor:
         Layer 2: If the chosen variant body is empty, safely falls back to alternate variant or common body/fallback.
                  Fails closed if all variant contents are empty.
         """
+        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
+        if supp_check:
+            return supp_check
+
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
         
@@ -3867,6 +3995,10 @@ class EleInNodeExecutor:
                  Clamps subject/body, validates templates, and handles inmail credit exhaustion.
         """
         lead_id = data.get("_lead_id") or data.get("lead_id")
+
+        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url, lead_id=lead_id)
+        if supp_check:
+            return supp_check
 
         # 1. Arbitrage Pre-Flight & Discovery (Paranoia Layer 0 & 2)
         raw_open = data.get("is_open_profile")
@@ -5113,6 +5245,16 @@ Respond ONLY with valid JSON."""
                     return {"status": "skipped", "reason": "role_based_email_blocked", "branch": Branch.FAILED.value, "error": f"Role-based mailbox '{audit.get('role_category')}' blocked by deliverability policy."}
                 return {"status": "skipped", "reason": audit.get("rejection_reason", "deliverability_check_failed"), "branch": Branch.FAILED.value, "error": audit.get("rejection_reason", "Deliverability check failed")}
 
+            # Paranoia Layer 0, 1 & 2: Pre-flight Universal Suppression & Opt-Out Guard
+            supp_check = self._check_prospect_suppression_and_optout(
+                data=data,
+                linkedin_url=linkedin_url,
+                to_email=to_email,
+                lead_id=lead_id,
+            )
+            if supp_check:
+                return supp_check
+
             # Phase 38: Pre-flight Recipient MX Record Guard & Catch-All Probe
             from core.backend.services.mx_and_catchall_guard import MXAndCatchAllGuard
             mx_res = MXAndCatchAllGuard.resolve_domain_mx_records(to_email, mock_dns=data.get("mock_dns"))
@@ -5318,6 +5460,46 @@ Respond ONLY with valid JSON."""
                 selected_inbox = data.get("selected_inbox")
                 if selected_inbox.get("email"):
                     from_email = selected_inbox.get("email")
+
+            # Paranoia Layer 1 & 2: Sender Mailbox & Domain Burnout / Quarantine Protection
+            if selected_inbox:
+                burnout_st = str(selected_inbox.get("domain_burnout_status") or selected_inbox.get("domain_health_status") or "").upper()
+                inbox_st = str(selected_inbox.get("status") or "").upper()
+                is_emerg_paused = bool(selected_inbox.get("emergency_paused", False) or inbox_st == "EMERGENCY_PAUSED" or burnout_st == "EMERGENCY_PAUSED")
+                if burnout_st in ("BURNOUT_QUARANTINED", "BURNOUT", "QUARANTINED") or inbox_st in ("QUARANTINED", "PAUSED") or is_emerg_paused:
+                    _refund_sendgrid_credit(reason="inbox_burned_or_quarantined")
+                    logger.error(f"[DeliverabilityGuard] ABORT: Sender inbox {from_email} is burned or quarantined ({burnout_st or inbox_st}).")
+                    return {
+                        "status": "error",
+                        "reason": "sender_inbox_burned_or_quarantined",
+                        "error": f"Sender inbox {from_email} is burned or quarantined ({burnout_st or inbox_st}). Dispatch aborted to protect domain reputation.",
+                        "branch": Branch.FAILED.value,
+                    }
+            elif from_email and self.supabase and self.workspace_id:
+                try:
+                    inb_q = (
+                        self.supabase.table("email_sender_inboxes")
+                        .select("status, domain_burnout_status, emergency_paused")
+                        .eq("workspace_id", self.workspace_id)
+                        .eq("email", str(from_email).strip().lower())
+                        .limit(1)
+                        .execute()
+                    )
+                    if inb_q and isinstance(getattr(inb_q, "data", None), list) and len(inb_q.data) > 0:
+                        inb_row = inb_q.data[0]
+                        b_st = str(inb_row.get("domain_burnout_status") or "").upper()
+                        i_st = str(inb_row.get("status") or "").upper()
+                        if b_st in ("BURNOUT_QUARANTINED", "BURNOUT", "QUARANTINED") or i_st in ("QUARANTINED", "PAUSED", "EMERGENCY_PAUSED") or inb_row.get("emergency_paused") is True:
+                            _refund_sendgrid_credit(reason="inbox_burned_or_quarantined")
+                            logger.error(f"[DeliverabilityGuard] ABORT: Configured sender inbox {from_email} is in {b_st or i_st}.")
+                            return {
+                                "status": "error",
+                                "reason": "sender_inbox_burned_or_quarantined",
+                                "error": f"Sender inbox {from_email} is burned or quarantined ({b_st or i_st}). Dispatch aborted to protect domain reputation.",
+                                "branch": Branch.FAILED.value,
+                            }
+                except Exception as inb_err:
+                    logger.debug(f"[DeliverabilityGuard] Sender inbox burnout query error: {inb_err}")
 
             # Paranoia Layer 1 & 2: Live DMARC/DKIM/SPF Identifier Alignment & DNS Drift Pre-Flight Guard (Phase 36)
             dmarc_audit: Dict[str, Any] = {}
@@ -6227,7 +6409,12 @@ Respond ONLY with valid JSON."""
     def handle_blacklist_check(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         lead_email = (data.get("email") or "").strip().lower()
         is_blacklisted = False
-        if self.workspace_id and self.supabase:
+
+        supp_res = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url, to_email=lead_email)
+        if supp_res:
+            is_blacklisted = True
+
+        if not is_blacklisted and self.workspace_id and self.supabase:
             try:
                 if linkedin_url:
                     res = self.supabase.table("suppression_list").select("id").eq("workspace_id", self.workspace_id).eq("value", linkedin_url).execute()

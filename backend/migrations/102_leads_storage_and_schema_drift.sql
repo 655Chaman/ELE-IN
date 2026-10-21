@@ -71,10 +71,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_suppression_domain_canonical
     WHERE domain IS NOT NULL AND TRIM(domain) != '';
 
 -- 5. UPGRADE bulk_import_leads_atomic RPC WITH EXCEPTION-SAFE SUPPRESSION HANDLING AND METADATA MERGE
+-- Drop any legacy overloads first to avoid PostgreSQL 42P13 parameter rename conflicts
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN 
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN ('bulk_import_leads', 'bulk_import_leads_atomic')
+          AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig || ' CASCADE';
+    END LOOP;
+END $$;
+
 CREATE OR REPLACE FUNCTION public.bulk_import_leads_atomic(
     p_workspace_id UUID,
     p_list_id UUID,
     p_leads JSONB,
+    p_location TEXT DEFAULT NULL,
     p_timezone TEXT DEFAULT 'UTC'
 ) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER AS $$
@@ -115,7 +131,7 @@ BEGIN
                 last_name = COALESCE(NULLIF(v_item->>'last_name', ''), last_name),
                 company_name = COALESCE(NULLIF(v_item->>'company_name', ''), company_name),
                 job_title = COALESCE(NULLIF(v_item->>'job_title', ''), job_title),
-                location = COALESCE(NULLIF(v_item->>'location', ''), location),
+                location = COALESCE(NULLIF(v_item->>'location', ''), location, p_location),
                 domain = COALESCE(NULLIF(v_item->>'domain', ''), domain),
                 timezone = COALESCE(NULLIF(v_item->>'timezone', ''), timezone, p_timezone),
                 is_open_profile = COALESCE((v_item->>'is_open_profile')::boolean, is_open_profile),
@@ -143,7 +159,7 @@ BEGIN
             ) VALUES (
                 v_lead_id, p_workspace_id,
                 v_item->>'first_name', v_item->>'last_name', v_linkedin, v_item->>'company_name',
-                v_email, v_item->>'domain', v_item->>'job_title', v_item->>'location',
+                v_email, v_item->>'domain', v_item->>'job_title', COALESCE(NULLIF(v_item->>'location', ''), p_location),
                 COALESCE(v_item->>'timezone', p_timezone),
                 COALESCE((v_item->>'is_open_profile')::boolean, false),
                 v_item->>'quarantine_reason',
@@ -184,19 +200,26 @@ END;
 $$;
 
 -- 6. Canonical delegation wrapper from bulk_import_leads to bulk_import_leads_atomic
+-- Matches exact historical parameter order (p_list_id, p_workspace_id, p_leads, p_location, p_timezone)
 CREATE OR REPLACE FUNCTION public.bulk_import_leads(
     p_list_id UUID,
     p_workspace_id UUID,
     p_leads JSONB,
-    p_timezone TEXT DEFAULT 'UTC',
-    p_location TEXT DEFAULT NULL
+    p_location TEXT DEFAULT NULL,
+    p_timezone TEXT DEFAULT 'UTC'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-    RETURN public.bulk_import_leads_atomic(p_list_id, p_workspace_id, p_leads, p_timezone, p_location);
+    RETURN public.bulk_import_leads_atomic(
+        p_workspace_id => p_workspace_id,
+        p_list_id => p_list_id,
+        p_leads => p_leads,
+        p_location => p_location,
+        p_timezone => p_timezone
+    );
 END;
 $$;
 

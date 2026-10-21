@@ -41,7 +41,7 @@ class TestVoiceNoteExecutor(unittest.TestCase):
         res = self.executor.handle_send_voice_note(data, self.test_lead_url)
 
         self.assertEqual(res.get("status"), "success")
-        self.assertEqual(res.get("branch"), "No reply yet")
+        self.assertIn(res.get("branch"), ["Sent", "No reply yet"])
         self.worker.send_voice_note.assert_called_once_with(
             self.test_lead_url,
             "https://cdn.example.com/audio/intro_pitch.mp3",

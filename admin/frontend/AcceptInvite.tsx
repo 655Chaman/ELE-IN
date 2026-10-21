@@ -58,7 +58,7 @@ export function AcceptInvite() {
         setStatus("success")
         
         setTimeout(() => {
-          navigate("/elein/campaigns")
+          navigate("/elein")
         }, 2000)
 
       } catch (err: any) {

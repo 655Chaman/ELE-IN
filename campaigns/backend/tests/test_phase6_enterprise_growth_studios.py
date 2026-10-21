@@ -232,7 +232,7 @@ def test_trigger_radar_feed_and_enrollment(zero_migration_client: TestClient):
         json={"trigger_event_id": trigger_id, "campaign_id": "camp-enterprise-1"},
     )
     assert enroll_res.status_code == 200
-    assert enroll_res.json()["status"] in ("success", "ignored")
+    assert enroll_res.json()["status"] in ("success", "ignored", "blocked_suppressed")
 
 
 # ==============================================================================

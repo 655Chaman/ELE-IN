@@ -69,6 +69,8 @@ def normalize_linkedin_post_url(url: Optional[str]) -> str:
             return ""
 
         hostname = (parsed.hostname or "").lower()
+        if hostname in ("twitter.com", "x.com", "www.twitter.com", "www.x.com"):
+            return clean
         if hostname != "linkedin.com" and not hostname.endswith(".linkedin.com"):
             return ""
 

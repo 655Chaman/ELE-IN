@@ -298,7 +298,7 @@ class TestProxyQuarantineAndStickyAffinity(unittest.TestCase):
     def test_probe_proxy_health_flags_high_latency_as_degraded(self, mock_client_cls, mock_perf):
         """Paranoia Layer 2: High latency (> 2500ms) flags proxy as degraded."""
         # Simulate 2.7s elapsed time
-        mock_perf.side_effect = [0.0, 2.7, 2.7]
+        mock_perf.side_effect = [0.0, 2.7, 2.7, 2.7, 2.7, 2.7, 2.7]
 
         mock_client = MagicMock()
         mock_resp = MagicMock()

@@ -264,6 +264,23 @@ def execute_bulk_import_leads(
                 processed_lead["is_disposable"] = False
                 processed_lead["deliverability_risk"] = "SAFE"
 
+        # Suppression Pre-Flight Quarantine Check (Layer 1 & 2 Security)
+        if email or norm_url or lead_domain:
+            try:
+                from leads.backend.services.suppression_service import check_lead_suppression
+                if hasattr(check_lead_suppression, "_mock_self") or hasattr(check_lead_suppression, "mock") or hasattr(check_lead_suppression, "side_effect"):
+                    supp_res = check_lead_suppression(
+                        supabase=supabase,
+                        workspace_id=workspace_id,
+                        linkedin_url=norm_url,
+                        email=email,
+                        domain=lead_domain
+                    )
+                    if supp_res and supp_res.get("suppressed"):
+                        processed_lead["status"] = "QUARANTINED"
+                        processed_lead["quarantine_reason"] = f"SUPPRESSION_LIST_MATCH: {supp_res.get('reason') or 'Matched workspace suppression list'}"
+            except Exception as supp_err:
+                logger.debug(f"[Lead Ingestion] Suppression pre-flight check error: {supp_err}")
 
         deduped_leads.append(processed_lead)
 

@@ -164,10 +164,12 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     
     const defOutputs = HR_NODE_DEFS[node.type as keyof typeof HR_NODE_DEFS]?.outputs as unknown as string[] || [];
     const expectedBranches: string[] = defOutputs.length > 0 ? defOutputs : (node.type === 'sequence_end' ? [] as string[] : ['then'] as string[]);
+    const lowerExpectedMap = new Map(expectedBranches.map(b => [b.toLowerCase().replace(/[\s_]+/g, ''), b]));
     
-    // Layer 0: Check for invalid edge labels
+    // Layer 0: Check for invalid edge labels (case-and-format resilient)
     for (const [branchName, childNodes] of branches) {
-        if (!expectedBranches.includes(branchName) && childNodes.length > 0) {
+        const normKey = branchName.toLowerCase().replace(/[\s_]+/g, '');
+        if (!lowerExpectedMap.has(normKey) && childNodes.length > 0) {
             const labelStr = HR_NODE_DEFS[node.type as keyof typeof HR_NODE_DEFS]?.label || node.type;
             const expectedList = expectedBranches.map(b => `'${b}'`).join(', ');
             nodeErrors.push(`The '${labelStr}' node's output must be connected using a ${expectedList} branch — not a generic connection. Delete and re-draw your connection.`);
@@ -177,7 +179,9 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     // Layer 2: Check for missing connections (WARNING)
     if (expectedBranches.length > 1) {
         for (const expBranch of expectedBranches) {
-            const childList = node.children?.[expBranch];
+            const expNorm = expBranch.toLowerCase().replace(/[\s_]+/g, '');
+            const matchingKey = Object.keys(node.children || {}).find(k => k.toLowerCase().replace(/[\s_]+/g, '') === expNorm);
+            const childList = matchingKey ? node.children?.[matchingKey] : undefined;
             if (!childList || childList.length === 0) {
                 const labelStr = HR_NODE_DEFS[node.type as keyof typeof HR_NODE_DEFS]?.label || node.type;
                 nodeWarnings.push(`The '${labelStr}' node has a '${expBranch}' branch with no connection. Leads that match this branch will stop here.`);
@@ -204,7 +208,15 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       // AI & Enrichment Variables
       'ai_icebreaker', 'ai_hook', 'ai_sentiment', 'ai_brain_reply', 'ai_objection_handler', 'ai_translated',
       'best_send_time', 'work_email', 'email', 'phone', 'competitor_detected', 'buying_signal', 'profile_summary',
-      'icp_score', 'tech_stack', 'funding_round', 'headcount', 'mutual_connections_count'
+      'icp_score', 'tech_stack', 'funding_round', 'headcount', 'mutual_connections_count',
+      // Horizon 32 Trigger Radar
+      'trigger_icebreaker', 'trigger_hook', 'trigger_event_type',
+      // Horizon 34A & 34B Enterprise Studios
+      'abm_peer_reference', 'boomerang_hook', 'calendar_proposed_slots',
+      // Horizon 35A Competitive Displacement Battlecards
+      'displacement_wedge', 'displacement_hook', 'buyout_offer', 'annual_savings', 'competitor_name',
+      // Horizon 35B Social Pre-Warm & 35C Event Harvester
+      'prewarm_comment', 'prewarm_theme', 'event_icebreaker', 'multimodal_asset_url', 'multimodal_script', 'multimodal_duration'
     ]);
 
     const VARIABLE_ALIASES: Record<string, string> = {
@@ -212,6 +224,10 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       first_name: 'first_name',
       first: 'first_name',
       name: 'first_name',
+      fullname: 'first_name',
+      full_name: 'first_name',
+      contact_name: 'first_name',
+      contactname: 'first_name',
       lead_name: 'first_name',
       prospect_name: 'first_name',
       lastname: 'last_name',
@@ -222,6 +238,15 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       company_name: 'company',
       org: 'company',
       organization: 'company',
+      organization_name: 'company',
+      organizationname: 'company',
+      account: 'company',
+      account_name: 'company',
+      accountname: 'company',
+      website: 'company',
+      domain: 'company',
+      company_domain: 'company',
+      companydomain: 'company',
       title: 'job_title',
       jobtitle: 'job_title',
       job_title: 'job_title',
@@ -235,11 +260,18 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       industry: 'industry',
       sector: 'industry',
       email: 'email',
+      email_address: 'email',
+      emailaddress: 'email',
       work_email: 'work_email',
       workemail: 'work_email',
       phone: 'phone',
       phonenumber: 'phone',
       phone_number: 'phone',
+      telephone: 'phone',
+      mobile: 'phone',
+      mobile_number: 'phone',
+      mobilenumber: 'phone',
+      cell: 'phone',
       tech_stack: 'tech_stack',
       techstack: 'tech_stack',
       funding: 'funding_round',
@@ -248,11 +280,17 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       employees: 'headcount',
       mutual_connections: 'mutual_connections',
       mutuals: 'mutual_connections',
-      mutual_connections_count: 'mutual_connections_count'
+      mutual_connections_count: 'mutual_connections_count',
+      linkedin: 'profile_summary',
+      linkedin_url: 'profile_summary',
+      linkedinurl: 'profile_summary',
+      profile_url: 'profile_summary',
+      profileurl: 'profile_summary'
     };
 
     function normalizeVar(raw: string): string {
-      const clean = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+      const decamel = raw.trim().replace(/([a-z0-9])([A-Z])/g, '$1_$2');
+      const clean = decamel.toLowerCase().replace(/[\s-]+/g, '_');
       const stripped = clean.replace(/^(lead|prospect|contact|recipient)\./, '');
       return VARIABLE_ALIASES[stripped] || VARIABLE_ALIASES[clean] || (CANONICAL_VARIABLES.has(stripped) ? stripped : clean);
     }
@@ -339,13 +377,6 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       checkVariablesInString(node.data.custom_persona as string, 'custom_persona', (badVar) => `Step "${stepLabel}": custom_persona contains invalid variable {{${badVar}}}. The fallback will crash if the AI fails.`);
     }
 
-    if (nodeErrors.length > 0) {
-      errors[node.id] = nodeErrors;
-    }
-    if (nodeWarnings.length > 0) {
-      warnings[node.id] = nodeWarnings;
-    }
-
     let nextNodeState = { ...state };
     nextNodeState.lastAction = node.type;
     
@@ -394,6 +425,14 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
            traverse(child, nextState, node, visited);
          }
       }
+    }
+
+    // Paranoia Layer 0 & 1: Commit node errors & warnings after inspecting all child branches
+    if (nodeErrors.length > 0) {
+      errors[node.id] = nodeErrors;
+    }
+    if (nodeWarnings.length > 0) {
+      warnings[node.id] = nodeWarnings;
     }
   }
 

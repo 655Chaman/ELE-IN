@@ -53,6 +53,7 @@ class TestStage2KnowledgeHardening(unittest.IsolatedAsyncioTestCase):
 
         # Mock embedding generation
         brain._generate_embeddings = MagicMock(return_value=[[0.1, 0.2, 0.3]])
+        brain._generate_embeddings_with_status = MagicMock(return_value=([[0.1, 0.2, 0.3]], True))
 
         # Three chunks in knowledge_chunks:
         # Chunk A: matches all 3 keywords ("enterprise", "pricing", "tier") with good density

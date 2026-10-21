@@ -171,6 +171,113 @@ class TestHorizon19AccountHealthDiagnostics(unittest.TestCase):
         mock_reach.assert_called_with(self.cookies_json, "https://www.linkedin.com/in/me", account_id=self.account_id)
         mock_restr.assert_called_with(self.cookies_json, account_id=self.account_id)
 
+    @patch("accounts.backend.services.account_health_service.crypto")
+    @patch("accounts.backend.services.account_health_service.check_session_validity")
+    @patch("accounts.backend.services.account_health_service.check_profile_reachable")
+    @patch("accounts.backend.services.account_health_service.check_for_restriction_signals")
+    def test_run_health_check_with_healthy_proxy_passes_proxy_url(
+        self,
+        mock_restr,
+        mock_reach,
+        mock_valid,
+        mock_crypto
+    ):
+        """Paranoia Layer 0 & 1: Resolves proxy credentials and passes active_proxy_url to all network checks."""
+        mock_supabase = MagicMock()
+        mock_acc_res = MagicMock(data=[{
+            "id": self.account_id,
+            "workspace_id": self.workspace_id,
+            "status": "ACTIVE",
+            "session_cookies_encrypted": "deadbeef",
+            "proxy_id": "proxy_res_123",
+            "linkedin_profile_url": "https://www.linkedin.com/in/me"
+        }])
+        mock_proxy_res = MagicMock(data=[{
+            "id": "proxy_res_123",
+            "host": "198.51.100.10",
+            "port": 8080,
+            "protocol": "http",
+            "username": "user1",
+            "is_active": True,
+            "status": "healthy"
+        }])
+
+        def table_side_effect(tbl):
+            m = MagicMock()
+            if tbl == "accounts":
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value = mock_acc_res
+            elif tbl == "proxies":
+                m.select.return_value.eq.return_value.execute.return_value = mock_proxy_res
+            return m
+
+        mock_supabase.table.side_effect = table_side_effect
+
+        mock_crypto.pg_hex_to_bytes.return_value = b"decrypted_raw"
+        mock_crypto.decrypt_bytes.side_effect = [
+            self.cookies_json.encode("utf-8"),
+            b"secret_password"
+        ]
+
+        mock_rpc = MagicMock(data={"password_encrypted": base64.b64encode(b"enc_pwd").decode("utf-8")})
+        mock_supabase.rpc.return_value.execute.return_value = mock_rpc
+
+        mock_valid.return_value = {"check_type": "session_valid", "result": "pass"}
+        mock_reach.return_value = {"check_type": "profile_reachable", "result": "pass"}
+        mock_restr.return_value = {"check_type": "restriction_signals", "result": "pass"}
+
+        result = run_health_check(mock_supabase, self.account_id, self.workspace_id)
+        expected_proxy_url = "http://user1:secret_password@198.51.100.10:8080"
+        mock_valid.assert_called_with(self.account_id, self.cookies_json, proxy_url=expected_proxy_url)
+        mock_reach.assert_called_with(self.cookies_json, "https://www.linkedin.com/in/me", account_id=self.account_id, proxy_url=expected_proxy_url)
+        mock_restr.assert_called_with(self.cookies_json, account_id=self.account_id, proxy_url=expected_proxy_url)
+
+    @patch("accounts.backend.services.account_health_service.crypto")
+    @patch("accounts.backend.services.account_health_service.check_session_validity")
+    def test_run_health_check_quarantined_proxy_no_failover_blocks_datacenter_leak(
+        self,
+        mock_valid,
+        mock_crypto
+    ):
+        """Paranoia Layer 1: When assigned proxy is quarantined and no backup exists, halts network check to prevent datacenter IP ban."""
+        mock_supabase = MagicMock()
+        mock_acc_res = MagicMock(data=[{
+            "id": self.account_id,
+            "workspace_id": self.workspace_id,
+            "status": "ACTIVE",
+            "session_cookies_encrypted": "deadbeef",
+            "proxy_id": "proxy_bad_999"
+        }])
+        mock_proxy_res = MagicMock(data=[{
+            "id": "proxy_bad_999",
+            "host": "198.51.100.99",
+            "port": 8080,
+            "protocol": "http",
+            "is_active": False,
+            "status": "quarantined"
+        }])
+
+        def table_side_effect(tbl):
+            m = MagicMock()
+            if tbl == "accounts":
+                m.select.return_value.eq.return_value.eq.return_value.execute.return_value = mock_acc_res
+            elif tbl == "proxies":
+                m.select.return_value.eq.return_value.execute.return_value = mock_proxy_res
+            return m
+
+        mock_supabase.table.side_effect = table_side_effect
+        mock_crypto.pg_hex_to_bytes.return_value = b"raw"
+        mock_crypto.decrypt_bytes.return_value = self.cookies_json.encode("utf-8")
+
+        with patch("core.backend.services.proxy_routing.find_sticky_failover_proxy", return_value=None):
+            result = run_health_check(mock_supabase, self.account_id, self.workspace_id)
+            # LinkedIn network check was NOT called
+            mock_valid.assert_not_called()
+            # Result contains proxy_availability warn
+            proxy_check = next((r for r in result["results"] if r["check_type"] == "proxy_availability"), None)
+            self.assertIsNotNone(proxy_check)
+            self.assertEqual(proxy_check["result"], "warn")
+            self.assertIn("Direct connection blocked", proxy_check["detail"]["message"])
+
     def test_compute_safety_indicator_logic(self):
         """Layer 2: Evaluates risk level indicator dynamically from status and history."""
         self.assertEqual(compute_safety_indicator({"manual_send_suspected": True}, []), "critical")

@@ -47,7 +47,7 @@ export function MFASetupPage() {
       setTimeout(() => {
         if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
-          const returnUrl = params.get('returnUrl') || '/elein/campaigns';
+          const returnUrl = params.get('returnUrl') || '/elein';
           navigate(returnUrl);
         }
       }, 2000)

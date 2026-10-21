@@ -1,4 +1,5 @@
 import os
+import json
 from dotenv import load_dotenv
 load_dotenv("backend/.env")
 if not os.environ.get("COOKIE_PUBLIC_KEY"):
@@ -169,11 +170,14 @@ class TestCampaignLimits(unittest.TestCase):
     def test_activate_campaign_free_tier_under_limit(self):
         """Free tier with 0 other active campaigns can activate cleanly."""
         # Mock workspace tier as FREE
+        valid_nodes = json.dumps([{"id": "n1", "type": "send_email", "data": {"body": "hello"}}])
+        camp_mock = MagicMock(data=[{"id": "camp-1", "status": "DRAFT", "nodes_json": valid_nodes, "metadata": {}}])
         ws_mock = MagicMock(data=[{"tier": "FREE"}])
         camp_count_mock = MagicMock(count=0)
         
         table_mock = MagicMock()
         self.client.table.return_value = table_mock
+        table_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value = camp_mock
         table_mock.select.return_value.eq.return_value.execute.side_effect = [
             ws_mock,
             MagicMock(data=[]),
@@ -205,11 +209,16 @@ class TestCampaignLimits(unittest.TestCase):
 
     def test_activate_campaign_pro_tier_unlimited(self):
         """PRO tier bypasses limit check and activates even with 5 existing active campaigns."""
+        valid_nodes = json.dumps([{"id": "n1", "type": "send_email", "data": {"body": "hello"}}])
+        camp_mock = MagicMock(data=[{"id": "camp-any", "status": "DRAFT", "nodes_json": valid_nodes, "metadata": {}}])
         ws_mock = MagicMock(data=[{"tier": "PRO"}])
+        senders_mock = MagicMock(data=[{"id": "acc-1"}])
         
         table_mock = MagicMock()
         self.client.table.return_value = table_mock
+        table_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value = camp_mock
         table_mock.select.return_value.eq.return_value.execute.return_value = ws_mock
+        table_mock.select.return_value.eq.return_value.or_.return_value.execute.return_value = senders_mock
         table_mock.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
 
         res = activate_campaign("camp-any", workspace_id=self.workspace_id, client=self.client)
@@ -271,7 +280,8 @@ class TestCampaignLimits(unittest.TestCase):
         table_mock = MagicMock()
         self.client.table.return_value = table_mock
         
-        camp_mock = MagicMock(data=[{"id": "camp-1", "status": "PAUSED"}])
+        valid_nodes = json.dumps([{"id": "n1", "type": "send_email", "data": {"body": "hello"}}])
+        camp_mock = MagicMock(data=[{"id": "camp-1", "status": "PAUSED", "nodes_json": valid_nodes, "metadata": {}}])
         ws_mock = MagicMock(data=[{"tier": "PRO"}])
         empty_senders_mock = MagicMock(data=[])
         

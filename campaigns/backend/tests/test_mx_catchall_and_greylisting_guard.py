@@ -433,7 +433,8 @@ class TestMXCatchallAndGreylistingGuard(unittest.TestCase):
         self.assertEqual(res["branch"], Branch.FAILED.value)
         self.assertIn("no valid mail exchanger", res["error"])
         # Verify no database logging of outbound message took place
-        self.mock_supabase.table.assert_not_called()
+        called_tables = [c[1][0] for c in self.mock_supabase.table.mock_calls if c[1]]
+        self.assertNotIn("outbox_events", called_tables)
 
     def test_executor_handles_smtp_greylisting_deferral(self):
         """

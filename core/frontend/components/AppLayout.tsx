@@ -25,6 +25,7 @@ import { ElesiumLogo } from './ElesiumLogo';
 export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [showPanicConfirm, setShowPanicConfirm] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
   const [activeMarket, setActiveMarket] = useState("biotech");
   const [isModalOpen, setModalOpen] = useState(false);
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
@@ -326,19 +327,8 @@ export function AppLayout() {
           <div className="p-3 border-t border-sidebar-border shrink-0 space-y-2">
             <button 
               type="button"
-              onClick={async () => {
-                if (!window.confirm("PANIC PAUSE: Are you sure you want to pause ALL active campaigns immediately? This will stop all outgoing connections and messages.")) return;
-                try {
-                  const res = await fetchWithAuth("/api/elein/campaigns/pause-all", { method: "POST" });
-                  if (!res.ok) throw new Error("Failed to pause");
-                  toast.success("All active campaigns have been paused.");
-                  // Optional: Refresh page to reflect new campaign states
-                  setTimeout(() => window.location.reload(), 1000);
-                } catch (e) {
-                  toast.error("Failed to pause campaigns.");
-                }
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-lg transition-colors font-bold shadow-sm"
+              onClick={() => setShowPanicConfirm(true)}
+              className="w-full flex items-center gap-3 px-3 py-2 text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-lg transition-colors font-bold shadow-sm cursor-pointer"
               title={!isSidebarOpen ? "Panic Pause All" : undefined}
             >
               <div className="shrink-0"><PauseOctagon size={14} strokeWidth={2.5} /></div>
@@ -384,6 +374,81 @@ export function AppLayout() {
         onSave={saveKeys}
         initialKeys={keys}
       />
+
+      {/* Panic Pause Confirmation Modal */}
+      {showPanicConfirm && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md"
+          onClick={() => { if (!isPausing) setShowPanicConfirm(false); }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="panic-dialog-title"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-destructive/30 bg-card p-6 shadow-2xl backdrop-blur-xl"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-destructive/15 border border-destructive/30 text-destructive">
+                <PauseOctagon size={24} strokeWidth={2.5} />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <h3 id="panic-dialog-title" className="text-base font-bold text-foreground">
+                  Panic Pause All Campaigns?
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  This will immediately halt all active outreach sequences, pending message dispatches, and connection requests across all accounts in this workspace.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-border/40">
+              <button
+                type="button"
+                onClick={() => setShowPanicConfirm(false)}
+                disabled={isPausing}
+                className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-lg border border-border hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Keep Running
+              </button>
+              <button
+                type="button"
+                disabled={isPausing}
+                onClick={async () => {
+                  setIsPausing(true);
+                  try {
+                    const res = await fetchWithAuth("/api/elein/campaigns/pause-all", { method: "POST" });
+                    if (!res.ok) throw new Error("Failed to pause");
+                    toast.success("All active campaigns have been paused.");
+                    setShowPanicConfirm(false);
+                    window.dispatchEvent(new CustomEvent("campaigns:refresh"));
+                  } catch (e) {
+                    toast.error("Failed to pause campaigns.");
+                  } finally {
+                    setIsPausing(false);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-destructive-foreground bg-destructive hover:bg-destructive/90 rounded-lg transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isPausing ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <span>Pausing Fleet...</span>
+                  </>
+                ) : (
+                  <>
+                    <PauseOctagon size={14} />
+                    <span>Pause All Campaigns</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

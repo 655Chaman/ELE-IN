@@ -22,7 +22,7 @@ def add_credits_safely_fallback(supabase: Client, workspace_id: str, credits: in
     """
     Paranoia Layer 0, 1 & 2: Adds credits safely via RPC with an idempotent, TOCTOU-safe fallback.
     - Layer 0: Checks processed_webhook_events table before mutating balance, preventing duplicate crediting.
-    - Layer 1: Mutex lock eliminates race conditions during read-modify-write in the Python process.
+    - Layer 1: Distributed workspace lock eliminates race conditions during read-modify-write across Uvicorn workers.
     - Layer 2: Gracefully handles unmigrated schema, validates inputs (credits > 0), and records processed status.
     """
     if not workspace_id or not event_id or credits <= 0:
@@ -40,8 +40,9 @@ def add_credits_safely_fallback(supabase: Client, workspace_id: str, credits: in
     except Exception as rpc_err:
         logger.warning(f"[Billing] RPC add_credits_safely failed, applying idempotent fallback: {rpc_err}")
 
-    # Fallback Path with strict idempotency and TOCTOU protection
-    with _fallback_credit_mutex:
+    # Fallback Path with strict idempotency and TOCTOU protection under distributed lock
+    from core.backend.services.credit_service import distributed_workspace_lock
+    with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
         event_key = (str(event_id), str(provider))
         if event_key in _PROCESSED_FALLBACK_EVENTS:
             logger.info(f"[Billing] In-memory deduplication: event {event_id} from {provider} already processed.")
@@ -66,6 +67,11 @@ def add_credits_safely_fallback(supabase: Client, workspace_id: str, credits: in
                 "provider": provider
             }).execute()
         except Exception as insert_err:
+            err_str = str(insert_err).lower()
+            if any(k in err_str for k in ("duplicate", "unique", "conflict", "primary", "23505", "already exists")):
+                logger.info(f"[Billing] DB unique collision: event {event_id} from {provider} already recorded by another worker.")
+                _PROCESSED_FALLBACK_EVENTS.add(event_key)
+                return
             logger.warning(f"[Billing] Could not insert into processed_webhook_events in fallback: {insert_err}")
 
         # 3. Apply balance update with verified current balance
@@ -119,8 +125,9 @@ async def async_add_credits_safely_fallback(supabase, workspace_id: str, credits
     except Exception as rpc_err:
         logger.warning(f"[Billing] Async RPC add_credits_safely failed, applying idempotent fallback: {rpc_err}")
 
-    # Fallback Path with strict idempotency and TOCTOU protection
-    with _fallback_credit_mutex:
+    # Fallback Path with strict idempotency and TOCTOU protection under distributed lock
+    from core.backend.services.credit_service import distributed_workspace_lock
+    with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
         event_key = (str(event_id), str(provider))
         if event_key in _PROCESSED_FALLBACK_EVENTS:
             logger.info(f"[Billing] Async in-memory deduplication: event {event_id} from {provider} already processed.")
@@ -149,6 +156,11 @@ async def async_add_credits_safely_fallback(supabase, workspace_id: str, credits
                 })
             )
         except Exception as insert_err:
+            err_str = str(insert_err).lower()
+            if any(k in err_str for k in ("duplicate", "unique", "conflict", "primary", "23505", "already exists")):
+                logger.info(f"[Billing] Async DB collision guard: event {event_id} from {provider} already recorded by another worker.")
+                _PROCESSED_FALLBACK_EVENTS.add(event_key)
+                return
             logger.warning(f"[Billing] Async could not insert into processed_webhook_events in fallback: {insert_err}")
 
         # 3. Apply balance update with verified current balance
@@ -405,83 +417,91 @@ async def verify_payment(
         except Exception as e_check:
             logger.warning(f"Failed to check OTO eligibility during payment verification: {e_check}")
 
-    # Mock order verification for dev / testing
-    if req_order_id.startswith("order_mock_"):
-        if not is_mock_billing_allowed():
-            raise HTTPException(status_code=403, detail="Simulated payment verification is disabled in production")
+    # Paranoia Layer 1: Distributed lock serializes concurrent client /verify and server webhook callbacks
+    from core.backend.services.credit_service import distributed_workspace_lock
+    with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
+        # Re-check status under lock
+        fresh_session_res = supabase.table("billing_transactions").select("status").eq("id", req_sess_id).execute()
+        if fresh_session_res.data and fresh_session_res.data[0].get("status") == "paid":
+            return {"status": "already_verified", "tier": "PRO"}
 
-        session_order_id = session.get("provider_order_id") or ""
-        if session_order_id and not session_order_id.startswith("order_mock_") and not session_order_id.startswith("pending_"):
-            raise HTTPException(status_code=400, detail="Mismatched session provider order ID")
+        # Mock order verification for dev / testing
+        if req_order_id.startswith("order_mock_"):
+            if not is_mock_billing_allowed():
+                raise HTTPException(status_code=403, detail="Simulated payment verification is disabled in production")
+
+            session_order_id = session.get("provider_order_id") or ""
+            if session_order_id and not session_order_id.startswith("order_mock_") and not session_order_id.startswith("pending_"):
+                raise HTTPException(status_code=400, detail="Mismatched session provider order ID")
+
+            pkg_id = session.get("package_id")
+            pkg = PACKAGES.get(pkg_id, {})
+            credits = pkg.get("credits", 0)
+            
+            if credits > 0:
+                add_credits_safely_fallback(
+                    supabase=supabase,
+                    workspace_id=workspace_id,
+                    credits=credits,
+                    event_id=f"mock_{req_sess_id}",
+                    provider="mock"
+                )
+
+            # Update workspace tier if PRO package
+            if pkg_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
+                supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+            supabase.table("billing_transactions").update({
+                "status": "paid",
+                "provider_payment_id": req_pay_id,
+                "provider_order_id": req_order_id,
+                "credits_added": credits
+            }).eq("id", req_sess_id).execute()
+            return {"status": "verified", "tier": "PRO"}
+
+        # Real Razorpay signature verification
+        rzp_key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+        if not rzp_key_secret:
+            raise HTTPException(status_code=500, detail="Razorpay webhook secret not configured")
+
+        if not req_sig:
+            raise HTTPException(status_code=400, detail="Missing payment signature")
+
+        data_to_verify = f"{req_order_id}|{req_pay_id}"
+        expected_signature = hmac.new(
+            rzp_key_secret.encode(),
+            data_to_verify.encode(),
+            "sha256"
+        ).hexdigest()
+
+        if not hmac.compare_digest(expected_signature, req_sig):
+            raise HTTPException(status_code=400, detail="Invalid payment signature")
 
         pkg_id = session.get("package_id")
         pkg = PACKAGES.get(pkg_id, {})
         credits = pkg.get("credits", 0)
-        
+
         if credits > 0:
             add_credits_safely_fallback(
                 supabase=supabase,
                 workspace_id=workspace_id,
                 credits=credits,
-                event_id=f"mock_{req_sess_id}",
-                provider="mock"
+                event_id=req_pay_id,
+                provider="razorpay"
             )
 
-        # Update workspace tier if PRO package
         if pkg_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
             supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+
         supabase.table("billing_transactions").update({
             "status": "paid",
             "provider_payment_id": req_pay_id,
             "provider_order_id": req_order_id,
+            "amount_cents": pkg.get("inr_paise", 0),
+            "currency": "INR",
             "credits_added": credits
         }).eq("id", req_sess_id).execute()
+
         return {"status": "verified", "tier": "PRO"}
-
-    # Real Razorpay signature verification
-    rzp_key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
-    if not rzp_key_secret:
-        raise HTTPException(status_code=500, detail="Razorpay webhook secret not configured")
-
-    if not req_sig:
-        raise HTTPException(status_code=400, detail="Missing payment signature")
-
-    data_to_verify = f"{req_order_id}|{req_pay_id}"
-    expected_signature = hmac.new(
-        rzp_key_secret.encode(),
-        data_to_verify.encode(),
-        "sha256"
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected_signature, req_sig):
-        raise HTTPException(status_code=400, detail="Invalid payment signature")
-
-    pkg_id = session.get("package_id")
-    pkg = PACKAGES.get(pkg_id, {})
-    credits = pkg.get("credits", 0)
-
-    if credits > 0:
-        add_credits_safely_fallback(
-            supabase=supabase,
-            workspace_id=workspace_id,
-            credits=credits,
-            event_id=req_pay_id,
-            provider="razorpay"
-        )
-
-    if pkg_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
-        supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
-
-    supabase.table("billing_transactions").update({
-        "status": "paid",
-        "provider_payment_id": req_pay_id,
-        "provider_order_id": req_order_id,
-        "amount_cents": pkg.get("inr_paise", 0),
-        "currency": "INR",
-        "credits_added": credits
-    }).eq("id", req_sess_id).execute()
-
-    return {"status": "verified", "tier": "PRO"}
  
 class CancelSessionRequest(BaseModel):
     session_id: str
@@ -772,12 +792,19 @@ async def webhook_razorpay(request: Request):
             raise ValueError("Missing checkout_session_id in Razorpay notes payload")
             
         supabase = await get_async_service_client()
-        session_res = await supabase.table("billing_transactions").select("workspace_id, package_id").eq("id", checkout_session_id).eq("status", "pending").execute()
+        session_res = await supabase.table("billing_transactions").select("workspace_id, package_id, status").eq("id", checkout_session_id).execute()
         if not session_res.data:
-            raise ValueError("Invalid or already processed checkout session")
+            raise ValueError("Invalid checkout session")
+        session_row = session_res.data[0]
+        if session_row.get("status") == "paid":
+            logger.info(f"[RazorpayWebhook] Session {checkout_session_id} already marked paid.")
+            return {"status": "ok", "message": "already_paid"}
+        if session_row.get("status") != "pending":
+            logger.info(f"[RazorpayWebhook] Session {checkout_session_id} not in pending state: {session_row.get('status')}")
+            return {"status": "ignored", "reason": "session_not_pending"}
             
-        workspace_id = session_res.data[0].get("workspace_id")
-        package_id = session_res.data[0].get("package_id")
+        workspace_id = session_row.get("workspace_id")
+        package_id = session_row.get("package_id")
         
         # Layer 1 Paranoia: Prevent dead workspace top-ups
         ws_res = await supabase.table("workspaces").select("status").eq("id", workspace_id).execute()
@@ -796,22 +823,31 @@ async def webhook_razorpay(request: Request):
             credits = int(notes.get("credits", 0))
             
         if workspace_id:
-            if credits > 0:
-                event_id = payment_entity.get("id") or f"rzp_{checkout_session_id}"
-                await async_add_credits_safely_fallback(supabase, workspace_id, credits, event_id, "razorpay")
-                try:
-                    await supabase.table("billing_transactions").update({
-                        "provider_order_id": event_id,
-                        "amount_cents": payment_entity.get("amount", 0),
-                        "currency": payment_entity.get("currency", "INR"),
-                        "credits_added": credits,
-                        "status": "paid"
-                    }).eq("id", checkout_session_id).execute()
-                except Exception as e:
-                    print(f"Error updating billing transaction: {e}")
+            from core.backend.services.credit_service import distributed_workspace_lock
+            with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
+                # Double-check status under lock
+                fresh_check = await supabase.table("billing_transactions").select("status").eq("id", checkout_session_id).execute()
+                if fresh_check.data and fresh_check.data[0].get("status") == "paid":
+                    logger.info(f"[RazorpayWebhook] Session {checkout_session_id} verified/paid concurrently under lock.")
+                    return {"status": "ok", "message": "already_paid"}
 
-            if package_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
-                await supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+                if credits > 0:
+                    event_id = payment_entity.get("id") or f"rzp_{checkout_session_id}"
+                    await async_add_credits_safely_fallback(supabase, workspace_id, credits, event_id, "razorpay")
+                    try:
+                        await supabase.table("billing_transactions").update({
+                            "provider_order_id": event_id,
+                            "provider_payment_id": payment_entity.get("id") or event_id,
+                            "amount_cents": payment_entity.get("amount", 0),
+                            "currency": payment_entity.get("currency", "INR"),
+                            "credits_added": credits,
+                            "status": "paid"
+                        }).eq("id", checkout_session_id).execute()
+                    except Exception as e:
+                        logger.warning(f"Error updating billing transaction: {e}")
+
+                if package_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
+                    await supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
     except ValueError as val_err:
         logger.warning(f"[RazorpayWebhook] Invalid or already processed payload: {val_err}")
         return {"status": "ignored", "reason": str(val_err)}

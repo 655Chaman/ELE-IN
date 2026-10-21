@@ -11681,6 +11681,120 @@
         }
       }
     },
+    "/api/elein/blueprints": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api List Workspace Blueprints",
+        "description": "Lists all saved workflow blueprints for the caller's workspace,\nplus any verified public community blueprints.",
+        "operationId": "api_list_workspace_blueprints_api_elein_blueprints_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Api List Workspace Blueprints Api Elein Blueprints Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Create Or Update Workspace Blueprint",
+        "description": "Saves or upserts a workflow blueprint into the workspace cloud library.\nGuarantees strict tenant isolation by binding workspace_id.",
+        "operationId": "api_create_or_update_workspace_blueprint_api_elein_blueprints_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceBlueprintCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Create Or Update Workspace Blueprint Api Elein Blueprints Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/blueprints/{blueprint_id}": {
+      "delete": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Delete Workspace Blueprint",
+        "description": "Deletes a blueprint from the cloud library, strictly scoped to caller's workspace.",
+        "operationId": "api_delete_workspace_blueprint_api_elein_blueprints__blueprint_id__delete",
+        "parameters": [
+          {
+            "name": "blueprint_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Blueprint Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Delete Workspace Blueprint Api Elein Blueprints  Blueprint Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -28261,6 +28375,110 @@
           "account_id"
         ],
         "title": "WithdrawStaleInvitationsRequest"
+      },
+      "WorkspaceBlueprintCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "default": "1.0.0"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version",
+            "default": "elein-blueprint-v1"
+          },
+          "branding": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branding"
+          },
+          "sequence_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Sequence Data"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stats"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "sequence_data"
+        ],
+        "title": "WorkspaceBlueprintCreate"
       },
       "WorkspaceCreate": {
         "properties": {

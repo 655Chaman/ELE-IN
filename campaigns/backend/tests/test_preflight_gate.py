@@ -237,6 +237,87 @@ class TestPreflightGate(unittest.TestCase):
         self.assertGreater(warmup_check["estimated_days"], 0)
         self.assertTrue(res["can_launch"])
 
+    def test_preflight_camelcase_variables_supported(self):
+        """Paranoia Layer 0 & 2: camelCase variables like {{firstName|there}} and {{companyName}} pass without illegal variable blocks."""
+        nodes = [
+            {"id": "n1", "type": "connection_request", "data": {"note": "Hi {{firstName|there}}, love what you are building at {{companyName|your team}}."}}
+        ]
+        acc_mock = MagicMock(data=[{
+            "id": "acc-1", "name": "Alex Sender", "status": "ACTIVE", "is_active": True,
+            "daily_connection_limit": 25, "daily_message_limit": 50
+        }])
+        list_mock = MagicMock(data=[{"id": "list-1", "row_count": 50}])
+        table_mock = MagicMock()
+        self.client.table.return_value = table_mock
+        table_mock.select.return_value.in_.return_value.eq.return_value.execute.return_value = acc_mock
+        table_mock.select.return_value.eq.return_value.execute.return_value = list_mock
+
+        res = run_campaign_preflight_audit(
+            supabase=self.client,
+            workspace_id=self.workspace_id,
+            campaign_name="CamelCase Test",
+            nodes_raw=nodes,
+            edges_raw=[],
+            sender_ids=["acc-1"],
+            lead_list_id="list-1"
+        )
+        self.assertTrue(res["can_launch"])
+        self.assertEqual(len(res["critical_errors"]), 0)
+
+    def test_preflight_custom_variable_with_fallback_allowed(self):
+        """Paranoia Layer 1 & 2: Custom lead variables with safe fallback like {{crm_lead_score|Tier A}} do not block launch."""
+        nodes = [
+            {"id": "n1", "type": "connection_request", "data": {"note": "Hi {{first_name|there}}, your account is {{crm_lead_score|high priority}}."}}
+        ]
+        acc_mock = MagicMock(data=[{
+            "id": "acc-1", "name": "Alex Sender", "status": "ACTIVE", "is_active": True,
+            "daily_connection_limit": 25, "daily_message_limit": 50
+        }])
+        list_mock = MagicMock(data=[{"id": "list-1", "row_count": 50}])
+        table_mock = MagicMock()
+        self.client.table.return_value = table_mock
+        table_mock.select.return_value.in_.return_value.eq.return_value.execute.return_value = acc_mock
+        table_mock.select.return_value.eq.return_value.execute.return_value = list_mock
+
+        res = run_campaign_preflight_audit(
+            supabase=self.client,
+            workspace_id=self.workspace_id,
+            campaign_name="Custom Fallback Test",
+            nodes_raw=nodes,
+            edges_raw=[],
+            sender_ids=["acc-1"],
+            lead_list_id="list-1"
+        )
+        self.assertTrue(res["can_launch"])
+        self.assertEqual(len(res["critical_errors"]), 0)
+
+    def test_preflight_studio_radar_variables_allowed(self):
+        """Paranoia Layer 0: Modern Studio & Radar variables like {{boomerang_hook}} and {{displacement_wedge}} are recognized."""
+        nodes = [
+            {"id": "n1", "type": "connection_request", "data": {"note": "{{boomerang_hook}} - thought of you and {{company|your team}}."}}
+        ]
+        acc_mock = MagicMock(data=[{
+            "id": "acc-1", "name": "Alex Sender", "status": "ACTIVE", "is_active": True,
+            "daily_connection_limit": 25, "daily_message_limit": 50
+        }])
+        list_mock = MagicMock(data=[{"id": "list-1", "row_count": 50}])
+        table_mock = MagicMock()
+        self.client.table.return_value = table_mock
+        table_mock.select.return_value.in_.return_value.eq.return_value.execute.return_value = acc_mock
+        table_mock.select.return_value.eq.return_value.execute.return_value = list_mock
+
+        res = run_campaign_preflight_audit(
+            supabase=self.client,
+            workspace_id=self.workspace_id,
+            campaign_name="Studio Radar Test",
+            nodes_raw=nodes,
+            edges_raw=[],
+            sender_ids=["acc-1"],
+            lead_list_id="list-1"
+        )
+        self.assertTrue(res["can_launch"])
+        self.assertEqual(len(res["critical_errors"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

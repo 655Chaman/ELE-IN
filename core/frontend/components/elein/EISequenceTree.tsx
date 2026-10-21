@@ -1,4 +1,6 @@
 import { EIStickyNote } from "./EIStickyNote";
+import { CampaignBlueprintModal } from "./CampaignBlueprintModal";
+import { parseBlueprintFile, sniffDroppedFile, type EleInBlueprint } from "@/lib/blueprintSchema";
 import React from "react";
 import { cn } from "@/lib/utils"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
@@ -11,7 +13,7 @@ import {
   UserPlus, MessageSquare, Eye, Heart, Users, Mail,
   AtSign, Zap, CheckCircle2, Shield, StopCircle, AlertCircle,
   Phone, CalendarCheck, Star, Mic2, Tag, Bell, Database, Info, ZoomIn, ZoomOut, Maximize, Undo, Redo, FileText, Save,
-  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight
+  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote
 } from "lucide-react"
 import useSWR, { useSWRConfig } from "swr"
 import { fetcher } from "@/lib/apiClient"
@@ -721,7 +723,7 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                   <Icon size={18} strokeWidth={1.5} />
                 )}
               </div>
-              <div className="flex-1 min-w-0 pr-6">
+              <div data-no-drag className="flex-1 min-w-0 pr-6 select-text">
                 <div className={hasError ? "text-[14px] font-bold text-rose-600 dark:text-rose-400 leading-tight" : "text-[14px] font-bold text-foreground leading-tight flex items-center gap-1.5"}>
                   <span>{label}</span>
                   {isAiNode && (
@@ -809,18 +811,20 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
               </div>
             )}
             {warnings && warnings.length > 0 && (
-              <div className="mt-3 text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg flex flex-col gap-2">
-                <div className="font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 text-[11px] tracking-wide uppercase">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  Warning
-                </div>
-                <div className="flex flex-col gap-1.5 pl-0.5">
-                  {warnings.map((w: string, i: number) => (
-                    <div key={i} className="flex items-start gap-2 text-amber-800/90 dark:text-amber-300 text-[11px] leading-relaxed">
-                      <span className="text-amber-400 dark:text-amber-500 shrink-0 font-bold">•</span>
-                      <span>{w}</span>
-                    </div>
-                  ))}
+              <div className="mt-2.5 text-xs">
+                <div 
+                  className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] font-semibold transition-all hover:bg-amber-500/15 cursor-help"
+                  title={warnings.join("\n\n")}
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                    <span className="truncate">{warnings[0]}</span>
+                  </div>
+                  {warnings.length > 1 && (
+                    <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.2 rounded font-bold text-amber-600 dark:text-amber-300 shrink-0">
+                      +{warnings.length - 1}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -878,20 +882,22 @@ function BranchPill({ label }: { label: string }) {
 }
 
 // ─── Vertical connector line ───────────────────────────────────────────────────
-function VLine({ height = 32 }: { height?: number }) {
+function VLine({ height = 32, active = true }: { height?: number; active?: boolean }) {
   return (
-    <div className="relative w-[2px] bg-zinc-300 dark:bg-zinc-700/80 mx-auto overflow-hidden rounded-full shadow-[0_0_1px_rgba(255,255,255,0.05)]" style={{ height }}>
-      <motion.div
-        className="absolute left-0 w-full bg-gradient-to-b from-transparent via-primary to-transparent shadow-[0_0_8px_hsl(var(--primary))]"
-        style={{ height: Math.max(12, Math.floor(height * 0.5)) }}
-        initial={{ y: -height }}
-        animate={{ y: height }}
-        transition={{
-          duration: 2.2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
+    <div className="relative w-[2px] bg-zinc-300 dark:bg-zinc-600/90 mx-auto overflow-hidden rounded-full shadow-[0_0_2px_rgba(255,255,255,0.08)]" style={{ height }}>
+      {active && (
+        <motion.div
+          className="absolute left-0 w-full bg-gradient-to-b from-transparent via-primary to-transparent shadow-[0_0_8px_hsl(var(--primary))]"
+          style={{ height: Math.max(12, Math.floor(height * 0.5)) }}
+          initial={{ y: -height }}
+          animate={{ y: height }}
+          transition={{
+            duration: 2.2,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -910,9 +916,10 @@ interface BranchProps {
   treeErrors?: Record<string, string[]>
   treeWarnings?: Record<string, string[]>
   firstNodeRef?: React.RefObject<HTMLDivElement | null>
+  onSafeDelete?: (targetNode: SeqTreeNode) => void
 }
 
-function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, nodeAnalytics, parentAnalytics, treeErrors, treeWarnings, firstNodeRef }: BranchProps ) {
+function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, nodeAnalytics, parentAnalytics, treeErrors, treeWarnings, firstNodeRef, onSafeDelete }: BranchProps ) {
   const { addRoot, addChild, endBranch, removeNode, selectNode, selectedNodeId, moveNodeInBranch, undo } = useHRTreeStore()
   const closePicker = usePickerStore(s => s.closePicker)
 
@@ -920,10 +927,9 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
   const handleSafeDeleteNode = (targetNode: SeqTreeNode) => {
-    const hasChildren = Object.values(targetNode.children || {}).some(branch => (branch as any[])?.length > 0)
-    if (hasChildren) {
-      const confirmed = window.confirm(`Deleting this step will also remove its downstream connected branches. Are you sure you want to proceed?`)
-      if (!confirmed) return
+    if (onSafeDelete) {
+      onSafeDelete(targetNode);
+      return;
     }
     removeNode(targetNode.id)
     toast("Step removed from sequence", {
@@ -952,7 +958,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
   if (nodes.length === 0) {
     return (
       <div className="flex flex-col items-center">
-        <VLine height={20} />
+        <VLine height={20} active={false} />
         {readOnly ? (
           <div className="px-3 py-1 rounded-full bg-muted/40 border border-border/40 text-[10px] text-muted-foreground font-medium flex items-center gap-1.5 shadow-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
@@ -1038,7 +1044,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                     <div key={bl} className="relative flex flex-col items-center min-w-[320px] flex-1">
                       {branchLabels.length > 1 && (
                         <div 
-                          className="absolute top-0 h-[2px] bg-zinc-300 dark:bg-zinc-700/80 z-0"
+                          className="absolute top-0 h-[2px] bg-zinc-300 dark:bg-zinc-600/90 z-0 shadow-[0_0_2px_rgba(255,255,255,0.08)]"
                           style={{
                             left: i === 0 ? '50%' : '-1rem',
                             right: i === branchLabels.length - 1 ? '50%' : '-1rem'
@@ -1046,7 +1052,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                         />
                       )}
                       {/* Vertical line dropping down to the pill */}
-                      <div className="w-[2px] h-4 bg-zinc-300 dark:bg-zinc-700/80 z-0" />
+                      <div className="w-[2px] h-4 bg-zinc-300 dark:bg-zinc-600/90 z-0 shadow-[0_0_2px_rgba(255,255,255,0.08)]" />
                       
                       <div className="relative z-10 bg-background rounded-full">
                         <BranchPill label={bl} />
@@ -1059,10 +1065,11 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                         depth={depth + 1}
                         isFirstStep={false}
                         readOnly={readOnly}
-                      treeErrors={treeErrors}
-                      treeWarnings={treeWarnings}
+                        treeErrors={treeErrors}
+                        treeWarnings={treeWarnings}
                         nodeAnalytics={nodeAnalytics}
                         parentAnalytics={nodeAnalytics?.[node.id]}
+                        onSafeDelete={onSafeDelete}
                       />
                     </div>
                   ))}
@@ -1081,10 +1088,11 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                   depth={depth + 1}
                   isFirstStep={false}
                   readOnly={readOnly}
-                      treeErrors={treeErrors}
-                      treeWarnings={treeWarnings}
+                  treeErrors={treeErrors}
+                  treeWarnings={treeWarnings}
                   nodeAnalytics={nodeAnalytics}
                   parentAnalytics={nodeAnalytics?.[node.id]}
+                  onSafeDelete={onSafeDelete}
                 />
               </div>
             )}
@@ -1218,7 +1226,79 @@ export function EISequenceTree({
   const [pendingAddParams, setPendingAddParams] = useState<{type: EINodeType, data: any, parentId: string | null, branchLabel: string} | null>(null)
   const [presetModalOpen, setPresetModalOpen] = useState(false)
   const [selectedPreset, setSelectedPreset] = useState<typeof QUICK_PRESETS[0] | null>(null)
+  const [nodeToDelete, setNodeToDelete] = useState<SeqTreeNode | null>(null)
   const selectedNodeId = useHRTreeStore(s => s.selectedNodeId)
+
+  // Blueprint Export/Import Engine State
+  const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState(false)
+  const [blueprintModalTab, setBlueprintModalTab] = useState<"export" | "import">("export")
+  const [preloadedBlueprint, setPreloadedBlueprint] = useState<EleInBlueprint | null>(null)
+  const [isDraggingBlueprintFile, setIsDraggingBlueprintFile] = useState(false)
+  const dragCounterRef = useRef(0)
+
+  const handleCanvasFileDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDraggingBlueprintFile(false)
+
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+
+    // Layer 2 Paranoia: Intelligent file sniffer
+    const sniffed = await sniffDroppedFile(file)
+
+    if (sniffed.type === "leads_csv") {
+      toast.error("Lead List detected", {
+        description: "You dropped a CSV / spreadsheet. Prospect lead lists are imported under Campaign Audience step or the Lead Lists page.",
+        duration: 7000,
+      })
+      return
+    }
+
+    if (sniffed.type === "image") {
+      toast.error("Image file detected", {
+        description: "Ele-in canvas accepts .elein and .json workflow blueprints. For image attachments, configure individual message steps.",
+        duration: 6000,
+      })
+      return
+    }
+
+    if (sniffed.type === "unknown") {
+      toast.error("Unsupported file format", {
+        description: sniffed.guidance || "Please drop an .elein or .json workflow blueprint file.",
+        duration: 6000,
+      })
+      return
+    }
+
+    try {
+      const blueprint = await parseBlueprintFile(file)
+      setPreloadedBlueprint(blueprint)
+      setBlueprintModalTab("import")
+      setIsBlueprintModalOpen(true)
+      toast.success(`Loaded blueprint: "${blueprint.metadata.name}"`)
+    } catch (err: any) {
+      toast.error("Failed to parse blueprint", {
+        description: err.message || "Invalid blueprint file structure.",
+      })
+    }
+  }
+
+  const handleSafeDeleteNode = React.useCallback((targetNode: SeqTreeNode) => {
+    const hasChildren = Object.values(targetNode.children || {}).some(branch => (branch as any[])?.length > 0)
+    if (hasChildren) {
+      setNodeToDelete(targetNode)
+      return
+    }
+    useHRTreeStore.getState().removeNode(targetNode.id)
+    toast("Step removed from sequence", {
+      action: {
+        label: "Undo",
+        onClick: () => useHRTreeStore.getState().undo()
+      }
+    })
+  }, [])
 
   const containerRef = React.useRef<HTMLDivElement>(null)
   const contentWrapperRef = React.useRef<HTMLDivElement>(null)
@@ -1280,9 +1360,9 @@ export function EISequenceTree({
     const centerRelX = (minRelX + maxRelX) / 2;
     const centerRelY = (minRelY + maxRelY) / 2;
 
-    // Viewport padding in pixels (generous margin for sidebars and toolbars)
-    const paddingX = 140;
-    const paddingY = 120;
+    // Viewport padding in pixels: 240px horizontal clearance accounts for the left floating toolbar (180px + margin)
+    const paddingX = 240;
+    const paddingY = 160;
     const availW = Math.max(viewportW - paddingX, 100);
     const availH = Math.max(viewportH - paddingY, 100);
 
@@ -1386,6 +1466,22 @@ export function EISequenceTree({
     }
   };
 
+  const handleAddStickyNote = useCallback((color: string = "amber", category: string = "note") => {
+    const currentCount = stickyNotes?.length || 0;
+    const stagger = (currentCount % 6) * 32;
+    let x = window.innerWidth / 2 - 145 + stagger;
+    let y = 140 + stagger;
+    if (containerRef.current) {
+      x = Math.round(((containerRef.current.scrollLeft + containerRef.current.clientWidth / 2) / zoom - 145) + stagger);
+      y = Math.round(((containerRef.current.scrollTop + 140) / zoom) + stagger);
+    }
+    const id = addStickyNote(x, y, color, category);
+    toast.success("Sticky note added to canvas", {
+      description: "Drag to reposition • Double-click to edit • Alt+Click canvas to drop anywhere"
+    });
+    return id;
+  }, [stickyNotes, zoom, addStickyNote]);
+
   
 
   const disableAllAutoWithdraw = (nodes: SeqTreeNode[]) => {
@@ -1472,6 +1568,13 @@ export function EISequenceTree({
         return;
       }
 
+      // 3b. Add Sticky Note shortcut ('N')
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey && !readOnly && !isPickerOpen) {
+        e.preventDefault();
+        handleAddStickyNote("amber", "note");
+        return;
+      }
+
       // 4. Escape: Close picker or deselect node
       if (e.key === 'Escape') {
         if (isPickerOpen) {
@@ -1489,18 +1592,7 @@ export function EISequenceTree({
         e.preventDefault();
         const target = findNodeInTree(rootNodes, selectedNodeId);
         if (target) {
-          const hasChildren = Object.values(target.children || {}).some(branch => (branch as any[])?.length > 0);
-          if (hasChildren) {
-            const confirmed = window.confirm(`Deleting this step will also remove its downstream connected branches. Are you sure you want to proceed?`);
-            if (!confirmed) return;
-          }
-          useHRTreeStore.getState().removeNode(selectedNodeId);
-          toast("Step removed from sequence", {
-            action: {
-              label: "Undo",
-              onClick: () => useHRTreeStore.getState().undo()
-            }
-          });
+          handleSafeDeleteNode(target);
         }
         return;
       }
@@ -1585,13 +1677,26 @@ export function EISequenceTree({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSave, rootNodes, isSaving, readOnly, selectedNodeId, isPickerOpen, fitToCanvas]);
+  }, [onSave, rootNodes, isSaving, readOnly, selectedNodeId, isPickerOpen, fitToCanvas, handleAddStickyNote]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Alt/Option + Left Click: Drop a new sticky note right under the mouse cursor!
+    if (e.altKey && e.button === 0 && !readOnly && containerRef.current) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('button, input, textarea, select, .node-card, .sticky-note, [role="dialog"]')) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const clickX = Math.round((e.clientX - rect.left + containerRef.current.scrollLeft) / zoom - 145);
+        const clickY = Math.round((e.clientY - rect.top + containerRef.current.scrollTop) / zoom - 30);
+        addStickyNote(clickX, clickY, "amber", "note");
+        toast.success("Sticky note dropped at cursor!");
+        return;
+      }
+    }
+
     // Only drag on left click, and ignore if clicking on a button or interactive element
     if (e.button !== 0) return
     const target = e.target as HTMLElement
-    if (target.closest('button') || target.closest('.node-card')) return
+    if (target.closest('button, .node-card, .sticky-note, input, textarea, select')) return
     
     isDragging.current = true
     lastMousePos.current = { x: e.clientX, y: e.clientY }
@@ -1715,6 +1820,62 @@ export function EISequenceTree({
                   className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-xs font-bold text-primary-foreground transition-colors cursor-pointer shadow-xs"
                 >
                   Disable Auto-Withdraw and Continue
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Safe Delete Step Confirmation Modal */}
+      <AnimatePresence>
+        {nodeToDelete && (
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setNodeToDelete(null)
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-step-dialog-title"
+              className="bg-card border border-border shadow-2xl rounded-xl p-6 max-w-md w-full"
+            >
+              <div className="flex items-center gap-3 text-destructive mb-4">
+                <AlertCircle size={22} />
+                <h3 id="delete-step-dialog-title" className="text-base font-bold text-foreground">Remove Step & Branches?</h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed mb-6">
+                Removing this step will also remove its downstream connected branches. You can always undo this action immediately from the toast notification.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setNodeToDelete(null)}
+                  className="px-4 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = nodeToDelete.id;
+                    setNodeToDelete(null);
+                    useHRTreeStore.getState().removeNode(id);
+                    toast("Step removed from sequence", {
+                      action: {
+                        label: "Undo",
+                        onClick: () => useHRTreeStore.getState().undo()
+                      }
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg bg-destructive hover:bg-destructive/90 text-xs font-bold text-destructive-foreground transition-colors cursor-pointer shadow-xs"
+                >
+                  Remove Step & Downstream
                 </button>
               </div>
             </motion.div>
@@ -1870,21 +2031,87 @@ export function EISequenceTree({
             >
               <Redo size={14} className="shrink-0" /> <span className="font-medium">Redo</span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                let x = window.innerWidth / 2 - 100;
-                let y = 100;
-                if (containerRef.current) {
-                  x = (containerRef.current.scrollLeft + containerRef.current.clientWidth / 2) / zoom - 100;
-                  y = (containerRef.current.scrollTop + 100) / zoom;
-                }
-                addStickyNote(x, y);
-              }}
-              className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors border-b border-border w-full cursor-pointer"
-            >
-              <MessageSquare size={14} className="shrink-0" /> <span className="font-medium">Add Sticky Note</span>
-            </button>
+            {/* Sticky Notes Tool */}
+            <div className="border-b border-border p-2 bg-card/40 flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleAddStickyNote("amber", "note")}
+                className="flex items-center gap-2 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 w-full cursor-pointer"
+                title="Add Sticky Note (Shortcut: Press 'N' or Alt+Click canvas)"
+              >
+                <StickyNote size={14} className="text-amber-500 shrink-0" />
+                <span className="font-medium">Sticky Note</span>
+                <kbd className="ml-auto font-mono text-[9px] px-1.5 py-0.2 bg-muted rounded border border-border/60 text-muted-foreground">N</kbd>
+              </button>
+
+              {/* Quick Palette Chips */}
+              <div className="flex items-center justify-between px-1 gap-1">
+                <span className="text-[10px] text-muted-foreground/60 font-medium">Color:</span>
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { key: "amber", title: "Sun (Idea)", dot: "bg-amber-400" },
+                    { key: "emerald", title: "Emerald (Goal)", dot: "bg-emerald-400" },
+                    { key: "sky", title: "Sky (Info)", dot: "bg-sky-400" },
+                    { key: "rose", title: "Rose (Caution)", dot: "bg-rose-400" },
+                    { key: "violet", title: "Violet (Strategy)", dot: "bg-violet-400" }
+                  ].map(c => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => handleAddStickyNote(c.key, "note")}
+                      className={cn(
+                        "w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 cursor-pointer shadow-2xs",
+                        c.dot
+                      )}
+                      title={`Drop ${c.title} Note`}
+                      aria-label={`Drop ${c.title} Note`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Canvas Notes Status & Batch Collapse */}
+            {stickyNotes && stickyNotes.length > 0 && (
+              <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 text-[10px] font-medium text-muted-foreground border-b border-border">
+                <span>{stickyNotes.length} {stickyNotes.length === 1 ? "note" : "notes"}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const anyExpanded = stickyNotes.some(sn => !sn.isCollapsed);
+                    stickyNotes.forEach(sn => {
+                      if (anyExpanded && !sn.isCollapsed) {
+                        useHRTreeStore.getState().toggleStickyNoteCollapse(sn.id);
+                      } else if (!anyExpanded && sn.isCollapsed) {
+                        useHRTreeStore.getState().toggleStickyNoteCollapse(sn.id);
+                      }
+                    });
+                  }}
+                  className="hover:text-foreground transition-colors underline cursor-pointer"
+                >
+                  {stickyNotes.some(sn => !sn.isCollapsed) ? "Collapse all" : "Expand all"}
+                </button>
+              </div>
+            )}
+
+            {/* Blueprint Hub (Make/n8n Export & Import) */}
+            <div className="border-b border-border p-2 bg-card/40 flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setBlueprintModalTab("export")
+                  setIsBlueprintModalOpen(true)
+                }}
+                className="flex items-center gap-2 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 w-full cursor-pointer"
+                title="Export or Import Sequence Blueprint (.elein)"
+              >
+                <Layers size={14} className="text-primary shrink-0" />
+                <span className="font-medium">Blueprint Hub</span>
+                <span className="ml-auto text-[9px] px-1.5 py-0.2 bg-primary/10 text-primary font-bold rounded border border-primary/20">
+                  Import / Export
+                </span>
+              </button>
+            </div>
             <button
               type="button"
               onClick={async () => {
@@ -1916,7 +2143,50 @@ export function EISequenceTree({
         style={{ cursor: 'grab' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
+        onDragOver={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsDraggingBlueprintFile(true)
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          dragCounterRef.current++
+          if (dragCounterRef.current === 1) {
+            setIsDraggingBlueprintFile(true)
+          }
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          dragCounterRef.current--
+          if (dragCounterRef.current <= 0) {
+            dragCounterRef.current = 0
+            setIsDraggingBlueprintFile(false)
+          }
+        }}
+        onDrop={handleCanvasFileDrop}
       >
+        {/* Drag & Drop Visual HUD Overlay */}
+        {isDraggingBlueprintFile && (
+          <div className="absolute inset-0 z-50 bg-background/85 backdrop-blur-md border-4 border-dashed border-primary flex flex-col items-center justify-center gap-4 animate-in fade-in duration-200 pointer-events-none">
+            <div className="w-16 h-16 rounded-3xl bg-primary/20 border-2 border-primary flex items-center justify-center text-primary shadow-2xl animate-bounce">
+              <ElesiumLogo className="w-9 h-9" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-xl font-bold text-foreground tracking-tight">
+                Drop Ele-in Blueprint to Import
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Release anywhere on canvas to inspect, brand, and import sequence
+              </p>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold bg-primary/10 text-primary border border-primary/20">
+              .elein / .json supported
+            </span>
+          </div>
+        )}
+
         <DotPattern
           width={24}
           height={24}
@@ -1952,12 +2222,24 @@ export function EISequenceTree({
             treeWarnings={treeWarnings}
             nodeAnalytics={nodeAnalytics}
             firstNodeRef={firstNodeRef}
+            onSafeDelete={handleSafeDeleteNode}
           />
         </div>
       </div>
       
       {/* Side-panel for configuring selected node */}
       <EITreeNodeConfigPanel />
+
+      {/* Campaign Blueprint Modal (Make / n8n Export & Import) */}
+      <CampaignBlueprintModal
+        isOpen={isBlueprintModalOpen}
+        onClose={() => {
+          setIsBlueprintModalOpen(false)
+          setPreloadedBlueprint(null)
+        }}
+        initialTab={blueprintModalTab}
+        preloadedBlueprint={preloadedBlueprint}
+      />
     </div>
   )
 }

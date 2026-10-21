@@ -376,7 +376,8 @@ class TestDMARCAlignmentAndDNSDriftGuard(unittest.TestCase):
         self.assertEqual(res["branch"], Branch.FAILED.value)
         self.assertIn("fails DMARC identifier alignment", res["error"])
         # Ensure outbound message was not persisted
-        self.mock_supabase.table.assert_not_called()
+        called_tables = [c[1][0] for c in self.mock_supabase.table.mock_calls if c[1]]
+        self.assertNotIn("outbox_events", called_tables)
 
     def test_executor_aborts_send_when_dmarc_quarantine_unaligned(self):
         """

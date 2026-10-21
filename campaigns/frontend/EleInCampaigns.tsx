@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { 
   Plus, Search, Play, Pause,
-  Trash2, ChevronRight, BarChart2, Users,
+  Trash2, ChevronLeft, ChevronRight, BarChart2, Users,
   MoreVertical, Settings,
   Briefcase, Link as LinkIcon, Info, X, Loader2,
   Copy, CheckSquare, Square,

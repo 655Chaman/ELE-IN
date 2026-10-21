@@ -73,8 +73,10 @@ class TestSpamScoreExecutorAndRouter(unittest.TestCase):
         self.assertEqual(res["branch"], Branch.FAILED.value)
         self.assertIn("Email content rejected by spam heuristic guard", res["error"])
         self.assertIn("Top triggers:", res["error"])
-        # Verify no credits were deducted
-        self.mock_supabase.table.assert_not_called()
+        # Verify no credits were deducted and no outbound insert took place
+        called_tables = [c[1][0] for c in self.mock_supabase.table.mock_calls if c[1]]
+        self.assertNotIn("outbox_events", called_tables)
+        self.assertNotIn("credit_ledger", called_tables)
 
     def test_executor_elevated_risk_logs_and_sends(self):
         """

@@ -67,10 +67,9 @@ class TestHorizon5InboxAndWebhooks(unittest.IsolatedAsyncioTestCase):
 
         # Verify execution states update halted all in-flight states
         update_call = mock_state_table.update.return_value.in_.return_value.in_.return_value.execute
-        mock_state_table.update.assert_called_with({
-            "status": "completed",
-            "error_reason": "meeting_booked"
-        })
+        update_args = mock_state_table.update.call_args[0][0]
+        self.assertEqual(update_args["status"], "completed")
+        self.assertEqual(update_args["error_reason"], "meeting_booked")
         # Check that the in_ filter included in-flight states
         in_filter_args = mock_state_table.update.return_value.in_.return_value.in_.call_args
         self.assertEqual(in_filter_args[0][0], "status")

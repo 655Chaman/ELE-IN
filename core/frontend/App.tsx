@@ -18,7 +18,7 @@ const EleInDashboard = lazy(() => import("@dashboard/EleInDashboard").then(m => 
 const EleInAccounts = lazy(() => import("@accounts/EleInAccounts").then(m => ({ default: m.EleInAccounts })))
 const EleInLeads = lazy(() => import("@leads/EleInLeads").then(m => ({ default: m.EleInLeads })))
 const EleInCampaigns = lazy(() => import("@campaigns/EleInCampaigns").then(m => ({ default: m.EleInCampaigns })))
-const EleInCreateCampaign = lazy(() => import("@campaigns/EleInCreateCampaign").then(m => ({ default: m.EleInCreateCampaign })))
+const EleInCreateCampaign = lazy(() => import("@campaigns/EleInCreateCampaign").then(m => ({ default: m.default || m.EleInCreateCampaign })))
 const EleInCampaignDetail = lazy(() => import("@campaigns/EleInCampaignDetail").then(m => ({ default: m.EleInCampaignDetail })))
 const EleInInbox = lazy(() => import("@inbox/EleInInbox").then(m => ({ default: m.EleInInbox })))
 const EleInTemplates = lazy(() => import("./core/layout/EleInTemplates").then(m => ({ default: m.EleInTemplates })))
@@ -64,7 +64,7 @@ function NotFound() {
       </div>
       <h1 className="text-2xl font-bold mb-2">Page not found</h1>
       <p className="text-muted-foreground mb-8">The page you're looking for doesn't exist.</p>
-      <button type="button" onClick={() => navigate('/elein/campaigns')} className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors">Back to Campaigns</button>
+      <button type="button" onClick={() => navigate('/elein')} className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors">Back to Dashboard</button>
     </div>
   );
 }
@@ -99,7 +99,9 @@ export default function App() {
                 <Route path="/accept-invite" element={<AcceptInvite />} />
                 
                 <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                  <Route path="/" element={<Navigate to="/elein/campaigns" replace />} />
+                  <Route path="/" element={<Navigate to="/elein" replace />} />
+                  <Route path="/dashboard" element={<Navigate to="/elein" replace />} />
+                  <Route path="/elein/dashboard" element={<Navigate to="/elein" replace />} />
                   <Route path="/chat" element={<ChatInterface />} />
 
                   <Route path="/elein" element={<EleInDashboard />} />
