@@ -883,17 +883,54 @@ def renew_account_session(
     if not li_at:
         raise ValueError("Missing 'li_at' cookie. Make sure you are logged into linkedin.com when exporting cookies.")
 
-    acc_res = supabase.table("accounts").select("id, workspace_id, proxy_id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+    acc_res = supabase.table("accounts").select("id, workspace_id, proxy_id, linkedin_profile_url, name").eq("id", account_id).eq("workspace_id", workspace_id).execute()
     if not acc_res.data:
         raise ValueError("Account not found or access denied")
     acc = acc_res.data[0]
 
     proxy_url = _build_account_proxy_url(acc, supabase)
     worker = LinkedInWorker(cookies_json=cleaned, account_id=account_id, proxy_url=proxy_url)
+    detected_profile_url = ""
     try:
         resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
         if resp.status_code != 200:
             raise ValueError(f"LinkedIn rejected the provided session (HTTP {resp.status_code}). Please log into LinkedIn and re-export.")
+
+        # Paranoia Layer 0 & 2: Human Error & Identity Guard
+        try:
+            me_data = resp.json() if callable(getattr(resp, "json", None)) else {}
+            if isinstance(me_data, dict):
+                mini = me_data.get("miniProfile") or {}
+                if isinstance(mini, dict):
+                    first = str(mini.get("firstName") or "")
+                    last = str(mini.get("lastName") or "")
+                    pub_id = str(mini.get("publicIdentifier") or "").strip().lower()
+                    detected_name = f"{first} {last}".strip() or "LinkedIn Account"
+                    if pub_id:
+                        detected_profile_url = f"https://www.linkedin.com/in/{pub_id}/"
+
+                    existing_profile = str(acc.get("linkedin_profile_url") or "").strip()
+                    if existing_profile and pub_id:
+                        clean_existing = existing_profile.split("?")[0].split("#")[0].rstrip("/").strip().lower()
+                        existing_parts = [p for p in clean_existing.split("/") if p]
+                        existing_pub_id = ""
+                        if "in" in existing_parts:
+                            idx = existing_parts.index("in")
+                            if idx + 1 < len(existing_parts):
+                                existing_pub_id = existing_parts[idx + 1]
+                        else:
+                            existing_pub_id = existing_parts[-1] if existing_parts else ""
+
+                        if existing_pub_id and existing_pub_id != pub_id:
+                            raise ValueError(
+                                f"Identity mismatch! You provided session cookies for '{detected_name}' ({detected_profile_url}), "
+                                f"but this sender account is linked to '{acc.get('name') or 'Existing Sender'}' ({existing_profile}). "
+                                f"Please log into the matching LinkedIn profile and re-export."
+                            )
+        except ValueError:
+            raise
+        except Exception as parse_err:
+            logger.warning(f"Could not parse voyager /me response for identity match: {parse_err}")
     except ValueError:
         raise
     except Exception as e:
@@ -931,6 +968,8 @@ def renew_account_session(
         "last_health_check_at": now_iso,
         "updated_at": now_iso
     }
+    if not acc.get("linkedin_profile_url") and detected_profile_url:
+        update_data["linkedin_profile_url"] = detected_profile_url
 
     try:
         update_data["health_score"] = 95

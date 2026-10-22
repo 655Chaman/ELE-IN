@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid"
 import { HR_NODE_DEFS, type EINodeType } from "./eiNodeDefs"
-import type { SeqTreeNode, StickyNote } from "@campaigns/eiTreeStore"
+import { dagToTree, type SeqTreeNode, type StickyNote } from "@campaigns/eiTreeStore"
 
 export interface EleInBlueprintAuthor {
   agencyName?: string
@@ -99,6 +99,7 @@ export function extractTemplateVariables(text: string): string[] {
 
 // ─── Comprehensive Variable Audit ────────────────────────────────────────────
 export function auditBlueprintVariables(rootNodes: SeqTreeNode[]): VariableAuditItem[] {
+  const safeRoots = Array.isArray(rootNodes) ? rootNodes.filter(r => r && typeof r === "object" && r.id) : []
   const auditMap = new Map<string, { rawTokens: Set<string>; hasFallback: boolean; fallbackVal?: string; count: number }>()
 
   function scanText(text: string) {
@@ -131,24 +132,27 @@ export function auditBlueprintVariables(rootNodes: SeqTreeNode[]): VariableAudit
     }
   }
 
-  function walk(node: SeqTreeNode) {
-    if (node.data) {
+  function walk(node: SeqTreeNode, visited = new Set<string>()) {
+    if (!node || !node.id || visited.has(node.id)) return
+    visited.add(node.id)
+
+    if (node.data && typeof node.data === "object") {
       for (const val of Object.values(node.data)) {
         if (typeof val === "string") {
           scanText(val)
         }
       }
     }
-    if (node.children) {
+    if (node.children && typeof node.children === "object") {
       for (const branch of Object.values(node.children)) {
         if (Array.isArray(branch)) {
-          for (const child of branch) walk(child)
+          for (const child of branch) walk(child, visited)
         }
       }
     }
   }
 
-  for (const root of rootNodes) walk(root)
+  for (const root of safeRoots) walk(root)
 
   return Array.from(auditMap.entries()).map(([name, item]) => ({
     name,
@@ -260,6 +264,9 @@ export function calculateBlueprintStats(
   rootNodes: SeqTreeNode[],
   stickyNotes: StickyNote[] = []
 ): EleInBlueprintStats {
+  const safeRoots = Array.isArray(rootNodes) ? rootNodes.filter(r => r && typeof r === "object" && r.id) : []
+  const safeNotes = Array.isArray(stickyNotes) ? stickyNotes.filter(n => n && typeof n === "object" && n.id) : []
+
   let nodeCount = 0
   let actionCount = 0
   let conditionCount = 0
@@ -269,7 +276,7 @@ export function calculateBlueprintStats(
   const channelsSet = new Set<"linkedin" | "email" | "voice" | "multichannel">()
 
   function walk(node: SeqTreeNode, visited = new Set<string>()) {
-    if (visited.has(node.id)) return
+    if (!node || !node.id || visited.has(node.id)) return
     visited.add(node.id)
     nodeCount++
 
@@ -292,7 +299,7 @@ export function calculateBlueprintStats(
     }
 
     // Channels detection
-    const typeStr = node.type.toLowerCase()
+    const typeStr = (node.type || "").toLowerCase()
     if (typeStr.includes("email") || typeStr.includes("inmail")) {
       channelsSet.add("email")
     }
@@ -304,7 +311,7 @@ export function calculateBlueprintStats(
     }
 
     // Variables inspection
-    if (node.data) {
+    if (node.data && typeof node.data === "object") {
       for (const val of Object.values(node.data)) {
         if (typeof val === "string") {
           for (const v of extractTemplateVariables(val)) {
@@ -314,7 +321,7 @@ export function calculateBlueprintStats(
       }
     }
 
-    if (node.children) {
+    if (node.children && typeof node.children === "object") {
       for (const branch of Object.values(node.children)) {
         if (Array.isArray(branch)) {
           for (const child of branch) {
@@ -325,7 +332,7 @@ export function calculateBlueprintStats(
     }
   }
 
-  for (const root of rootNodes) {
+  for (const root of safeRoots) {
     walk(root)
   }
 
@@ -340,7 +347,7 @@ export function calculateBlueprintStats(
     conditionCount,
     aiCount,
     delayDaysTotal,
-    stickyNotesCount: stickyNotes.length,
+    stickyNotesCount: safeNotes.length,
     requiredVariables: Array.from(variablesSet),
     channels,
   }
@@ -350,21 +357,32 @@ export function calculateBlueprintStats(
 export function exportBlueprint(
   rootNodes: SeqTreeNode[],
   stickyNotes: StickyNote[],
-  metadata: Partial<EleInBlueprintMetadata> & { name: string },
+  metadata?: Partial<EleInBlueprintMetadata>,
   options: { sanitize?: boolean; includeStickyNotes?: boolean } = {}
 ): EleInBlueprint {
+  const safeRoots = Array.isArray(rootNodes) ? rootNodes.filter(r => r && typeof r === "object" && r.id) : []
+  const safeNotes = Array.isArray(stickyNotes) ? stickyNotes.filter(n => n && typeof n === "object" && n.id) : []
+  const safeMeta = metadata || {}
   const sanitize = options.sanitize ?? true
   const includeSticky = options.includeStickyNotes ?? true
 
-  function sanitizeNode(node: SeqTreeNode): SeqTreeNode {
-    const rawData = sanitize ? deepSanitizeValue(node.data) : { ...node.data }
+  function sanitizeNode(node: SeqTreeNode, visited = new Set<string>()): SeqTreeNode {
+    if (!node || !node.id) {
+      return { id: "invalid_step", type: "sequence_end", data: {}, children: {} }
+    }
+    if (visited.has(node.id)) {
+      return { id: `${node.id}_cycle_end`, type: "sequence_end", data: {}, children: {} }
+    }
+    visited.add(node.id)
+
+    const rawData = sanitize ? deepSanitizeValue(node.data) : { ...(node.data || {}) }
     const cleanData: Record<string, any> = (typeof rawData === "object" && rawData !== null) ? rawData : {}
 
     const cleanChildren: Record<string, SeqTreeNode[]> = {}
-    if (node.children) {
+    if (node.children && typeof node.children === "object") {
       for (const [key, branch] of Object.entries(node.children)) {
         cleanChildren[key] = Array.isArray(branch)
-          ? branch.map(child => sanitizeNode(child))
+          ? branch.map(child => sanitizeNode(child, new Set(visited)))
           : []
       }
     }
@@ -378,9 +396,9 @@ export function exportBlueprint(
     }
   }
 
-  const cleanRoots = rootNodes.map(r => sanitizeNode(r))
+  const cleanRoots = safeRoots.map(r => sanitizeNode(r))
   const cleanNotes: StickyNote[] = includeSticky
-    ? stickyNotes.map(sn => ({
+    ? safeNotes.map(sn => ({
         id: sn.id,
         x: sn.x,
         y: sn.y,
@@ -397,19 +415,19 @@ export function exportBlueprint(
   const stats = calculateBlueprintStats(cleanRoots, cleanNotes)
 
   const finalMetadata: EleInBlueprintMetadata = {
-    name: metadata.name.trim() || "Exported Workflow Blueprint",
-    description: metadata.description?.trim() ? String(deepSanitizeValue(metadata.description.trim())) : "",
-    version: metadata.version || "1.0.0",
+    name: safeMeta.name?.trim() || "Exported Workflow Blueprint",
+    description: safeMeta.description?.trim() ? String(deepSanitizeValue(safeMeta.description.trim())) : "",
+    version: safeMeta.version || "1.0.0",
     schemaVersion: "elein-blueprint-v1",
     exportedAt: new Date().toISOString(),
     branding: {
-      agencyName: metadata.branding?.agencyName ? String(deepSanitizeValue(metadata.branding.agencyName)) : "Ele-in Studio",
-      authorName: metadata.branding?.authorName ? String(deepSanitizeValue(metadata.branding.authorName)) : "Sequence Architect",
-      accentColor: metadata.branding?.accentColor || "#6366f1",
-      badge: metadata.branding?.badge ? String(deepSanitizeValue(metadata.branding.badge)) : "Verified Blueprint",
-      website: metadata.branding?.website ? String(deepSanitizeValue(metadata.branding.website)) : undefined,
+      agencyName: safeMeta.branding?.agencyName ? String(deepSanitizeValue(safeMeta.branding.agencyName)) : "Ele-in Studio",
+      authorName: safeMeta.branding?.authorName ? String(deepSanitizeValue(safeMeta.branding.authorName)) : "Sequence Architect",
+      accentColor: safeMeta.branding?.accentColor || "#6366f1",
+      badge: safeMeta.branding?.badge ? String(deepSanitizeValue(safeMeta.branding.badge)) : "Verified Blueprint",
+      website: safeMeta.branding?.website ? String(deepSanitizeValue(safeMeta.branding.website)) : undefined,
     },
-    tags: metadata.tags || ["custom-sequence", "outbound"],
+    tags: safeMeta.tags || ["custom-sequence", "outbound"],
     stats,
   }
 
@@ -423,15 +441,117 @@ export function exportBlueprint(
   }
 }
 
+// ─── Universal Blueprint Normalizer ─────────────────────────────────────────
+export function normalizeToBlueprint(data: unknown): Record<string, any> | null {
+  if (!data) return null
+
+  // 1. Array of root nodes: [ { id, type, ... } ]
+  if (Array.isArray(data)) {
+    return {
+      schema: "elein-blueprint-v1",
+      metadata: {
+        id: `blueprint-${Date.now()}`,
+        name: "Imported Sequence",
+        description: "Imported from sequence node list",
+        version: "1.0.0",
+        schemaVersion: "elein-blueprint-v1",
+        exportedAt: new Date().toISOString(),
+        branding: { agencyName: "Ele-in Studio" },
+        tags: ["imported"]
+      },
+      sequence: {
+        rootNodes: data,
+        stickyNotes: []
+      }
+    }
+  }
+
+  if (typeof data !== "object") return null
+  const obj = data as Record<string, any>
+
+  // 2. Already strict elein-blueprint-v1
+  if (obj.schema === "elein-blueprint-v1" && obj.sequence && Array.isArray(obj.sequence.rootNodes)) {
+    return obj
+  }
+
+  // 3. Object with sequence.rootNodes
+  if (obj.sequence && Array.isArray(obj.sequence.rootNodes)) {
+    return {
+      schema: "elein-blueprint-v1",
+      metadata: {
+        id: obj.metadata?.id || `blueprint-${Date.now()}`,
+        name: obj.metadata?.name || obj.name || "Imported Sequence",
+        description: obj.metadata?.description || obj.description || "Imported sequence blueprint",
+        version: obj.metadata?.version || "1.0.0",
+        schemaVersion: "elein-blueprint-v1",
+        exportedAt: obj.metadata?.exportedAt || new Date().toISOString(),
+        branding: obj.metadata?.branding || { agencyName: "Ele-in Studio" },
+        tags: obj.metadata?.tags || ["imported"]
+      },
+      sequence: {
+        rootNodes: obj.sequence.rootNodes,
+        stickyNotes: Array.isArray(obj.sequence.stickyNotes) ? obj.sequence.stickyNotes : []
+      }
+    }
+  }
+
+  // 4. Object with rootNodes array: { rootNodes: [...] }
+  if (Array.isArray(obj.rootNodes)) {
+    return {
+      schema: "elein-blueprint-v1",
+      metadata: {
+        id: obj.id || `blueprint-${Date.now()}`,
+        name: obj.name || "Imported Sequence",
+        description: obj.description || "Imported sequence",
+        version: "1.0.0",
+        schemaVersion: "elein-blueprint-v1",
+        exportedAt: new Date().toISOString(),
+        branding: { agencyName: "Ele-in Studio" },
+        tags: ["imported"]
+      },
+      sequence: {
+        rootNodes: obj.rootNodes,
+        stickyNotes: Array.isArray(obj.stickyNotes) ? obj.stickyNotes : []
+      }
+    }
+  }
+
+  // 5. Legacy DAG: { nodes: [...], edges: [...] }
+  if (Array.isArray(obj.nodes)) {
+    const rootNodes = dagToTree(obj.nodes, Array.isArray(obj.edges) ? obj.edges : [])
+    return {
+      schema: "elein-blueprint-v1",
+      metadata: {
+        id: obj.id || `blueprint-${Date.now()}`,
+        name: obj.name || "Imported DAG Sequence",
+        description: obj.description || "Imported from legacy graph structure",
+        version: "1.0.0",
+        schemaVersion: "elein-blueprint-v1",
+        exportedAt: new Date().toISOString(),
+        branding: { agencyName: "Ele-in Studio" },
+        tags: ["legacy-dag", "imported"]
+      },
+      sequence: {
+        rootNodes,
+        stickyNotes: []
+      }
+    }
+  }
+
+  return obj
+}
+
 // ─── Validate Function ───────────────────────────────────────────────────────
 export function validateBlueprint(data: unknown): BlueprintValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
 
-  if (!data || typeof data !== "object") {
+  const normalized = normalizeToBlueprint(data)
+
+  if (!normalized || typeof normalized !== "object") {
     return {
       isValid: false,
-      errors: ["Invalid Blueprint: payload must be a JSON object."],
+      errors: ["Invalid Blueprint: payload must be a JSON object or array."],
       warnings: [],
       stats: {
         nodeCount: 0,
@@ -447,7 +567,7 @@ export function validateBlueprint(data: unknown): BlueprintValidationResult {
     }
   }
 
-  const obj = data as Record<string, any>
+  const obj = normalized
 
   if (obj.schema !== "elein-blueprint-v1") {
     errors.push("Unsupported schema version: expected 'elein-blueprint-v1'.")
@@ -531,7 +651,7 @@ export function validateBlueprint(data: unknown): BlueprintValidationResult {
     errors,
     warnings,
     stats,
-    parsedBlueprint: errors.length === 0 ? (data as EleInBlueprint) : null,
+    parsedBlueprint: errors.length === 0 ? (obj as EleInBlueprint) : null,
   }
 }
 

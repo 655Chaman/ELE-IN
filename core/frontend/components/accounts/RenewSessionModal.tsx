@@ -8,11 +8,12 @@ import { cn } from '@/lib/utils'
 interface RenewSessionModalProps {
   accountId: string
   accountName: string
+  profileUrl?: string
   onClose: () => void
   onSuccess: () => void
 }
 
-export function RenewSessionModal({ accountId, accountName, onClose, onSuccess }: RenewSessionModalProps) {
+export function RenewSessionModal({ accountId, accountName, profileUrl, onClose, onSuccess }: RenewSessionModalProps) {
   const [cookieInput, setCookieInput] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -216,9 +217,23 @@ export function RenewSessionModal({ accountId, accountName, onClose, onSuccess }
               <h2 id="renew-session-title" className="text-base font-semibold tracking-tight text-foreground">
                 Renew LinkedIn Session
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Account: <strong className="text-foreground">{accountName}</strong>
-              </p>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                <span>Account:</span>
+                <strong className="text-foreground">{accountName}</strong>
+                {profileUrl && (
+                  <>
+                    <span>·</span>
+                    <a
+                      href={profileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline font-mono text-[11px] truncate max-w-[220px]"
+                    >
+                      {profileUrl.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//, '').replace(/\/$/, '')}
+                    </a>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <button
@@ -241,11 +256,18 @@ export function RenewSessionModal({ accountId, accountName, onClose, onSuccess }
               className="space-y-4"
             >
               {/* Informative Banner */}
-              <div className="p-3 rounded-lg bg-muted/20 border border-border/70 flex items-center gap-2.5 text-xs text-muted-foreground leading-relaxed">
-                <ShieldCheck size={16} className="text-success shrink-0" />
-                <p>
-                  Renewing session cookies refreshes your connection without resetting warmup progress, daily counters, or paused campaign sequences.
-                </p>
+              <div className="p-3 rounded-lg bg-muted/20 border border-border/70 flex items-start gap-2.5 text-xs text-muted-foreground leading-relaxed">
+                <ShieldCheck size={16} className="text-success shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p>
+                    Renewing session cookies refreshes your connection without resetting warmup progress, daily counters, or paused campaign sequences.
+                  </p>
+                  {profileUrl && (
+                    <p className="text-[11px] text-foreground font-medium">
+                      Identity Guard: Ensure you are logged into <strong>{accountName}</strong> on LinkedIn before copying cookies.
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Textarea */}

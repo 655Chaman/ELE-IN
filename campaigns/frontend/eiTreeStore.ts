@@ -397,19 +397,22 @@ export function hasDagCycles(nodes: any[], edges: any[]): boolean {
 }
 
 export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions): SeqTreeNode[] {
+  const safeNodes = Array.isArray(nodes) ? nodes.filter(n => n && typeof n === "object" && n.id) : []
+  const safeEdges = Array.isArray(edges) ? edges.filter(e => e && typeof e === "object" && e.source && e.target) : []
+
   const nodeMap = new Map<string, any>()
-  nodes.forEach(n => nodeMap.set(n.id, n))
+  safeNodes.forEach(n => nodeMap.set(n.id, n))
 
   const childrenMap = new Map<string, Array<{target: string, handle: string}>>()
-  edges.forEach(e => {
+  safeEdges.forEach(e => {
     const list = childrenMap.get(e.source) || []
     list.push({ target: e.target, handle: e.sourceHandle || "output" })
     childrenMap.set(e.source, list)
   })
 
   const inDegree = new Map<string, number>()
-  nodes.forEach(n => inDegree.set(n.id, 0))
-  edges.forEach(e => {
+  safeNodes.forEach(n => inDegree.set(n.id, 0))
+  safeEdges.forEach(e => {
     inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
   })
 
@@ -470,26 +473,26 @@ export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions
     return {
       id: n.id,
       type: n.type,
-      data: n.data,
+      data: n.data || {},
       children
     };
   }
 
   // Find nodes with inDegree 0
-  let rootIds = nodes.filter(n => (inDegree.get(n.id) || 0) === 0).map(n => n.id);
+  let rootIds = safeNodes.filter(n => (inDegree.get(n.id) || 0) === 0).map(n => n.id);
 
   // Paranoia Layer 1 & 2 (UI-04): If graph has a cycle such that every node has inDegree > 0,
   // do NOT wipe out the entire sequence! Pick the most likely entry node (e.g. trigger node,
   // or node with lowest inDegree, or nodes[0]).
-  if (rootIds.length === 0 && nodes.length > 0) {
+  if (rootIds.length === 0 && safeNodes.length > 0) {
     detectedCycles = true
-    const triggerNode = nodes.find(n => n.type === "trigger" || n.type === "sequence_start");
+    const triggerNode = safeNodes.find(n => n.type === "trigger" || n.type === "sequence_start");
     if (triggerNode) {
       rootIds = [triggerNode.id];
     } else {
-      let minNode = nodes[0];
+      let minNode = safeNodes[0];
       let minIn = inDegree.get(minNode.id) ?? 999;
-      for (const n of nodes) {
+      for (const n of safeNodes) {
         const d = inDegree.get(n.id) ?? 0;
         if (d < minIn) {
           minIn = d;
@@ -517,7 +520,7 @@ export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions
 
   // Layer 1 Environmental Paranoia: If any disconnected nodes or unattached island nodes remain,
   // recover them as roots instead of silently dropping them!
-  nodes.forEach(n => {
+  safeNodes.forEach(n => {
     if (!processedNodeIds.has(n.id)) {
       const recovered = buildTree(n.id, new Set<string>());
       if (recovered) {
@@ -539,12 +542,13 @@ export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions
 }
 
 export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } {
+  const safeRoots = Array.isArray(roots) ? roots.filter(r => r && typeof r === "object" && r.id) : []
   const nodes: any[] = []
   const edges: any[] = []
   const visited = new Set<string>()
 
-  function traverse(node: SeqTreeNode) {
-    if (visited.has(node.id)) return
+  function traverse(node: SeqTreeNode, depth = 0) {
+    if (!node || !node.id || visited.has(node.id) || depth > 250) return
     visited.add(node.id)
 
     const cleanData = { ...(node.data || {}) }
@@ -590,19 +594,21 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
     })
 
     for (const [handle, children] of Object.entries(node.children || {})) {
+      if (!Array.isArray(children)) continue
       for (const child of children) {
+        if (!child || !child.id) continue
         edges.push({
           id: `e-${node.id}-${child.id}`,
           source: node.id,
           sourceHandle: handle,
           target: child.id
         })
-        traverse(child)
+        traverse(child, depth + 1)
       }
     }
   }
 
-  roots.forEach(traverse)
+  safeRoots.forEach(r => traverse(r))
   return { nodes, edges }
 }
 

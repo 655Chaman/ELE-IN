@@ -14,6 +14,7 @@ function getNodeLabel(node: SeqTreeNode): string {
 export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string, string[]>, warnings: Record<string, string[]> } {
   const errors: Record<string, string[]> = {};
   const warnings: Record<string, string[]> = {};
+  if (!Array.isArray(rootNodes)) return { errors, warnings };
 
   interface PathState {
     connectionStatus: 'unknown' | 'pending' | 'accepted' | 'withdrawn' | 'not_connected';
@@ -24,25 +25,26 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
   }
 
   function traverse(node: SeqTreeNode, state: PathState, prevNode: SeqTreeNode | null, visited: Set<string> = new Set()) {
-    if (visited.has(node.id)) {
-      // Cycle detected, stop traversing this path to prevent call stack exceeded crash
+    if (!node || !node.id || visited.has(node.id)) {
+      // Cycle detected or invalid node, stop traversing this path
       return;
     }
     visited.add(node.id);
     const nodeErrors: string[] = [];
     const nodeWarnings: string[] = [];
     const stepLabel = getNodeLabel(node);
+    const nodeType = typeof node.type === 'string' ? node.type : '';
+    const nodeData = (node.data && typeof node.data === 'object') ? node.data : {};
 
     const exemptIdentical = ['send_message', 'send_message_with_doc', 'send_message_with_image', 'sequence_end'];
-    if (node.type === state.lastAction && !exemptIdentical.includes(node.type)) {
+    if (nodeType === state.lastAction && !exemptIdentical.includes(nodeType)) {
       nodeErrors.push(`Step "${stepLabel}": This step is identical to the immediate previous step. This is usually a mistake. How to correct: Delete this node or change its action type.`);
     }
 
-
-    const isMessageNode = node.type.startsWith('send_message') || node.type.startsWith('send_ai_message') || node.type === 'send_meeting_invite' || node.type === 'send_intro_call_invite' || node.type === 'send_inmail' || node.type === 'send_paid_inmail' || node.type === 'send_voice_note';
+    const isMessageNode = nodeType.startsWith('send_message') || nodeType.startsWith('send_ai_message') || nodeType === 'send_meeting_invite' || nodeType === 'send_intro_call_invite' || nodeType === 'send_inmail' || nodeType === 'send_paid_inmail' || nodeType === 'send_voice_note';
     
     let nodeDelay = 1;
-    const rawDelay = node.data.delay;
+    const rawDelay = nodeData.delay;
     if (rawDelay !== undefined && rawDelay !== null) {
       const parsed = parseFloat(String(rawDelay));
       nodeDelay = isNaN(parsed) ? 1 : Math.ceil(parsed);
@@ -55,8 +57,8 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
       nodeErrors.push(`Step "${stepLabel}": Delay cannot be negative.`);
     }
     
-    if (['send_message', 'send_message_with_doc', 'send_message_with_image', 'send_intro_message', 'send_followup', 'send_breakup_message', 'send_reengage_message'].includes(node.type)) {
-       const bodyText = (node.data?.body || node.data?.message || '') as string;
+    if (['send_message', 'send_message_with_doc', 'send_message_with_image', 'send_intro_message', 'send_followup', 'send_breakup_message', 'send_reengage_message'].includes(nodeType)) {
+       const bodyText = (nodeData.body || nodeData.message || '') as string;
        if (!bodyText || typeof bodyText !== 'string' || bodyText.trim() === '') {
          nodeErrors.push(`Step "${stepLabel}": Your message body is empty! Leads will receive a blank message. How to correct: Click this node and write a message.`);
        }

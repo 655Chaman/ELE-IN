@@ -13,7 +13,7 @@ import {
   UserPlus, MessageSquare, Eye, Heart, Users, Mail,
   AtSign, Zap, CheckCircle2, Shield, StopCircle, AlertCircle,
   Phone, CalendarCheck, Star, Mic2, Tag, Bell, Database, Info, ZoomIn, ZoomOut, Maximize, Undo, Redo, FileText, Save,
-  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote
+  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote, Download, Upload
 } from "lucide-react"
 import useSWR, { useSWRConfig } from "swr"
 import { fetcher } from "@/lib/apiClient"
@@ -955,7 +955,9 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
     endBranch(parentId, branchLabel)
   }, [parentId, branchLabel, endBranch])
 
-  if (nodes.length === 0) {
+  const safeNodes = Array.isArray(nodes) ? nodes.filter(n => n && typeof n === "object" && n.id) : []
+
+  if (safeNodes.length === 0) {
     return (
       <div className="flex flex-col items-center">
         <VLine height={20} active={false} />
@@ -973,7 +975,7 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
 
   return (
     <div className="flex flex-col items-center">
-      {nodes.map((node, idx) => {
+      {safeNodes.map((node, idx) => {
         const outputsDef = HR_NODE_DEFS[node.type as EINodeType]?.outputs || node.data?.outputs
         const expectedLabels = outputsDef && outputsDef.length > 0 ? outputsDef : (node.type === "sequence_end" ? [] : ["then"])
         const actualLabels = Object.keys(node.children || {})
@@ -1933,7 +1935,36 @@ export function EISequenceTree({
       </AnimatePresence>
 
       {/* Top Right Floating Toolbar: Safety Radar & Quick Presets */}
-      <div className="absolute top-6 right-6 z-40 flex items-center gap-3 pointer-events-auto">
+      <div className="absolute top-6 right-6 z-40 flex items-center gap-2.5 pointer-events-auto">
+        {!readOnly && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setBlueprintModalTab("import")
+                setIsBlueprintModalOpen(true)
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
+              title="Import sequence (.elein, .json)"
+            >
+              <Upload size={14} className="text-primary" />
+              <span>Import</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBlueprintModalTab("export")
+                setIsBlueprintModalOpen(true)
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
+              title="Export sequence blueprint (.elein, .json)"
+            >
+              <Download size={14} className="text-primary" />
+              <span>Export</span>
+            </button>
+          </>
+        )}
+
         {!readOnly && onTemplatesClick && (
           <button
             type="button"
@@ -2094,22 +2125,31 @@ export function EISequenceTree({
               </div>
             )}
 
-            {/* Blueprint Hub (Make/n8n Export & Import) */}
-            <div className="border-b border-border p-2 bg-card/40 flex flex-col gap-1.5">
+            {/* Blueprint Hub (Export & Import) */}
+            <div className="border-b border-border p-2 bg-card/40 flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => {
                   setBlueprintModalTab("export")
                   setIsBlueprintModalOpen(true)
                 }}
-                className="flex items-center gap-2 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 w-full cursor-pointer"
-                title="Export or Import Sequence Blueprint (.elein)"
+                className="flex-1 flex items-center justify-center gap-1.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 cursor-pointer border border-border/50"
+                title="Export Sequence Blueprint (.elein, JSON)"
               >
-                <Layers size={14} className="text-primary shrink-0" />
-                <span className="font-medium">Blueprint Hub</span>
-                <span className="ml-auto text-[9px] px-1.5 py-0.2 bg-primary/10 text-primary font-bold rounded border border-primary/20">
-                  Import / Export
-                </span>
+                <Download size={13} className="text-primary shrink-0" />
+                <span>Export</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBlueprintModalTab("import")
+                  setIsBlueprintModalOpen(true)
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 cursor-pointer border border-border/50"
+                title="Import Sequence Blueprint (.elein, JSON)"
+              >
+                <Upload size={13} className="text-primary shrink-0" />
+                <span>Import</span>
               </button>
             </div>
             <button

@@ -71,6 +71,13 @@ class AccountCreate(BaseModel):
     proxy_id: Optional[str] = Field(None, max_length=255)
     model_config = ConfigDict(extra="ignore")
 
+class AccountUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    daily_connection_limit: Optional[int] = Field(None, ge=1, le=100)
+    daily_message_limit: Optional[int] = Field(None, ge=1, le=150)
+    proxy_id: Optional[str] = Field(None, max_length=255)
+    model_config = ConfigDict(extra="ignore")
+
 class AccountResponse(BaseModel):
     id: str
     name: str
@@ -87,6 +94,7 @@ class AccountResponse(BaseModel):
     status: Optional[str] = "ACTIVE"
     manual_send_suspected: Optional[bool] = False
     last_health_check_at: Optional[str] = None
+    tags: Optional[List[str]] = Field(default_factory=list)
 
 
 class WorkspaceBlueprintCreate(BaseModel):

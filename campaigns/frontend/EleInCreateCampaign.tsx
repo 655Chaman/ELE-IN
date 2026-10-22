@@ -5,7 +5,7 @@ import useSWR from "swr"
 
 import { motion, AnimatePresence } from "motion/react"
 
-import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight, ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle, AlertCircle, Briefcase, Link as LinkIcon , Shield, ShieldCheck, Lock, Globe, Clock, Calendar, Sparkles} from "lucide-react"
+import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, FileText, Copy, Undo, Redo, ArrowRight, ChevronLeft, Check, CheckCircle2, ChevronRight, X, Search, Tag, Users, MessageSquare, ArrowUpRight, Eye, AlertTriangle, AlertCircle, Briefcase, Link as LinkIcon , Shield, ShieldCheck, Lock, Globe, Clock, Calendar, Sparkles, Upload, Download} from "lucide-react"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { cn } from "@/lib/utils"
 import { useHRTreeStore, dagToTree, treeToDag, saveDraftToLocalStorage } from "@campaigns/eiTreeStore"
@@ -807,6 +807,7 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(goalParam)
   const [showBrowser, setShowBrowser] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isBlank) {
@@ -829,15 +830,33 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string)
-        if (json.nodes && json.edges) {
-          loadTree(dagToTree(json.nodes, json.edges))
+        if (json?.sequence?.rootNodes && Array.isArray(json.sequence.rootNodes)) {
+          loadTree(json.sequence.rootNodes, json.sequence.stickyNotes || [])
+          setMode("build")
+          toast.success(`Blueprint "${json.metadata?.name || file.name}" imported successfully`)
+          return
+        }
+        if (Array.isArray(json?.rootNodes)) {
+          loadTree(json.rootNodes, json.stickyNotes || [])
           setMode("build")
           toast.success(`Template "${file.name}" imported successfully`)
-        } else {
-          throw new Error("Invalid format")
+          return
         }
-      } catch (err) {
-        toast.error("Failed to parse template file")
+        if (Array.isArray(json)) {
+          loadTree(json)
+          setMode("build")
+          toast.success(`Template "${file.name}" imported successfully`)
+          return
+        }
+        if (json?.nodes) {
+          loadTree(dagToTree(json.nodes, json.edges || []))
+          setMode("build")
+          toast.success(`Template "${file.name}" imported successfully`)
+          return
+        }
+        throw new Error("Unrecognized sequence or template format")
+      } catch (err: any) {
+        toast.error("Failed to parse template file", { description: err.message || "Invalid JSON or unsupported schema." })
       }
     }
     reader.readAsText(file)
@@ -871,58 +890,97 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   if (mode === "choose") {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
-        <div className="max-w-4xl w-full">
-          <div className="text-center mb-12">
+        <div className="max-w-5xl w-full">
+          <div className="text-center mb-10">
             <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">Start outreach</h2>
-            <p className="text-sm text-muted-foreground">Pick a goal to load a proven day-one sequence.</p>
+            <p className="text-sm text-muted-foreground">Pick a goal to load a proven day-one sequence, or start with your own blueprint.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {/* Option A */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setSelectedTemplateId('get_customers');
               setMode("template_choice");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
-                <Users size={24} className="text-primary" />
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <Users size={22} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Get customers</h3>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Get customers</h3>
               <p className="text-xs text-muted-foreground">Message people who can buy. Goal: book a meeting.</p>
             </SpotlightCard>
 
             {/* Option B */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setSelectedTemplateId('hire_people');
               setMode("template_choice");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
-                <Briefcase size={24} className="text-primary" />
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <Briefcase size={22} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Hire people</h3>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Hire people</h3>
               <p className="text-xs text-muted-foreground">Message people you want on the team. Goal: a hire.</p>
             </SpotlightCard>
 
             {/* Option C */}
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               setSelectedTemplateId('get_intros');
               setMode("template_choice");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
-                <LinkIcon size={24} className="text-primary" />
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <LinkIcon size={22} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Get intros</h3>
-              <p className="text-xs text-muted-foreground">Message people who can open a door  -  investor, partner, or their network.</p>
-            </SpotlightCard>
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              setMode("wizard");
-            }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
-                <Shield size={24} className="text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Warm-up Only</h3>
-              <p className="text-xs text-muted-foreground">Set up a slow sequence to build account trust.</p>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Get intros</h3>
+              <p className="text-xs text-muted-foreground">Message people who can open a door  -  investor, partner, or network.</p>
             </SpotlightCard>
 
+            {/* Option D */}
+            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+              setMode("wizard");
+            }}>
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <Shield size={22} className="text-primary" />
+              </div>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Warm-up Only</h3>
+              <p className="text-xs text-muted-foreground">Set up a slow sequence to build account trust safely.</p>
+            </SpotlightCard>
+          </div>
+
+          {/* Quick Actions Bar */}
+          <div className="mt-8 pt-6 border-t border-border/50 flex flex-wrap items-center justify-center gap-3">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".elein,.json"
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-card border border-border hover:bg-muted text-foreground transition-all cursor-pointer shadow-sm hover:border-primary/50"
+            >
+              <Upload size={14} className="text-primary" />
+              <span>Import Sequence (.elein, .json)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBrowser(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-card border border-border hover:bg-muted text-foreground transition-all cursor-pointer shadow-sm"
+            >
+              <FileText size={14} className="text-muted-foreground" />
+              <span>Browse All Templates</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                loadTree([])
+                setMode("build")
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-card border border-border hover:bg-muted text-foreground transition-all cursor-pointer shadow-sm"
+            >
+              <Plus size={14} className="text-muted-foreground" />
+              <span>Start from Blank Canvas</span>
+            </button>
           </div>
         </div>
 
@@ -947,32 +1005,58 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     const goalName = selectedTemplateId ? (goalNames[selectedTemplateId] ?? selectedTemplateId) : ""
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
-        <div className="max-w-2xl w-full">
+        <div className="max-w-3xl w-full">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".elein,.json"
+            className="hidden"
+          />
 
-          <div className="text-center mb-12">
+          <div className="text-center mb-10">
             <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">How do you want to build this?</h2>
             <p className="text-sm text-muted-foreground">Choose your starting point for <span className="font-medium text-foreground">{goalName}</span></p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <SpotlightCard className="p-7 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
               loadTree([]);
               setMode("build");
             }}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
-                <Plus size={24} className="text-primary" />
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <Plus size={22} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Start from Blank</h3>
-              <p className="text-xs text-muted-foreground">Start with an empty canvas and design your own sequence.</p>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Start from Blank</h3>
+              <p className="text-xs text-muted-foreground">Start with an empty canvas and design your own custom sequence.</p>
             </SpotlightCard>
 
-            <SpotlightCard className="p-8 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-6">
-                <FileText size={24} className="text-primary" />
+            <SpotlightCard className="p-7 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => setShowBrowser(true)}>
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <FileText size={22} className="text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Use a Template</h3>
-              <p className="text-xs text-muted-foreground">Browse our library of proven day-one sequences.</p>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Use a Template</h3>
+              <p className="text-xs text-muted-foreground">Browse proven day-one sequences tailored to this goal.</p>
             </SpotlightCard>
+
+            <SpotlightCard className="p-7 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+                <Upload size={22} className="text-primary" />
+              </div>
+              <h3 className="text-base font-semibold text-foreground mb-1.5">Import Sequence</h3>
+              <p className="text-xs text-muted-foreground">Upload an existing .elein blueprint or JSON sequence file.</p>
+            </SpotlightCard>
+          </div>
+
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={() => setMode("choose")}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              <ArrowLeft size={13} />
+              <span>Back to goal selection</span>
+            </button>
           </div>
         </div>
 

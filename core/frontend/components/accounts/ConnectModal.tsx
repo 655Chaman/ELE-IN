@@ -22,7 +22,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
   const [cookieInput, setCookieInput] = useState("")
   const [name, setName] = useState("")
   const [isWarmup, setIsWarmup] = useState(true)
-  const [proxyId, setProxyId] = useState("")
+  const [proxyId, setProxyId] = useState("auto")
   const [error, setError] = useState("")
   const [validating, setValidating] = useState(false)
   const [validated, setValidated] = useState<{ valid: boolean; profile_url?: string; name?: string } | null>(null)
@@ -174,12 +174,14 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
     // Layer 1 Paranoia: 25-second timeout guard against hung proxy tunnels
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 25000)
+    // Paranoia Layer 0 & 2: Normalize "auto" selector to undefined so backend invokes automatic proxy assignment
+    const resolvedProxyId = proxyId && proxyId !== "auto" ? proxyId : undefined
 
     try {
       const res = await fetchWithAuth("/api/elein/accounts/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_cookies_json: payloadJson, proxy_id: proxyId || undefined }),
+        body: JSON.stringify({ session_cookies_json: payloadJson, proxy_id: resolvedProxyId }),
         signal: controller.signal,
       })
       clearTimeout(timer)
@@ -213,7 +215,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
         warmupTargetDays: 30,
         warmupMaxConnections: 20,
         warmupMaxMessages: 40,
-        proxyId: proxyId || undefined
+        proxyId: resolvedProxyId
       }
 
       await onAdd(account)
@@ -342,19 +344,20 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
                     <label className="text-xs font-medium text-foreground flex items-center justify-between">
                       <span className="flex items-center gap-1">
                         <span>Residential Proxy</span>
-                        {isProxyLocked && <Lock size={11} className="text-amber-500" />}
+                        {isProxyLocked && <Lock size={11} className="text-warning" />}
                       </span>
                       {isProxyLocked ? (
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Pro: Custom Pool</span>
+                        <span className="text-[10px] text-warning font-medium">Pro: Custom Pool</span>
                       ) : (
                         <span className="text-[10px] text-success font-medium">Dedicated Pool</span>
                       )}
                     </label>
                     <Select
-                      value={proxyId}
+                      value={proxyId || "auto"}
                       onValueChange={val => {
-                        if (val !== "" && isProxyLocked) {
+                        if (val !== "auto" && isProxyLocked) {
                           openPaywall({ featureName: "Custom Residential Proxy Rotation" })
+                          setProxyId("auto")
                           return
                         }
                         setProxyId(val)

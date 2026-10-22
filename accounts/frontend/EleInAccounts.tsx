@@ -5,12 +5,12 @@ import {
   Plus, X, ChevronRight, CheckCircle2, AlertCircle,
   Clock, Trash2, Shield, TrendingUp, Ban, AlertTriangle, RefreshCw, PauseCircle,
   UserPlus, MessageSquare, PlayCircle, ExternalLink, Search, ShieldCheck, Check,
-  Lock, Zap, ArrowRight, Server, Layers, MoreVertical, Radio, Activity
+  Lock, Zap, ArrowRight, Server, Layers, MoreVertical, Radio, Activity, Sliders, Tag
 } from "lucide-react"
 import { Linkedin } from "@/components/icons/Linkedin"
 import useSWR from "swr"
 import { usePaywall } from "@/contexts/PaywallContext"
-import { useAccountUsage, useAccountHealth, useAccountLimits } from "@/hooks/useAccounts"
+import { useAccountUsage, useAccountLimits } from "@/hooks/useAccounts"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -26,6 +26,7 @@ import DeleteAccountConfirmationDialog from "@/components/accounts/DeleteAccount
 import { Day1OutreachHealthRadar } from "@/components/accounts/Day1OutreachHealthRadar"
 import { ProxyPoolStudioModal } from "@/components/accounts/ProxyPoolStudioModal"
 import { RenewSessionModal } from "@/components/accounts/RenewSessionModal"
+import { EditAccountSettingsModal } from "@/components/accounts/EditAccountSettingsModal"
 import { AccountShieldVerificationModal } from "@/components/accounts/AccountShieldVerificationModal"
 import { SenderPodStudioModal } from "@/components/accounts/SenderPodStudioModal"
 import { formatRelativeTime } from "@/lib/utils/date"
@@ -48,16 +49,6 @@ function AccountUsageDisplay({ accountId, usageData }: { accountId: string; usag
   )
 }
 
-function AccountHealthBadge({ accountId }: { accountId: string }) {
-  const { healthData: data, error } = useAccountHealth(accountId)
-
-  if (!data && !error) return <span className="text-[11px] text-muted-foreground animate-pulse">Checking health...</span>
-  if (error || data?.status === 'DISCONNECTED') {
-    return <span className="text-[11px] text-destructive font-semibold flex items-center gap-1"><AlertCircle size={11} /> Reconnect Needed</span>
-  }
-  return <span className="text-[11px] text-success flex items-center gap-1"><CheckCircle2 size={11} /> Healthy</span>
-}
-
 export function EleInAccounts() {
   const { 
     accounts, 
@@ -65,6 +56,7 @@ export function EleInAccounts() {
     fetchAccounts, 
     removeAccount: remove, 
     toggleManualMode, 
+    bulkToggleManualMode,
     toggleWarmup,
     clearManualSendWarning, 
     autoHealAccount, 
@@ -87,10 +79,15 @@ export function EleInAccounts() {
   const [showProxyModal, setShowProxyModal] = useState(false)
   const [showPodStudioModal, setShowPodStudioModal] = useState(false)
   const [showRadarDrawer, setShowRadarDrawer] = useState(false)
+  const [radarAccountId, setRadarAccountId] = useState<string | null>(null)
   const [renewAccountId, setRenewAccountId] = useState<string | null>(null)
+  const [editingAccount, setEditingAccount] = useState<LinkedInAccount | null>(null)
   
   // Operational States
   const [isFleetHealing, setIsFleetHealing] = useState(false)
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false)
+  const [showBatchTagInput, setShowBatchTagInput] = useState(false)
+  const [batchTagInput, setBatchTagInput] = useState("")
   const [healingAccountId, setHealingAccountId] = useState<string | null>(null)
   const [togglingWarmupIds, setTogglingWarmupIds] = useState<Set<string>>(new Set())
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set())
@@ -100,7 +97,7 @@ export function EleInAccounts() {
   const [accountToDelete, setAccountToDelete] = useState<{id: string; name: string} | null>(null)
   const [shieldModalAccount, setShieldModalAccount] = useState<{id: string; name: string} | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "warmup" | "action_required">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "warmup" | "paused" | "action_required">("all")
   
   const rowMenuRef = useRef<HTMLDivElement | null>(null)
 
@@ -196,6 +193,38 @@ export function EleInAccounts() {
     }
   }
 
+  const handleApplyBatchTag = async () => {
+    const trimmed = batchTagInput.trim()
+    if (!trimmed) return
+    setIsBatchProcessing(true)
+    try {
+      const ids = Array.from(selectedAccounts)
+      const res = await fetchWithAuth("/api/elein/accounts/bulk/add-tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_ids: ids, tag: trimmed })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || "Failed to add batch tag")
+      }
+      toast.success(`Tag '${trimmed}' applied to ${ids.length} account${ids.length !== 1 ? 's' : ''}`)
+      useHRAccountsStore.setState((state) => ({
+        accounts: state.accounts.map(a => 
+          ids.includes(a.id) 
+            ? { ...a, tags: Array.from(new Set([...(a.tags || []), trimmed])) } 
+            : a
+        )
+      }))
+      setBatchTagInput("")
+      setShowBatchTagInput(false)
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to apply batch tag")
+    } finally {
+      setIsBatchProcessing(false)
+    }
+  }
+
   const sortedAccounts = useMemo(() => {
     return [...accounts].sort((a, b) => {
       const levelOrder: Record<string, number> = { critical: 0, warning: 1, watch: 2, healthy: 3, loading: 4 }
@@ -212,6 +241,12 @@ export function EleInAccounts() {
     const warmup = accounts.filter(a => a.isWarmup).length
     const expired = accounts.filter(a => a.accountStatus === 'DISCONNECTED').length
     const manual = accounts.filter(a => a.accountStatus === 'MANUAL_MODE').length
+    const actionRequiredCount = accounts.filter(a => 
+      a.accountStatus === 'DISCONNECTED' || 
+      a.accountStatus === 'BANNED' || 
+      a.accountStatus === 'RATE_LIMITED' || 
+      Boolean(a.manualSendSuspected)
+    ).length
     
     const totalConnectsToday = safeUsageData
       .filter((u: any) => u.action_type === 'connection_request')
@@ -229,6 +264,7 @@ export function EleInAccounts() {
       warmup,
       expired,
       manual,
+      actionRequiredCount,
       totalConnectsToday,
       totalMessagesToday,
       totalCapacity,
@@ -238,15 +274,25 @@ export function EleInAccounts() {
 
   const filteredAccounts = useMemo(() => {
     return sortedAccounts.filter(acc => {
-      const matchesSearch = !searchQuery.trim() || 
-        acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        acc.profileUrl.toLowerCase().includes(searchQuery.toLowerCase())
+      const q = searchQuery.trim().toLowerCase()
+      const matchesSearch = !q || 
+        acc.name.toLowerCase().includes(q) ||
+        acc.profileUrl.toLowerCase().includes(q) ||
+        (Array.isArray(acc.tags) && acc.tags.some(t => t.toLowerCase().includes(q)))
 
       if (!matchesSearch) return false
 
       if (statusFilter === 'active') return acc.accountStatus === 'ACTIVE'
       if (statusFilter === 'warmup') return acc.isWarmup
-      if (statusFilter === 'action_required') return acc.accountStatus === 'DISCONNECTED' || acc.manualSendSuspected
+      if (statusFilter === 'paused') return acc.accountStatus === 'MANUAL_MODE'
+      if (statusFilter === 'action_required') {
+        return (
+          acc.accountStatus === 'DISCONNECTED' ||
+          acc.accountStatus === 'BANNED' ||
+          acc.accountStatus === 'RATE_LIMITED' ||
+          Boolean(acc.manualSendSuspected)
+        )
+      }
       return true
     })
   }, [sortedAccounts, searchQuery, statusFilter])
@@ -264,6 +310,10 @@ export function EleInAccounts() {
     else next.add(id)
     setExpandedAccounts(next)
   }
+
+  const activeRadarAccountId = radarAccountId && accounts.some(a => a.id === radarAccountId) 
+    ? radarAccountId 
+    : (accounts[0]?.id || null)
 
   return (
     <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
@@ -417,20 +467,50 @@ export function EleInAccounts() {
             className="overflow-hidden mb-6"
           >
             <div className="relative border border-border rounded-xl bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between pb-3 mb-2 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={16} className="text-primary" />
-                  <h3 className="text-sm font-semibold text-foreground">30-Day Outreach Warmup Radar &amp; Milestones</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-2 border-b border-border gap-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} className="text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">30-Day Outreach Warmup Radar &amp; Milestones</h3>
+                  </div>
+
+                  {accounts.length > 1 && (
+                    <div className="flex items-center gap-1.5 ml-0 sm:ml-2">
+                      <span className="text-[11px] font-medium text-muted-foreground">Sender:</span>
+                      <div className="flex items-center gap-1 overflow-x-auto max-w-md py-0.5">
+                        {accounts.map(acc => (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => setRadarAccountId(acc.id)}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all shrink-0 border cursor-pointer flex items-center gap-1",
+                              activeRadarAccountId === acc.id
+                                ? "bg-primary text-primary-foreground border-primary font-semibold shadow-2xs"
+                                : "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+                            )}
+                          >
+                            <span>{acc.name}</span>
+                            {acc.isWarmup && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+
                 <button
                   type="button"
                   onClick={() => setShowRadarDrawer(false)}
-                  className="w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors cursor-pointer"
+                  className="w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors cursor-pointer self-end sm:self-auto"
+                  aria-label="Close warmup radar"
                 >
                   <X size={14} />
                 </button>
               </div>
-              <Day1OutreachHealthRadar accountId={accounts[0]?.id || null} />
+              <Day1OutreachHealthRadar accountId={activeRadarAccountId} />
             </div>
           </motion.div>
         )}
@@ -471,7 +551,8 @@ export function EleInAccounts() {
               { id: 'all', label: 'All Senders', count: accounts.length },
               { id: 'active', label: 'Active', count: fleetStats.active },
               { id: 'warmup', label: 'In Warmup', count: fleetStats.warmup },
-              { id: 'action_required', label: 'Action Required', count: fleetStats.expired + accounts.filter(a => a.manualSendSuspected).length, urgent: fleetStats.expired > 0 }
+              { id: 'paused', label: 'Paused', count: fleetStats.manual },
+              { id: 'action_required', label: 'Action Required', count: fleetStats.actionRequiredCount, urgent: fleetStats.actionRequiredCount > 0 }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -679,7 +760,7 @@ export function EleInAccounts() {
                       </button>
 
                       {isManual && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/20">
                           Paused (Manual Mode)
                         </span>
                       )}
@@ -689,19 +770,20 @@ export function EleInAccounts() {
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                       <AccountUsageDisplay accountId={acc.id} usageData={usageData} />
                       <span>·</span>
-                      <AccountHealthBadge accountId={acc.id} />
-                      <span>·</span>
                       <span className="text-xs">
-                        {acc.proxyId ? 'Dedicated Residential Proxy' : 'Auto-Assigned Proxy'}
+                        {acc.proxyId ? 'Dedicated Proxy' : 'Direct Connection (No Proxy)'}
                       </span>
                       {acc.cookieExpiresAt && (
                         <>
                           <span>·</span>
                           {(() => {
                             try {
+                              if (!acc.cookieExpiresAt) return null
                               const exp = new Date(acc.cookieExpiresAt).getTime()
+                              if (isNaN(exp)) return null
                               const now = Date.now()
                               const days = Math.round((exp - now) / (1000 * 60 * 60 * 24))
+                              if (isNaN(days)) return null
                               if (days <= 0) {
                                 return (
                                   <span className="text-xs text-destructive font-semibold flex items-center gap-1">
@@ -717,7 +799,7 @@ export function EleInAccounts() {
                                 )
                               } else if (days <= 7) {
                                 return (
-                                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                                  <span className="text-xs text-warning font-medium flex items-center gap-1">
                                     <span>Expires in {days}d</span>
                                     <button 
                                       type="button"
@@ -739,7 +821,15 @@ export function EleInAccounts() {
                       )}
                     </div>
                     
-                    <AccountTags accountId={acc.id} />
+                    <AccountTags 
+                      accountId={acc.id} 
+                      initialTags={acc.tags} 
+                      onTagsChange={(newTags) => {
+                        useHRAccountsStore.setState((state) => ({
+                          accounts: state.accounts.map(a => a.id === acc.id ? { ...a, tags: newTags } : a)
+                        }))
+                      }}
+                    />
                   </div>
 
                   {/* Actions & More Menu */}
@@ -808,6 +898,19 @@ export function EleInAccounts() {
                             <span>Renew Session Cookies</span>
                           </button>
 
+                          {/* Edit Settings & Limits */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenRowMenuId(null)
+                              setEditingAccount(acc)
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Sliders size={13} className="text-muted-foreground" />
+                            <span>Edit Settings & Limits</span>
+                          </button>
+
                           {/* Pause / Resume Automation */}
                           <button
                             type="button"
@@ -831,6 +934,20 @@ export function EleInAccounts() {
                             <span>{isManual ? "Resume Automation" : "Pause (Manual Mode)"}</span>
                           </button>
 
+                          {/* Warmup Radar Inspection */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenRowMenuId(null)
+                              setRadarAccountId(acc.id)
+                              setShowRadarDrawer(true)
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                          >
+                            <TrendingUp size={13} className="text-primary" />
+                            <span>View Warmup Radar</span>
+                          </button>
+
                           {/* Account Shield Inspection */}
                           <button
                             type="button"
@@ -840,7 +957,7 @@ export function EleInAccounts() {
                             }}
                             className="w-full flex items-center gap-2 px-2.5 py-1.5 text-foreground hover:bg-muted rounded-lg transition-colors cursor-pointer"
                           >
-                            <ShieldCheck size={13} className="text-emerald-500" />
+                            <ShieldCheck size={13} className="text-success" />
                             <span>Account Shield Certificate</span>
                           </button>
 
@@ -879,7 +996,7 @@ export function EleInAccounts() {
                 </div>
 
                 {/* Inline Warmup Timeline */}
-                <WarmupTimeline accountId={acc.id} />
+                {acc.isWarmup && <WarmupTimeline accountId={acc.id} />}
 
                 {/* Collapsible Expanded Health History */}
                 <AnimatePresence>
@@ -918,9 +1035,25 @@ export function EleInAccounts() {
           <RenewSessionModal
             accountId={renewAccountId}
             accountName={accounts.find(a => a.id === renewAccountId)?.name || "LinkedIn Account"}
+            profileUrl={accounts.find(a => a.id === renewAccountId)?.profileUrl}
             onClose={() => setRenewAccountId(null)}
             onSuccess={() => {
               setRenewAccountId(null)
+              fetchAccounts()
+              mutateFleetSummary()
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Edit Account Settings Modal */}
+      <AnimatePresence>
+        {editingAccount && (
+          <EditAccountSettingsModal
+            account={editingAccount}
+            onClose={() => setEditingAccount(null)}
+            onSuccess={() => {
+              setEditingAccount(null)
               fetchAccounts()
               mutateFleetSummary()
             }}
@@ -957,12 +1090,14 @@ export function EleInAccounts() {
         onOpenChange={(open) => !open && setAccountToDelete(null)}
         accountId={accountToDelete?.id || ""}
         accountName={accountToDelete?.name || ""}
-        onConfirm={async (id) => {
+        onConfirm={async (id, force) => {
           try {
-            await remove(id)
-            toast.success("Account removed successfully")
+            await remove(id, force)
+            toast.success(force ? "Account and campaign linkages removed successfully" : "Account removed successfully")
+            mutateFleetSummary()
           } catch (e: any) {
             toast.error(e.message || "Failed to remove account")
+            throw e
           }
         }}
       />
@@ -983,35 +1118,122 @@ export function EleInAccounts() {
             
             <button
               type="button"
+              disabled={isBatchProcessing}
               onClick={async () => {
-                for (const id of selectedAccounts) {
-                  const acc = accounts.find(a => a.id === id)
-                  if (acc && acc.accountStatus === 'ACTIVE') {
-                    await toggleManualMode(id, 'ACTIVE')
+                const ids = Array.from(selectedAccounts)
+                setIsBatchProcessing(true)
+                try {
+                  const res = await bulkToggleManualMode(ids, 'MANUAL_MODE')
+                  if (res.succeeded.length === 0 && res.failed.length === 0) {
+                    toast.info("No active accounts selected to pause")
+                  } else if (res.failed.length === 0) {
+                    toast.success(`Successfully paused automation on ${res.succeeded.length} account${res.succeeded.length !== 1 ? 's' : ''}`)
+                  } else if (res.succeeded.length > 0) {
+                    toast.warning(`Paused ${res.succeeded.length} account(s), but ${res.failed.length} failed`)
+                  } else {
+                    toast.error("Failed to pause selected accounts")
                   }
+                } catch (e: any) {
+                  toast.error(e?.message || "Failed to pause selected accounts")
+                } finally {
+                  setIsBatchProcessing(false)
                 }
-                toast.success("Selected accounts paused")
               }}
-              className="px-2.5 py-1 text-xs font-medium bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-2.5 py-1 text-xs font-medium bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
             >
-              <PauseCircle size={13} /> Pause
+              {isBatchProcessing ? (
+                <RefreshCw size={13} className="animate-spin" />
+              ) : (
+                <PauseCircle size={13} />
+              )}
+              <span>Pause</span>
             </button>
 
             <button
               type="button"
+              disabled={isBatchProcessing}
               onClick={async () => {
-                for (const id of selectedAccounts) {
-                  const acc = accounts.find(a => a.id === id)
-                  if (acc && acc.accountStatus === 'MANUAL_MODE') {
-                    await toggleManualMode(id, 'MANUAL_MODE')
+                const ids = Array.from(selectedAccounts)
+                setIsBatchProcessing(true)
+                try {
+                  const res = await bulkToggleManualMode(ids, 'ACTIVE')
+                  if (res.succeeded.length === 0 && res.failed.length === 0) {
+                    toast.info("No paused accounts selected to resume")
+                  } else if (res.failed.length === 0) {
+                    toast.success(`Successfully resumed automation on ${res.succeeded.length} account${res.succeeded.length !== 1 ? 's' : ''}`)
+                  } else if (res.succeeded.length > 0) {
+                    toast.warning(`Resumed ${res.succeeded.length} account(s), but ${res.failed.length} failed`)
+                  } else {
+                    toast.error("Failed to resume selected accounts")
                   }
+                } catch (e: any) {
+                  toast.error(e?.message || "Failed to resume selected accounts")
+                } finally {
+                  setIsBatchProcessing(false)
                 }
-                toast.success("Selected accounts resumed")
               }}
-              className="px-2.5 py-1 text-xs font-medium bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-2.5 py-1 text-xs font-medium bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
             >
-              <PlayCircle size={13} /> Resume
+              {isBatchProcessing ? (
+                <RefreshCw size={13} className="animate-spin" />
+              ) : (
+                <PlayCircle size={13} />
+              )}
+              <span>Resume</span>
             </button>
+
+            {/* Batch Tag Button */}
+            {showBatchTagInput ? (
+              <div className="flex items-center gap-1.5 bg-background border border-input rounded-lg px-2 py-0.5">
+                <Tag size={12} className="text-muted-foreground" />
+                <input
+                  type="text"
+                  value={batchTagInput}
+                  onChange={(e) => setBatchTagInput(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      await handleApplyBatchTag()
+                    } else if (e.key === "Escape") {
+                      setShowBatchTagInput(false)
+                      setBatchTagInput("")
+                    }
+                  }}
+                  placeholder="Tag name..."
+                  autoFocus
+                  maxLength={50}
+                  className="w-24 text-xs bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={isBatchProcessing || !batchTagInput.trim()}
+                  onClick={handleApplyBatchTag}
+                  className="text-[11px] font-semibold text-primary hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBatchTagInput(false)
+                    setBatchTagInput("")
+                  }}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isBatchProcessing}
+                onClick={() => setShowBatchTagInput(true)}
+                className="px-2.5 py-1 text-xs font-medium bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <Tag size={12} />
+                <span>Tag</span>
+              </button>
+            )}
 
             <button
               type="button"

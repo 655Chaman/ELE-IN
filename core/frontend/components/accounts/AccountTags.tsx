@@ -5,11 +5,17 @@ import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { cn } from "@/lib/utils"
 
-export default function AccountTags({ accountId }: { accountId: string }) {
+interface AccountTagsProps {
+  accountId: string
+  initialTags?: string[]
+  onTagsChange?: (tags: string[]) => void
+}
+
+export default function AccountTags({ accountId, initialTags, onTagsChange }: AccountTagsProps) {
   const { data: tags, mutate } = useSWR<string[]>(
     `/api/elein/accounts/${accountId}/tags`,
     fetcher,
-    { fallbackData: [] }
+    { fallbackData: initialTags || [], revalidateOnMount: !initialTags }
   )
 
   const [input, setInput] = useState("")
@@ -17,26 +23,33 @@ export default function AccountTags({ accountId }: { accountId: string }) {
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const handleAdd = async () => {
-    if (!input.trim()) {
+    const trimmed = input.trim()
+    if (!trimmed) {
       setValidationError('Tag cannot be empty')
       return
     }
-    if (input.length > 50) {
+    if (trimmed.length > 50) {
       setValidationError('Tag must be 50 characters or less')
+      return
+    }
+    if (tags?.includes(trimmed)) {
+      setValidationError('Tag already exists')
       return
     }
     setAdding(true)
     try {
-      // Uses bulk endpoint intentionally — no single-account endpoint exists for tags
       await fetchWithAuth(`/api/elein/accounts/bulk/add-tag`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_ids: [accountId], tag: input.trim() })
+        body: JSON.stringify({ account_ids: [accountId], tag: trimmed })
       })
       setInput("")
-      mutate([...(tags || []), input.trim()])
-    } catch (e) {
-      console.error(e)
+      const nextTags = [...(tags || []), trimmed]
+      mutate(nextTags, false)
+      onTagsChange?.(nextTags)
+    } catch (e: any) {
+      console.error("Failed to add tag", e)
+      setValidationError(e?.message || 'Failed to add tag')
     } finally {
       setAdding(false)
     }
@@ -56,9 +69,11 @@ export default function AccountTags({ accountId }: { accountId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account_ids: [accountId], tag })
       })
-      mutate((tags || []).filter(t => t !== tag))
-    } catch (e) {
-      console.error(e)
+      const nextTags = (tags || []).filter(t => t !== tag)
+      mutate(nextTags, false)
+      onTagsChange?.(nextTags)
+    } catch (e: any) {
+      console.error("Failed to remove tag", e)
     }
   }
 

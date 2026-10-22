@@ -23,6 +23,7 @@ export interface LinkedInAccount {
   cookieExpiresAt?: string
   healthScore?: number
   autoHealStatus?: string
+  tags?: string[]
 }
 
 interface EIAccountsState {
@@ -34,9 +35,10 @@ interface EIAccountsState {
   clearAccounts: () => void
   addAccount: (account: Omit<LinkedInAccount, "id" | "status" | "accountStatus">) => Promise<void>
   removeAccount: (id: string, force?: boolean) => Promise<void>
-  updateAccount: (id: string, updates: Partial<LinkedInAccount>) => void
+  updateAccount: (id: string, updates: Partial<LinkedInAccount>) => Promise<void>
   toggleWarmup: (id: string, isWarmup: boolean) => Promise<void>
   toggleManualMode: (id: string, currentStatus: string) => Promise<void>
+  bulkToggleManualMode: (ids: string[], targetStatus: "ACTIVE" | "MANUAL_MODE") => Promise<{ succeeded: string[]; failed: string[] }>
   clearManualSendWarning: (id: string) => Promise<void>
   autoHealAccount: (id: string) => Promise<any>
   fleetHeal: () => Promise<any>
@@ -91,6 +93,7 @@ export const useHRAccountsStore = create<EIAccountsState>()(
               cookieExpiresAt: acc.cookie_expires_at,
               healthScore: acc.health_score,
               autoHealStatus: acc.auto_heal_status,
+              tags: acc.tags || [],
             }))
             set({ accounts: mapped, error: null })
           } else {
@@ -159,12 +162,40 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           throw e
         }
       },
-      updateAccount: (id, updates) =>
-        set((state) => ({
-          accounts: state.accounts.map((a) =>
-            a.id === id ? { ...a, ...updates } : a
-          ),
-        })),
+      updateAccount: async (id, updates) => {
+        try {
+          const payload: any = {}
+          if (updates.name !== undefined) payload.name = updates.name
+          if (updates.dailyLimit !== undefined) payload.daily_connection_limit = updates.dailyLimit
+          if (updates.messageLimit !== undefined) payload.daily_message_limit = updates.messageLimit
+          if (updates.proxyId !== undefined) payload.proxy_id = updates.proxyId
+
+          const res = await fetchWithAuth(`/api/elein/accounts/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => null)
+            const detail = err?.detail || 'Failed to update account settings'
+            set({ error: detail })
+            throw new Error(detail)
+          }
+
+          set((state) => ({
+            accounts: state.accounts.map((a) =>
+              a.id === id ? { ...a, ...updates } : a
+            ),
+            error: null
+          }))
+          await get().fetchAccounts()
+        } catch (e: any) {
+          console.error("Failed to update account", e)
+          set({ error: e.message || 'Failed to update account settings' })
+          throw e
+        }
+      },
       toggleWarmup: async (id: string, isWarmup: boolean) => {
         try {
           const res = await fetchWithAuth(`/api/elein/accounts/${id}/warmup`, {
@@ -231,6 +262,87 @@ export const useHRAccountsStore = create<EIAccountsState>()(
             isTogglingManualMode: { ...state.isTogglingManualMode, [id]: false }
           }));
         }
+      },
+      bulkToggleManualMode: async (ids: string[], targetStatus: "ACTIVE" | "MANUAL_MODE") => {
+        if (!ids || ids.length === 0) {
+          return { succeeded: [], failed: [] };
+        }
+
+        const currentAccounts = get().accounts;
+        const currentToggling = get().isTogglingManualMode;
+        const eligibleIds = ids.filter((id) => {
+          if (currentToggling[id]) return false;
+          const acc = currentAccounts.find((a) => a.id === id);
+          if (!acc) return false;
+          if (targetStatus === "MANUAL_MODE") return acc.accountStatus === "ACTIVE";
+          if (targetStatus === "ACTIVE") return acc.accountStatus === "MANUAL_MODE";
+          return false;
+        });
+
+        if (eligibleIds.length === 0) {
+          return { succeeded: [], failed: [] };
+        }
+
+        set((state) => {
+          const nextToggling = { ...state.isTogglingManualMode };
+          for (const id of eligibleIds) {
+            nextToggling[id] = true;
+          }
+          return { isTogglingManualMode: nextToggling };
+        });
+
+        const succeeded: string[] = [];
+        const failed: string[] = [];
+
+        try {
+          const results = await Promise.allSettled(
+            eligibleIds.map(async (id) => {
+              const res = await fetchWithAuth(`/api/elein/accounts/${id}/status`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: targetStatus })
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                throw new Error(err?.detail || `Failed to set status for ${id}`);
+              }
+              return id;
+            })
+          );
+
+          results.forEach((res, idx) => {
+            const id = eligibleIds[idx];
+            if (res.status === "fulfilled") {
+              succeeded.push(id);
+            } else {
+              failed.push(id);
+              console.error(`Bulk status update failed for ${id}:`, res.reason);
+            }
+          });
+
+          if (succeeded.length > 0) {
+            set((state) => ({
+              accounts: state.accounts.map((a) =>
+                succeeded.includes(a.id) ? { ...a, accountStatus: targetStatus } : a
+              ),
+              error: null
+            }));
+            await get().fetchAccounts();
+          }
+        } catch (e: any) {
+          console.error("Bulk toggle manual mode error", e);
+          set({ error: e.message || "Failed bulk status update" });
+        } finally {
+          set((state) => {
+            const nextToggling = { ...state.isTogglingManualMode };
+            for (const id of eligibleIds) {
+              delete nextToggling[id];
+            }
+            return { isTogglingManualMode: nextToggling };
+          });
+        }
+
+        return { succeeded, failed };
       },
       clearManualSendWarning: async (id: string) => {
         try {

@@ -349,6 +349,48 @@ class TestMultiAccountHealthGuard(unittest.TestCase):
         self.assertEqual(res["status"], "ACTIVE")
         mock_acc_table.update.assert_called()
 
+    @patch("accounts.backend.services.account_auto_heal_service.LinkedInWorker")
+    @patch("accounts.backend.services.account_auto_heal_service.crypto")
+    def test_renew_account_session_identity_mismatch_raises_value_error(self, mock_crypto, mock_worker_cls):
+        """Layer 0 & 2: Aborts with ValueError when cookies belong to a different LinkedIn user."""
+        valid_cookies = json.dumps([
+            {"name": "li_at", "value": "valid_token_123"},
+            {"name": "JSESSIONID", "value": "ajax:999"}
+        ])
+
+        mock_acc_table = MagicMock()
+        mock_acc_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{
+                "id": self.account_id,
+                "workspace_id": self.workspace_id,
+                "name": "Jane Doe",
+                "linkedin_profile_url": "https://www.linkedin.com/in/jane-doe/"
+            }]
+        )
+
+        self.supabase.table.side_effect = lambda name: mock_acc_table if name == "accounts" else MagicMock()
+
+        # Mock Voyager returning a completely different profile: John Smith
+        mock_worker = MagicMock()
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = {
+            "miniProfile": {
+                "firstName": "John",
+                "lastName": "Smith",
+                "publicIdentifier": "john-smith"
+            }
+        }
+        mock_worker._http_get.return_value = mock_resp
+        mock_worker_cls.return_value = mock_worker
+
+        with self.assertRaises(ValueError) as ctx:
+            renew_account_session(self.account_id, self.workspace_id, valid_cookies, self.supabase)
+
+        self.assertIn("Identity mismatch", str(ctx.exception))
+        self.assertIn("John Smith", str(ctx.exception))
+        self.assertIn("Jane Doe", str(ctx.exception))
+        mock_acc_table.update.assert_not_called()
+
     # =========================================================================
     # 6. Router Endpoint Handlers (Layer 0, 1, 2)
     # =========================================================================

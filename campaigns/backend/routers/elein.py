@@ -29,6 +29,7 @@ from campaigns.backend.schemas.elein import (
     CampaignResponse,
     AccountCreate,
     AccountResponse,
+    AccountUpdate,
     WorkspaceBlueprintCreate,
     WorkspaceBlueprintResponse,
 )
@@ -1728,6 +1729,9 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
     cookies_str = payload.get("session_cookies_json", "")
     proxy_url = payload.get("proxy_url")
     proxy_id = payload.get("proxy_id")
+    # Paranoia Layer 0 & 2: Normalize 'auto', empty, or null proxy_id strings to None
+    if proxy_id in ["auto", "", "undefined", "null", None]:
+        proxy_id = None
 
     if not cookies_str:
         raise HTTPException(status_code=400, detail="session_cookies_json is required")
@@ -1866,6 +1870,9 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
             country_code = request.headers.get("cf-ipcountry") or request.headers.get("x-vercel-ip-country") or "US"
             
             chosen_proxy_id = getattr(account, "proxy_id", None) or getattr(account, "proxy", None)
+            # Paranoia Layer 0 & 2: Normalize 'auto', empty, or null proxy_id strings to None for auto-assignment
+            if chosen_proxy_id in ["auto", "", "undefined", "null", None]:
+                chosen_proxy_id = None
             if chosen_proxy_id:
                 p_check = supabase.table("proxies").select("id, workspace_id").eq("id", chosen_proxy_id).execute()
                 if not p_check.data:
@@ -2364,6 +2371,57 @@ def delete_account(
     return {"status": "deleted", "account_id": account_id}
 
 
+@router.patch("/accounts/{account_id}", response_model=dict)
+def update_account(
+    account_id: str,
+    payload: AccountUpdate,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    # 1. Verify ownership
+    acc_res = supabase.table("accounts").select("id, name, daily_connection_limit, daily_message_limit, proxy_id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+    if not acc_res.data:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    update_data = {}
+    if payload.name is not None:
+        stripped_name = payload.name.strip()
+        if not stripped_name:
+            raise HTTPException(status_code=400, detail="Account name cannot be empty")
+        update_data["name"] = stripped_name
+
+    if payload.daily_connection_limit is not None:
+        update_data["daily_connection_limit"] = payload.daily_connection_limit
+
+    if payload.daily_message_limit is not None:
+        update_data["daily_message_limit"] = payload.daily_message_limit
+
+    if payload.proxy_id is not None:
+        clean_proxy = payload.proxy_id.strip() if isinstance(payload.proxy_id, str) else None
+        if not clean_proxy or clean_proxy.lower() in ("auto", "none", "null", "undefined", ""):
+            update_data["proxy_id"] = None
+        else:
+            proxy_res = supabase.table("proxies").select("id").eq("id", clean_proxy).eq("workspace_id", workspace_id).execute()
+            if not proxy_res.data:
+                raise HTTPException(status_code=400, detail=f"Proxy '{clean_proxy}' does not exist or belong to this workspace")
+            update_data["proxy_id"] = clean_proxy
+
+    if update_data:
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        supabase.table("accounts").update(update_data).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+
+    fresh_res = supabase.table("accounts").select("*").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+    if fresh_res.data:
+        row = fresh_res.data[0]
+        row["has_valid_session"] = bool(row.get("session_cookies_encrypted"))
+        row["session_cookies_json"] = None
+        if "session_cookies_encrypted" in row:
+            del row["session_cookies_encrypted"]
+        return {"status": "success", "account": row}
+
+    return {"status": "success", "account_id": account_id}
+
+
 @router.get("/accounts/{account_id}/tags", response_model=List[str])
 def get_account_tags(account_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     acc_res = supabase.table("accounts").select("id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
@@ -2377,15 +2435,31 @@ def get_account_tags(account_id: str, supabase: Client = Depends(get_supabase_cl
 def get_accounts(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
         res = supabase.table("accounts").select("*").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
+        account_rows = res.data or []
+        account_ids = [row["id"] for row in account_rows if row.get("id")]
+
+        tags_by_account = {aid: [] for aid in account_ids}
+        if account_ids:
+            try:
+                tags_res = supabase.table("account_tags").select("account_id, tag").in_("account_id", account_ids).execute()
+                for tr in (tags_res.data or []):
+                    aid = tr.get("account_id")
+                    tag_val = tr.get("tag")
+                    if aid in tags_by_account and tag_val:
+                        tags_by_account[aid].append(tag_val)
+            except Exception as tag_err:
+                logger.warning(f"Failed to batch-fetch account tags: {tag_err}")
+
         # Security Hardening (VULN-13): Never decrypt or expose plaintext session cookies over REST API.
         # Decryption must happen exclusively inside isolated backend worker threads during browser launch.
         rows = []
-        for row in res.data:
+        for row in account_rows:
             raw = row.get("session_cookies_encrypted")
             row["has_valid_session"] = bool(raw)
             row["session_cookies_json"] = None
             if "session_cookies_encrypted" in row:
                 del row["session_cookies_encrypted"]
+            row["tags"] = tags_by_account.get(row.get("id"), [])
             rows.append(row)
         return rows
     except Exception as e:
