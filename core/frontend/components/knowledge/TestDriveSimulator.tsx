@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchWithAuth } from "@/lib/apiClient";
-import StarBorder from "../StarBorder";
 import { ElesiumLogo } from "@/components/ElesiumLogo";
 
 interface ChallengePreset {

@@ -15,7 +15,6 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
-import ShinyText from "@/components/ShinyText"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface PodAccount {
@@ -283,7 +282,7 @@ export function SenderPodStudioModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 id="sender-pod-title" className="text-base font-bold text-foreground">
-                  <ShinyText text="Sender Pod Studio & Dynamic Fleet Balancer" speed={3} />
+                  Sender Pod Studio &amp; Dynamic Fleet Balancer
                 </h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold uppercase tracking-wider">
                   Smartlead / Instantly Model

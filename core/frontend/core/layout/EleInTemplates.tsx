@@ -10,7 +10,6 @@ import {
   Sparkles, ArrowRight, Layers, ShieldCheck, Eye, Trash2,
   FileCode, TrendingUp, X, Info, Flame, MessageSquare, Mail, UserCheck
 } from "lucide-react"
-import ShinyText from "@/components/ShinyText"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { HR_TEMPLATES, TEMPLATE_TAGS, TEMPLATE_TAG_LABELS, type EITemplate } from "@/lib/eiTemplates"
 import { useTemplatesStore } from "@campaigns/eiTemplatesStore"
@@ -226,33 +225,33 @@ export function EleInTemplates() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground px-6 sm:px-10 py-10 max-w-7xl mx-auto font-sans">
+    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
       {/* Header Station */}
-      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <ElesiumLogo size={24} />
-              <ShinyText text="Elesium Campaign Playbooks & Sequence Hub" disabled={false} speed={3} className="text-foreground" />
+            <h1 className="text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
+              <ElesiumLogo size={20} />
+              <span>Campaign Playbooks &amp; Sequence Hub</span>
             </h1>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-              Battle-Tested
+            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+              Verified
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Discover verified, high-converting outreach architectures powered by <a href="https://elesium.online" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Elesium Automation</a> (elesium.online), or launch custom team playbooks in 1-click.
+            Discover verified, high-converting outreach architectures powered by Elesium Automation, or launch custom team playbooks in 1-click.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => navigate('/elein/campaigns/new')}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold rounded-lg shadow-sm transition-colors hover:opacity-90 self-start md:self-auto cursor-pointer"
+          className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium rounded-xl shadow-xs transition-colors self-start md:self-auto cursor-pointer"
         >
           <ElesiumLogo size={14} />
           <span>Build Custom Campaign</span>
         </button>
-      </motion.div>
+      </div>
 
       {/* Tabs Station */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4 mb-6">

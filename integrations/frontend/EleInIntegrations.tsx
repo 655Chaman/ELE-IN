@@ -6,8 +6,6 @@ import {
   CheckSquare, Square, Info, ChevronRight, Filter, Globe, Code2, PlayCircle, ShieldCheck,
   Activity, Clock, ChevronDown, Eye, Plus, RotateCcw
 } from "lucide-react"
-import SpotlightCard from "@/components/SpotlightCard"
-import ShinyText from "@/components/ShinyText"
 import useSWR from "swr"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { usePaywall } from "@/contexts/PaywallContext"
@@ -893,13 +891,13 @@ export function EleInIntegrations() {
   }, null, 2);
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground px-8 py-10 max-w-6xl mx-auto font-sans">
+    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
       {/* Top Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
-            <Plug size={24} className="text-primary" />
-            <ShinyText text="Integrations & Inbound Engine" disabled={false} speed={3} className="" />
+          <h1 className="text-xl font-semibold tracking-tight text-foreground mb-1 flex items-center gap-2">
+            <Plug size={20} className="text-primary" />
+            <span>Integrations &amp; Inbound Engine</span>
           </h1>
           <p className="text-xs text-muted-foreground">
             Connect Ele-in to CRMs, residential stealth proxies, calendar auto-halt webhooks, and autonomous AI developer agents.
@@ -923,7 +921,7 @@ export function EleInIntegrations() {
             <span>Inbound Webhook Studio</span>
           </button>
         </div>
-      </motion.div>
+      </div>
 
       {/* ─── IN-SITU PAY RAMP: DEVELOPER PROTOCOLS & CRM GATEWAY ─── */}
       {!isPro && (
@@ -1017,7 +1015,7 @@ export function EleInIntegrations() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
           >
-            <SpotlightCard className="h-full flex flex-col p-6 rounded-xl border border-border/50 bg-muted/10 backdrop-blur-md hover:border-border transition-all">
+            <div className="h-full flex flex-col p-6 rounded-xl border border-border bg-card hover:border-border/80 transition-all shadow-xs">
               <div className="flex justify-between items-start mb-4">
                 <div className={`w-12 h-12 rounded-lg border flex items-center justify-center ${
                   app.id === "mcp" 
@@ -1115,7 +1113,7 @@ export function EleInIntegrations() {
                   </button>
                 )}
               </div>
-            </SpotlightCard>
+            </div>
           </motion.div>
         ))}
       </div>

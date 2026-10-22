@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   Settings2,
 } from "lucide-react";
-import ShinyText from "@/components/ShinyText";
 import { useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 
@@ -37,14 +36,14 @@ export function EleInSettings() {
   ];
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground px-4 md:px-8 py-10 max-w-7xl mx-auto font-sans">
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
-          <Settings2 size={24} className="text-primary" />
-          <ShinyText text="Workspace Settings" disabled={false} speed={3} className="" />
+    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground mb-1 flex items-center gap-2">
+          <Settings2 size={20} className="text-primary" />
+          <span>Workspace Settings</span>
         </h1>
-        <p className="text-sm text-muted-foreground">Manage your workspace configuration, team access, and safety defaults.</p>
-      </motion.div>
+        <p className="text-xs text-muted-foreground">Manage your workspace configuration, team access, and safety defaults.</p>
+      </div>
 
       <div className="flex flex-col md:flex-row gap-8">
         {/* Left Sub-Nav */}

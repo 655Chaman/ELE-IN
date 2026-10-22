@@ -24,8 +24,6 @@ import { AIGatewayView } from "@/components/knowledge/AIGatewayView";
 import { ReusableConfirmDialog } from "@/components/ReusableConfirmDialog";
 import { ElesiumLogo } from "@/components/ElesiumLogo";
 
-import ShinyText from "@/components/ShinyText";
-import StarBorder from "@/components/StarBorder";
 import { toast } from "sonner";
 import { fetchWithAuth } from "@/lib/apiClient";
 import useSWR from "swr";

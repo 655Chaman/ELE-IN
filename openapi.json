@@ -6199,7 +6199,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ToggleWarmupPayload"
+                "$ref": "#/components/schemas/campaigns__backend__routers__warmup_router__ToggleWarmupPayload"
               }
             }
           }
@@ -7786,6 +7786,16 @@
               "type": "string",
               "title": "Account Id"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
           }
         ],
         "responses": {
@@ -8094,6 +8104,59 @@
       }
     },
     "/api/elein/accounts/{account_id}/warmup": {
+      "patch": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Toggle Account Warmup",
+        "description": "Paranoia Layer 0: Toggles safe warmup on an account.\nParanoia Layer 1: Validates workspace ownership. If turning ON and warmup_start_date is null, sets now_iso.\nParanoia Layer 2: Sanitizes boolean input.",
+        "operationId": "toggle_account_warmup_api_elein_accounts__account_id__warmup_patch",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/campaigns__backend__routers__elein__ToggleWarmupPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Toggle Account Warmup Api Elein Accounts  Account Id  Warmup Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "elein"
@@ -27742,20 +27805,6 @@
         ],
         "title": "TextUpload"
       },
-      "ToggleWarmupPayload": {
-        "properties": {
-          "new_status": {
-            "type": "string",
-            "title": "New Status",
-            "description": "warming, paused, graduated, or cooling_down"
-          }
-        },
-        "type": "object",
-        "required": [
-          "new_status"
-        ],
-        "title": "ToggleWarmupPayload"
-      },
       "TouchpointItem": {
         "properties": {
           "channel": {
@@ -28617,6 +28666,33 @@
           "name"
         ],
         "title": "WorkspaceRename"
+      },
+      "campaigns__backend__routers__elein__ToggleWarmupPayload": {
+        "properties": {
+          "is_warmup": {
+            "type": "boolean",
+            "title": "Is Warmup"
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_warmup"
+        ],
+        "title": "ToggleWarmupPayload"
+      },
+      "campaigns__backend__routers__warmup_router__ToggleWarmupPayload": {
+        "properties": {
+          "new_status": {
+            "type": "string",
+            "title": "New Status",
+            "description": "warming, paused, graduated, or cooling_down"
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_status"
+        ],
+        "title": "ToggleWarmupPayload"
       }
     }
   }

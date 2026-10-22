@@ -10,7 +10,6 @@ import {
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { usePaywall } from '@/contexts/PaywallContext';
-import SpotlightCard from '@/components/SpotlightCard';
 import { ElesiumLogo } from '@/components/ElesiumLogo';
 import { CustomSelect } from '@/components/ui/select';
 
@@ -529,7 +528,7 @@ export function EleInEngagementStudio() {
   }, [generatedPost]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans space-y-6">
       {/* ── HEADER RIBBON ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border/50">
         <div>
@@ -537,8 +536,8 @@ export function EleInEngagementStudio() {
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
               <ElesiumLogo size={18} />
             </div>
-            <h1 className="text-xl font-bold text-foreground">
-              Elesium Engagement Multiplier Studio
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Engagement Multiplier Studio
             </h1>
             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
               Enterprise AI
@@ -622,7 +621,7 @@ export function EleInEngagementStudio() {
 
       {/* ── KPI METRICS RIBBON (Faithful Live Telemetry) ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Scheduled Posts</span>
             <Calendar size={14} className="text-primary" />
@@ -633,9 +632,9 @@ export function EleInEngagementStudio() {
           <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
             {scheduledPosts.length > 0 ? "B2B Content Queue Active" : "Queue Empty"}
           </span>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Pre-Warm Touches</span>
             <Flame size={14} className="text-amber-500" />
@@ -646,9 +645,9 @@ export function EleInEngagementStudio() {
           <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
             {prewarmEvents.length > 0 ? `${prewarmEvents.length} Touches Staged` : "No Touches Staged"}
           </span>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Fallback Bridges</span>
             <Mail size={14} className="text-blue-500" />
@@ -659,9 +658,9 @@ export function EleInEngagementStudio() {
           <span className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
             {executedLogs.length > 0 ? `${executedLogs.length} Stuck Invites Saved` : "Awaiting Fallback Trigger"}
           </span>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
+        <div className="p-4 rounded-xl bg-card border border-border/60 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground text-xs mb-1">
             <span>Connected Senders</span>
             <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
@@ -672,7 +671,7 @@ export function EleInEngagementStudio() {
           <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
             {accounts.length > 0 ? `${accounts.length} Sender${accounts.length === 1 ? '' : 's'} Configured` : "No Senders Connected"}
           </span>
-        </SpotlightCard>
+        </div>
       </div>
 
       {/* ── TAB 1: THOUGHT LEADERSHIP CONTENT STUDIO ── */}
@@ -681,7 +680,7 @@ export function EleInEngagementStudio() {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Left Column: Framework & Prompt Form (5 cols) */}
             <div className="md:col-span-5 space-y-4">
-              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+              <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
                     <Compass size={15} className="text-primary" />
@@ -774,12 +773,12 @@ export function EleInEngagementStudio() {
                     )}
                   </button>
                 </div>
-              </SpotlightCard>
+              </div>
             </div>
 
             {/* Right Column: LinkedIn Post Preview & Scheduler (7 cols) */}
             <div className="md:col-span-7 space-y-4">
-              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+              <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs">
@@ -907,12 +906,12 @@ export function EleInEngagementStudio() {
                     </button>
                   </div>
                 </div>
-              </SpotlightCard>
+              </div>
             </div>
           </div>
 
           {/* Scheduled & Draft Thought Leadership Posts Queue */}
-          <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+          <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -998,7 +997,7 @@ export function EleInEngagementStudio() {
                 </tbody>
               </table>
             </div>
-          </SpotlightCard>
+          </div>
         </div>
       )}
 
@@ -1008,7 +1007,7 @@ export function EleInEngagementStudio() {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Post Analysis & Safety Radar (6 cols) */}
             <div className="md:col-span-6 space-y-4">
-              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+              <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
                     <Flame size={15} className="text-amber-400" />
@@ -1156,12 +1155,12 @@ export function EleInEngagementStudio() {
                     </p>
                   </div>
                 )}
-              </SpotlightCard>
+              </div>
             </div>
 
             {/* 3-Touch Prewarm Cadence Enqueuer (6 cols) */}
             <div className="md:col-span-6 space-y-4">
-              <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+              <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
                     <Clock size={15} className="text-primary" />
@@ -1271,12 +1270,12 @@ export function EleInEngagementStudio() {
                     </div>
                   )}
                 </div>
-              </SpotlightCard>
+              </div>
             </div>
           </div>
 
           {/* Active Pre-Warm Fleet Queue Table */}
-          <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+          <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1357,14 +1356,14 @@ export function EleInEngagementStudio() {
                 </tbody>
               </table>
             </div>
-          </SpotlightCard>
+          </div>
         </div>
       )}
 
       {/* ── TAB 3: OMNICHANNEL FALLBACK CASCADE ── */}
       {activeTab === 'omnichannel' && (
         <div className="space-y-6">
-          <SpotlightCard className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
+          <div className="p-5 rounded-xl bg-card/40 border border-border/50 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
@@ -1508,7 +1507,7 @@ export function EleInEngagementStudio() {
                 ))}
               </div>
             </div>
-          </SpotlightCard>
+          </div>
         </div>
       )}
     </div>

@@ -10,8 +10,6 @@ import {
   ShieldCheck, ShieldAlert, Server, Zap, Database, Eye, X, Loader2, 
   Sparkles, Radio, Layers, ArrowRight
 } from "lucide-react"
-import SpotlightCard from "@/components/SpotlightCard"
-import ShinyText from "@/components/ShinyText"
 
 interface Template {
   id: string
@@ -222,15 +220,15 @@ export function EleInAdmin() {
   const activeProxiesCount = safeProxies.filter(p => p.status === 'active' || p.status === 'ok').length
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground px-6 sm:px-10 py-10 max-w-7xl mx-auto font-sans">
+    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
       {/* ─── HEADER COMMAND DECK ────────────────────────────────────────────── */}
-      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-2 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              <ShinyText text="SuperAdmin & Infrastructure Telemetry" speed={3} className="text-foreground" />
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              SuperAdmin &amp; Infrastructure Telemetry
             </h1>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
               Root Authority
             </span>
           </div>
@@ -251,7 +249,7 @@ export function EleInAdmin() {
             <span>Ping Backend ({probeLatencyMs !== null ? `${probeLatencyMs}ms` : "Test"})</span>
           </button>
         </div>
-      </motion.div>
+      </div>
 
       {/* ─── SYSTEM VITAL STATISTICS RIBBON (Layer 0) ───────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-8">
@@ -472,7 +470,7 @@ export function EleInAdmin() {
       {/* ─── TAB 2: AI KEY POOL & FAILOVER ENGINE ───────────────────────────── */}
       {activeTab === "keys" && (
         <div className="space-y-6">
-          <SpotlightCard className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
+          <div className="p-6 rounded-xl border border-border/60 bg-card shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <Key size={16} className="text-primary" /> 
@@ -509,7 +507,7 @@ export function EleInAdmin() {
             <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
               Keys are pooled across providers. If a key encounters rate limits or token exhaustion during sequence personalization, the orchestrator instantly fails over to the next available healthy key.
             </p>
-          </SpotlightCard>
+          </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -647,7 +645,7 @@ export function EleInAdmin() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
               >
-                <SpotlightCard className="h-full flex flex-col p-6 rounded-xl border border-border/60 bg-card shadow-xs hover:border-primary/40 transition-all">
+                <div className="h-full flex flex-col p-6 rounded-xl border border-border/60 bg-card shadow-xs hover:border-primary/40 transition-all">
                   <div className="flex justify-between items-start mb-4">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                       <LayoutTemplate size={18} />
@@ -691,7 +689,7 @@ export function EleInAdmin() {
                       <span>Reject</span>
                     </button>
                   </div>
-                </SpotlightCard>
+                </div>
               </motion.div>
             ))}
 
