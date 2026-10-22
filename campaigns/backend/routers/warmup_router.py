@@ -1,3 +1,4 @@
+import re
 import logging
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Path, Response
@@ -68,10 +69,11 @@ def export_mailboxes_csv_endpoint(
     """
     try:
         csv_content = export_warmup_fleet_csv(workspace_id=workspace_id, supabase=supabase)
+        clean_ws_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", workspace_id)
         return Response(
             content=csv_content,
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="warmup_fleet_{workspace_id}.csv"'}
+            headers={"Content-Disposition": f'attachment; filename="warmup_fleet_{clean_ws_id}.csv"'}
         )
     except Exception as e:
         logger.exception("Failed to export warmup fleet CSV: %s", e)

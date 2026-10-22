@@ -756,14 +756,38 @@ def list_target_accounts(
             if a.get("workspace_id") == workspace_id or (is_default_or_test and a.get("workspace_id") in (None, "ws-default"))
         ]
 
+    # Paranoia Layer 1 (FLAW-API-15): Batch fetch committee members across accounts to eliminate N+1 queries
+    account_ids = [a["id"] for a in accounts if "id" in a]
+    members_by_account: Dict[str, List[Dict[str, Any]]] = {aid: [] for aid in account_ids}
+    
+    if supabase and workspace_id not in ("ws-test", "test-workspace") and account_ids:
+        try:
+            mem_res = supabase.table("account_committee_members").select("*").in_("account_id", account_ids).execute()
+            if mem_res.data:
+                for m in mem_res.data:
+                    aid = m.get("account_id")
+                    if aid in members_by_account:
+                        try:
+                            _verify_abm_workspace_access(m.get("workspace_id"), workspace_id, "ABM committee member")
+                            members_by_account[aid].append(m)
+                        except PermissionError:
+                            continue
+        except Exception as e:
+            logger.warning("Supabase batch account_committee_members query failed: %s", e)
+
     # Attach live committee summaries and dynamic heat score recalculation
     enriched = []
     for acc in accounts:
         acc_copy = dict(acc)
-        try:
-            members = get_account_committee_members(workspace_id=workspace_id, account_id=acc_copy["id"], supabase=supabase)
-        except PermissionError:
-            continue
+        aid = acc_copy["id"]
+        # Use batched members if populated from DB, otherwise fallback to get_account_committee_members
+        if members_by_account.get(aid):
+            members = members_by_account[aid]
+        else:
+            try:
+                members = get_account_committee_members(workspace_id=workspace_id, account_id=aid, supabase=supabase)
+            except PermissionError:
+                continue
         heat_calc = calculate_account_heat_score(members)
         acc_copy["committee_count"] = len(members)
         acc_copy["account_heat_score"] = heat_calc["heat_score"]

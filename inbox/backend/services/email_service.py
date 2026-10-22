@@ -33,8 +33,11 @@ def send_outbound_email(
     delivery_status = "sent"
     error_msg = None
 
+    resend_key = os.getenv("RESEND_API_KEY") or RESEND_API_KEY
+    sendgrid_key = os.getenv("SENDGRID_API_KEY") or SENDGRID_API_KEY
+
     # 1. Attempt Live Resend API dispatch
-    if RESEND_API_KEY:
+    if resend_key:
         try:
             payload = {
                 "from": sender,
@@ -46,22 +49,24 @@ def send_outbound_email(
                 "https://api.resend.com/emails",
                 data=json.dumps(payload).encode("utf-8"),
                 headers={
-                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Authorization": f"Bearer {resend_key}",
                     "Content-Type": "application/json",
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status in (200, 201):
                     res_body = json.loads(resp.read().decode("utf-8"))
                     message_id = res_body.get("id") or f"resend_{email_id[:12]}"
+                    delivery_status = "sent"
+                    error_msg = None
         except Exception as e:
-            logger.error(f"[InboxEmailService] Resend API dispatch error: {e}")
+            logger.warning(f"[InboxEmailService] Resend API dispatch failed: {e}. Attempting failover if configured.")
             delivery_status = "failed"
             error_msg = str(e)
 
-    # 2. Attempt Live SendGrid API dispatch if Resend not configured
-    elif SENDGRID_API_KEY:
+    # 2. Attempt Live SendGrid API dispatch (Secondary failover or primary if Resend not configured)
+    if (not message_id or delivery_status == "failed") and sendgrid_key:
         try:
             payload = {
                 "personalizations": [{"to": [{"email": to_email}]}],
@@ -73,14 +78,16 @@ def send_outbound_email(
                 "https://api.sendgrid.com/v3/mail/send",
                 data=json.dumps(payload).encode("utf-8"),
                 headers={
-                    "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                    "Authorization": f"Bearer {sendgrid_key}",
                     "Content-Type": "application/json",
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status in (200, 201, 202):
                     message_id = f"sg_{email_id[:12]}@elein.ai"
+                    delivery_status = "sent"
+                    error_msg = None
         except Exception as e:
             logger.error(f"[InboxEmailService] SendGrid API dispatch error: {e}")
             delivery_status = "failed"

@@ -152,7 +152,9 @@ class TestSimulationBypassGuard(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(deduct_call[0][1]["p_workspace_id"], "ws-tenant-omega")
 
             # Check refund call has tenant-isolated event ID
-            refund_call = mock_supabase.rpc.call_args_list[1]
+            refund_calls = [c for c in mock_supabase.rpc.call_args_list if c[0][0] == "add_credits_safely"]
+            self.assertTrue(len(refund_calls) > 0, "Expected add_credits_safely RPC call")
+            refund_call = refund_calls[0]
             self.assertEqual(refund_call[0][0], "add_credits_safely")
             self.assertEqual(refund_call[0][1]["p_credits"], 5)
             self.assertEqual(refund_call[0][1]["p_workspace_id"], "ws-tenant-omega")

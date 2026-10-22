@@ -35,8 +35,6 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
   const { startCheckout, isProcessing, isVerifying, processingPackage } = useEleInCheckout();
   const { mutate } = useSWRConfig();
 
-  if (!isOpen) return null;
-
   const handleCloseClick = () => {
     // Paranoia Layer 2: Prevent closing while payment verification is underway
     if (isVerifying) return;
@@ -48,6 +46,30 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
       setShowExitIntent(false);
       setStep(0);
       onClose();
+    }
+  };
+
+  // Paranoia Layer 1 & 2 (FLAW-FE-16): Handle Escape key dismissal gracefully
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCloseClick();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isVerifying, showExitIntent, step]);
+
+  if (!isOpen) return null;
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Dismiss only when the click is on the backdrop itself, not inside the modal container
+    if (e.target === e.currentTarget) {
+      handleCloseClick();
     }
   };
 
@@ -70,12 +92,19 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div 
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 cursor-default"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="paywall-title"
+    >
       <motion.div 
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+        onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-xl rounded-xl bg-card border border-border/80 shadow-2xl p-6 md:p-8 text-foreground overflow-hidden"
       >
         {/* Close Button */}

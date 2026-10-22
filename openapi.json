@@ -7376,51 +7376,6 @@
         }
       }
     },
-    "/api/elein/leads/{list_id}": {
-      "delete": {
-        "tags": [
-          "elein"
-        ],
-        "summary": "Delete Lead List",
-        "description": "Paranoia Layer 0, 1 & 2: Safely deletes a lead list.\n- Layer 0: Verifies list ownership and removes lead_lists and list_members.\n- Layer 1: Environmental Safety - Prevents deletion if list is actively in use by an ACTIVE campaign!\n- Layer 2: Human Paranoia - Informative 400 error naming the conflicting active campaign.",
-        "operationId": "delete_lead_list_api_elein_leads__list_id__delete",
-        "parameters": [
-          {
-            "name": "list_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "List Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Delete Lead List Api Elein Leads  List Id  Delete"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/elein/accounts/validate": {
       "post": {
         "tags": [
@@ -7939,18 +7894,53 @@
         ],
         "summary": "Get Opportunities",
         "operationId": "get_opportunities_api_elein_opportunities_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
                   "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
                   "title": "Response Get Opportunities Api Elein Opportunities Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -9503,6 +9493,7 @@
                   "type": "null"
                 }
               ],
+              "default": 50,
               "title": "Limit"
             }
           },
@@ -19249,12 +19240,15 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name"
           },
           "linkedin_profile_url": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -19264,12 +19258,15 @@
           },
           "session_cookies_json": {
             "type": "string",
+            "maxLength": 500000,
             "title": "Session Cookies Json"
           },
           "daily_connection_limit": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -19281,7 +19278,9 @@
           "daily_message_limit": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 1000.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -19305,7 +19304,8 @@
           "warmup_start_date": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100
               },
               {
                 "type": "null"
@@ -19316,7 +19316,9 @@
           "warmup_target_days": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -19328,7 +19330,9 @@
           "warmup_max_connections": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -19340,7 +19344,9 @@
           "warmup_max_messages": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 1000.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -19352,7 +19358,8 @@
           "proxy_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 255
               },
               {
                 "type": "null"
@@ -20446,11 +20453,13 @@
         "properties": {
           "deal_id": {
             "type": "string",
+            "maxLength": 255,
             "title": "Deal Id",
             "description": "CRM deal ID"
           },
           "deal_name": {
             "type": "string",
+            "maxLength": 255,
             "title": "Deal Name",
             "description": "Deal title / name"
           },
@@ -20461,18 +20470,25 @@
           },
           "touchpoints": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TouchpointItem"
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              ]
             },
             "type": "array",
             "title": "Touchpoints",
-            "description": "List of recorded touches across campaigns",
-            "default": []
+            "description": "List of recorded touches across campaigns"
           },
           "model": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -20540,6 +20556,8 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name"
           },
           "nodes": {
@@ -20547,6 +20565,7 @@
               "$ref": "#/components/schemas/EleInNode"
             },
             "type": "array",
+            "maxItems": 1000,
             "title": "Nodes"
           },
           "edges": {
@@ -20554,6 +20573,7 @@
               "$ref": "#/components/schemas/EleInEdge"
             },
             "type": "array",
+            "maxItems": 2000,
             "title": "Edges"
           },
           "senders": {
@@ -20562,19 +20582,20 @@
                 "items": {
                   "type": "string"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 500
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Senders",
-            "default": []
+            "title": "Senders"
           },
           "status": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -20586,7 +20607,8 @@
           "timezone": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100
               },
               {
                 "type": "null"
@@ -20609,7 +20631,9 @@
           "limit": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -20628,13 +20652,13 @@
                 "type": "null"
               }
             ],
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "expected_version": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -20645,7 +20669,8 @@
           "expected_updated_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100
               },
               {
                 "type": "null"
@@ -20668,7 +20693,8 @@
           "lead_list_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 255
               },
               {
                 "type": "null"
@@ -22303,20 +22329,24 @@
         "properties": {
           "id": {
             "type": "string",
+            "maxLength": 255,
             "title": "Id"
           },
           "source": {
             "type": "string",
+            "maxLength": 255,
             "title": "Source"
           },
           "target": {
             "type": "string",
+            "maxLength": 255,
             "title": "Target"
           },
           "sourceHandle": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100
               },
               {
                 "type": "null"
@@ -22327,7 +22357,8 @@
           "targetHandle": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100
               },
               {
                 "type": "null"
@@ -22348,10 +22379,12 @@
         "properties": {
           "id": {
             "type": "string",
+            "maxLength": 255,
             "title": "Id"
           },
           "type": {
             "type": "string",
+            "maxLength": 100,
             "title": "Type"
           },
           "data": {
@@ -22377,8 +22410,7 @@
         "type": "object",
         "required": [
           "id",
-          "type",
-          "data"
+          "type"
         ],
         "title": "EleInNode"
       },
@@ -23877,6 +23909,28 @@
           "access_token": {
             "type": "string",
             "title": "Access Token"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          },
+          "expires_in": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In"
           }
         },
         "type": "object",
@@ -27686,6 +27740,42 @@
         ],
         "title": "ToggleWarmupPayload"
       },
+      "TouchpointItem": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "campaign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel"
+        ],
+        "title": "TouchpointItem"
+      },
       "UpdateCommitteeStatusPayload": {
         "properties": {
           "status": {
@@ -28380,12 +28470,15 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -28396,7 +28489,8 @@
           "version": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -28408,7 +28502,8 @@
           "schema_version": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100
               },
               {
                 "type": "null"
@@ -28452,7 +28547,8 @@
                 "items": {
                   "type": "string"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 50
               },
               {
                 "type": "null"

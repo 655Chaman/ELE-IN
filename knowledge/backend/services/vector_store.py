@@ -296,6 +296,19 @@ class SemanticBrain:
                     ]
                     self.supabase.table("knowledge_chunks").insert(db_rows).execute()
 
+                # Three-Layer Paranoia (Leak 2 Fix): If fallback pseudo-embeddings were generated,
+                # explicitly flag knowledge_assets so the user knows vectors are degraded,
+                # and enqueue automated re-indexing when keys recover!
+                if is_fallback and asset_id and asset_id != "legacy":
+                    try:
+                        self.supabase.table("knowledge_assets").update({
+                            "embedding_status": "degraded_fallback",
+                            "reindex_required": True
+                        }).eq("id", asset_id).execute()
+                        logger.warning(f"[SemanticBrain] Asset {asset_id} indexed with fallback pseudo-embeddings. Flagged for re-indexing.")
+                    except Exception as err:
+                        logger.debug(f"[SemanticBrain] Failed flagging degraded asset in DB: {err}")
+
             # Paranoia Layer 1: Multi-tenant safe in-memory storage (Issue 3 resolution)
             with _in_memory_chunks_lock:
                 # Purge prior chunks for this asset and workspace

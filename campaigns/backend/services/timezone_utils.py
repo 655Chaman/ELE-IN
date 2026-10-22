@@ -82,7 +82,14 @@ def parse_schedule_config(schedule: Optional[dict] = None) -> Tuple[int, int, Se
     end_hour = max(1, min(24, end_hour))
 
     # Inverted or equal hours -> fall back to default standard hours (9 and 17)
-    if start_hour >= end_hour:
+    # unless overnight cross-midnight sending is explicitly permitted (Leak 7 Fix)
+    allow_overnight = bool(
+        schedule.get("overnight_sending")
+        or schedule.get("overnight_sending_enabled")
+        or schedule.get("cross_midnight")
+        or schedule.get("allow_overnight")
+    )
+    if start_hour >= end_hour and not (allow_overnight and start_hour > end_hour):
         start_hour = 9
         end_hour = 17
 
@@ -167,8 +174,13 @@ def is_working_hours(tz_str: str, schedule: Optional[dict] = None, now_dt: Optio
 
     if now.weekday() not in active_days:
         return False
-    if not (start_hour <= now.hour < end_hour):
-        return False
+    if start_hour < end_hour:
+        if not (start_hour <= now.hour < end_hour):
+            return False
+    else:
+        # Cross-midnight window (Leak 7 Fix)
+        if not (now.hour >= start_hour or now.hour < end_hour):
+            return False
     return True
 
 def calculate_next_run_at(base_time: datetime, target_tz: str, schedule: Optional[dict] = None) -> datetime:
@@ -201,8 +213,15 @@ def calculate_next_run_at(base_time: datetime, target_tz: str, schedule: Optiona
 
     start_hour, end_hour, active_days = parse_schedule_config(schedule)
 
-    # In working window:
-    if weekday in active_days and (start_hour <= hour < end_hour):
+    # In working window (Leak 7 Fix: supports cross-midnight schedules)
+    in_window = False
+    if weekday in active_days:
+        if start_hour < end_hour:
+            in_window = (start_hour <= hour < end_hour)
+        else:
+            in_window = (hour >= start_hour or hour < end_hour)
+
+    if in_window:
         return base_time
 
     naive_local = local_dt.replace(tzinfo=None)

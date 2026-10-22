@@ -8511,8 +8511,8 @@ export function EINodeConfigPanel() {
 
   if (!selectedNode) return null
 
-  const d = selectedNode.data as Record<string, any>
-  const nodeType: string = d.type || ""
+  const d = (selectedNode.data || {}) as Record<string, any>
+  const nodeType: string = (selectedNode.type || d.type || "") as string
   const def = HR_NODE_DEFS[nodeType as keyof typeof HR_NODE_DEFS]
   const config = NODE_CONFIG[nodeType] || (def ? {
     title: def.label,
@@ -8794,8 +8794,8 @@ export function EITreeNodeConfigPanel() {
   const selectedNode = findInTree(rootNodes)
   if (!selectedNode) return null
 
-  const d = selectedNode.data as Record<string, any>
-  const nodeType: string = d.type || ""
+  const d = (selectedNode.data || {}) as Record<string, any>
+  const nodeType: string = (selectedNode.type || d.type || "") as string
   
   const def = HR_NODE_DEFS[nodeType as keyof typeof HR_NODE_DEFS]
   if (!def) return null

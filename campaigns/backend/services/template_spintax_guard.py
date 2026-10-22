@@ -121,8 +121,8 @@ def validate_template_and_spintax_syntax(text: str, allowed_vars: Optional[Set[s
                     f"Template variable '{{{{{var_part}}}}}' has an unsafe poison fallback '{fallback_part}'."
                 )
 
-    # 2. Mask valid '{{...}}' blocks and check for stray '{{' or mismatched '{{var}'
-    masked = re.sub(r"\{\{[^{}]*\}\}", "__ELEIN_VAR_MASK__", text)
+    # 2. Mask valid '{{...}}' blocks (including nested single-brace spintax fallbacks) and check for stray '{{' or mismatched '{{var}'
+    masked = re.sub(r"\{\{(?:[^{}]|\{[^{}]*\})*?\}\}", "__ELEIN_VAR_MASK__", text)
     if "{{" in masked:
         errors.append(
             "Malformed or unclosed template variable braces ('{{' or '}}'). "

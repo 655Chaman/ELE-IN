@@ -1099,13 +1099,40 @@ def enroll_boomerang_or_revival(
 
         if supabase_client:
             try:
-                supabase_client.table("campaign_enrollments").upsert({
-                    "workspace_id": workspace_id,
-                    "campaign_id": target_campaign,
-                    "lead_id": item_id,
-                    "status": enrollment_record["status"],
-                    "created_at": enrollment_record["enrolled_at"]
-                }).execute()
+                # Paranoia Layer 0 & 1: Verify valid UUIDs before database insertion to prevent 22P02 syntax errors
+                def _safe_uuid(val: Optional[str]) -> Optional[str]:
+                    if not val:
+                        return None
+                    try:
+                        return str(uuid.UUID(str(val)))
+                    except (ValueError, AttributeError, TypeError):
+                        return None
+
+                valid_camp_uuid = _safe_uuid(target_campaign)
+                if valid_camp_uuid:
+                    raw_lead_id = (matched_item.get("lead_id") if matched_item else None) or item_id
+                    valid_lead_uuid = _safe_uuid(raw_lead_id) or str(uuid.uuid5(uuid.NAMESPACE_DNS, f"lead:{raw_lead_id}"))
+
+                    enr_res = supabase_client.table("campaign_enrollments").upsert({
+                        "workspace_id": workspace_id,
+                        "campaign_id": valid_camp_uuid,
+                        "lead_id": valid_lead_uuid,
+                        "status": "active"
+                    }, on_conflict="campaign_id,lead_id").execute()
+
+                    enr_id = enr_res.data[0]["id"] if enr_res.data else None
+                    if enr_id:
+                        supabase_client.table("campaign_execution_states").upsert({
+                            "workspace_id": workspace_id,
+                            "campaign_id": valid_camp_uuid,
+                            "enrollment_id": enr_id,
+                            "status": "pending",
+                            "variables": {
+                                "item_id": item_id,
+                                "item_type": item_type,
+                                "prospect_name": matched_item.get("prospect_name") if matched_item else None
+                            }
+                        }, on_conflict="enrollment_id").execute()
             except Exception as db_ins:
                 logger.debug(f"[Boomerang] Non-fatal DB enrollment persist: {db_ins}")
 

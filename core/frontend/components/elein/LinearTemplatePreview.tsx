@@ -1,10 +1,12 @@
 import type { EINode } from "@/lib/eiTypes"
 
 import { type EITemplate } from "@/lib/eiTemplates"
+import { HR_NODE_DEFS } from "@/lib/eiNodeDefs"
 import {
   Eye, UserPlus, MessageSquare, CheckCircle2, XCircle,
   Mail, ThumbsUp, UserCheck, Flag, Clock, StickyNote,
-  ArrowDown, AtSign, Zap, ShieldCheck
+  ArrowDown, AtSign, Zap, ShieldCheck, GitBranch, Webhook,
+  Tag, Sliders, Layers
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
@@ -27,6 +29,61 @@ const NODE_TYPE_CONFIG: Record<string, { label: string; icon: React.ComponentTyp
   end:                        { label: "Sequence End",               icon: XCircle,       color: "text-zinc-500",    bg: "bg-zinc-800/60 border-zinc-700/40" },
 }
 
+// Paranoia Layer 0 & 2 (FLAW-FE-17): Resolves node definitions via HR_NODE_DEFS instead of falsely mapping to send_message
+function getNodeConfig(typeKey: string) {
+  if (NODE_TYPE_CONFIG[typeKey]) {
+    return NODE_TYPE_CONFIG[typeKey]
+  }
+
+  const def = (HR_NODE_DEFS as any)?.[typeKey]
+  if (def) {
+    const category = def.category || "action"
+    let Icon: React.ComponentType<{ size?: number; className?: string }> = Zap
+    let color = "text-purple-400"
+    let bg = "bg-purple-500/10 border-purple-500/30"
+
+    if (category === "condition" || category === "logic") {
+      Icon = GitBranch
+      color = "text-amber-400"
+      bg = "bg-amber-500/10 border-amber-500/30"
+    } else if (category === "warmup") {
+      Icon = Eye
+      color = "text-cyan-400"
+      bg = "bg-cyan-500/10 border-cyan-500/30"
+    } else if (category === "integration" || typeKey.includes("webhook")) {
+      Icon = Webhook
+      color = "text-emerald-400"
+      bg = "bg-emerald-500/10 border-emerald-500/30"
+    } else if (category === "tag") {
+      Icon = Tag
+      color = "text-blue-400"
+      bg = "bg-blue-500/10 border-blue-500/30"
+    } else if (category === "delay" || category === "wait") {
+      Icon = Clock
+      color = "text-zinc-400"
+      bg = "bg-zinc-500/10 border-zinc-500/30"
+    }
+
+    return {
+      label: def.label || typeKey.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+      icon: Icon,
+      color,
+      bg,
+    }
+  }
+
+  const formattedLabel = (typeKey || "Step")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c: string) => c.toUpperCase())
+
+  return {
+    label: formattedLabel,
+    icon: Layers,
+    color: "text-zinc-400",
+    bg: "bg-zinc-800/40 border-zinc-700/40",
+  }
+}
+
 interface Props {
   template: EITemplate
   errors?: Record<string, string[]>
@@ -39,11 +96,7 @@ function StepCard({ node, stickyNote, delay, errors = [] }: {
   errors?: string[]
 }) {
   const typeKey = (node.type || node.data?.type) as string
-  let cfg = NODE_TYPE_CONFIG[typeKey]
-  if (!cfg) {
-    console.warn(`Unknown node type encountered: ${typeKey}. Falling back to send_message.`)
-    cfg = NODE_TYPE_CONFIG["send_message"]
-  }
+  const cfg = getNodeConfig(typeKey)
   const Icon = cfg.icon
   const isEnd = typeKey === "end"
   const isStart = typeKey === "start"

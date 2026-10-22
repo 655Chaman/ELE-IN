@@ -592,6 +592,17 @@ def enroll_lead_from_trigger(
             "trigger_event": target_event
         }
 
+    # Paranoia Layer 0: Verify that target campaign exists and belongs to the caller workspace
+    if supabase and norm_camp:
+        try:
+            camp_res = supabase.table("campaigns").select("id").eq("id", norm_camp).eq("workspace_id", norm_ws).limit(1).execute()
+            if not camp_res.data:
+                raise PermissionError(f"Campaign {campaign_id} does not exist or does not belong to workspace {workspace_id}")
+        except PermissionError:
+            raise
+        except Exception as camp_err:
+            logger.warning(f"Could not verify campaign ownership: {camp_err}")
+
     # Paranoia Layer 1 & 2: Contact Info Resolution & Suppression (DNC) Defense
     lead_email = target_event.get("email") or target_event.get("event_data", {}).get("email")
     lead_li = target_event.get("linkedin_url") or target_event.get("event_data", {}).get("linkedin_url")
@@ -680,13 +691,34 @@ def enroll_lead_from_trigger(
 
     if supabase:
         try:
+            # 1. Update trigger event with workspace scoping
             supabase.table("trigger_events").update({
                 "status": "ENROLLED",
                 "enrolled_campaign_id": norm_camp,
                 "generated_icebreaker": icebreaker
-            }).eq("id", target_event["id"]).execute()
+            }).eq("id", target_event["id"]).eq("workspace_id", norm_ws).execute()
+
+            # 2. Insert into campaign_enrollments and campaign_execution_states
+            lead_id = target_event.get("lead_id")
+            if lead_id and norm_camp:
+                enr_res = supabase.table("campaign_enrollments").upsert({
+                    "workspace_id": norm_ws,
+                    "campaign_id": norm_camp,
+                    "lead_id": lead_id,
+                    "status": "active"
+                }, on_conflict="campaign_id,lead_id").execute()
+                
+                enr_id = enr_res.data[0]["id"] if enr_res.data else None
+                if enr_id:
+                    supabase.table("campaign_execution_states").upsert({
+                        "workspace_id": norm_ws,
+                        "campaign_id": norm_camp,
+                        "enrollment_id": enr_id,
+                        "status": "pending",
+                        "variables": {"icebreaker": icebreaker, "trigger_event_id": trigger_event_id}
+                    }, on_conflict="enrollment_id").execute()
         except Exception as e:
-            logger.warning(f"Could not update trigger event in DB: {e}")
+            logger.warning(f"Could not execute trigger enrollment in DB: {e}")
 
     return {
         "status": "success",

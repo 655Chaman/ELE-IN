@@ -31,5 +31,6 @@
       "@integrations/*": ["./integrations/frontend/*"]
     }
   },
-  "include": ["core/frontend", "campaigns/frontend", "accounts/frontend", "dashboard/frontend", "leads/frontend", "inbox/frontend", "knowledge/frontend", "admin/frontend", "integrations/frontend"]
+  "include": ["core/frontend", "campaigns/frontend", "accounts/frontend", "dashboard/frontend", "leads/frontend", "inbox/frontend", "knowledge/frontend", "admin/frontend", "integrations/frontend"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]
 }

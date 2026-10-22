@@ -399,18 +399,18 @@ export function EleInCampaigns() {
           openPaywall({ featureName: feature });
           setShowUpgradeModal(true);
           mutate();
-          return;
+          throw new Error(errMsg);
         }
         if (errMsg === "no_active_senders") {
           toast.error("No active sender accounts found for this campaign. Please connect or activate a LinkedIn account first.");
           mutate();
-          return;
+          throw new Error("No active sender accounts found. Please connect or activate a LinkedIn account first.");
         }
         if (errMsg === "insufficient_credits") {
           openPaywall({ featureName: "Campaign Activation Credits" });
           toast.info("Insufficient credits to activate campaign. Please top up your credits.");
           mutate();
-          return;
+          throw new Error("Insufficient credits to activate campaign.");
         }
         throw new Error(errMsg);
       }
@@ -419,6 +419,7 @@ export function EleInCampaigns() {
     } catch (e: any) {
       toast.error(e.message || "Failed to update campaign status");
       mutate();
+      throw e;
     } finally {
       setTogglingId(null);
     }
@@ -454,31 +455,34 @@ export function EleInCampaigns() {
       if (!detailRes.ok) throw new Error("Failed to fetch campaign architecture");
       const detail = await detailRes.json();
 
-      const origCamp = detail.campaign || {};
+      // Paranoia Layer 0 & 1 (FLAW-FE-01): Support both { campaign: {...} } and direct detail object
+      const origCamp = detail.campaign || detail || {};
       const newName = `${originalName} (Copy)`;
 
       // UI-08 Paranoia Layer 0 & 2: Explicitly preserve sender accounts and audience lead_list_id
       const senders = (Array.isArray(detail.accounts) && detail.accounts.length > 0)
         ? detail.accounts.map((a: any) => a.id || a.account_id).filter(Boolean)
-        : (origCamp.senders || origCamp.sender_account_ids_json || []);
-      const leadListId = origCamp.lead_list_id || origCamp.metadata?.lead_list_id || null;
+        : (origCamp.senders || origCamp.sender_account_ids_json || detail.sender_account_ids || []);
+      const leadListId = origCamp.lead_list_id || origCamp.metadata?.lead_list_id || detail.lead_list_id || detail.metadata?.lead_list_id || null;
+      const schedule = origCamp.schedule || origCamp.metadata?.schedule || detail.metadata?.schedule || null;
+      const metadata = {
+        ...(origCamp.metadata || detail.metadata || { stop_on_reply: true }),
+        ...(leadListId ? { lead_list_id: leadListId } : {})
+      };
 
       const createRes = await fetchWithAuth('/api/elein/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newName,
-          nodes: detail.nodes || [],
-          edges: detail.edges || [],
+          nodes: detail.nodes || origCamp.nodes || [],
+          edges: detail.edges || origCamp.edges || [],
           senders: senders,
           lead_list_id: leadListId,
-          timezone: origCamp.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timezone: origCamp.timezone || detail.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           status: "DRAFT",
-          schedule: origCamp.schedule,
-          metadata: {
-            ...(origCamp.metadata || { stop_on_reply: true }),
-            ...(leadListId ? { lead_list_id: leadListId } : {})
-          }
+          schedule: schedule,
+          metadata: metadata
         })
       });
 

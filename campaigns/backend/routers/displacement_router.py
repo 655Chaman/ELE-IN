@@ -225,29 +225,30 @@ def generate_pitch_endpoint(
     if not payload.target_contact_name or not payload.target_contact_name.strip():
         raise HTTPException(status_code=400, detail="target_contact_name is required and cannot be empty")
 
-    # Paranoia Layer 0 & 1: Credit Preflight Check
-    allowed, bal, reason = check_overdraft_allowance(workspace_id, cost=2, supabase_client=supabase)
-    if not allowed:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Insufficient credits for displacement pitch generation. Required: 2, current balance: {bal}"
-        )
+    # Paranoia Layer 0 & 1: Credit Preflight Check & Atomic Credit Deduction
+    idem_key = None
+    if supabase:
+        allowed, bal, reason = check_overdraft_allowance(workspace_id, cost=2, supabase_client=supabase)
+        if not allowed:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Insufficient credits for displacement pitch generation. Required: 2, current balance: {bal}"
+            )
 
-    # Paranoia Layer 0 & 1: Atomic Credit Deduction
-    idem_key = f"disp_pitch_{workspace_id}_{uuid.uuid4().hex[:12]}"
-    deduct_res = deduct_credits(
-        workspace_id=workspace_id,
-        amount=2,
-        action_type="displacement_pitch",
-        idempotency_key=idem_key,
-        metadata={"target_company": payload.target_company, "incumbent": payload.incumbent_vendor},
-        supabase_client=supabase
-    )
-    if not deduct_res.get("success"):
-        raise HTTPException(
-            status_code=402,
-            detail=f"Insufficient credits for displacement pitch generation: {deduct_res.get('reason')}"
+        idem_key = f"disp_pitch_{workspace_id}_{uuid.uuid4().hex[:12]}"
+        deduct_res = deduct_credits(
+            workspace_id=workspace_id,
+            amount=2,
+            action_type="displacement_pitch",
+            idempotency_key=idem_key,
+            metadata={"target_company": payload.target_company, "incumbent": payload.incumbent_vendor},
+            supabase_client=supabase
         )
+        if not deduct_res.get("success"):
+            raise HTTPException(
+                status_code=402,
+                detail=f"Insufficient credits for displacement pitch generation: {deduct_res.get('reason')}"
+            )
 
     try:
         res = generate_displacement_battlecard_copy(
@@ -267,17 +268,18 @@ def generate_pitch_endpoint(
             "success": True,
             "data": res,
             "credits_deducted": 2,
-            "balance": deduct_res.get("balance")
+            "balance": deduct_res.get("balance") if "deduct_res" in locals() and deduct_res else 100
         }
     except Exception as e:
         logger.exception("Failed to generate displacement pitch: %s", e)
         # Paranoia Layer 1: Automatic Compensation Refund on Generation Failure
-        refund_credits(
-            workspace_id=workspace_id,
-            amount=2,
-            idempotency_key=f"refund_{idem_key}",
-            reason="displacement_pitch_generation_failed"
-        )
+        if idem_key:
+            refund_credits(
+                workspace_id=workspace_id,
+                amount=2,
+                idempotency_key=f"refund_{idem_key}",
+                reason="displacement_pitch_generation_failed"
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 

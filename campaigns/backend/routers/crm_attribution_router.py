@@ -1,5 +1,6 @@
+import re
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
@@ -41,11 +42,11 @@ class TouchpointItem(BaseModel):
 
 
 class CalculateAttributionPayload(BaseModel):
-    deal_id: str = Field(..., description="CRM deal ID")
-    deal_name: str = Field(..., description="Deal title / name")
+    deal_id: str = Field(..., max_length=255, description="CRM deal ID")
+    deal_name: str = Field(..., max_length=255, description="Deal title / name")
     deal_amount: float = Field(..., description="Total deal value in USD")
-    touchpoints: List[Dict[str, Any]] = Field(default=[], description="List of recorded touches across campaigns")
-    model: Optional[str] = Field("w_shaped", description="first_touch, last_touch, linear, or w_shaped")
+    touchpoints: List[Union[TouchpointItem, Dict[str, Any]]] = Field(default_factory=list, description="List of recorded touches across campaigns")
+    model: Optional[str] = Field("w_shaped", max_length=50, description="first_touch, last_touch, linear, or w_shaped")
 
 
 @router.get("/accounts")
@@ -154,11 +155,15 @@ def calculate_attribution_endpoint(
     Calculates multi-touch revenue attribution across campaigns and marketing touches.
     """
     try:
+        clean_tps = [
+            tp.dict() if hasattr(tp, "dict") else (tp.model_dump() if hasattr(tp, "model_dump") else (dict(tp) if isinstance(tp, dict) else {"channel": str(tp)}))
+            for tp in (payload.touchpoints or [])
+        ]
         record = calculate_deal_attribution(
             deal_id=payload.deal_id,
             deal_name=payload.deal_name,
-            deal_amount=payload.deal_amount,
-            touchpoints=payload.touchpoints,
+            deal_amount=max(0.0, float(payload.deal_amount or 0.0)),
+            touchpoints=clean_tps,
             model=payload.model or "w_shaped",
             workspace_id=workspace_id,
             supabase=supabase
@@ -202,10 +207,11 @@ def export_attributions_csv_endpoint(
     """
     try:
         csv_content = export_crm_attributions_csv(workspace_id=workspace_id, supabase=supabase)
+        clean_ws_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", workspace_id)
         return Response(
             content=csv_content,
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="crm_attributions_{workspace_id}.csv"'}
+            headers={"Content-Disposition": f'attachment; filename="crm_attributions_{clean_ws_id}.csv"'}
         )
     except Exception as e:
         logger.exception("Failed to export CRM attributions CSV: %s", e)

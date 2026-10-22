@@ -1,33 +1,36 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Any, Dict
 
 class EleInNode(BaseModel):
-    id: str
-    type: str
-    data: Dict[str, Any]
+    id: str = Field(..., max_length=255)
+    type: str = Field(..., max_length=100)
+    data: Dict[str, Any] = Field(default_factory=dict)
     position: Optional[Dict[str, float]] = None
+    model_config = ConfigDict(extra="ignore")
 
 class EleInEdge(BaseModel):
-    id: str
-    source: str
-    target: str
-    sourceHandle: Optional[str] = None
-    targetHandle: Optional[str] = None
+    id: str = Field(..., max_length=255)
+    source: str = Field(..., max_length=255)
+    target: str = Field(..., max_length=255)
+    sourceHandle: Optional[str] = Field(None, max_length=100)
+    targetHandle: Optional[str] = Field(None, max_length=100)
+    model_config = ConfigDict(extra="ignore")
 
 class CampaignCreate(BaseModel):
-    name: str
-    nodes: List[EleInNode]
-    edges: List[EleInEdge]
-    senders: Optional[List[str]] = []
-    status: Optional[str] = "DRAFT"
-    timezone: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    nodes: List[EleInNode] = Field(..., max_length=1000)
+    edges: List[EleInEdge] = Field(..., max_length=2000)
+    senders: Optional[List[str]] = Field(default_factory=list, max_length=500)
+    status: Optional[str] = Field("DRAFT", max_length=50)
+    timezone: Optional[str] = Field(None, max_length=100)
     schedule: Optional[Dict[str, Any]] = None
-    limit: Optional[int] = 50
-    metadata: Optional[Dict[str, Any]] = {}
-    expected_version: Optional[int] = None
-    expected_updated_at: Optional[str] = None
+    limit: Optional[int] = Field(50, ge=0, le=10000)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    expected_version: Optional[int] = Field(None, ge=0)
+    expected_updated_at: Optional[str] = Field(None, max_length=100)
     allow_active_graph_mutation: Optional[bool] = False
-    lead_list_id: Optional[str] = None
+    lead_list_id: Optional[str] = Field(None, max_length=255)
+    model_config = ConfigDict(extra="ignore")
 
 class CampaignResponse(BaseModel):
     id: str
@@ -37,32 +40,36 @@ class CampaignResponse(BaseModel):
     edges_json: str
 
 class CampaignVersionCreate(BaseModel):
-    name: str
+    name: str = Field(..., max_length=255)
+    model_config = ConfigDict(extra="ignore")
 
 class CampaignNodeCreate(BaseModel):
-    id: str
-    node_type: str
-    config: Dict[str, Any]
+    id: str = Field(..., max_length=255)
+    node_type: str = Field(..., max_length=100)
+    config: Dict[str, Any] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="ignore")
 
 class CampaignEdgeCreate(BaseModel):
-    source_node_id: str
-    target_node_id: str
-    condition: Optional[str] = None
+    source_node_id: str = Field(..., max_length=255)
+    target_node_id: str = Field(..., max_length=255)
+    condition: Optional[str] = Field(None, max_length=100)
+    model_config = ConfigDict(extra="ignore")
 
 class AccountCreate(BaseModel):
-    name: str
-    linkedin_profile_url: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    linkedin_profile_url: Optional[str] = Field(None, max_length=1000)
     # API field kept as session_cookies_json for frontend compatibility.
     # The backend stores this as session_cookies_encrypted (BYTEA) in the DB.
-    session_cookies_json: str
-    daily_connection_limit: Optional[int] = 20
-    daily_message_limit: Optional[int] = 40
+    session_cookies_json: str = Field(..., max_length=500000)
+    daily_connection_limit: Optional[int] = Field(20, ge=0, le=500)
+    daily_message_limit: Optional[int] = Field(40, ge=0, le=1000)
     is_warmup: Optional[bool] = False
-    warmup_start_date: Optional[str] = None
-    warmup_target_days: Optional[int] = 30
-    warmup_max_connections: Optional[int] = 20
-    warmup_max_messages: Optional[int] = 40
-    proxy_id: Optional[str] = None
+    warmup_start_date: Optional[str] = Field(None, max_length=100)
+    warmup_target_days: Optional[int] = Field(30, ge=1, le=365)
+    warmup_max_connections: Optional[int] = Field(20, ge=0, le=500)
+    warmup_max_messages: Optional[int] = Field(40, ge=0, le=1000)
+    proxy_id: Optional[str] = Field(None, max_length=255)
+    model_config = ConfigDict(extra="ignore")
 
 class AccountResponse(BaseModel):
     id: str
@@ -83,15 +90,16 @@ class AccountResponse(BaseModel):
 
 
 class WorkspaceBlueprintCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    version: Optional[str] = "1.0.0"
-    schema_version: Optional[str] = "elein-blueprint-v1"
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    version: Optional[str] = Field("1.0.0", max_length=50)
+    schema_version: Optional[str] = Field("elein-blueprint-v1", max_length=100)
     branding: Optional[Dict[str, Any]] = None
     sequence_data: Dict[str, Any]
     stats: Optional[Dict[str, Any]] = None
-    tags: Optional[List[str]] = None
+    tags: Optional[List[str]] = Field(default_factory=list, max_length=50)
     is_public: Optional[bool] = False
+    model_config = ConfigDict(extra="ignore")
 
 
 class WorkspaceBlueprintResponse(BaseModel):
@@ -108,4 +116,5 @@ class WorkspaceBlueprintResponse(BaseModel):
     is_public: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    model_config = ConfigDict(extra="ignore")
 

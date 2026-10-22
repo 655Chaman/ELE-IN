@@ -239,9 +239,11 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!noteRef.current) return
-      // Inspect canvas zoom compensation
-      const el = noteRef.current.closest('[style*="zoom"]')
-      const zoom = el ? parseFloat((el as HTMLElement).style.zoom || "1") : 1
+      // Inspect canvas zoom compensation (FLAW-FE-18: standard data-canvas-zoom with style.zoom fallback)
+      const el = noteRef.current.closest('[data-canvas-zoom]') || noteRef.current.closest('[style*="zoom"]')
+      const zoom = el 
+        ? parseFloat(el.getAttribute('data-canvas-zoom') || (el as HTMLElement).style.zoom || "1") 
+        : 1
 
       const deltaX = (e.clientX - dragStartRef.current.mouseX) / zoom
       const deltaY = (e.clientY - dragStartRef.current.mouseY) / zoom
@@ -600,6 +602,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
           <input
             ref={titleInputRef}
             type="text"
+            maxLength={100}
             value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
             onKeyDown={(e) => {
@@ -658,6 +661,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
             <textarea
               ref={textareaRef}
               rows={4}
+              maxLength={5000}
               value={draftText}
               onChange={(e) => {
                 setDraftText(e.target.value)
@@ -753,11 +757,23 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
                       {children}
                     </blockquote>
                   ),
-                  a: ({ href, children }) => (
-                    <a href={href} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80">
-                      {children}
-                    </a>
-                  )
+                  a: ({ href, children }) => {
+                    const safeHref = href && /^(https?:\/\/|mailto:)/i.test(href.trim()) ? href.trim() : '#'
+                    return (
+                      <a 
+                        href={safeHref} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="underline hover:opacity-80"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (safeHref === '#') e.preventDefault()
+                        }}
+                      >
+                        {children}
+                      </a>
+                    )
+                  }
                 }}
               >
                 {note.text}

@@ -53,7 +53,7 @@ export interface EITreeStore {
   moveNodeInBranch: (parentId: string | null, branchLabel: string, dragIndex: number, dropIndex: number) => void
   selectNode: (id: string | null) => void
   reset: () => void
-  loadTree: (rootNodes: SeqTreeNode[], stickyNotes?: StickyNote[]) => void
+  loadTree: (rootNodes: SeqTreeNode[], stickyNotes?: StickyNote[], options?: { preserveHistory?: boolean }) => void
   undo: () => void
   redo: () => void
 }
@@ -321,7 +321,17 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
   
   reset: () => set({ rootNodes: [], stickyNotes: [], selectedNodeId: null, history: [], future: [], formState: { campaignName: '', senders: [], senderIds: [], leads: [], timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', schedule: {}, limit: 50, provider: 'any', leadListId: '', excludeListId: '' }, campaignStep: 0 }),
   
-  loadTree: (rootNodes, stickyNotes) => set({ rootNodes, stickyNotes: stickyNotes || [], selectedNodeId: null, history: [], future: [] }),
+  // Paranoia Layer 0 & 2 (FLAW-FE-19): Preserve existing canvas in history when importing/loading a tree
+  loadTree: (rootNodes, stickyNotes, options) => set(s => {
+    const shouldPreserve = options?.preserveHistory ?? (s.rootNodes && s.rootNodes.length > 0);
+    return {
+      rootNodes,
+      stickyNotes: stickyNotes || [],
+      selectedNodeId: null,
+      history: shouldPreserve ? [...s.history.slice(-19), s.rootNodes] : [],
+      future: [],
+    };
+  }),
 
   undo: () => set(s => {
     if (s.history.length === 0) return {}
@@ -600,13 +610,14 @@ export function treeToDag(roots: SeqTreeNode[]): { nodes: any[], edges: any[] } 
 // LAYER 0 + LAYER 1: Paranoia - Draft Autosave Helper with Environmental Failure Protection (QuotaExceeded)
 export function saveDraftToLocalStorage(state: EITreeStore) {
   if (typeof window === "undefined") return
+  let draftPayload: any = null
   try {
     const { nodes, edges } = treeToDag(state.rootNodes)
     // Paranoia Layer 2: Guard against saving an empty skeleton over an existing meaningful draft
     if (nodes.length === 0 && (!state.formState?.campaignName || state.formState?.campaignName === 'New Campaign') && !state.formState?.leadListId) {
       return
     }
-    const draft = {
+    draftPayload = {
       nodes,
       edges,
       stickyNotes: state.stickyNotes,
@@ -614,9 +625,31 @@ export function saveDraftToLocalStorage(state: EITreeStore) {
       step: state.campaignStep,
       timestamp: Date.now()
     }
-    localStorage.setItem("elein_unsaved_draft", JSON.stringify(draft))
-  } catch (e) {
+    localStorage.setItem("elein_unsaved_draft", JSON.stringify(draftPayload))
+  } catch (e: any) {
     console.warn("Failed to autosave campaign draft to localStorage:", e)
+    // Paranoia Layer 1 & 2 (FLAW-FE-11): Handle QuotaExceededError and notify via window event
+    if (e?.name === "QuotaExceededError" || e?.code === 22 || e?.number === -2147024882) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && (key.startsWith("elein_cache_") || key.startsWith("elein_snap_"))) {
+            localStorage.removeItem(key)
+          }
+        }
+        if (draftPayload) {
+          localStorage.setItem("elein_unsaved_draft", JSON.stringify(draftPayload))
+        }
+        return
+      } catch (retryErr) {
+        console.error("LocalStorage quota exceeded even after cache eviction:", retryErr)
+      }
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new CustomEvent("elein-draft-save-failed", {
+          detail: { reason: "Browser storage full (QuotaExceededError). Please free disk space." }
+        }))
+      }
+    }
   }
 }
 

@@ -423,6 +423,17 @@ def enroll_event_attendees_batch(
 
     if supabase:
         try:
+            # Verify target campaign ownership
+            camp_chk = supabase.table("campaigns").select("id, workspace_id").eq("id", norm_camp).limit(1).execute()
+            if not camp_chk.data:
+                camp_chk = supabase.table("campaigns").select("id, workspace_id").eq("id", campaign_id).limit(1).execute()
+            if camp_chk.data:
+                camp_ws = camp_chk.data[0].get("workspace_id")
+                if _is_cross_workspace_prohibited(camp_ws, workspace_id, norm_ws):
+                    raise PermissionError("Cross-workspace access denied: target campaign does not belong to caller workspace")
+            else:
+                logger.warning(f"Target campaign {campaign_id} not found in DB during attendee enrollment")
+
             chk = supabase.table("event_attendees").select("id, workspace_id").in_("id", attendee_ids).execute()
             if getattr(chk, "data", None):
                 for row in chk.data:
@@ -438,19 +449,25 @@ def enroll_event_attendees_batch(
 
     if supabase:
         try:
-            # Update status in DB with workspace scoping
+            # Update status in DB with strict workspace scoping (no unscoped fallback)
             for aid in attendee_ids:
                 norm_aid = _normalize_uuid(aid, "attendee")
                 up_res = supabase.table("event_attendees").update({
                     "status": "enrolled",
                     "enrolled_campaign_id": norm_camp
                 }).eq("id", norm_aid).eq("workspace_id", norm_ws).execute()
-                if not up_res.data:
-                    supabase.table("event_attendees").update({
+                if up_res.data:
+                    enrolled_count += len(up_res.data)
+                else:
+                    # Retry with raw IDs while strictly enforcing workspace scoping
+                    up_raw = supabase.table("event_attendees").update({
                         "status": "enrolled",
                         "enrolled_campaign_id": norm_camp
-                    }).eq("id", aid).execute()
-                enrolled_count += 1
+                    }).eq("id", aid).eq("workspace_id", workspace_id).execute()
+                    if up_raw.data:
+                        enrolled_count += len(up_raw.data)
+                    else:
+                        skipped_count += 1
         except Exception as e:
             logger.warning(f"Could not batch enroll in DB: {e}")
 

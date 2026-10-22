@@ -24,18 +24,19 @@ export function validateSpintax(text: string): { valid: boolean; error?: string 
     }
   }
 
-  let currentDepth = 0
+  const stack: ("variable" | "spintax")[] = []
   let maxDepth = 0
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]
     if (ch === "{") {
-      // Check if it's a variable {{var}} or spintax {opt1|opt2}
       if (i + 1 < text.length && text[i + 1] === "{") {
-        i++ // Skip next brace for {{var}}
+        stack.push("variable")
+        i++ // Skip second brace for {{var}}
         continue
       }
-      currentDepth++
+      stack.push("spintax")
+      const currentDepth = stack.filter(s => s === "spintax").length
       if (currentDepth > maxDepth) {
         maxDepth = currentDepth
       }
@@ -46,33 +47,112 @@ export function validateSpintax(text: string): { valid: boolean; error?: string 
         }
       }
     } else if (ch === "}") {
-      if (i + 1 < text.length && text[i + 1] === "}") {
-        i++ // Skip next brace for }}
+      // Check if top of stack is a variable and next char is also }
+      if (stack.length > 0 && stack[stack.length - 1] === "variable" && i + 1 < text.length && text[i + 1] === "}") {
+        stack.pop()
+        i++ // Skip second brace for }}
         continue
       }
-      currentDepth--
-      if (currentDepth < 0) {
+      if (stack.length === 0) {
         return {
           valid: false,
           error: "Unbalanced spintax: found closing '}' without matching opening '{'."
         }
       }
+      const top = stack.pop()
+      if (top !== "spintax") {
+        return {
+          valid: false,
+          error: "Unbalanced spintax: mismatched braces."
+        }
+      }
     }
   }
 
-  if (currentDepth !== 0) {
+  if (stack.length !== 0) {
+    const unclosedType = stack[stack.length - 1]
     return {
       valid: false,
-      error: "Unbalanced spintax: found unclosed opening '{'."
+      error: unclosedType === "variable" 
+        ? "Unbalanced spintax: found unclosed variable '{{'."
+        : "Unbalanced spintax: found unclosed opening '{'."
     }
   }
 
   return { valid: true }
 }
 
+// Paranoia Layer 0 & 1 (FLAW-FE-20): Resiliently balance and repair braces rather than simply slicing
 export function sanitizeSpintax(text: string): string {
   if (!text || typeof text !== "string") return ""
-  return text.slice(0, MAX_SPINTAX_CHARS)
+  // Reserve characters for trailing closing braces if truncation is needed
+  const budget = MAX_SPINTAX_CHARS - 10
+  const trimmed = text.length > MAX_SPINTAX_CHARS ? text.slice(0, budget) : text
+
+  let result = ""
+  const braceStack: ("double" | "single")[] = []
+  let skippedLevels = 0
+
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] === "{" && i + 1 < trimmed.length && trimmed[i + 1] === "{") {
+      braceStack.push("double")
+      result += "{{"
+      i++ // Skip second {
+    } else if (trimmed[i] === "{") {
+      const singleDepth = braceStack.filter(b => b === "single").length
+      if (singleDepth >= MAX_SPINTAX_DEPTH) {
+        skippedLevels++
+        continue
+      }
+      braceStack.push("single")
+      result += "{"
+    } else if (trimmed[i] === "}" && i + 1 < trimmed.length && trimmed[i + 1] === "}") {
+      const lastDouble = braceStack.lastIndexOf("double")
+      if (lastDouble !== -1) {
+        while (braceStack.length > lastDouble + 1) {
+          const inner = braceStack.pop()
+          if (inner === "single") result += "}"
+        }
+        braceStack.pop()
+        result += "}}"
+        i++ // Skip second }
+      } else {
+        // Stray }}, omit
+        i++
+      }
+    } else if (trimmed[i] === "}") {
+      if (skippedLevels > 0) {
+        skippedLevels--
+        continue
+      }
+      const lastSingle = braceStack.lastIndexOf("single")
+      if (lastSingle !== -1) {
+        while (braceStack.length > lastSingle + 1) {
+          const inner = braceStack.pop()
+          if (inner === "single") result += "}"
+          else if (inner === "double") result += "}}"
+        }
+        braceStack.pop()
+        result += "}"
+      } else {
+        // Stray single }, omit
+      }
+    } else {
+      result += trimmed[i]
+    }
+  }
+
+  // Gracefully close any trailing unclosed braces left by truncation
+  while (braceStack.length > 0) {
+    const unclosed = braceStack.pop()
+    if (unclosed === "single") {
+      result += "}"
+    } else if (unclosed === "double") {
+      result += "}}"
+    }
+  }
+
+  return result
 }
 
 interface TemplatesState {

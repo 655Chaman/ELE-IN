@@ -1354,13 +1354,13 @@ def get_account_health(
         try:
             accounts_res = supabase.table("accounts") \
                 .select("id, name, status, is_warmup, warmup_start_date, warmup_target_days, "
-                        "last_health_check_at, cookie_expires_at") \
+                        "last_health_check_at, cookie_expires_at, daily_connection_limit, daily_message_limit") \
                 .eq("workspace_id", workspace_id) \
                 .execute()
         except Exception:
             try:
                 accounts_res = supabase.table("accounts") \
-                    .select("id, name, status, is_warmup, created_at") \
+                    .select("id, name, status, is_warmup, created_at, daily_connection_limit, daily_message_limit") \
                     .eq("workspace_id", workspace_id) \
                     .execute()
             except Exception as e:
@@ -1397,6 +1397,19 @@ def get_account_health(
         conn_action_types = {'connection_request'}
         msg_action_types = {'message'}
         
+        # Paranoia Layer 1 (FLAW-API-14): Batch fetch account limit overrides to prevent N+1 RPC queries
+        overrides_by_account = {}
+        try:
+            ov_res = supabase.table("account_limit_overrides") \
+                .select("account_id, action_type, custom_limit") \
+                .in_("account_id", account_ids) \
+                .execute()
+            if ov_res.data:
+                for ov in ov_res.data:
+                    overrides_by_account[(ov.get("account_id"), ov.get("action_type"))] = ov.get("custom_limit")
+        except Exception as ov_err:
+            logger.debug(f"Could not batch fetch account_limit_overrides: {ov_err}")
+
         accounts_health = []
         total_throttled = 0
         
@@ -1407,20 +1420,20 @@ def get_account_health(
             today_connection_count = sum(acc_usage.get(at, 0) for at in conn_action_types)
             today_message_count = sum(acc_usage.get(at, 0) for at in msg_action_types)
             
-            # Layer 2 Human Paranoia Guard: Handle 0 explicitly vs None, fetch unified limits
-            try:
-                conn_res = supabase.rpc("get_account_action_limit", {"p_account_id": acc_id, "p_action_type": "connection_request"}).execute()
-                c_val = getattr(conn_res, "data", None)
-                conn_limit = int(c_val) if isinstance(c_val, (int, float)) or (isinstance(c_val, str) and c_val.isdigit()) else 20
-            except Exception:
-                conn_limit = 20
+            # Layer 2 Human Paranoia Guard: Handle 0 explicitly vs None, resolve limits in O(1)
+            conn_ov = overrides_by_account.get((acc_id, "connection_request"))
+            if conn_ov is not None and isinstance(conn_ov, (int, float)):
+                conn_limit = int(conn_ov)
+            else:
+                conn_raw = acc.get("daily_connection_limit")
+                conn_limit = int(conn_raw) if isinstance(conn_raw, (int, float)) or (isinstance(conn_raw, str) and conn_raw.isdigit()) else 20
                 
-            try:
-                msg_res = supabase.rpc("get_account_action_limit", {"p_account_id": acc_id, "p_action_type": "message"}).execute()
-                m_val = getattr(msg_res, "data", None)
-                msg_limit = int(m_val) if isinstance(m_val, (int, float)) or (isinstance(m_val, str) and m_val.isdigit()) else 40
-            except Exception:
-                msg_limit = 40
+            msg_ov = overrides_by_account.get((acc_id, "message"))
+            if msg_ov is not None and isinstance(msg_ov, (int, float)):
+                msg_limit = int(msg_ov)
+            else:
+                msg_raw = acc.get("daily_message_limit")
+                msg_limit = int(msg_raw) if isinstance(msg_raw, (int, float)) or (isinstance(msg_raw, str) and msg_raw.isdigit()) else 40
                 
             conn_limit = max(conn_limit, 1)
             msg_limit = max(msg_limit, 1)

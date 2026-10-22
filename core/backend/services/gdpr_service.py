@@ -18,15 +18,22 @@ async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
         # (Though ON DELETE CASCADE might handle it, explicitly logging it is required)
         kc_res = supabase_client.table('knowledge_chunks').delete().eq('workspace_id', workspace_id).execute()
         
-        # 2.5 Delete forgotten PII tables before core tables
+        # 2.5 Delete forgotten PII tables and campaign subsystem child records in dependency order
         tables_to_purge = [
             'ai_generations', 'processing_jobs', 'webhook_endpoints', 'knowledge_assets',
             'personas', 'objections', 'ai_reply_approvals', 'suppression_list',
             'enrichment_results', 'voice_notes', 'profile_activity_snapshots', 'audit_log',
-            'notifications', 'outbox_events'
+            'notifications', 'outbox_events',
+            'campaign_execution_states', 'campaign_node_executions', 'campaign_enrollments',
+            'campaign_edges', 'campaign_nodes', 'campaign_versions', 'campaign_accounts',
+            'workspace_blueprints', 'meeting_bookings', 'competitor_displacements',
+            'sender_pods', 'bandit_experiments', 'account_daily_action_counts', 'account_limit_overrides'
         ]
         for table in tables_to_purge:
-            supabase_client.table(table).delete().eq('workspace_id', workspace_id).execute()
+            try:
+                supabase_client.table(table).delete().eq('workspace_id', workspace_id).execute()
+            except Exception as _t_err:
+                logger.debug(f"Non-fatal purge skip on {table}: {_t_err}")
         
         # 3. Delete from PII tables in child-first dependency order
         # Action Logs

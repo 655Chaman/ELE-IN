@@ -1195,15 +1195,14 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
     configured_secret = None
     try:
         ws_settings_res = supabase.table("workspace_settings").select(
-            "smartlead_webhook_secret, webhook_signing_secret, booking_webhook_secret"
+            "smartlead_webhook_secret, webhook_signing_secret"
         ).eq("workspace_id", workspace_id).execute()
         if ws_settings_res.data and isinstance(ws_settings_res.data, list) and len(ws_settings_res.data) > 0:
             settings_row = ws_settings_res.data[0]
             if isinstance(settings_row, dict):
                 configured_secret = (
                     _extract_str_or_none(settings_row.get("smartlead_webhook_secret")) or
-                    _extract_str_or_none(settings_row.get("webhook_signing_secret")) or
-                    _extract_str_or_none(settings_row.get("booking_webhook_secret"))
+                    _extract_str_or_none(settings_row.get("webhook_signing_secret"))
                 )
     except Exception as e:
         logger.warning(f"Error checking workspace_settings for {workspace_id}: {e}")
@@ -1550,15 +1549,14 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
     configured_secret = None
     try:
         ws_settings_res = supabase.table("workspace_settings").select(
-            "instantly_webhook_secret, webhook_signing_secret, booking_webhook_secret"
+            "instantly_webhook_secret, webhook_signing_secret"
         ).eq("workspace_id", workspace_id).execute()
         if ws_settings_res.data and isinstance(ws_settings_res.data, list) and len(ws_settings_res.data) > 0:
             settings_row = ws_settings_res.data[0]
             if isinstance(settings_row, dict):
                 configured_secret = (
                     _extract_str_or_none(settings_row.get("instantly_webhook_secret")) or
-                    _extract_str_or_none(settings_row.get("webhook_signing_secret")) or
-                    _extract_str_or_none(settings_row.get("booking_webhook_secret"))
+                    _extract_str_or_none(settings_row.get("webhook_signing_secret"))
                 )
     except Exception as e:
         logger.warning(f"Error checking workspace_settings for {workspace_id}: {e}")

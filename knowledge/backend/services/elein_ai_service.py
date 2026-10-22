@@ -292,9 +292,36 @@ def get_active_nvidia_keys(task: str = None):
         db_exhausted_keys = [r["api_key"] for r in res.data] if res.data else []
         
         # Also grab rate_limited keys that might be globally quarantined
-        res_rl = supabase.table("system_api_keys").select("api_key").eq("status", "rate_limited").execute()
+        res_rl = supabase.table("system_api_keys").select("id, api_key, updated_at").eq("status", "rate_limited").execute()
         if res_rl.data:
-            db_exhausted_keys.extend([r["api_key"] for r in res_rl.data])
+            from dateutil.parser import parse
+            # Three-Layer Paranoia (Leak 1 Fix): Auto un-quarantine rate_limited keys after 60s cooldown!
+            now_utc = datetime.now(timezone.utc)
+            now_iso = now_utc.isoformat()
+            for r in res_rl.data:
+                upd_at = r.get("updated_at")
+                can_rearm = False
+                if upd_at:
+                    try:
+                        dt = parse(upd_at)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if (now_utc - dt).total_seconds() >= 60:
+                            can_rearm = True
+                    except Exception:
+                        can_rearm = True
+                else:
+                    can_rearm = True
+
+                if can_rearm:
+                    try:
+                        supabase.table("system_api_keys").update({"status": "active", "updated_at": now_iso}).eq("id", r["id"]).execute()
+                        supabase.table("api_keys").update({"is_active": True}).eq("id", r["id"]).execute()
+                        logger.info(f"[EleInAI] Key {r['id']} rate-limit cooldown expired; auto-rearmed to active.")
+                    except Exception:
+                        pass
+                else:
+                    db_exhausted_keys.append(r["api_key"])
     except Exception as e:
         # Layer 1: system_api_keys might not exist yet in migrations
         pass
@@ -479,7 +506,10 @@ def _mark_key_failed(key_id: Any, error_msg: str, actual_api_key: str = None):
 
     if supabase:
         try:
-            supabase.table("system_api_keys").update({"status": new_status}).eq("id", key_id).execute()
+            supabase.table("system_api_keys").update({
+                "status": new_status,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", key_id).execute()
         except Exception:
             pass
 
@@ -1864,10 +1894,35 @@ Return ONLY valid JSON."""
             result = "Neutral"
         return result, reasoning
 
-    if "positive" in res.lower():
-        return "Positive", res
-    if "negative" in res.lower():
+    # Three-Layer Paranoia (Leak 6 Fix): Protect against false substring inversion in unstructured LLM responses
+    res_lower = res.lower().strip()
+
+    # Layer 1: Check for explicit negation of positive sentiment or clear rejection signals first
+    rejection_indicators = [
+        r"\b(?:not|never|no|isn't|is not|wasn't|hardly|barely|scarcely)\s+(?:\w+\s+){0,3}positive\b",
+        r"\buninterested\b",
+        r"\bnot interested\b",
+        r"\bstop\b",
+        r"\bunsubscribe\b",
+        r"\bremove\b",
+        r"\bdo not contact\b",
+        r"\bwrong person\b",
+        r"\bdo not email\b",
+        r"\bdo not message\b",
+        r"\bcease\b",
+        r"\blegal\b",
+        r"\bspam\b"
+    ]
+    if any(re.search(pat, res_lower) for pat in rejection_indicators):
         return "Negative", res
+
+    # Layer 0: Require isolated word boundaries for classification
+    if re.search(r'\bpositive\b', res_lower) and not re.search(r'\b(?:negative|neutral)\b', res_lower):
+        return "Positive", res
+    if re.search(r'\bnegative\b', res_lower):
+        return "Negative", res
+
+    # Layer 2: Default to Neutral for safe fail-closed behavior (never harass with aggressive sales push)
     return "Neutral", res
 
 

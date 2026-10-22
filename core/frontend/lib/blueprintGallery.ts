@@ -56,6 +56,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                       type: "send_message",
                       data: {
                         delayDays: 1,
+                        body: "Thanks for connecting, {{first_name|there}}! We recently put together a benchmark on pipeline velocity for {{job_title|leadership}}. Happy to share if relevant.",
                         message: "Thanks for connecting, {{first_name|there}}! We recently put together a benchmark on pipeline velocity for {{job_title|leadership}}. Happy to share if relevant.",
                       },
                       children: {
@@ -80,6 +81,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                                   data: {
                                     delayDays: 2,
                                     subject: "Quick question regarding {{company|your team}}'s outbound",
+                                    body: "Hi {{first_name|there}},\n\nReaching out following our LinkedIn connection. Wanted to share the benchmark report we discussed.\n\nBest regards,\n[Your Name]",
                                     message: "Hi {{first_name|there}},\n\nReaching out following our LinkedIn connection. Wanted to share the benchmark report we discussed.\n\nBest regards,\n[Your Name]",
                                   },
                                   children: {},
@@ -183,6 +185,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                                   type: "send_message",
                                   data: {
                                     delayDays: 1,
+                                    body: "Thanks for accepting {{first_name|there}}! Looking forward to following your journey.",
                                     message: "Thanks for accepting {{first_name|there}}! Looking forward to following your journey.",
                                   },
                                   children: {},
@@ -260,6 +263,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                 type: "send_message",
                 data: {
                   delayDays: 0,
+                  body: "{{first_name|there}}, we built a system that books 15+ meetings/mo for teams like {{company|yours}} with zero manual research.\n\nWorth a 7-minute look?",
                   message: "{{first_name|there}}, we built a system that books 15+ meetings/mo for teams like {{company|yours}} with zero manual research.\n\nWorth a 7-minute look?",
                 },
                 children: {
@@ -269,6 +273,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                       type: "send_message",
                       data: {
                         delayDays: 3,
+                        body: "No worries if timing is off, {{first_name|there}}. Should I circle back next month?",
                         message: "No worries if timing is off, {{first_name|there}}. Should I circle back next month?",
                       },
                       children: {},
@@ -323,6 +328,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                 data: {
                   delayDays: 0,
                   subject: "Scaling the {{job_title|engineering}} team at {{company|your company}}",
+                  body: "Hi {{first_name|there}},\n\nSaw {{company|your company}} has active job openings. When scaling rapidly, onboarding speed is critical.\n\nWould it make sense to connect?",
                   message: "Hi {{first_name|there}},\n\nSaw {{company|your company}} has active job openings. When scaling rapidly, onboarding speed is critical.\n\nWould it make sense to connect?",
                 },
                 children: {
@@ -435,6 +441,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                       type: "send_message",
                       data: {
                         delayDays: 1,
+                        body: "Great to connect, {{first_name|there}}! What session are you looking forward to most? We prepared a key takeaways cheat sheet if you'd like a copy.",
                         message: "Great to connect, {{first_name|there}}! What session are you looking forward to most? We prepared a key takeaways cheat sheet if you'd like a copy.",
                       },
                       children: {},
@@ -501,6 +508,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                       type: "send_message",
                       data: {
                         delayDays: 1,
+                        body: "Thanks for connecting, {{first_name|there}}. Given what you shared on {{recent_post_topic|this topic}}, I thought you might appreciate our recent study on scaling outbound.",
                         message: "Thanks for connecting, {{first_name|there}}. Given what you shared on {{recent_post_topic|this topic}}, I thought you might appreciate our recent study on scaling outbound.",
                       },
                       children: {
@@ -510,6 +518,7 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                             type: "send_message",
                             data: {
                               delayDays: 4,
+                              body: "Wanted to check if you had a chance to glance at that, {{first_name|there}}?",
                               message: "Wanted to check if you had a chance to glance at that, {{first_name|there}}?",
                             },
                             children: {},

@@ -1,3 +1,4 @@
+from typing import Optional, Any, Dict, List
 import jwt
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -30,6 +31,65 @@ async def require_workspace_admin(
 
 class HubspotAuth(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+
+async def _get_valid_hubspot_token(workspace_id: str, supabase: Any) -> str:
+    """
+    Three-Layer Paranoia (Leak 9 Fix):
+    Fetches HubSpot token with proactive OAuth expiration detection and refresh handling.
+    Raises actionable 401 if token has expired rather than throwing cryptic 400 errors.
+    """
+    import os, time
+    from core.backend.services.http_client import async_external_request
+    res = await _exec(supabase.table("workspaces").select("hubspot_token, hubspot_refresh_token, hubspot_expires_at").eq("id", workspace_id))
+    if not res or not res.data:
+        raise HTTPException(status_code=400, detail="No access token found in workspace or HubSpot not connected")
+    
+    row = res.data[0]
+    token = row.get("hubspot_token")
+    refresh_tok = row.get("hubspot_refresh_token")
+    expires_at = row.get("hubspot_expires_at")
+
+    if not token:
+        raise HTTPException(status_code=400, detail="No access token found in workspace or HubSpot not connected")
+
+    now = time.time()
+    needs_refresh = False
+    if expires_at and isinstance(expires_at, (int, float)) and now >= (expires_at - 300):
+        needs_refresh = True
+
+    if needs_refresh and refresh_tok:
+        client_id = os.getenv("HUBSPOT_CLIENT_ID")
+        client_secret = os.getenv("HUBSPOT_CLIENT_SECRET")
+        if client_id and client_secret:
+            try:
+                refresh_resp = await async_external_request(
+                    "POST",
+                    "https://api.hubapi.com/oauth/v1/token",
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "refresh_token": refresh_tok,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                if refresh_resp.status_code == 200:
+                    r_data = refresh_resp.json()
+                    new_token = r_data.get("access_token")
+                    new_refresh = r_data.get("refresh_token") or refresh_tok
+                    new_expires = now + int(r_data.get("expires_in", 21600))
+                    await _exec(supabase.table("workspaces").update({
+                        "hubspot_token": new_token,
+                        "hubspot_refresh_token": new_refresh,
+                        "hubspot_expires_at": new_expires
+                    }).eq("id", workspace_id))
+                    return new_token
+            except Exception as r_err:
+                logger.warning(f"[HubSpot] Automatic token refresh failed: {r_err}")
+
+    return token
 
 @router.get("/status")
 async def get_hubspot_status(
@@ -77,9 +137,13 @@ async def authenticate_hubspot(
         raise HTTPException(status_code=400, detail="Invalid HubSpot Access Token")
         
     # Valid token! Save it to the workspace.
-    res = await _exec(supabase.table("workspaces").update({
-        "hubspot_token": clean_token
-    }).eq("id", workspace_id))
+    update_payload = {"hubspot_token": clean_token}
+    if data.refresh_token:
+        update_payload["hubspot_refresh_token"] = data.refresh_token.strip()
+    if data.expires_in:
+        import time
+        update_payload["hubspot_expires_at"] = time.time() + int(data.expires_in)
+    res = await _exec(supabase.table("workspaces").update(update_payload).eq("id", workspace_id))
     
     if not res or not res.data:
         raise HTTPException(status_code=500, detail="Failed to save token to database (silent failure)")
@@ -102,12 +166,8 @@ async def get_hubspot_lists(
             detail="HubSpot CRM sync requires a Growth Pro subscription."
         )
 
-    # Strictly fetch authenticated token from workspace DB (no query param bypass)
-    res = await _exec(supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id))
-    access_token = res.data[0].get("hubspot_token") if res and res.data else None
-            
-    if not access_token:
-        raise HTTPException(status_code=400, detail="No access token found in workspace or HubSpot not connected")
+    # Strictly fetch authenticated token from workspace DB (with auto-refresh)
+    access_token = await _get_valid_hubspot_token(workspace_id, supabase)
 
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -164,9 +224,8 @@ async def import_hubspot_list(
         )
 
     # Fetch token from workspace
-    res = await _exec(supabase.table("workspaces").select("hubspot_token").eq("id", workspace_id))
-    if not res or not res.data or not res.data[0].get("hubspot_token"):
-        raise HTTPException(status_code=400, detail="HubSpot not connected")
+    # Validate and refresh token if needed
+    await _get_valid_hubspot_token(workspace_id, supabase)
     
     # We do NOT put the raw access_token in the payload; the worker fetches it securely.
     
@@ -213,12 +272,9 @@ async def get_hubspot_pipelines(
             detail="HubSpot CRM sync requires a Growth Pro subscription."
         )
 
-    res = await _exec(supabase.table("workspaces").select("hubspot_token, hubspot_won_stage_id").eq("id", workspace_id))
-    if not res or not res.data or not res.data[0].get("hubspot_token"):
-        raise HTTPException(status_code=400, detail="HubSpot not connected")
-        
-    access_token = res.data[0]["hubspot_token"]
-    saved_stage_id = res.data[0].get("hubspot_won_stage_id")
+    access_token = await _get_valid_hubspot_token(workspace_id, supabase)
+    res = await _exec(supabase.table("workspaces").select("hubspot_won_stage_id").eq("id", workspace_id))
+    saved_stage_id = res.data[0].get("hubspot_won_stage_id") if res and res.data else None
 
     headers = {
         "Authorization": f"Bearer {access_token}",

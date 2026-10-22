@@ -11,19 +11,32 @@ export function EISequenceValidator() {
   const warnings = useMemo(() => {
     const warns: { id: string, nodeId: string, title: string, message: string, type: "error" | "warning" }[] = []
 
-    function traverse(nodes: SeqTreeNode[], parent: SeqTreeNode | null = null, ancestors: string[] = []) {
+    function traverse(
+      nodes: SeqTreeNode[], 
+      parent: SeqTreeNode | null = null, 
+      ancestors: string[] = [],
+      currentBranchLabel: string | null = null
+    ) {
       for (const node of nodes) {
         
-        
-
+        // Paranoia Layer 0 & 2 (FLAW-FE-07): Prevent contradictory validator errors
+        // If node is attached to the "accepted" / "connected" branch of a connection request, it is valid!
         if ((node.type === "send_message" || node.type === "send_ai_message") && parent && (parent.type === "connection_request")) {
-          warns.push({
-            id: `msg_after_connect_${node.id}`,
-            nodeId: node.id,
-            type: "error",
-            title: "Logical Error: Sending a message before they accept",
-            message: "You are trying to send a DM immediately after sending a Connection Request. You must wait for them to accept! Insert an 'If Connected?' node between them."
-          })
+          const isAcceptedBranch = 
+            currentBranchLabel === "accepted" || 
+            currentBranchLabel === "connected" ||
+            currentBranchLabel === "Connected" ||
+            currentBranchLabel === "Accepted";
+
+          if (!isAcceptedBranch) {
+            warns.push({
+              id: `msg_after_connect_${node.id}`,
+              nodeId: node.id,
+              type: "error",
+              title: "Logical Error: Sending a message before they accept",
+              message: "You are trying to send a DM immediately after sending a Connection Request. You must wait for them to accept! Connect this step to the 'Accepted' branch or insert an 'If Connected?' check."
+            })
+          }
         }
 
         if (node.type === "if_connected" && (!node.data.delay || node.data.delay === 0)) {
@@ -64,10 +77,8 @@ export function EISequenceValidator() {
         
 
         if (node.children) {
-
-
-          for (const branch of Object.values(node.children || {})) {
-            traverse(branch, node, [...ancestors, node.type])
+          for (const [branchLabel, branch] of Object.entries(node.children || {})) {
+            traverse(branch, node, [...ancestors, node.type], branchLabel)
           }
         }
       }

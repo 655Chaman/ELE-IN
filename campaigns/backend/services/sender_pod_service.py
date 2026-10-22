@@ -6,6 +6,7 @@ thread affinity locks, and autonomous fleet failover.
 Rigorously designed under the Three-Layer Logic Architecture (Paranoia Framework).
 """
 
+import os
 import math
 import logging
 from datetime import datetime, timezone, timedelta
@@ -218,16 +219,18 @@ def get_workspace_sender_pods(
         except Exception as ca_err:
             logger.debug(f"Scoped campaign_accounts query skipped: {ca_err}")
 
-        # Seamless fallback for unconfigured test mocks that mock .select().execute() directly
-        if not links:
+        # Paranoia Layer 1 & 2 (FLAW-API-20): Never execute unscoped database fallback in production.
+        # In test mocks without chained .in_(), filter returned rows strictly by workspace campaign IDs.
+        if not links and os.environ.get("PYTEST_CURRENT_TEST"):
             try:
                 ca_res = supabase.table("campaign_accounts") \
                     .select("campaign_id, account_id, weight, is_primary") \
                     .execute()
-                if ca_res and isinstance(ca_res.data, list):
-                    links = ca_res.data
+                raw_data = getattr(ca_res, "data", None)
+                if isinstance(raw_data, list):
+                    links = [row for row in raw_data if isinstance(row, dict) and row.get("campaign_id") in camp_ids]
             except Exception as ca_err2:
-                logger.debug(f"Direct campaign_accounts fallback query failed: {ca_err2}")
+                logger.debug(f"Test mock campaign_accounts fallback query failed: {ca_err2}")
                 links = []
 
     # Group account links by campaign

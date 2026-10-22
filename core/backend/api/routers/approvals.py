@@ -173,6 +173,7 @@ def list_approvals(
 @router.get("/{approval_id}")
 def get_approval(
     approval_id: str,
+    request: Request,
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace)
 ):
@@ -180,6 +181,10 @@ def get_approval(
     Get full details of a specific approval queue item (including full thread).
     Supports fetching from both approval_queue and ai_reply_approvals tables.
     """
+    # Paranoia Layer 1 (FLAW-API-10): Prevent route parameter shadowing for literal static action endpoints
+    if approval_id in ("approve", "reject", "magic-action"):
+        token = request.query_params.get("token") or ""
+        return magic_approval_get_endpoint(token=token)
     try:
         res = supabase.table("approval_queue").select("*").eq("id", approval_id).eq("workspace_id", workspace_id).execute()
         if res.data:

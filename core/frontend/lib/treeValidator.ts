@@ -56,7 +56,8 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     }
     
     if (['send_message', 'send_message_with_doc', 'send_message_with_image', 'send_intro_message', 'send_followup', 'send_breakup_message', 'send_reengage_message'].includes(node.type)) {
-       if (!node.data.body || typeof node.data.body !== 'string' || node.data.body.trim() === '') {
+       const bodyText = (node.data?.body || node.data?.message || '') as string;
+       if (!bodyText || typeof bodyText !== 'string' || bodyText.trim() === '') {
          nodeErrors.push(`Step "${stepLabel}": Your message body is empty! Leads will receive a blank message. How to correct: Click this node and write a message.`);
        }
     } else if (node.type === 'connection_request') {
@@ -166,9 +167,22 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     const expectedBranches: string[] = defOutputs.length > 0 ? defOutputs : (node.type === 'sequence_end' ? [] as string[] : ['then'] as string[]);
     const lowerExpectedMap = new Map(expectedBranches.map(b => [b.toLowerCase().replace(/[\s_]+/g, ''), b]));
     
+    // Paranoia Layer 1: Resilient branch synonym mapping (e.g. accepted -> connected, yes -> connected, replied -> positive)
+    const SYNONYM_MAP: Record<string, string> = {
+      accepted: 'connected',
+      yes: 'connected',
+      ignored: 'notconnected',
+      not_connected: 'notconnected',
+      no: 'notconnected',
+      replied: 'positive',
+      not_replied: 'noreply',
+      no_reply: 'noreply',
+    };
+
     // Layer 0: Check for invalid edge labels (case-and-format resilient)
     for (const [branchName, childNodes] of branches) {
-        const normKey = branchName.toLowerCase().replace(/[\s_]+/g, '');
+        const rawNorm = branchName.toLowerCase().replace(/[\s_]+/g, '');
+        const normKey = SYNONYM_MAP[rawNorm] || rawNorm;
         if (!lowerExpectedMap.has(normKey) && childNodes.length > 0) {
             const labelStr = HR_NODE_DEFS[node.type as keyof typeof HR_NODE_DEFS]?.label || node.type;
             const expectedList = expectedBranches.map(b => `'${b}'`).join(', ');
@@ -180,7 +194,10 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     if (expectedBranches.length > 1) {
         for (const expBranch of expectedBranches) {
             const expNorm = expBranch.toLowerCase().replace(/[\s_]+/g, '');
-            const matchingKey = Object.keys(node.children || {}).find(k => k.toLowerCase().replace(/[\s_]+/g, '') === expNorm);
+            const matchingKey = Object.keys(node.children || {}).find(k => {
+                const kNorm = k.toLowerCase().replace(/[\s_]+/g, '');
+                return (SYNONYM_MAP[kNorm] || kNorm) === expNorm;
+            });
             const childList = matchingKey ? node.children?.[matchingKey] : undefined;
             if (!childList || childList.length === 0) {
                 const labelStr = HR_NODE_DEFS[node.type as keyof typeof HR_NODE_DEFS]?.label || node.type;

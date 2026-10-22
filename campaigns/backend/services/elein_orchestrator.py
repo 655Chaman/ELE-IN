@@ -652,10 +652,12 @@ class EleInOrchestrator:
             now_iso = now_dt.isoformat()
             REPLY_WAIT_TIMEOUT_HOURS = max(int(os.getenv("REPLY_WAIT_TIMEOUT_HOURS", "72")), 24)
 
-            # Query leads currently in waiting_for_reply (bounded batch limit to protect event loop)
+            # Query leads currently in waiting_for_reply with deterministic ordering (Leak 4 Fix: eliminates un-ordered page starvation)
             waiting_res = self.supabase.table("campaign_execution_states") \
                 .select("id, enrollment_id, workspace_id, current_node_id, variables, updated_at, next_run_at") \
                 .eq("status", "waiting_for_reply") \
+                .order("next_run_at", desc=False) \
+                .order("updated_at", desc=False) \
                 .limit(500) \
                 .execute()
 
@@ -867,15 +869,28 @@ class EleInOrchestrator:
                     continue
 
                 # 3. Check for any active or pending execution states
-                in_flight_states = self.supabase.table("campaign_execution_states") \
-                    .select("id", count="exact") \
-                    .eq("campaign_id", cid) \
-                    .in_("status", ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing"]) \
-                    .limit(1) \
-                    .execute()
-
-                if (in_flight_states.count or 0) > 0:
-                    continue
+                try:
+                    in_flight_states = self.supabase.table("campaign_execution_states") \
+                        .select("id", count="exact") \
+                        .eq("campaign_id", cid) \
+                        .in_("status", ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing"]) \
+                        .limit(1) \
+                        .execute()
+                    if (in_flight_states.count or 0) > 0:
+                        continue
+                except Exception as _ces_err:
+                    logger.debug(f"[Orchestrator] Direct campaign_id query on campaign_execution_states unavailable, falling back to enrollment join: {_ces_err}")
+                    enr_res = self.supabase.table("campaign_enrollments").select("id").eq("campaign_id", cid).execute()
+                    if enr_res.data:
+                        enr_ids = [e["id"] for e in enr_res.data]
+                        in_flight_states = self.supabase.table("campaign_execution_states") \
+                            .select("id", count="exact") \
+                            .in_("enrollment_id", enr_ids[:1000]) \
+                            .in_("status", ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing"]) \
+                            .limit(1) \
+                            .execute()
+                        if (in_flight_states.count or 0) > 0:
+                            continue
 
                 # Transition to COMPLETED
                 logger.info(f"[Orchestrator] All {total_count} leads finished for campaign {cid} ('{camp.get('name')}'). Transitioning status to COMPLETED.")
@@ -918,11 +933,16 @@ class EleInOrchestrator:
 
     def sweep_stale_outbox_events(self, timeout_minutes: int = 10) -> int:
         """
-        Paranoia Layer 1 & 2 (ENG-13): Auto-reaps outbox events marooned in 'processing' status
-        due to worker crashes, pod terminations, or unhandled exceptions.
-        Resets events to 'pending' with audit trail note so the outbox poller can deliver them.
+        Paranoia Layer 1 & 2 (ENG-13 & Leak 10): Auto-reaps outbox events marooned in 'processing' status
+        and auto-prunes dead telemetry tuples to prevent disk bloat.
         """
         try:
+            # Non-blocking pruning of stale heartbeats and completed events
+            try:
+                self.supabase.rpc("prune_stale_telemetry_and_events").execute()
+            except Exception:
+                pass
+
             now_dt = datetime.now(timezone.utc)
             cutoff = (now_dt - timedelta(minutes=timeout_minutes)).isoformat()
             res = self.supabase.table("outbox_events").update({
@@ -935,6 +955,42 @@ class EleInOrchestrator:
             return count
         except Exception as e:
             logger.debug(f"[Orchestrator] sweep_stale_outbox_events skipped/failed: {e}")
+            return 0
+
+    def sweep_stale_linkedin_invitations(self, max_age_days: int = 14, batch_limit: int = 25) -> int:
+        """
+        Three-Layer Paranoia (Leak 3 Fix):
+        Automated periodic sweep to withdraw LinkedIn connection invitations older than 14 days.
+        Prevents reaching LinkedIn's account ceiling (500-700 pending invites), which causes
+        silent invitation rejection and stops new campaign execution.
+        """
+        if not self.supabase:
+            return 0
+        try:
+            from integrations.backend.services.linkedin_invitation_manager import withdraw_stale_invitations
+            # Query active accounts with LinkedIn provider
+            acc_res = self.supabase.table("accounts").select("id, workspace_id, status").eq("status", "ACTIVE").limit(20).execute()
+            if not acc_res or not acc_res.data:
+                return 0
+
+            total_withdrawn = 0
+            for acc in acc_res.data:
+                try:
+                    res = withdraw_stale_invitations(
+                        account=acc,
+                        max_age_days=max_age_days,
+                        batch_limit=batch_limit,
+                        supabase=self.supabase
+                    )
+                    cnt = res.get("withdrawn_count", 0)
+                    total_withdrawn += cnt
+                    if cnt > 0:
+                        logger.info(f"[Orchestrator] Auto-withdrew {cnt} stale invitations for account {acc['id']}")
+                except Exception as acc_err:
+                    logger.debug(f"[Orchestrator] Account {acc.get('id')} stale invitation sweep error: {acc_err}")
+            return total_withdrawn
+        except Exception as e:
+            logger.debug(f"[Orchestrator] sweep_stale_linkedin_invitations skipped/failed: {e}")
             return 0
 
     def process_pending_leads(self, stop_checker=None):
@@ -960,22 +1016,38 @@ class EleInOrchestrator:
                 "lease_expires_at": None,
                 "updated_at": now_iso
             }
-
-            # 2a. Recover states stuck past updated_at threshold (15 minutes)
             try:
-                stale_res = self.supabase.table("campaign_execution_states").update(reset_payload).in_("status", ["running", "processing"]).lt("updated_at", stale_threshold).execute()
-                if stale_res.data:
-                    logger.warning(f"[Orchestrator] Recovered {len(stale_res.data)} stale execution states (stuck >15m in 'running'/'processing')")
-            except Exception as e_2a:
-                logger.debug(f"[Orchestrator] Stale recovery by updated_at skipped/failed: {e_2a}")
+                self.supabase.table("campaign_execution_states").update(reset_payload) \
+                    .in_("status", ["running", "processing"]) \
+                    .lt("updated_at", stale_threshold) \
+                    .execute()
+            except Exception as e_2:
+                logger.debug(f"[Orchestrator] Direct table stale recovery skipped/failed: {e_2}")
 
-            # 2b. Recover states where lease_expires_at has elapsed
+            # Layer 1 Paranoia (Leak 5 Fix): Bounded Stale Recovery with Poison-Pill Quarantine
+            # Permanently fail any stuck state that has already reached max_attempts
             try:
-                expired_leases = self.supabase.table("campaign_execution_states").update(reset_payload).in_("status", ["running", "processing"]).lt("lease_expires_at", now_iso).execute()
-                if expired_leases.data:
-                    logger.warning(f"[Orchestrator] Recovered {len(expired_leases.data)} states with expired lease claims")
-            except Exception as e_2b:
-                logger.debug(f"[Orchestrator] Stale recovery by lease_expires_at skipped/failed: {e_2b}")
+                stuck_res = self.supabase.table("campaign_execution_states") \
+                    .select("id, attempts, max_attempts") \
+                    .in_("status", ["running", "processing"]) \
+                    .or_(f"updated_at.lt.{stale_threshold},lease_expires_at.lt.{now_iso}") \
+                    .limit(100) \
+                    .execute()
+                if stuck_res and stuck_res.data:
+                    for st in stuck_res.data:
+                        curr_att = int(st.get("attempts") or 0)
+                        max_att = int(st.get("max_attempts") or 5)
+                        if curr_att >= max_att:
+                            self.supabase.table("campaign_execution_states").update({
+                                "status": "error",
+                                "error_reason": f"Poison pill breaker: state stuck in running/processing exceeded max attempts ({curr_att}/{max_att})",
+                                "lease_token": None,
+                                "lease_expires_at": None,
+                                "updated_at": now_iso
+                            }).eq("id", st["id"]).execute()
+                            logger.error(f"[Orchestrator] Quarantined poison-pill state {st['id']} (attempts {curr_att} >= max {max_att})")
+            except Exception as e_stuck:
+                logger.debug(f"[Orchestrator] Bounded stale recovery check non-fatal: {e_stuck}")
 
             # 3. Layer 1 Paranoia: Auto-recover orphaned account session locks
             try:
@@ -1140,51 +1212,65 @@ class EleInOrchestrator:
         if not states:
             # Layer 1 Environmental Failure Fallback (Anti-N+1 Query Collapse):
             # When the RPC does not exist in Supabase (unmigrated database), dequeue directly via table queries.
-            # Bounded chunking ensures zero risk of connection pool exhaustion even under 50,000+ enrolled leads.
             try:
                 now_dt = datetime.now(timezone.utc)
                 now_iso = now_dt.isoformat()
                 lease_expiry = (now_dt + timedelta(minutes=5)).isoformat()
+                candidate_states = []
 
-                enr_res = self.supabase.table("campaign_enrollments").select("id").in_("campaign_id", active_campaign_ids).execute()
-                active_enr_ids = [e["id"] for e in (enr_res.data or []) if e.get("id")]
+                # Paranoia Layer 1: Attempt direct query on campaign_execution_states by campaign_id first (eliminates 500-lead ceiling)
+                try:
+                    st_direct = self.supabase.table("campaign_execution_states") \
+                        .select("id, campaign_id, enrollment_id, current_node_id, status, next_run_at, updated_at, attempts, max_attempts, variables") \
+                        .in_("campaign_id", active_campaign_ids) \
+                        .eq("status", "pending") \
+                        .or_(f"next_run_at.lte.{now_iso},next_run_at.is.null") \
+                        .order("next_run_at", desc=False) \
+                        .limit(50) \
+                        .execute()
+                    if st_direct.data:
+                        candidate_states = st_direct.data
+                except Exception as _dir_err:
+                    logger.debug(f"[Orchestrator] Direct campaign_id query on execution states unavailable: {_dir_err}")
 
-                if active_enr_ids:
-                    candidate_states = []
-                    # Bound chunks to prevent PostgREST connection pool saturation (max 5 chunks = 500 candidate enrollments)
-                    max_chunks = 5
-                    chunks_checked = 0
-                    for i in range(0, len(active_enr_ids), 100):
-                        if chunks_checked >= max_chunks and candidate_states:
-                            break
-                        enr_chunk = active_enr_ids[i:i+100]
-                        st_query = self.supabase.table("campaign_execution_states") \
-                            .select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, attempts, max_attempts, variables") \
-                            .in_("enrollment_id", enr_chunk) \
-                            .eq("status", "pending") \
-                            .or_(f"next_run_at.lte.{now_iso},next_run_at.is.null") \
-                            .order("next_run_at", desc=False) \
-                            .limit(50) \
-                            .execute()
-                        if st_query.data:
-                            candidate_states.extend(st_query.data)
-                        chunks_checked += 1
-                        if len(candidate_states) >= 50:
-                            break
+                if not candidate_states:
+                    enr_res = self.supabase.table("campaign_enrollments").select("id").in_("campaign_id", active_campaign_ids).execute()
+                    active_enr_ids = [e["id"] for e in (enr_res.data or []) if e.get("id")]
 
-                    for c_state in candidate_states[:50]:
-                        c_id = c_state["id"]
-                        token = uuid.uuid4().hex
-                        claim_res = self.supabase.table("campaign_execution_states").update({
-                            "status": "running",
-                            "lease_token": token,
-                            "lease_expires_at": lease_expiry,
-                            "updated_at": now_iso
-                        }).eq("id", c_id).eq("status", "pending").execute()
+                    if active_enr_ids:
+                        max_chunks = 10
+                        chunks_checked = 0
+                        for i in range(0, len(active_enr_ids), 100):
+                            if chunks_checked >= max_chunks and candidate_states:
+                                break
+                            enr_chunk = active_enr_ids[i:i+100]
+                            st_query = self.supabase.table("campaign_execution_states") \
+                                .select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, attempts, max_attempts, variables") \
+                                .in_("enrollment_id", enr_chunk) \
+                                .eq("status", "pending") \
+                                .or_(f"next_run_at.lte.{now_iso},next_run_at.is.null") \
+                                .order("next_run_at", desc=False) \
+                                .limit(50) \
+                                .execute()
+                            if st_query.data:
+                                candidate_states.extend(st_query.data)
+                            chunks_checked += 1
+                            if len(candidate_states) >= 50:
+                                break
 
-                        if claim_res.data:
-                            claimed_row = claim_res.data[0]
-                            states.append(claimed_row)
+                for c_state in candidate_states[:50]:
+                    c_id = c_state["id"]
+                    token = uuid.uuid4().hex
+                    claim_res = self.supabase.table("campaign_execution_states").update({
+                        "status": "running",
+                        "lease_token": token,
+                        "lease_expires_at": lease_expiry,
+                        "updated_at": now_iso
+                    }).eq("id", c_id).eq("status", "pending").execute()
+
+                    if claim_res.data:
+                        claimed_row = claim_res.data[0]
+                        states.append(claimed_row)
             except Exception as fb_e:
                 logger.error(f"[Orchestrator] Direct table dequeue fallback failed: {fb_e}")
                 capture_error(fb_e, context={"service": "elein_orchestrator", "stage": "dequeue_fallback"})
@@ -2622,9 +2708,9 @@ class EleInOrchestrator:
                         return {"status": "account_disconnected"}
                     return {"status": "rate_limited"}
 
-                # VULNERABILITY FIXED: Safely check rate limit AFTER lock acquisition and health check
-                tz_str = state.get("tz_str") or "UTC"
-                allowed = try_consume_action(self.supabase, chosen_sender_id, action, account=account_row, tz_str=tz_str)
+                # Paranoia Layer 1: Calculate quota against sender account timezone, not recipient timezone, to prevent multi-timezone quota evasion
+                sender_tz = (account_row or {}).get("timezone") or (account_row or {}).get("tz_str") or "UTC"
+                allowed = try_consume_action(self.supabase, chosen_sender_id, action, account=account_row, tz_str=sender_tz)
                 if not allowed:
                     return {"status": "rate_limited"}
                 action_consumed = True

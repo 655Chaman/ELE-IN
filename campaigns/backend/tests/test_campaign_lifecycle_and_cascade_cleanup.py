@@ -107,6 +107,8 @@ class TestCampaignLifecycleAndCascadeCleanup(unittest.TestCase):
         state_tbl = self.get_table("campaign_execution_states")
         state_tbl.update_builder.update.assert_called_with({
             "status": "paused",
+            "lease_token": None,
+            "lease_expires_at": None,
             "error_reason": "Campaign 'Q4 Enterprise Outreach' paused by operator"
         })
         state_tbl.update_builder.in_.assert_has_calls([
@@ -161,6 +163,8 @@ class TestCampaignLifecycleAndCascadeCleanup(unittest.TestCase):
         state_tbl = self.get_table("campaign_execution_states")
         state_tbl.update_builder.update.assert_called_with({
             "status": "paused",
+            "lease_token": None,
+            "lease_expires_at": None,
             "error_reason": "All campaigns paused via Panic Button"
         })
         state_tbl.update_builder.in_.assert_has_calls([

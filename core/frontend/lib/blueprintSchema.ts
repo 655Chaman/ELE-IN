@@ -560,6 +560,7 @@ export function prepareImportNodes(
     return {
       ...node,
       id: newId,
+      data: deepSanitizeValue(node.data) as Record<string, any>,
       children: newChildren,
     }
   }
@@ -580,6 +581,8 @@ export function prepareImportNodes(
   const remappedNotes: StickyNote[] = rawImportNotes.map(sn => ({
     ...sn,
     id: uuidv4(),
+    text: String(deepSanitizeValue(sn.text) || ""),
+    title: sn.title ? String(deepSanitizeValue(sn.title)) : undefined,
     x: sn.x + offsetX,
     y: sn.y + offsetY,
   }))
@@ -632,16 +635,20 @@ export function stitchSequenceToTree(
       return attachToLeaf(lastBranchNode)
     }
 
-    const thenBranch = node.children?.["then"] || []
-    if (thenBranch.length === 0) {
+    // Paranoia Layer 1 (FLAW-FE-05): Check both 'output' and 'then' to prevent creating duplicate phantom branches
+    const primarySingleKey = (node.children && ("output" in node.children)) ? "output" : "then"
+    const existingBranchKey = node.children ? (Object.keys(node.children).find(k => k === "output" || k === "then") || primarySingleKey) : primarySingleKey
+    const branchChildren = node.children?.[existingBranchKey] || []
+    
+    if (branchChildren.length === 0) {
       if (!node.children) node.children = {}
-      node.children["then"] = importedRoots
+      node.children[existingBranchKey] = importedRoots
       return true
     }
 
-    const lastChild = thenBranch[thenBranch.length - 1]
+    const lastChild = branchChildren[branchChildren.length - 1]
     if (lastChild.type === "sequence_end") {
-      thenBranch.splice(thenBranch.length - 1, 1, ...importedRoots)
+      branchChildren.splice(branchChildren.length - 1, 1, ...importedRoots)
       return true
     }
 

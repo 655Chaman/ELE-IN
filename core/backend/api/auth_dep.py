@@ -158,6 +158,8 @@ async def get_async_supabase_client(request: Request) -> AsyncClient:
             options=AsyncClientOptions(headers={"Authorization": f"Bearer {token}"})
         )
         return client
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -281,6 +283,8 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
         path = str(getattr(getattr(request, "url", None), "path", "") or "")
         if "/webhooks/esp/sendgrid" in path or "/webhooks/esp/mailgun" in path:
             return "public_webhook"
+        if "/workspaces/provision" in path:
+            return "provisioning"
     except Exception:
         pass
 

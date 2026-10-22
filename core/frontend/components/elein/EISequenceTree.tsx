@@ -2198,8 +2198,12 @@ export function EISequenceTree({
 
         <div 
           ref={contentWrapperRef}
+          data-canvas-zoom={zoom}
           className="relative flex flex-col items-center w-max min-w-full min-h-full py-20 px-20 transition-all duration-200 ease-out origin-top"
-          style={{ zoom: zoom } as any}
+          style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: "top center",
+          }}
         >
           {stickyNotes?.map(note => <EIStickyNote key={note.id} note={note} />)}
           {/* Sequence start node */}

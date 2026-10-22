@@ -94,6 +94,9 @@ export function useHRCampaignBuilderStore<T>(selector?: (state: EICampaignBuilde
 
     setStep: (step: number) => useHRTreeStore.getState().setCampaignStep(step),
     updateForm: (updates: Partial<EICampaignBuilderState>) => {
+      if ("step" in updates && typeof (updates as any).step === "number") {
+        useHRTreeStore.getState().setCampaignStep((updates as any).step)
+      }
       const current = useHRTreeStore.getState().formState || {}
       const mapped = mapBuilderUpdatesToTreeForm(updates, current)
       useHRTreeStore.getState().setFormState({ ...current, ...mapped })
@@ -134,6 +137,9 @@ useHRCampaignBuilderStore.getState = (): EICampaignBuilderState => {
 
     setStep: (step: number) => useHRTreeStore.getState().setCampaignStep(step),
     updateForm: (updates: Partial<EICampaignBuilderState>) => {
+      if ("step" in updates && typeof (updates as any).step === "number") {
+        useHRTreeStore.getState().setCampaignStep((updates as any).step)
+      }
       const current = useHRTreeStore.getState().formState || {}
       const mapped = mapBuilderUpdatesToTreeForm(updates, current)
       useHRTreeStore.getState().setFormState({ ...current, ...mapped })

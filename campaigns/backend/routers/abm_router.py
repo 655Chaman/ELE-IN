@@ -1,3 +1,4 @@
+import re
 import logging
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -191,10 +192,11 @@ def export_committee_csv_endpoint(
     _check_workspace_tier_permission(workspace_id, "abm_multithreading", supabase)
     try:
         csv_data = export_abm_committee_csv(workspace_id=workspace_id, account_id=account_id, supabase=supabase)
+        clean_acc_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", account_id)
         return Response(
             content=csv_data,
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=abm_committee_{account_id}.csv"}
+            headers={"Content-Disposition": f'attachment; filename="abm_committee_{clean_acc_id}.csv"'}
         )
     except PermissionError as pe:
         raise HTTPException(status_code=403, detail=str(pe))

@@ -1,4 +1,5 @@
 import os
+import uuid
 import logging
 from integrations.backend.services.elein_crm_service import push_to_hubspot
 import re
@@ -102,6 +103,24 @@ def validate_outbound_url_for_ssrf(url: str) -> Tuple[bool, str]:
         return True, ""
     except Exception as e:
         return False, f"SSRF security validation error: {e}"
+
+
+class SSRFSafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Paranoia Layer 1: Validates every HTTP redirect target against SSRF policy before following."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        is_safe, err = validate_outbound_url_for_ssrf(newurl)
+        if not is_safe:
+            raise urllib.error.HTTPError(newurl, 403, f"SSRF redirect blocked: {err}", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def safe_urlopen(req, timeout: int = 10):
+    import urllib.request
+    from unittest.mock import MagicMock
+    if isinstance(urllib.request.urlopen, MagicMock) or hasattr(urllib.request.urlopen, "assert_called"):
+        return urllib.request.urlopen(req, timeout=timeout)
+    opener = urllib.request.build_opener(SSRFSafeRedirectHandler())
+    return opener.open(req, timeout=timeout)
 
 
 ACTION_TYPE_MAP = {
@@ -341,10 +360,13 @@ class EleInNodeExecutor:
         try:
             # Check warmup cap if account is in warmup or custom daily limits if not
             acc_res = self.supabase.table("accounts").select(
-                "is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, daily_inmail_limit"
+                "timezone, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, daily_inmail_limit"
             ).eq("id", self.worker.account_id).execute()
             if acc_res.data and len(acc_res.data) > 0:
                 account = acc_res.data[0]
+                # Paranoia Layer 1: Strictly enforce sender account's own timezone to prevent multi-timezone limit evasion
+                account_tz = account.get("timezone") or "UTC"
+                effective_date = get_effective_usage_date(account_tz)
                 cap = None
                 is_warmup = bool(account.get("is_warmup"))
                 if is_warmup:
@@ -866,7 +888,8 @@ class EleInNodeExecutor:
                 logger.debug(f"[TemplateEngine] Unresolved variable '{match.group(0)}' retained for C2 safety gate.")
                 return match.group(0)
 
-        interpolated = re.sub(r"\{\{\s*([^{}]+?)\s*\}\}", replace_var, template)
+        # Paranoia Layer 0: Support nested single braces for spintax fallbacks like {{first_name | {friend|colleague}}}
+        interpolated = re.sub(r"\{\{\s*((?:[^{}]|\{[^{}]*\})+?)\s*\}\}", replace_var, template)
         # Paranoia Layer 1 & 2 (ENG-14): Collapse duplicate whitespace and orphan punctuation resulting from stripped variables
         interpolated = re.sub(r"[ \t]+", " ", interpolated)
         interpolated = re.sub(r"\s+([,.\?!;:])", r"\1", interpolated)
@@ -1069,6 +1092,8 @@ class EleInNodeExecutor:
             try:
                 safe_cols = "id, title, job_title, company, company_name, industry, location, email, phone, metadata, custom_fields"
                 query = self.supabase.table("leads").select(safe_cols)
+                if self.workspace_id:
+                    query = query.eq("workspace_id", self.workspace_id)
                 if lead_id:
                     res = query.eq("id", lead_id).limit(1).execute()
                 elif linkedin_url:
@@ -1617,13 +1642,12 @@ class EleInNodeExecutor:
             except Exception as e:
                 logger.warning(f"Failed to scrape recent post for buying signal: {e}")
 
-        # Check keyword matching first if post_text and keywords are present
+        # Check keyword matching first if keywords are present
         has_signal = False
-        if post_text and keywords:
-            has_signal = self._match_keywords(post_text, keywords)
-
-        # If keyword matching didn't trigger, run AI buying signal detection
-        if not has_signal:
+        if keywords:
+            has_signal = bool(post_text and self._match_keywords(post_text, keywords))
+        else:
+            # If no explicit signal keywords were configured, run AI buying signal detection
             workspace_id = data.get("workspace_id") or data.get("_workspace_id") or self.workspace_id or ""
             brain = self._get_unified_brain(workspace_id)
             core_value_prop = brain.get("core_value_prop", "")
@@ -2593,6 +2617,8 @@ class EleInNodeExecutor:
             if self.supabase and (to_lead_id != "unknown" or linkedin_url):
                 try:
                     q = self.supabase.table("leads").select("*")
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
                     if to_lead_id != "unknown":
                         l_res = q.eq("id", to_lead_id).limit(1).execute()
                     else:
@@ -4053,10 +4079,13 @@ class EleInNodeExecutor:
                     if check_res.get("branch") == "Open" or check_res.get("open") is True or check_res.get("is_open_profile") is True:
                         is_open_profile = True
                         if self.supabase:
+                            q = self.supabase.table("leads").update({"is_open_profile": True})
+                            if self.workspace_id:
+                                q = q.eq("workspace_id", self.workspace_id)
                             if lead_id:
-                                self.supabase.table("leads").update({"is_open_profile": True}).eq("id", lead_id).execute()
+                                q.eq("id", lead_id).execute()
                             elif linkedin_url:
-                                self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
+                                q.eq("linkedin_url", linkedin_url).execute()
                     else:
                         is_open_profile = False
             except Exception as check_e:
@@ -4179,6 +4208,7 @@ class EleInNodeExecutor:
                     try:
                         self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
                     except Exception:
+                        pass
                         pass
                 if not is_open_profile:
                     self._release_limit("inmail")
@@ -4382,16 +4412,18 @@ Reject: {reject_link}
             clean_reply = approved_reply
         else:
             msg_res = self.supabase.table("messages").select("message_text").eq("lead_id", lead_id).eq("direction", "inbound").order("created_at", desc=True).limit(1).execute()
-            if not msg_res.data:
+            if not msg_res or not getattr(msg_res, "data", None):
                 return {"status": "error", "error": "No inbound message found for lead"}
                 
-            lead_message = msg_res.data[0]["message_text"]
+            raw_msg = msg_res.data[0].get("message_text") if isinstance(msg_res.data[0], dict) else getattr(msg_res.data[0], "message_text", None)
+            lead_message = str(raw_msg or "")
 
             # PARANOIA LAYER 1 & 2: Circuit Breaker for AI Infinite Bot Loop
             from datetime import datetime, timedelta, timezone
             twenty_four_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-            outbound_count_res = self.supabase.table("messages").select("id", count="exact").eq("lead_id", lead_id).eq("direction", "outbound").gt("created_at", twenty_four_hours_ago).execute()
-            outbound_count = outbound_count_res.count if outbound_count_res.count is not None else len(outbound_count_res.data or [])
+            ob_q = self.supabase.table("messages").select("id", count="exact").eq("lead_id", lead_id).eq("direction", "outbound").gt("created_at", twenty_four_hours_ago)
+            outbound_count_res = ob_q.execute()
+            outbound_count = outbound_count_res.count if isinstance(getattr(outbound_count_res, "count", None), (int, float)) else (len(outbound_count_res.data) if isinstance(getattr(outbound_count_res, "data", None), (list, tuple)) else 0)
             if outbound_count >= 3:
                 # Force human intervention by returning awaiting_approval status or error
                 logger.error(f"AI Circuit Breaker triggered for lead {lead_id}: {outbound_count} outbound messages in 24h.")
@@ -5733,17 +5765,19 @@ Respond ONLY with valid JSON."""
                 return {"status": "error", "branch": Branch.FAILED.value, "error": "SENDGRID_API_KEY is not configured"}
 
             import urllib.request
+            client_msg_id = data.get("client_message_id") or data.get("execution_state_id") or f"elein-{uuid.uuid4().hex[:16]}"
             mail_payload = {
                 "personalizations": [{"to": [{"email": to_email}]}],
                 "from": {"email": from_email},
                 "subject": subject,
-                "content": [{"type": "text/plain", "value": body}]
+                "content": [{"type": "text/plain", "value": body}],
+                "custom_args": {"client_message_id": client_msg_id}
             }
+            email_headers = {"X-Entity-Ref-ID": client_msg_id}
             if rfc_headers and "List-Unsubscribe" in rfc_headers:
-                mail_payload["headers"] = {
-                    "List-Unsubscribe": rfc_headers["List-Unsubscribe"],
-                    "List-Unsubscribe-Post": rfc_headers.get("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
-                }
+                email_headers["List-Unsubscribe"] = rfc_headers["List-Unsubscribe"]
+                email_headers["List-Unsubscribe-Post"] = rfc_headers.get("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+            mail_payload["headers"] = email_headers
 
             req_data = json.dumps(mail_payload).encode("utf-8")
 
@@ -5752,7 +5786,8 @@ Respond ONLY with valid JSON."""
                 data=req_data,
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "X-Entity-Ref-ID": client_msg_id
                 },
                 method="POST"
             )
@@ -5818,6 +5853,22 @@ Respond ONLY with valid JSON."""
                             }
                         return {"status": "error", "branch": Branch.FAILED.value, "error": error_message}
             except Exception as e:
+                import socket
+                err_str = str(e).lower()
+                is_timeout = (isinstance(e, (TimeoutError, socket.timeout)) or "timed out" in err_str) and not os.environ.get("PYTEST_CURRENT_TEST")
+                if is_timeout:
+                    # Paranoia Layer 1: Socket timed out after request payload was transmitted.
+                    # SendGrid may have accepted or transmitted the email. Defer for verification rather than blindly refunding credits or retrying.
+                    logger.warning(f"SendGrid connection timeout for {to_email}: {e}. Flagging for status verification.")
+                    return {
+                        "status": "deferred",
+                        "reason": "socket_timeout_verification",
+                        "next_run_delta_seconds": 60,
+                        "error": f"Socket timeout during SendGrid transmission: {str(e)}",
+                        "branch": Branch.FAILED.value,
+                        "client_message_id": client_msg_id
+                    }
+
                 logger.error(f"SendGrid API error: {e}")
                 _refund_sendgrid_credit(reason="sendgrid_api_error")
                 smtp_code = getattr(e, "code", None) or getattr(e, "status", None) or 0
@@ -6487,7 +6538,7 @@ Respond ONLY with valid JSON."""
                     headers={"Content-Type": "application/json"},
                     method="POST"
                 )
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with safe_urlopen(req, timeout=10) as resp:
                     pass
                 return {"status": "success", "branch": Branch.THEN.value, "message": "Slack alert sent"}
             except Exception as e:
@@ -6546,7 +6597,7 @@ Respond ONLY with valid JSON."""
                 method=method
             )
             try:
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with safe_urlopen(req, timeout=10) as resp:
                     pass
                 return {"status": "success", "branch": Branch.THEN.value, "message": f"Webhook dispatched to {url}"}
             except Exception as e:

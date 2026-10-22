@@ -86,6 +86,7 @@ def run():
         try:
             orchestrator = EleInOrchestrator(supabase=supabase)
             orchestrator.sweep_stale_outbox_events()
+            orchestrator.sweep_stale_linkedin_invitations()
             results = orchestrator.process_pending_leads(stop_checker=lambda: not _running)
             leads_processed = len(results) if results else 0
             duration_ms = int(time.time() * 1000) - start_ms

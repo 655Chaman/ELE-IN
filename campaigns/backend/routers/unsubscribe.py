@@ -1,3 +1,4 @@
+import html
 import logging
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Query
@@ -18,7 +19,7 @@ def _render_unsubscribe_confirmation_html(email: Optional[str] = None) -> str:
     Paranoia Layer 2: Clean, responsive, dark-mode-ready confirmation card.
     Zero tracking scripts, zero cookies, zero external network fonts or CSS.
     """
-    display_email = str(email or "").strip().lower()
+    display_email = html.escape(str(email or "").strip().lower())
     email_line = (
         f'<p class="email-badge">{display_email}</p>'
         if display_email
@@ -245,6 +246,18 @@ async def rfc8058_unsubscribe_get(
             status_code=400,
             detail="Invalid or tampered unsubscribe token.",
         )
+
+    # Paranoia Layer 1: Anti-Scanner / Pre-fetch Defense
+    # Security scanners (Proofpoint, Defender, Mimecast) send GET prefetch probes.
+    # If a pre-fetch header is detected, render confirmation without mutating state.
+    is_prefetch = any(
+        request.headers.get(h, "").lower() in ("prefetch", "preview")
+        for h in ("purpose", "sec-purpose", "x-purpose", "x-moz")
+    )
+    if is_prefetch:
+        logger.info(f"[UnsubscribeRouter] Pre-fetch scanner header detected for {verified.get('email')}; skipping unsubscribe execution.")
+        html_content = _render_unsubscribe_confirmation_html(verified.get("email"))
+        return HTMLResponse(content=html_content, status_code=200)
 
     try:
         process_one_click_unsubscribe(

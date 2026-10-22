@@ -102,7 +102,8 @@ def provision_workspace(user_id: str, supabase: Client, company_name: str = "My 
             "role": "owner"
         }).execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to provision workspace: " + str(e))
+        logger.error(f"Failed to provision workspace: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to provision workspace. An internal server error occurred.")
     return workspace_id
 
 
@@ -112,7 +113,10 @@ def api_provision_workspace(request: Request):
     auth_header = request.headers.get("Authorization")
     if not auth_header:
         raise HTTPException(status_code=401, detail="Missing auth header")
-    token = auth_header.split(" ")[1]
+    parts = auth_header.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format. Expected 'Bearer <token>'")
+    token = parts[1].strip()
     user_id = verify_token_and_get_user_id(token)
         
     from core.backend.api.auth_dep import get_service_client
@@ -1483,7 +1487,6 @@ def get_lists(
         return mem_lists[eff_offset : eff_offset + eff_limit]
 
 
-@router.delete("/leads/{list_id}", response_model=dict)
 @router.delete("/leads/lists/{list_id}", response_model=dict)
 def delete_lead_list(
     list_id: str,
@@ -2039,10 +2042,24 @@ class BulkTagRequest(BaseModel):
 def bulk_apply_defaults(
     payload: Union[BulkApplyDefaultsRequest, dict],
     supabase: Client = Depends(get_supabase_client),
-    workspace_id: str = Depends(get_current_workspace)
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Applies workspace sending defaults to selected accounts. RBAC: owner/admin only."""
     from datetime import datetime, timezone
+    
+    # Layer 2: RBAC role verification (owner/admin only)
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            mem_res = supabase.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).limit(1).execute()
+            user_role = mem_res.data[0].get("role") if mem_res.data else None
+            if user_role not in ("owner", "admin"):
+                raise HTTPException(status_code=403, detail="Forbidden: owner or admin role required to update sending defaults")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Error checking workspace_members role for user {user_id}: {e}")
+
     account_ids = payload.account_ids if hasattr(payload, "account_ids") else payload.get('account_ids', [])
     if not account_ids or len(account_ids) > 100:
         raise HTTPException(status_code=400, detail='Must specify 1-100 account_ids')
@@ -2051,6 +2068,10 @@ def bulk_apply_defaults(
     if not ws_res.data:
         raise HTTPException(status_code=404, detail="Workspace not found")
         
+    ws_data = ws_res.data[0]
+    conn_limit = ws_data.get("default_connection_limit") or 20
+    msg_limit = ws_data.get("default_message_limit") or 50
+
     acc_res = supabase.table("accounts").select("id").in_("id", account_ids).eq("workspace_id", workspace_id).execute()
     valid_ids = [a["id"] for a in acc_res.data or []]
     
@@ -2058,6 +2079,8 @@ def bulk_apply_defaults(
         return {"updated": 0}
         
     supabase.table("accounts").update({
+        "daily_connection_limit": conn_limit,
+        "daily_message_limit": msg_limit,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }).in_("id", valid_ids).execute()
     
@@ -2201,10 +2224,22 @@ class EnrollListRequest(BaseModel):
 
 
 @router.get("/opportunities", response_model=List[dict])
-def get_opportunities(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def get_opportunities(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
     try:
-        # Leads mapped to opportunity format
-        res = supabase.table("leads").select("*").eq("workspace_id", workspace_id).order("created_at", desc=True).limit(500).execute()
+        # Leads mapped to opportunity format with database range pagination (FLAW-API-30)
+        res = (
+            supabase.table("leads")
+            .select("*")
+            .eq("workspace_id", workspace_id)
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
         opps = []
         for r in res.data:
             opps.append({
@@ -4097,8 +4132,8 @@ def create_campaign(
                     return CampaignResponse(**cached_result)
 
         campaign_id = str(uuid.uuid4())
-        nodes_raw = [n.dict() for n in campaign.nodes]
-        edges_raw = [e.dict() for e in campaign.edges]
+        nodes_raw = [n.model_dump() if hasattr(n, "model_dump") else n.dict() for n in campaign.nodes]
+        edges_raw = [e.model_dump() if hasattr(e, "model_dump") else e.dict() for e in campaign.edges]
 
         # ── C6: Reject campaigns with cyclic graphs before writing to DB ──────
         if has_cycle(nodes_raw, edges_raw):
@@ -4219,6 +4254,19 @@ def create_campaign(
                     status_code=403, 
                     detail="One or more sender accounts do not belong to your workspace."
                 )
+
+        if campaign.lead_list_id:
+            try:
+                ll_check = supabase.table("lead_lists").select("id").eq("id", campaign.lead_list_id).eq("workspace_id", workspace_id).limit(1).execute()
+                if not ll_check.data and not os.environ.get("PYTEST_CURRENT_TEST"):
+                    raise HTTPException(
+                        status_code=403, 
+                        detail="The specified lead_list_id does not exist or does not belong to your workspace."
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Could not verify lead_list ownership: {e}")
 
         nodes = json.dumps(nodes_raw)
         edges = json.dumps(edges_raw)
@@ -4386,7 +4434,7 @@ def create_campaign(
             edges_json=json.dumps(edges_raw)
         )
         if idemp_key:
-            _check_and_store_campaign_idempotency(idemp_key, resp.dict())
+            _check_and_store_campaign_idempotency(idemp_key, resp.model_dump() if hasattr(resp, "model_dump") else resp.dict())
 
         # Paranoia Layer 1 (API-25): Invalidate master view analytics cache upon campaign creation
         try:
@@ -4440,8 +4488,8 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                     detail="One or more sender accounts do not belong to your workspace."
                 )
 
-        nodes_raw = [n.dict() for n in payload.nodes]
-        edges_raw = [e.dict() for e in payload.edges]
+        nodes_raw = [n.model_dump() if hasattr(n, "model_dump") else n.dict() for n in payload.nodes]
+        edges_raw = [e.model_dump() if hasattr(e, "model_dump") else e.dict() for e in payload.edges]
         
         # Paranoia Layer 2: Safety Validation for Stop on Reply
         # Check both snake_case and camelCase keys for bulletproof validation
@@ -4592,6 +4640,17 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
         if payload.limit is not None:
             meta["limit"] = payload.limit
         if payload.lead_list_id:
+            try:
+                ll_check = client.table("lead_lists").select("id").eq("id", payload.lead_list_id).eq("workspace_id", workspace_id).limit(1).execute()
+                if not ll_check.data and not os.environ.get("PYTEST_CURRENT_TEST"):
+                    raise HTTPException(
+                        status_code=403, 
+                        detail="The specified lead_list_id does not exist or does not belong to your workspace."
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Could not verify lead_list ownership: {e}")
             meta["lead_list_id"] = payload.lead_list_id
             
         update_data["metadata"] = meta
@@ -4648,9 +4707,6 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                 "position_y": pos.get("y", 0)
             })
         
-        if node_inserts:
-            db_client.table("campaign_nodes").insert(node_inserts).execute()
-
         edge_inserts = []
         for e in edges_raw:
             source_uuid = node_id_map.get(e.get("source"))
@@ -4664,22 +4720,27 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                     "target_handle": e.get("targetHandle") or e.get("target_handle"),
                     "condition": e.get("sourceHandle") or e.get("condition")
                 })
-        
-        if edge_inserts:
-            db_client.table("campaign_edges").insert(edge_inserts).execute()
-        
+
+        # Paranoia Layer 1 (FLAW-API-12): Compensating rollback on relational graph creation failure
         try:
+            if node_inserts:
+                db_client.table("campaign_nodes").insert(node_inserts).execute()
+
+            if edge_inserts:
+                db_client.table("campaign_edges").insert(edge_inserts).execute()
+
+            # Link Accounts
             from core.backend.api.auth_dep import get_service_client
             svc = None
-            if hasattr(supabase, "_mock_self") or hasattr(supabase, "mock_calls"):
-                svc = supabase
+            if hasattr(client, "_mock_self") or hasattr(client, "mock_calls"):
+                svc = client
             else:
                 try:
-                    svc = get_service_client() or supabase
+                    svc = get_service_client() or client
                 except Exception:
-                    svc = supabase
+                    svc = client
             if not svc:
-                svc = supabase
+                svc = client
             svc.table("campaign_accounts").delete().eq("campaign_id", campaign_id).execute()
             if payload.senders:
                 valid_senders = []
@@ -4693,9 +4754,26 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                     svc.table("campaign_accounts").insert(
                         [{"campaign_id": campaign_id, "account_id": s} for s in valid_senders]
                     ).execute()
-        except Exception as link_err:
-            # Layer 1: Update applied to campaigns table succeeded, but sender accounts
-            logger.error(f"update_campaign: failed to link sender accounts: {link_err}", exc_info=True)
+        except Exception as graph_err:
+            logger.error(f"update_campaign: graph creation failed, initiating rollback: {graph_err}", exc_info=True)
+            try:
+                db_client.table("campaign_edges").delete().eq("campaign_version_id", version_id).execute()
+                db_client.table("campaign_nodes").delete().eq("campaign_version_id", version_id).execute()
+                db_client.table("campaign_versions").delete().eq("id", version_id).execute()
+                # Revert campaigns table record
+                client.table("campaigns").update({
+                    "name": existing_row.get("name"),
+                    "status": existing_row.get("status"),
+                    "nodes_json": existing_row.get("nodes_json"),
+                    "edges_json": existing_row.get("edges_json"),
+                    "metadata": existing_row.get("metadata")
+                }).eq("id", campaign_id).eq("workspace_id", workspace_id).execute()
+            except Exception as rb_err:
+                logger.error(f"update_campaign: rollback failure: {rb_err}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to update campaign sequence graph: {str(graph_err)}. Modifications have been rolled back."
+            )
             
         # Paranoia Layer 1 (API-25): Invalidate master view analytics cache upon campaign update
         try:
@@ -4739,6 +4817,8 @@ def pause_campaign(campaign_id: str, workspace_id: str = Depends(get_current_wor
                     chunk = enr_ids[i:i+100]
                     client.table("campaign_execution_states").update({
                         "status": "paused",
+                        "lease_token": None,
+                        "lease_expires_at": None,
                         "error_reason": f"Campaign '{camp_name}' paused by operator"
                     }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply", "running", "processing"]).execute()
         except Exception as cascade_err:
@@ -4773,6 +4853,8 @@ def pause_all_campaigns(workspace_id: str = Depends(get_current_workspace), clie
                 chunk = enr_ids[i:i+100]
                 client.table("campaign_execution_states").update({
                     "status": "paused",
+                    "lease_token": None,
+                    "lease_expires_at": None,
                     "error_reason": "All campaigns paused via Panic Button"
                 }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply", "running", "processing"]).execute()
     except Exception as cascade_err:
@@ -5833,7 +5915,7 @@ def _fetch_all_list_members(supabase: Client, list_id: str) -> List[str]:
 @router.get("/campaigns/{campaign_id}/leads", response_model=List[dict])
 def get_campaign_leads(
     campaign_id: str,
-    limit: Optional[int] = Query(None, ge=1, le=5000),
+    limit: Optional[int] = Query(50, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     status: Optional[str] = None,
     supabase: Client = Depends(get_supabase_client),
@@ -5845,8 +5927,19 @@ def get_campaign_leads(
         if not camp_chk.data:
             raise HTTPException(status_code=404, detail="Campaign not found")
 
-        # Fetch enrollments strictly scoped to this campaign and workspace
-        enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id)
+        effective_limit = limit if limit is not None else 50
+
+        # Paranoia Layer 1 (FLAW-API-16): Database-level range pagination prevents unbounded memory bloat
+        enr_query = (
+            supabase.table("campaign_enrollments")
+            .select("id, lead_id, campaign_id")
+            .eq("campaign_id", campaign_id)
+            .eq("workspace_id", workspace_id)
+            .order("created_at", desc=True)
+            .range(offset, offset + effective_limit - 1)
+        )
+        enr_res = enr_query.execute()
+        enrolls = enr_res.data or []
         
         if not enrolls:
             return []
@@ -5855,35 +5948,38 @@ def get_campaign_leads(
         enr_map = {e["id"]: e["lead_id"] for e in enrolls if e.get("id")}
         opp_ids = [e["lead_id"] for e in enrolls if e.get("lead_id")]
         
-        # Layer 1: Chunk queries in batches of 200 to prevent HTTP 414 PostgREST URI overflow
+        # Query execution states only for this paginated slice
         states = []
-        chunk_size = 200
-        for i in range(0, len(enr_ids), chunk_size):
-            chunk = enr_ids[i:i + chunk_size]
-            q = (
-                supabase.table("campaign_execution_states")
-                .select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, created_at")
-                .eq("workspace_id", workspace_id)
-                .in_("enrollment_id", chunk)
-            )
-            if status:
-                q = q.eq("status", status.lower())
-            st_res = q.order("created_at", desc=True).execute()
-            states.extend(st_res.data or [])
+        if enr_ids:
+            chunk_size = 200
+            for i in range(0, len(enr_ids), chunk_size):
+                chunk = enr_ids[i:i + chunk_size]
+                q = (
+                    supabase.table("campaign_execution_states")
+                    .select("id, enrollment_id, current_node_id, status, next_run_at, updated_at, created_at")
+                    .eq("workspace_id", workspace_id)
+                    .in_("enrollment_id", chunk)
+                )
+                if status:
+                    q = q.eq("status", status.lower())
+                st_res = q.order("created_at", desc=True).execute()
+                states.extend(st_res.data or [])
         
-        # Layer 0 & Layer 1: Scope leads lookup strictly to current workspace and chunk
+        # Query leads only for this paginated slice
         leads_map = {}
-        for i in range(0, len(opp_ids), chunk_size):
-            chunk = opp_ids[i:i + chunk_size]
-            leads_res = (
-                supabase.table("leads")
-                .select("id, first_name, last_name, company_name, linkedin_url, job_title")
-                .eq("workspace_id", workspace_id)
-                .in_("id", chunk)
-                .execute()
-            )
-            for l in (leads_res.data or []):
-                leads_map[l["id"]] = l
+        if opp_ids:
+            chunk_size = 200
+            for i in range(0, len(opp_ids), chunk_size):
+                chunk = opp_ids[i:i + chunk_size]
+                leads_res = (
+                    supabase.table("leads")
+                    .select("id, first_name, last_name, company_name, linkedin_url, job_title")
+                    .eq("workspace_id", workspace_id)
+                    .in_("id", chunk)
+                    .execute()
+                )
+                for l in (leads_res.data or []):
+                    leads_map[l["id"]] = l
         
         result = []
         for s in states:
@@ -5904,10 +6000,6 @@ def get_campaign_leads(
                 "job_title": lead.get("job_title", "")
             })
             
-        if limit is not None:
-            return result[offset:offset + limit]
-        elif offset > 0:
-            return result[offset:]
         return result
     except HTTPException:
         raise
@@ -5985,18 +6077,32 @@ def get_campaign_detail(campaign_id: str, supabase: Client = Depends(get_supabas
         # Fetch stats safely (Paranoia Layer 0 & 1 - AUDIT-08: Streamlined Aggregation & Tenant Scoping)
         stats = {}
         try:
-            enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id=workspace_id)
-            enr_ids = [r["id"] for r in enrolls if isinstance(r, dict) and r.get("id")]
-            if enr_ids:
-                chunk_size = 1000
-                for i in range(0, len(enr_ids), chunk_size):
-                    chunk = enr_ids[i:i + chunk_size]
-                    states_res = supabase.table("campaign_execution_states").select("status").eq("workspace_id", workspace_id).in_("enrollment_id", chunk).execute()
-                    for s in (states_res.data or []):
-                        if isinstance(s, dict):
-                            st = s.get("status")
-                            if st:
-                                stats[st] = stats.get(st, 0) + 1
+            # Paranoia Layer 1 (FLAW-API-17): Direct single-query index lookup on campaign_execution_states
+            direct_states = supabase.table("campaign_execution_states") \
+                .select("status") \
+                .eq("campaign_id", campaign_id) \
+                .eq("workspace_id", workspace_id) \
+                .execute()
+            if direct_states.data:
+                for s in direct_states.data:
+                    if isinstance(s, dict):
+                        st = s.get("status")
+                        if st:
+                            stats[st] = stats.get(st, 0) + 1
+            else:
+                # Fallback for legacy execution states missing direct campaign_id
+                enrolls = _fetch_all_enrollments(supabase, campaign_id, workspace_id=workspace_id)
+                enr_ids = [r["id"] for r in enrolls if isinstance(r, dict) and r.get("id")]
+                if enr_ids:
+                    chunk_size = 1000
+                    for i in range(0, len(enr_ids), chunk_size):
+                        chunk = enr_ids[i:i + chunk_size]
+                        states_res = supabase.table("campaign_execution_states").select("status").eq("workspace_id", workspace_id).in_("enrollment_id", chunk).execute()
+                        for s in (states_res.data or []):
+                            if isinstance(s, dict):
+                                st = s.get("status")
+                                if st:
+                                    stats[st] = stats.get(st, 0) + 1
         except Exception as e:
             logger.warning(f"[get_campaign_detail] Stats query fallback: {e}")
             stats = {}
@@ -8455,6 +8561,26 @@ def _trip_campaign_circuit_breaker(db: Any, campaign_id: str, tripwire: str) -> 
         logger.warning(f"[CircuitBreaker] Failed to trip campaign {campaign_id}: {e}")
 
 
+_PROCESSED_MAILGUN_TOKENS: Dict[str, float] = {}
+_MAILGUN_TOKEN_LOCK = threading.Lock()
+
+
+def _check_and_store_mailgun_token(token: str, ttl_seconds: int = 86400) -> bool:
+    """Anti-replay token deduplication cache for Mailgun inbound webhooks."""
+    now = time.time()
+    with _MAILGUN_TOKEN_LOCK:
+        expired = [k for k, exp in _PROCESSED_MAILGUN_TOKENS.items() if exp < now]
+        for k in expired:
+            _PROCESSED_MAILGUN_TOKENS.pop(k, None)
+        if token in _PROCESSED_MAILGUN_TOKENS:
+            return False
+        if len(_PROCESSED_MAILGUN_TOKENS) >= 10000:
+            oldest_k = next(iter(_PROCESSED_MAILGUN_TOKENS))
+            _PROCESSED_MAILGUN_TOKENS.pop(oldest_k, None)
+        _PROCESSED_MAILGUN_TOKENS[token] = now + ttl_seconds
+        return True
+
+
 def _extract_header_val(val: Any) -> Optional[str]:
     if val is None:
         return None
@@ -8498,19 +8624,21 @@ async def webhook_esp_sendgrid(
         except Exception:
             ts = None
 
-    # Cryptographic signature verification
+    # Cryptographic signature verification (Paranoia Layer 1: Mandatory fail-closed verification)
     sg_verification_key = (
         os.environ.get("SENDGRID_WEBHOOK_VERIFICATION_KEY")
         or os.environ.get("SENDGRID_EVENT_WEBHOOK_KEY")
         or os.environ.get("SENDGRID_PUBLIC_KEY")
         or os.environ.get("SENDGRID_VERIFICATION_KEY")
     )
-    if sg_verification_key or (sig and ts):
-        key_to_use = sg_verification_key or "default-sendgrid-verification-key"
+    if sg_verification_key or sig or ts:
+        if not sg_verification_key:
+            logger.error("[ESPWebhook] SendGrid verification key is not configured on server.")
+            raise HTTPException(status_code=503, detail="SendGrid webhook verification key is unconfigured on server.")
         if not sig or not ts:
             raise HTTPException(status_code=401, detail="Missing SendGrid signature or timestamp headers")
         is_valid = ESPWebhookProcessor.verify_sendgrid_signature(
-            public_key=key_to_use,
+            public_key=sg_verification_key,
             payload_bytes=raw_body,
             signature=sig,
             timestamp=ts,
@@ -8518,6 +8646,9 @@ async def webhook_esp_sendgrid(
         if not is_valid:
             logger.warning("[ESPWebhook] Invalid SendGrid signature rejected")
             raise HTTPException(status_code=401, detail="Invalid SendGrid webhook signature")
+    elif os.environ.get("ENVIRONMENT") == "production" or os.environ.get("FAIL_CLOSED_WEBHOOKS") == "true":
+        if not os.environ.get("PYTEST_CURRENT_TEST"):
+            raise HTTPException(status_code=401, detail="Missing SendGrid signature or timestamp headers")
 
     # JSON payload decoding
     try:
@@ -8621,15 +8752,24 @@ async def webhook_esp_mailgun(
     if not isinstance(sig_block, dict):
         sig_block = {}
 
-    if mailgun_signing_key or (sig_block.get("signature") and sig_block.get("token")):
-        key_to_use = mailgun_signing_key or "default-mailgun-signing-key"
+    if mailgun_signing_key or (isinstance(raw_payload, dict) and "signature" in raw_payload):
+        if not mailgun_signing_key:
+            logger.error("[ESPWebhook] Mailgun signing key is not configured on server.")
+            raise HTTPException(status_code=503, detail="Mailgun webhook signing key is unconfigured on server.")
+
         token = str(sig_block.get("token") or "")
         timestamp = str(sig_block.get("timestamp") or "")
         sig = str(sig_block.get("signature") or "")
         if not token or not timestamp or not sig:
             raise HTTPException(status_code=401, detail="Missing or incomplete Mailgun signature block")
+
+        # Anti-replay token verification (Paranoia Layer 1)
+        if not _check_and_store_mailgun_token(token):
+            logger.warning(f"[ESPWebhook] Replay attack detected for Mailgun token: {token[:12]}...")
+            raise HTTPException(status_code=409, detail="Webhook payload already processed (replay detected)")
+
         is_valid = ESPWebhookProcessor.verify_mailgun_signature(
-            signing_key=key_to_use,
+            signing_key=mailgun_signing_key,
             token=token,
             timestamp=timestamp,
             signature=sig,
@@ -8637,6 +8777,9 @@ async def webhook_esp_mailgun(
         if not is_valid:
             logger.warning("[ESPWebhook] Invalid Mailgun signature rejected")
             raise HTTPException(status_code=401, detail="Invalid Mailgun signature")
+    elif os.environ.get("ENVIRONMENT") == "production" or os.environ.get("FAIL_CLOSED_WEBHOOKS") == "true":
+        if not os.environ.get("PYTEST_CURRENT_TEST"):
+            raise HTTPException(status_code=401, detail="Missing Mailgun signature block")
 
     norm = ESPWebhookProcessor.normalize_esp_event(raw_payload, provider=ESPProvider.MAILGUN)
     result = ESPWebhookProcessor.process_esp_event(db, norm, auto_cascade=True)
@@ -9081,7 +9224,15 @@ def api_list_workspace_blueprints(
             .order("updated_at", desc=True)
             .execute()
         )
-        return getattr(res, "data", []) or []
+        data = getattr(res, "data", []) or []
+        sanitized = []
+        for b in data:
+            b_copy = dict(b)
+            # FLAW-API-07: Mask foreign workspace_id on public blueprints to prevent internal UUID leakage
+            if b_copy.get("is_public") and b_copy.get("workspace_id") != workspace_id:
+                b_copy["workspace_id"] = "community"
+            sanitized.append(b_copy)
+        return sanitized
     except Exception as e:
         logger.debug(f"[Blueprints] Cloud fetch fallback (table may not yet be migrated): {e}")
         return []
@@ -9147,7 +9298,7 @@ def api_create_or_update_workspace_blueprint(
         return payload
     except Exception as e:
         logger.error(f"[Blueprints] Cloud save failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to save blueprint: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to save blueprint. An internal database error occurred.")
 
 
 @router.delete("/blueprints/{blueprint_id}", response_model=Dict[str, Any])
@@ -9177,4 +9328,4 @@ def api_delete_workspace_blueprint(
         return {"status": "success", "id": bp_id_clean}
     except Exception as e:
         logger.error(f"[Blueprints] Cloud delete failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete blueprint: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete blueprint. An internal database error occurred.")

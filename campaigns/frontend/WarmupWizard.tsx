@@ -26,8 +26,10 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
         type: 'endorse_skill',
         data: { 
           delay_days: config.endorseSkill.delay, 
+          delay: config.endorseSkill.delay,
           quantity: config.endorseSkill.quantity,
-          fallback: "Endorse however many exist"
+          fallback: "Endorse however many exist",
+          fallback_to_connection_request: true
         },
         children: { "then": currentNodes }
       }];
@@ -39,6 +41,7 @@ export function WarmupWizard({ onComplete, onCancel }: { onComplete: (nodes: any
         type: 'like_post',
         data: { 
           delay_days: config.likePost.delay,
+          delay: config.likePost.delay,
           quantity: config.likePost.quantity,
           reaction_type: config.likePost.reactionType
         },

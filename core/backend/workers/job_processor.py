@@ -175,7 +175,7 @@ async def process_single_job(job, sync_supabase):
                                     for m in messages:
                                         if m.get("direction") == "inbound":
                                             idem_key = f"classify_{ws_id}_{m.get('urn', hash(m['message_text']))}"
-                                            intent_data = asyncio.run(classify_intent(m["message_text"], workspace_id=ws_id, idempotency_key=idem_key))
+                                            intent_data = loop.run_until_complete(classify_intent(m["message_text"], workspace_id=ws_id, idempotency_key=idem_key))
                                             m["intent"] = intent_data.get("intent", "unknown")
                                             m["intent_confidence"] = intent_data.get("confidence", 0.0)
                                 except Exception as e:

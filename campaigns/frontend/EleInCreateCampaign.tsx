@@ -2060,6 +2060,26 @@ function EleInCreateCampaignInner() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [])
 
+  // Paranoia Layer 1 & 2 (FLAW-FE-14): Intercept browser Back/Forward navigation (popstate)
+  // to prevent accidental destruction of uncommitted campaign canvas edits
+  useEffect(() => {
+    // Push an internal guard sentinel to the history stack
+    window.history.pushState({ eleinGuard: true }, "", window.location.href)
+
+    const handlePopState = () => {
+      const state = useHRTreeStore.getState()
+      const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || Boolean(state.formState.campaignName)
+      if (hasUnsavedWork && !isSavingRef.current) {
+        // Reinstate location to stay on current wizard view and present the confirmation dialog
+        window.history.pushState({ eleinGuard: true }, "", window.location.href)
+        setShowUnsavedModal(true)
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
   // On mount or route change: if ?resume=true, restore from localStorage. If edit mode, load from API
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -2231,6 +2251,10 @@ function EleInCreateCampaignInner() {
     if (isSavingRef.current) return;
     isSavingRef.current = true;
     setIsSaving(true);
+    // Paranoia Layer 1 (FLAW-FE-08): Regenerate idempotency key per distinct save operation
+    idempotencyKeyRef.current = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `idemp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const { rootNodes } = useHRTreeStore.getState();
     const campaignName = state.campaignName?.trim() || "Untitled Campaign";
 
@@ -2269,6 +2293,12 @@ function EleInCreateCampaignInner() {
       }
       if (!state.leadListId) {
         allErrors.push("You must select a lead list to enroll.");
+      } else {
+        // Paranoia Layer 2 (FLAW-FE-09): Verify selected audience list is not empty
+        const selectedList = (allLists || []).find((l: any) => l.id === state.leadListId);
+        if (selectedList && (selectedList.row_count === 0 || selectedList.total_leads === 0 || selectedList.count === 0)) {
+          allErrors.push("The selected audience list contains 0 leads. Add leads to this list before launching.");
+        }
       }
 
       if (allErrors.length > 0) {
