@@ -64,9 +64,15 @@ def probe_proxy_health(
 
     # Resolve plaintext password if encrypted
     password_plain = ""
-    if username and supabase and proxy_id:
+    if username and proxy_id:
         try:
-            rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+            from core.backend.api.auth_dep import get_service_client
+            svc = get_service_client() or supabase
+            rpc_payload = {"p_proxy_id": proxy_id}
+            p_ws = proxy.get("workspace_id")
+            if p_ws:
+                rpc_payload["p_workspace_id"] = p_ws
+            rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
             if rpc_res.data and rpc_res.data.get("password_encrypted"):
                 raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
                 dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
@@ -94,7 +100,7 @@ def probe_proxy_health(
             elapsed = time.perf_counter() - start_time
             latency_ms = max(1, int(elapsed * 1000))
 
-            if probe_resp.status_code in (200, 301, 302, 403, 999):
+            if probe_resp.status_code in (200, 301, 302):
                 if latency_ms > 2500:
                     status = "degraded"
                     err_msg = f"High latency detected ({latency_ms}ms > 2500ms). Proxy may cause timeouts."
@@ -119,6 +125,16 @@ def probe_proxy_health(
                     "exit_ip": exit_ip or host,
                     "country_code": detected_country,
                     "error": err_msg
+                }
+            elif probe_resp.status_code in (403, 999):
+                # Paranoia Layer 1: Treat anti-bot challenge codes as banned, not healthy
+                result = {
+                    "ok": False,
+                    "latency_ms": latency_ms,
+                    "status": "banned",
+                    "exit_ip": exit_ip or host,
+                    "country_code": detected_country,
+                    "error": f"LinkedIn blocked proxy with HTTP {probe_resp.status_code} (Anti-Bot Challenge)"
                 }
             else:
                 err_msg = f"HTTP status {probe_resp.status_code}"
@@ -495,7 +511,13 @@ def auto_heal_account(
                 pwd = ""
                 if px.get("username"):
                     try:
-                        rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+                        from core.backend.api.auth_dep import get_service_client
+                        svc = get_service_client() or supabase
+                        rpc_payload = {"p_proxy_id": proxy_id}
+                        px_ws = px.get("workspace_id") or account.get("workspace_id")
+                        if px_ws:
+                            rpc_payload["p_workspace_id"] = px_ws
+                        rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
                         if rpc_res.data and rpc_res.data.get("password_encrypted"):
                             raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
                             d_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
@@ -580,6 +602,14 @@ def auto_heal_account(
             recommendation = "CHALLENGE_QUARANTINED"
             quarantine_until_iso = (now_utc + timedelta(hours=24)).isoformat()
             actions_taken.append(f"CRITICAL: Account entered CHALLENGE_REQUIRED. Quarantined until {quarantine_until_iso} to prevent ban.")
+            
+            if proxy_id:
+                try:
+                    from core.backend.services.proxy_routing import quarantine_proxy
+                    quarantine_proxy(supabase, proxy_id, reason="account_security_challenge", cooldown_hours=24)
+                    actions_taken.append(f"Quarantined proxy {proxy_id} for 24h to prevent cross-account challenge contamination.")
+                except Exception as q_err:
+                    logger.warning(f"Could not quarantine proxy: {q_err}")
             
             try:
                 camp_accs = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", account_id).execute()
@@ -876,7 +906,9 @@ def renew_account_session(
 
     dek_b64 = crypto.generate_dek()
     dek_bytes = base64.b64decode(dek_b64)
-    rpc_res = supabase.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
+    from core.backend.api.auth_dep import get_service_client
+    svc = get_service_client() or supabase
+    rpc_res = svc.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
     cookie_secret_ref = rpc_res.data
 
     encrypted_bytes = crypto.encrypt_bytes(sanitized_json.encode("utf-8"), dek=dek_bytes)

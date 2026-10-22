@@ -1745,10 +1745,8 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
 
     if proxy_id and not proxy_url:
         try:
-            from supabase import create_client
-            import os
-            supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
-            res = supabase.table("proxies").select("protocol, host, port, username, password_encrypted, workspace_id").eq("id", proxy_id).execute()
+            svc = get_service_client() or supabase
+            res = svc.table("proxies").select("protocol, host, port, username, password_encrypted, workspace_id").eq("id", proxy_id).execute()
             if res.data:
                 p = res.data[0]
                 p_ws = p.get("workspace_id")
@@ -1760,7 +1758,10 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
                     try:
                         from core.backend.core import crypto
                         import base64
-                        rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id, "p_workspace_id": p_ws}).execute()
+                        rpc_params = {"p_proxy_id": proxy_id}
+                        if p_ws:
+                            rpc_params["p_workspace_id"] = p_ws
+                        rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_params).execute()
                         if rpc_res.data and rpc_res.data.get("dek"):
                             dek_bytes = base64.b64decode(rpc_res.data["dek"])
                             raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
@@ -1775,6 +1776,19 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
             raise
         except Exception:
             pass
+    elif proxy_url:
+        # Paranoia Layer 2: Reject SSRF attempts on raw proxy_url
+        from core.backend.services.proxy_routing import validate_and_normalize_proxy_host
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(proxy_url)
+            if not parsed.hostname or parsed.scheme not in ("http", "https", "socks5"):
+                raise HTTPException(status_code=400, detail="Invalid proxy URL scheme. Only http, https, and socks5 are supported.")
+            validate_and_normalize_proxy_host(parsed.hostname, allow_private=False)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Proxy URL rejected by security policy: {str(e)}")
 
     from integrations.backend.services.linkedin_worker import LinkedInWorker
     try:
@@ -1817,7 +1831,12 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
         limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
         max_accounts = limits.get("max_linkedin_accounts", 1)
 
-        current_accounts_count = supabase.table("accounts").select("id", count="exact").eq("workspace_id", workspace_id).execute().count or 0
+        count_res = supabase.table("accounts").select("id", count="exact").eq("workspace_id", workspace_id).execute()
+        raw_count = getattr(count_res, "count", 0)
+        try:
+            current_accounts_count = int(raw_count) if raw_count is not None else 0
+        except Exception:
+            current_accounts_count = len(getattr(count_res, "data", []) or [])
         if current_accounts_count >= max_accounts:
             raise HTTPException(
                 status_code=403,
@@ -1826,7 +1845,7 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
 
         normalized_cookies = normalize_linkedin_cookies_payload(account.session_cookies_json)
         if normalized_cookies:
-            sanitized_cookies = _json.dumps(normalized_cookies)
+            sanitized_cookies = json.dumps(normalized_cookies)
         else:
             sanitized_cookies = account.session_cookies_json
 
@@ -1863,11 +1882,19 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                     .eq("workspace_id", workspace_id)
                     .execute()
                 )
+                svc = get_service_client() or supabase
+                ws_proxy_res = (
+                    svc.table("proxies")
+                    .select("id, country_code, workspace_id")
+                    .eq("workspace_id", workspace_id)
+                    .eq("status", "healthy")
+                    .execute()
+                )
                 healthy_proxies = ws_proxy_res.data or []
                 # Fallback to shared system proxies if workspace has none
                 if not healthy_proxies:
                     sys_proxy_res = (
-                        supabase.table("proxies")
+                        svc.table("proxies")
                         .select("id, country_code, workspace_id")
                         .eq("status", "healthy")
                         .is_("workspace_id", "null")
@@ -1885,7 +1912,12 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                         chosen_proxy_id = random.choice(healthy_proxies)["id"]
                         logger.info(f"No proxy for {country_code}, fallback to proxy {chosen_proxy_id}")
                 else:
-                    logger.warning(f"CRITICAL: No healthy proxies available for workspace {workspace_id}! Account {account_id} will run on naked server IP.")
+                    # Paranoia Layer 1: Fail closed! Never allow accounts to run on bare datacenter IP
+                    logger.error(f"No healthy proxies available for workspace {workspace_id} or system pool. Refusing connection to prevent bare datacenter IP flag.")
+                    raise HTTPException(
+                        status_code=422,
+                        detail="No healthy residential proxies available in this workspace or shared pool. A dedicated or shared residential proxy is required to connect an account safely."
+                    )
 
             # PHASE 3: Cascade sending defaults from workspace
             defaults_res = supabase.table("workspace_sending_defaults").select("*").eq("workspace_id", workspace_id).execute()
@@ -1915,8 +1947,9 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
             dek_b64 = crypto.generate_dek()
             dek_bytes = base64.b64decode(dek_b64)
             
-            # Call DB RPC to store the secret securely
-            rpc_res = supabase.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
+            # Call DB RPC to store the secret securely via service client
+            svc = get_service_client() or supabase
+            rpc_res = svc.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
             cookie_secret_ref = rpc_res.data
 
             supabase.table("accounts").insert({
@@ -1990,14 +2023,15 @@ def refresh_account_cookies(account_id: str, payload: CookieRefreshRequest, work
     dek_b64 = crypto.generate_dek()
     dek_bytes = base64.b64decode(dek_b64)
     
-    rpc_res = supabase.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
+    svc = get_service_client() or supabase
+    rpc_res = svc.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
     cookie_secret_ref = rpc_res.data
 
     supabase.table("accounts").update({
         "cookie_secret_ref": cookie_secret_ref,
         "session_cookies_encrypted": crypto.bytes_to_pg_hex(crypto.encrypt_bytes(sanitized_cookies.encode("utf-8"), dek=dek_bytes)),
         "status": "ACTIVE"
-    }).eq("id", account_id).execute()
+    }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
 
     return {"status": "success"}
 
@@ -2111,7 +2145,8 @@ def complete_reconnect(
     dek_b64 = crypto.generate_dek()
     dek_bytes = base64.b64decode(dek_b64)
     
-    rpc_res = supabase.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
+    svc = get_service_client() or supabase
+    rpc_res = svc.rpc("store_account_secret", {"p_secret": dek_b64}).execute()
     cookie_secret_ref = rpc_res.data
     
     update_data = {
@@ -2126,7 +2161,7 @@ def complete_reconnect(
     if expires_at_ts > 0:
         update_data["cookie_expires_at"] = datetime.fromtimestamp(expires_at_ts, timezone.utc).isoformat()
 
-    supabase.table("accounts").update(update_data).eq("id", account_id).execute()
+    supabase.table("accounts").update(update_data).eq("id", account_id).eq("workspace_id", workspace_id).execute()
     supabase.table("account_reconnect_requests").update({"status": "completed", "completed_at": now}).eq("id", req["id"]).execute()
 
     # Layer 0: Log audit trail. Non-critical — a missing audit entry should NOT abort
@@ -2248,12 +2283,85 @@ def bulk_remove_tag(
 
 
 @router.delete("/accounts/{account_id}", response_model=dict)
-def delete_account(account_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
-    acc_res = supabase.table("accounts").select("id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+def delete_account(
+    account_id: str,
+    force: bool = False,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    acc_res = supabase.table("accounts").select("id, name").eq("id", account_id).eq("workspace_id", workspace_id).execute()
     if not acc_res.data:
         raise HTTPException(status_code=404, detail="Account not found")
+    account_name = acc_res.data[0].get("name", "Account")
+
+    # Paranoia Layer 0 & 2: Active campaign pre-flight check to prevent orphaned senders and live campaign disruption
+    camps_res = supabase.table("campaigns").select("id, name, status, sender_account_ids_json").eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
+    active_campaigns = camps_res.data or []
+    conflict_camps = []
+    for c in active_campaigns:
+        raw_senders = c.get("sender_account_ids_json") or []
+        if isinstance(raw_senders, str):
+            try:
+                raw_senders = json.loads(raw_senders)
+            except Exception:
+                raw_senders = []
+        if account_id in raw_senders:
+            conflict_camps.append(c)
+
+    # Also check campaign_accounts mapping table for active campaigns
+    try:
+        ca_res = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", account_id).execute()
+        ca_ids = {r["campaign_id"] for r in (ca_res.data or []) if r.get("campaign_id")}
+        for c in active_campaigns:
+            if c["id"] in ca_ids and c not in conflict_camps:
+                conflict_camps.append(c)
+    except Exception:
+        pass
+
+    if conflict_camps and not force:
+        conflict_names = [c.get("name", c["id"]) for c in conflict_camps]
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete account '{account_name}': It is assigned to active campaign(s): {', '.join(conflict_names)}. Pause these campaigns or reassign senders first, or confirm deletion with force=true."
+        )
+
+    # Clean up references across tables
+    svc = get_service_client() or supabase
+    try:
+        for c in conflict_camps:
+            raw_senders = c.get("sender_account_ids_json") or []
+            if isinstance(raw_senders, str):
+                try:
+                    raw_senders = json.loads(raw_senders)
+                except Exception:
+                    raw_senders = []
+            cleaned = [s for s in raw_senders if s != account_id]
+            svc.table("campaigns").update({"sender_account_ids_json": cleaned}).eq("id", c["id"]).execute()
+    except Exception as e:
+        logger.warning(f"Error cleaning campaign sender JSON for account {account_id}: {e}")
+
+    try:
+        svc.table("campaign_accounts").delete().eq("account_id", account_id).execute()
+    except Exception:
+        pass
+
+    try:
+        svc.table("sender_pod_accounts").delete().eq("account_id", account_id).execute()
+    except Exception:
+        pass
+
+    try:
+        svc.table("account_tags").delete().eq("account_id", account_id).execute()
+    except Exception:
+        pass
+
+    try:
+        svc.table("account_health_checks").delete().eq("account_id", account_id).execute()
+    except Exception:
+        pass
+
     supabase.table("accounts").delete().eq("id", account_id).eq("workspace_id", workspace_id).execute()
-    return {"status": "deleted"}
+    return {"status": "deleted", "account_id": account_id}
 
 
 @router.get("/accounts/{account_id}/tags", response_model=List[str])
@@ -2763,25 +2871,60 @@ def update_account_warmup_curve(
         "warmup_target_days": payload.curve_days
     }
 
+class ToggleWarmupPayload(BaseModel):
+    is_warmup: bool
+
+@router.patch("/accounts/{account_id}/warmup", response_model=dict)
+def toggle_account_warmup(
+    account_id: str,
+    payload: ToggleWarmupPayload,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """
+    Paranoia Layer 0: Toggles safe warmup on an account.
+    Paranoia Layer 1: Validates workspace ownership. If turning ON and warmup_start_date is null, sets now_iso.
+    Paranoia Layer 2: Sanitizes boolean input.
+    """
+    acc_check = supabase.table("accounts").select("id, warmup_start_date").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+    if not acc_check.data:
+        raise HTTPException(status_code=404, detail="Account not found in this workspace")
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_data: Dict[str, Any] = {
+        "is_warmup": payload.is_warmup,
+        "updated_at": now_iso
+    }
+    if payload.is_warmup and not acc_check.data[0].get("warmup_start_date"):
+        update_data["warmup_start_date"] = now_iso
+    
+    supabase.table("accounts").update(update_data).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+    return {"status": "success", "account_id": account_id, "is_warmup": payload.is_warmup}
+
+def get_account_actions_today(supabase: Client, account_id: str, usage_date: Optional[str] = None) -> int:
+    """Paranoia Layer 0 & 1: Safely aggregates today's actions from account_daily_action_counts without ghost columns."""
+    if not usage_date:
+        usage_date = date.today().isoformat()
+    try:
+        res = supabase.table("account_daily_action_counts").select("count").eq("account_id", account_id).eq("usage_date", usage_date).execute()
+        return sum(int(r.get("count", 0)) for r in (res.data or []))
+    except Exception:
+        return 0
+
+
 @router.get("/accounts/{account_id}/warmup", response_model=dict)
 def get_warmup_status(account_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     """Get intelligent warmup phase details for an account with dynamic curves & auto-throttle indicators."""
     from knowledge.backend.services.elein_ai_service import get_warmup_phase
     try:
-        try:
-            res = supabase.table("accounts").select("created_at, actions_today, warmup_day, is_warmup, warmup_target_days").eq("id", account_id).eq("workspace_id", workspace_id).execute()
-        except Exception:
-            try:
-                res = supabase.table("accounts").select("id, created_at, is_warmup").eq("id", account_id).eq("workspace_id", workspace_id).execute()
-            except Exception:
-                class MockRes: data = []
-                res = MockRes()
+        res = supabase.table("accounts").select("id, created_at, is_warmup, warmup_target_days").eq("id", account_id).eq("workspace_id", workspace_id).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Account not found")
             
         row = res.data[0]
         target_days = row.get("warmup_target_days") or 14
-        data = get_warmup_phase(str(row.get("created_at", "")), row.get("actions_today") or 0, bool(row.get("is_warmup", False)), target_days=target_days)
+        actions_today = get_account_actions_today(supabase, account_id)
+        data = get_warmup_phase(str(row.get("created_at", "")), actions_today, bool(row.get("is_warmup", False)), target_days=target_days)
 
         # Attach workspace entitlement & auto-throttling status
         can_advanced = False
@@ -2807,18 +2950,13 @@ def get_all_warmup_statuses(supabase: Client = Depends(get_supabase_client), wor
     """Get warmup summary for all accounts."""
     from knowledge.backend.services.elein_ai_service import get_warmup_phase
     try:
-        try:
-            res = supabase.table("accounts").select("id, name, is_active, created_at, actions_today, is_warmup").eq("workspace_id", workspace_id).execute()
-        except Exception:
-            try:
-                res = supabase.table("accounts").select("id, name, is_active, created_at, is_warmup").eq("workspace_id", workspace_id).execute()
-            except Exception:
-                class MockRes: data = []
-                res = MockRes()
+        res = supabase.table("accounts").select("id, name, is_active, created_at, is_warmup, warmup_target_days").eq("workspace_id", workspace_id).execute()
         
         result = []
         for r in (res.data or []):
-            warmup = get_warmup_phase(str(r.get("created_at", "")), r.get("actions_today") or 0, bool(r.get("is_warmup", False)))
+            actions_today = get_account_actions_today(supabase, r["id"])
+            target_days = r.get("warmup_target_days") or 14
+            warmup = get_warmup_phase(str(r.get("created_at", "")), actions_today, bool(r.get("is_warmup", False)), target_days=target_days)
             result.append({
                 "id": r["id"],
                 "name": r["name"],
@@ -2844,18 +2982,9 @@ def get_account_warmup_roadmap(
     import datetime
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     
-    try:
-        acc_res = supabase.table("accounts").select(
-            "id, name, created_at, actions_today, is_warmup, is_active, status, proxy_id, proxy_country"
-        ).eq("id", account_id).eq("workspace_id", workspace_id).execute()
-    except Exception:
-        try:
-            acc_res = supabase.table("accounts").select(
-                "id, name, created_at, is_warmup, is_active, status"
-            ).eq("id", account_id).eq("workspace_id", workspace_id).execute()
-        except Exception:
-            class MockRes: data = []
-            acc_res = MockRes()
+    acc_res = supabase.table("accounts").select(
+        "id, name, created_at, is_warmup, is_active, status, proxy_id, proxy_country, warmup_target_days"
+    ).eq("id", account_id).eq("workspace_id", workspace_id).execute()
     
     if not acc_res.data:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -2940,13 +3069,13 @@ def get_account_warmup_roadmap(
             "status": status
         })
         
-    actions_today = row.get("actions_today") or 0
+    actions_today = get_account_actions_today(supabase, account_id)
     today_spec = next((m for m in roadmap if m["day"] == current_day), roadmap[-1])
     effective_limit = 60 if is_graduated else today_spec["daily_limit"]
     
     score = 0
     if row.get("is_active", True): score += 25
-    if row.get("proxy_id") or True: score += 25
+    if row.get("proxy_id"): score += 25
     if actions_today <= effective_limit: score += 25
     else: score += max(0, 25 - (actions_today - effective_limit) * 2)
     score += 25
@@ -3007,13 +3136,14 @@ def verify_account_shield(
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     
     acc_res = supabase.table("accounts").select(
-        "id, name, created_at, actions_today, is_warmup, is_active, status, proxy_id, proxy_country"
+        "id, name, created_at, is_warmup, is_active, status, proxy_id, proxy_country"
     ).eq("id", account_id).eq("workspace_id", workspace_id).execute()
     
     if not acc_res.data:
         raise HTTPException(status_code=404, detail="Account not found")
         
     row = acc_res.data[0]
+    actions_today = get_account_actions_today(supabase, account_id)
     
     proxy_info = {
         "ip_masked": "198.51.100.xx",
@@ -3355,11 +3485,15 @@ def update_account_status(
         raise HTTPException(status_code=404, detail="Account not found")
         
     new_status = payload.get("status")
-    if new_status not in ["ACTIVE", "MANUAL_MODE"]:
+    if new_status not in ["ACTIVE", "MANUAL_MODE", "DISABLED", "NEEDS_ATTENTION"]:
         raise HTTPException(status_code=400, detail="Invalid status")
         
     old_status = acc_res.data[0].get("status")
-    supabase.table("accounts").update({"status": new_status}).eq("id", account_id).execute()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    supabase.table("accounts").update({
+        "status": new_status,
+        "updated_at": now_iso
+    }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
     
     if old_status != new_status:
         from core.backend.services.notification_service import dispatch_notification
@@ -3396,17 +3530,23 @@ def _build_proxy_url(account_row: dict, supabase_client=None) -> Optional[str]:
     if p.get("username"):
         password_plain = ""
         proxy_id = account_row.get("proxy_id") or (p.get("id") if isinstance(p, dict) else None)
-        if proxy_id and supabase_client:
-            try:
-                rpc_res = supabase_client.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
-                if rpc_res.data and rpc_res.data.get("password_encrypted"):
-                    from core.backend.core import crypto
-                    import base64
-                    raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
-                    dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
-                    password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
-            except Exception as e:
-                logger.warning(f"Failed to decrypt proxy password for {proxy_id}: {e}")
+        if proxy_id:
+            svc = get_service_client() or supabase_client
+            if svc:
+                try:
+                    p_ws = p.get("workspace_id") or account_row.get("workspace_id")
+                    rpc_params = {"p_proxy_id": proxy_id}
+                    if p_ws:
+                        rpc_params["p_workspace_id"] = p_ws
+                    rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_params).execute()
+                    if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                        from core.backend.core import crypto
+                        import base64
+                        raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                        dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
+                        password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+                except Exception as e:
+                    logger.warning(f"Failed to decrypt proxy password for {proxy_id}: {e}")
         
         auth = f"{p['username']}:{password_plain}@" if password_plain else f"{p['username']}@"
         

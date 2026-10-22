@@ -129,7 +129,12 @@ def run_health_check(supabase: Client, account_id: str, workspace_id: str) -> di
     
     if cookie_secret_ref:
         try:
-            rpc_res = supabase.rpc("get_decrypted_account_payload", {"p_account_id": account_id}).execute()
+            from core.backend.api.auth_dep import get_service_client
+            svc = get_service_client() or supabase
+            rpc_payload = {"p_account_id": account_id}
+            if account.get("workspace_id"):
+                rpc_payload["p_workspace_id"] = account["workspace_id"]
+            rpc_res = svc.rpc("get_decrypted_account_payload", rpc_payload).execute()
             if rpc_res.data and rpc_res.data.get("dek"):
                 import base64
                 dek_bytes = base64.b64decode(rpc_res.data["dek"])
@@ -212,7 +217,13 @@ def run_health_check(supabase: Client, account_id: str, workspace_id: str) -> di
                     pwd = ""
                     if current_proxy.get("username"):
                         try:
-                            rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+                            from core.backend.api.auth_dep import get_service_client
+                            svc = get_service_client() or supabase
+                            rpc_payload = {"p_proxy_id": proxy_id}
+                            p_ws = current_proxy.get("workspace_id") or account.get("workspace_id")
+                            if p_ws:
+                                rpc_payload["p_workspace_id"] = p_ws
+                            rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
                             if rpc_res.data and rpc_res.data.get("password_encrypted"):
                                 import base64
                                 raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])

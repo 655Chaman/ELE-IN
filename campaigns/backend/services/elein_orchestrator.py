@@ -2716,7 +2716,11 @@ class EleInOrchestrator:
                 action_consumed = True
                     
                 if not account_row.get("proxy_id") and not account_row.get("proxies"):
-                    logger.warning(f"Account {chosen_sender_id} has no proxy assigned — running without proxy (raw IP risk)")
+                    logger.error(f"[Orchestrator] Sender {chosen_sender_id} has no proxy assigned. Halting outreach to protect account from bare datacenter IP detection.")
+                    if action_consumed:
+                        release_consumed_action(self.supabase, chosen_sender_id, action, account=account_row, tz_str=sender_tz)
+                        action_consumed = False
+                    return {"status": "error", "error": "Account has no residential proxy assigned. Outreach halted to protect account."}
                     
                 if account_row.get("session_cookies_encrypted"):
                     from core.backend.core import crypto
@@ -2740,7 +2744,7 @@ class EleInOrchestrator:
                     
                     try:
                         _raw = account_row["session_cookies_encrypted"]
-                        _raw_bytes = _raw if isinstance(_raw, (bytes, bytearray)) else _raw.encode("utf-8")
+                        _raw_bytes = crypto.pg_hex_to_bytes(_raw) if isinstance(_raw, str) else _raw
                         cookies_bytes = crypto.decrypt_bytes(_raw_bytes, dek=dek_bytes)
                         cookies = cookies_bytes.decode("utf-8")
                         proxy_url = _build_proxy_url(account_row, self.supabase)

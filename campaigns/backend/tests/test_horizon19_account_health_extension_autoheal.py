@@ -347,7 +347,7 @@ class TestHorizon19AutoHealingSecurity(unittest.TestCase):
         res = renew_account_session(self.account_id, self.workspace_id, raw_json, self.supabase)
         self.assertTrue(res["success"])
         self.assertEqual(res["status"], "ACTIVE")
-        mock_worker_cls.assert_called_with(cookies_json=raw_json, account_id=self.account_id)
+        mock_worker_cls.assert_called_with(cookies_json=raw_json, account_id=self.account_id, proxy_url=None)
 
     def test_calculate_composite_health_score(self):
         """Layer 1: Calculates deterministic composite score from session, proxy, cookies, and status."""

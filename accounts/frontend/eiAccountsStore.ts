@@ -28,11 +28,14 @@ export interface LinkedInAccount {
 interface EIAccountsState {
   accounts: LinkedInAccount[]
   error: string | null
+  isTogglingManualMode: Record<string, boolean>
   fetchAccounts: () => Promise<void>
   cancelFetch: () => void
+  clearAccounts: () => void
   addAccount: (account: Omit<LinkedInAccount, "id" | "status" | "accountStatus">) => Promise<void>
-  removeAccount: (id: string) => Promise<void>
+  removeAccount: (id: string, force?: boolean) => Promise<void>
   updateAccount: (id: string, updates: Partial<LinkedInAccount>) => void
+  toggleWarmup: (id: string, isWarmup: boolean) => Promise<void>
   toggleManualMode: (id: string, currentStatus: string) => Promise<void>
   clearManualSendWarning: (id: string) => Promise<void>
   autoHealAccount: (id: string) => Promise<any>
@@ -47,10 +50,14 @@ export const useHRAccountsStore = create<EIAccountsState>()(
     (set, get) => ({
       accounts: [],
       error: null,
+      isTogglingManualMode: {},
       cancelFetch: () => {
         if (fetchController) {
           fetchController.abort()
         }
+      },
+      clearAccounts: () => {
+        set({ accounts: [], error: null })
       },
       fetchAccounts: async () => {
         if (fetchController) {
@@ -68,7 +75,9 @@ export const useHRAccountsStore = create<EIAccountsState>()(
               name: acc.name,
               profileUrl: acc.linkedin_profile_url || "",
               cookieJson: "",
+              dailyLimit: acc.daily_connection_limit || 20,
               messageLimit: acc.daily_message_limit || 40,
+              sent: acc.actions_today || 0,
               isWarmup: acc.is_warmup,
               warmupStartDate: acc.warmup_start_date,
               warmupTargetDays: acc.warmup_target_days,
@@ -100,6 +109,7 @@ export const useHRAccountsStore = create<EIAccountsState>()(
             name: account.name,
             linkedin_profile_url: account.profileUrl,
             session_cookies_json: account.cookieJson,
+            daily_connection_limit: account.dailyLimit || 20,
             daily_message_limit: account.messageLimit || 40,
             is_warmup: account.isWarmup,
             warmup_target_days: account.warmupTargetDays || 30,
@@ -127,13 +137,17 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           throw e
         }
       },
-      removeAccount: async (id) => {
+      removeAccount: async (id: string, force: boolean = false) => {
         try {
-          const res = await fetchWithAuth(`/api/elein/accounts/${id}`, {
+          const url = force ? `/api/elein/accounts/${id}?force=true` : `/api/elein/accounts/${id}`
+          const res = await fetchWithAuth(url, {
             method: 'DELETE'
           })
           if (!res.ok) {
-            throw new Error('Failed to delete account')
+            const err = await res.json().catch(() => null)
+            const detail = err?.detail || 'Failed to delete account'
+            set({ error: detail })
+            throw new Error(detail)
           }
           set((state) => ({
             accounts: state.accounts.filter((a) => a.id !== id),
@@ -151,10 +165,42 @@ export const useHRAccountsStore = create<EIAccountsState>()(
             a.id === id ? { ...a, ...updates } : a
           ),
         })),
+      toggleWarmup: async (id: string, isWarmup: boolean) => {
+        try {
+          const res = await fetchWithAuth(`/api/elein/accounts/${id}/warmup`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_warmup: isWarmup })
+          });
+          if (res.ok) {
+            set((state) => ({
+              accounts: state.accounts.map((a) =>
+                a.id === id ? { ...a, isWarmup } : a
+              ),
+              error: null
+            }));
+          } else {
+            const err = await res.json().catch(() => null);
+            const detail = err?.detail || 'Failed to update warmup status';
+            set({ error: detail });
+            throw new Error(detail);
+          }
+        } catch (e: any) {
+          console.error("Failed to toggle warmup", e);
+          set({ error: e.message || 'Failed to toggle warmup' });
+          throw e;
+        }
+      },
       toggleManualMode: async (id: string, currentStatus: string) => {
         if (currentStatus !== 'ACTIVE' && currentStatus !== 'MANUAL_MODE') {
             return;
         }
+        if (get().isTogglingManualMode[id]) {
+          return;
+        }
+        set((state) => ({
+          isTogglingManualMode: { ...state.isTogglingManualMode, [id]: true }
+        }));
         try {
           const newStatus = currentStatus === "MANUAL_MODE" ? "ACTIVE" : "MANUAL_MODE";
           const res = await fetchWithAuth(`/api/elein/accounts/${id}/status`, {
@@ -163,7 +209,12 @@ export const useHRAccountsStore = create<EIAccountsState>()(
             body: JSON.stringify({ status: newStatus })
           });
           if (res.ok) {
-            set({ error: null })
+            set((state) => ({
+              accounts: state.accounts.map((a) =>
+                a.id === id ? { ...a, accountStatus: newStatus } : a
+              ),
+              error: null
+            }))
             await get().fetchAccounts();
           } else {
             const err = await res.json().catch(() => null)
@@ -175,6 +226,10 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           console.error("Failed to toggle manual mode", e);
           set({ error: e.message || 'Failed to toggle manual mode' })
           throw e
+        } finally {
+          set((state) => ({
+            isTogglingManualMode: { ...state.isTogglingManualMode, [id]: false }
+          }));
         }
       },
       clearManualSendWarning: async (id: string) => {
@@ -257,12 +312,8 @@ export const useHRAccountsStore = create<EIAccountsState>()(
     {
       name: "elein-accounts-storage",
       version: 1,
-      partialize: (state) => ({
-        // Never persist cookieJson to browser localStorage
-        accounts: state.accounts.map(({ cookieJson, ...rest }) => ({
-          ...rest,
-          cookieJson: ""
-        })),
+      partialize: () => ({
+        // Paranoia Layer 0 & 1: Do not persist live sender accounts in un-scoped localStorage to prevent cross-workspace cache bleed.
         error: null
       }),
       migrate: (persistedState: any, version: number) => {
