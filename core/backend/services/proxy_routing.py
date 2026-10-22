@@ -50,6 +50,8 @@ def validate_and_normalize_proxy_host(raw_host: Optional[str], allow_private: bo
 
     try:
         ip = ipaddress.ip_address(host)
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
         if not allow_private:
             if ip.is_loopback:
                 raise ValueError(f"SSRF Guard: Loopback IP '{host}' is not allowed")
@@ -65,6 +67,33 @@ def validate_and_normalize_proxy_host(raw_host: Optional[str], allow_private: bo
         # Not a valid IP address, validate as hostname
         if not HOSTNAME_RE.match(host) or "." not in host:
             raise ValueError(f"Invalid proxy hostname: '{host}'")
+
+        if not allow_private:
+            # Check dynamic / wildcard DNS patterns known for SSRF bypasses
+            WILDCARD_DNS_SUFFIXES = (".nip.io", ".sslip.io", ".xip.io", ".vcap.me", ".localtest.me")
+            if any(host.endswith(sfx) for sfx in WILDCARD_DNS_SUFFIXES):
+                raise ValueError(f"SSRF Guard: Wildcard DNS domain '{host}' is not allowed as a proxy host")
+
+            # Resolve hostname to verify target IP address
+            import socket
+            try:
+                addr_info = socket.getaddrinfo(host, None)
+                for family, _, _, _, sockaddr in addr_info:
+                    resolved_ip_str = sockaddr[0]
+                    resolved_ip = ipaddress.ip_address(resolved_ip_str)
+                    if getattr(resolved_ip, "ipv4_mapped", None):
+                        resolved_ip = resolved_ip.ipv4_mapped
+                    if (
+                        resolved_ip.is_loopback
+                        or resolved_ip.is_link_local
+                        or resolved_ip.is_private
+                        or resolved_ip.is_unspecified
+                        or resolved_ip.is_multicast
+                        or resolved_ip.is_reserved
+                    ):
+                        raise ValueError(f"SSRF Guard: Host '{host}' resolves to restricted IP '{resolved_ip}'")
+            except socket.gaierror:
+                pass
 
     return host
 

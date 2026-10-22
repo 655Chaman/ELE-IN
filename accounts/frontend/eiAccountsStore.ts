@@ -67,7 +67,7 @@ export const useHRAccountsStore = create<EIAccountsState>()(
               id: acc.id,
               name: acc.name,
               profileUrl: acc.linkedin_profile_url || "",
-              cookieJson: acc.session_cookies_json || "",
+              cookieJson: "",
               messageLimit: acc.daily_message_limit || 40,
               isWarmup: acc.is_warmup,
               warmupStartDate: acc.warmup_start_date,
@@ -85,7 +85,8 @@ export const useHRAccountsStore = create<EIAccountsState>()(
             }))
             set({ accounts: mapped, error: null })
           } else {
-            set({ error: 'Failed to fetch accounts' })
+            const err = await res.json().catch(() => null)
+            set({ error: err?.detail || 'Failed to fetch accounts' })
           }
         } catch (e: any) {
           if (e.name === 'AbortError') return;
@@ -112,17 +113,18 @@ export const useHRAccountsStore = create<EIAccountsState>()(
             body: JSON.stringify(payload)
           })
           if (res.ok) {
-            const data = await res.json()
-            set((state) => ({
-              accounts: [...state.accounts, { ...account, id: data.id, accountStatus: "ACTIVE", dailyLimit: 20, sent: 0 } as LinkedInAccount],
-              error: null
-            }))
+            set({ error: null })
+            await get().fetchAccounts()
           } else {
-            set({ error: 'Failed to add account' })
+            const err = await res.json().catch(() => null)
+            const detail = err?.detail || err?.error || 'Failed to add account'
+            set({ error: detail })
+            throw new Error(detail)
           }
         } catch (e: any) {
           console.error("Failed to add account", e)
           set({ error: e.message || 'Failed to add account' })
+          throw e
         }
       },
       removeAccount: async (id) => {
@@ -162,13 +164,17 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           });
           if (res.ok) {
             set({ error: null })
-            get().fetchAccounts();
+            await get().fetchAccounts();
           } else {
-            set({ error: 'Failed to toggle manual mode' })
+            const err = await res.json().catch(() => null)
+            const detail = err?.detail || 'Failed to toggle manual mode'
+            set({ error: detail })
+            throw new Error(detail)
           }
         } catch (e: any) {
           console.error("Failed to toggle manual mode", e);
           set({ error: e.message || 'Failed to toggle manual mode' })
+          throw e
         }
       },
       clearManualSendWarning: async (id: string) => {
@@ -178,13 +184,17 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           });
           if (res.ok) {
             set({ error: null })
-            get().fetchAccounts();
+            await get().fetchAccounts();
           } else {
-             set({ error: 'Failed to clear manual send warning' })
+            const err = await res.json().catch(() => null)
+            const detail = err?.detail || 'Failed to clear manual send warning'
+            set({ error: detail })
+            throw new Error(detail)
           }
         } catch (e: any) {
           console.error("Failed to clear manual send warning", e);
           set({ error: e.message || 'Failed to clear manual send warning' })
+          throw e
         }
       },
       autoHealAccount: async (id: string) => {
@@ -247,6 +257,14 @@ export const useHRAccountsStore = create<EIAccountsState>()(
     {
       name: "elein-accounts-storage",
       version: 1,
+      partialize: (state) => ({
+        // Never persist cookieJson to browser localStorage
+        accounts: state.accounts.map(({ cookieJson, ...rest }) => ({
+          ...rest,
+          cookieJson: ""
+        })),
+        error: null
+      }),
       migrate: (persistedState: any, version: number) => {
         if (version === 0) return { accounts: [], error: null }
         return persistedState

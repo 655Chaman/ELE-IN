@@ -426,6 +426,15 @@ def select_pod_sender(
                                     "initiating_account_id": initiating_acc_id,
                                     "message": "Initiating sender reached daily safety limit. Outreach locked to maintain relationship continuity."
                                 }
+                        else:
+                            # Quarantined / cooldown initiating sender — must NOT fail over to another sender in the pod!
+                            # Thread affinity requires message continuity with the exact same LinkedIn member.
+                            return {
+                                "account_id": None,
+                                "status": "THREAD_AFFINITY_SENDER_QUARANTINED",
+                                "initiating_account_id": initiating_acc_id,
+                                "message": f"Initiating sender is currently quarantined ({init_acc.get('quarantine_reason', 'cooldown')}). Outreach paused to preserve thread affinity."
+                            }
         except Exception as ex:
             logger.warning(f"Error checking thread affinity for lead {lead_id}: {ex}")
 
@@ -697,28 +706,43 @@ def trigger_pod_failover(
     reassigned_count = 0
     if backup_account_id:
         try:
-            # Query enrollments currently assigned to failed account in this campaign
-            enr_res = supabase.table("campaign_enrollments") \
+            # Active/in-progress leads are paused with SENDER_QUARANTINED reason to preserve thread affinity
+            from datetime import datetime, timezone
+            supabase.table("campaign_enrollments") \
+                .update({
+                    "paused_reason": "SENDER_QUARANTINED",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }) \
+                .eq("campaign_id", clean_cid) \
+                .eq("workspace_id", clean_ws) \
+                .eq("account_id", clean_aid) \
+                .in_("status", ["in_progress", "active"]) \
+                .execute()
+
+            # Query enrollments currently assigned to failed account in this campaign.
+            # Only uncontacted 'pending' leads can safely fail over to another sender in the pod.
+            # 'in_progress' and 'active' leads have established thread affinity and 1st-degree connection invariants.
+            pending_res = supabase.table("campaign_enrollments") \
                 .select("id") \
                 .eq("campaign_id", clean_cid) \
                 .eq("workspace_id", clean_ws) \
                 .eq("account_id", clean_aid) \
-                .in_("status", ["pending", "in_progress", "active"]) \
+                .in_("status", ["pending"]) \
                 .execute()
-            enrollment_ids = [e["id"] for e in (enr_res.data or [])]
+            pending_enrollment_ids = [e["id"] for e in (pending_res.data or [])]
 
-            if enrollment_ids:
+            if pending_enrollment_ids:
                 supabase.table("campaign_enrollments") \
                     .update({"account_id": backup_account_id}) \
-                    .in_("id", enrollment_ids) \
+                    .in_("id", pending_enrollment_ids) \
                     .eq("workspace_id", clean_ws) \
                     .execute()
-                reassigned_count = len(enrollment_ids)
+                reassigned_count = len(pending_enrollment_ids)
 
                 # Also update lead_states if any
                 supabase.table("lead_states") \
                     .update({"account_id": backup_account_id}) \
-                    .in_("enrollment_id", enrollment_ids) \
+                    .in_("enrollment_id", pending_enrollment_ids) \
                     .eq("workspace_id", clean_ws) \
                     .execute()
         except Exception as ex:

@@ -64,7 +64,19 @@ def check_profile_reachable(cookies_json: str, linkedin_profile_url: str, accoun
         resp = worker._http_get(linkedin_profile_url)
         if resp.status_code == 200:
             html = resp.text
-            if "checkpoint/challenge" in html or "restricted" in html.lower():
+            final_url = str(getattr(resp, "url", ""))
+            is_restricted = (
+                "checkpoint/challenge" in final_url
+                or "/checkpoint/" in final_url
+                or "/identity/error/restriction" in final_url
+                or "checkpoint/challenge" in html
+                or "/checkpoint/lg/" in html
+                or 'class="checkpoint' in html
+                or 'data-checkpoint-url' in html
+                or "account has been restricted" in html.lower()
+                or "account is temporarily restricted" in html.lower()
+            )
+            if is_restricted:
                 return {'check_type': 'profile_reachable', 'result': 'fail', 'detail': {'message': 'Restriction found'}}
             return {'check_type': 'profile_reachable', 'result': 'pass', 'detail': {'status_code': 200}}
         else:
@@ -82,7 +94,19 @@ def check_for_restriction_signals(cookies_json: str, account_id: str = "health_c
         resp = worker._http_get("https://www.linkedin.com/feed/")
         if resp.status_code == 200:
             html = resp.text
-            if "checkpoint/challenge" in html or "restriction" in html.lower():
+            final_url = str(getattr(resp, "url", ""))
+            is_restricted = (
+                "checkpoint/challenge" in final_url
+                or "/checkpoint/" in final_url
+                or "/identity/error/restriction" in final_url
+                or "checkpoint/challenge" in html
+                or "/checkpoint/lg/" in html
+                or 'class="checkpoint' in html
+                or 'data-checkpoint-url' in html
+                or "account has been restricted" in html.lower()
+                or "account is temporarily restricted" in html.lower()
+            )
+            if is_restricted:
                 return {'check_type': 'restriction_signals', 'result': 'fail', 'detail': {'message': 'Restriction found on feed'}}
             return {'check_type': 'restriction_signals', 'result': 'pass', 'detail': {}}
         return {'check_type': 'restriction_signals', 'result': 'warn', 'detail': {'status_code': resp.status_code}}

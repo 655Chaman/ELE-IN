@@ -239,6 +239,7 @@ export default function ConnectModal({ onClose, onAdd }: { onClose: () => void; 
     } catch (e: any) {
       clearTimeout(timer)
       setValidating(false)
+      setValidated(null)
       if (e.name === 'AbortError') {
         setError("Validation timed out after 25s. The residential proxy tunnel or LinkedIn took too long to respond.")
       } else {

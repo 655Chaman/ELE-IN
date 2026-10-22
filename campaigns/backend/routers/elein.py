@@ -1698,15 +1698,19 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
             from supabase import create_client
             import os
             supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
-            res = supabase.table("proxies").select("protocol, host, port, username, password_encrypted").eq("id", proxy_id).execute()
+            res = supabase.table("proxies").select("protocol, host, port, username, password_encrypted, workspace_id").eq("id", proxy_id).execute()
             if res.data:
                 p = res.data[0]
+                p_ws = p.get("workspace_id")
+                if p_ws is not None and str(p_ws).strip() != str(workspace_id).strip():
+                    raise HTTPException(status_code=403, detail="Proxy does not belong to active workspace")
+
                 password_plain = ""
                 if p.get("password_encrypted"):
                     try:
                         from core.backend.core import crypto
                         import base64
-                        rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
+                        rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id, "p_workspace_id": p_ws}).execute()
                         if rpc_res.data and rpc_res.data.get("dek"):
                             dek_bytes = base64.b64decode(rpc_res.data["dek"])
                             raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
@@ -1717,6 +1721,8 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
 
                 auth = f"{p.get('username', '')}:{password_plain}@" if p.get('username') else ""
                 proxy_url = f"{p.get('protocol', 'http')}://{auth}{p['host']}:{p['port']}"
+        except HTTPException:
+            raise
         except Exception:
             pass
 
@@ -1765,7 +1771,7 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
         if current_accounts_count >= max_accounts:
             raise HTTPException(
                 status_code=403,
-                detail=f"LinkedIn account limit reached ({current_accounts_count}/{max_accounts}). Upgrade to Growth Tier to connect up to 5 accounts."
+                detail=f"LinkedIn account limit reached ({current_accounts_count}/{max_accounts}). Upgrade your subscription tier to connect more accounts."
             )
 
         normalized_cookies = normalize_linkedin_cookies_payload(account.session_cookies_json)
@@ -1789,11 +1795,36 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
         try:
             # PROXY ASSIGNMENT: Map to browser geolocation via Cloudflare/Vercel headers
             country_code = request.headers.get("cf-ipcountry") or request.headers.get("x-vercel-ip-country") or "US"
-            proxy_res = supabase.table("proxies").select("id, country_code").eq("status", "healthy").execute()
-            healthy_proxies = proxy_res.data or []
             
             chosen_proxy_id = getattr(account, "proxy_id", None) or getattr(account, "proxy", None)
-            if not chosen_proxy_id:
+            if chosen_proxy_id:
+                p_check = supabase.table("proxies").select("id, workspace_id").eq("id", chosen_proxy_id).execute()
+                if not p_check.data:
+                    raise HTTPException(status_code=404, detail="Selected proxy not found")
+                p_ws = p_check.data[0].get("workspace_id")
+                if p_ws is not None and str(p_ws).strip() != str(workspace_id).strip():
+                    raise HTTPException(status_code=403, detail="Selected proxy does not belong to active workspace")
+            else:
+                # Query workspace dedicated proxies first
+                ws_proxy_res = (
+                    supabase.table("proxies")
+                    .select("id, country_code, workspace_id")
+                    .eq("status", "healthy")
+                    .eq("workspace_id", workspace_id)
+                    .execute()
+                )
+                healthy_proxies = ws_proxy_res.data or []
+                # Fallback to shared system proxies if workspace has none
+                if not healthy_proxies:
+                    sys_proxy_res = (
+                        supabase.table("proxies")
+                        .select("id, country_code, workspace_id")
+                        .eq("status", "healthy")
+                        .is_("workspace_id", "null")
+                        .execute()
+                    )
+                    healthy_proxies = sys_proxy_res.data or []
+
                 if healthy_proxies:
                     import random
                     matches = [p for p in healthy_proxies if p.get("country_code") == country_code]
@@ -1804,7 +1835,7 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                         chosen_proxy_id = random.choice(healthy_proxies)["id"]
                         logger.info(f"No proxy for {country_code}, fallback to proxy {chosen_proxy_id}")
                 else:
-                    logger.warning(f"CRITICAL: No healthy proxies available in the system! Account {account_id} will run on naked server IP.")
+                    logger.warning(f"CRITICAL: No healthy proxies available for workspace {workspace_id}! Account {account_id} will run on naked server IP.")
 
             # PHASE 3: Cascade sending defaults from workspace
             defaults_res = supabase.table("workspace_sending_defaults").select("*").eq("workspace_id", workspace_id).execute()
@@ -1949,7 +1980,12 @@ def initiate_reconnect(account_id: str, supabase: Client = Depends(get_supabase_
         raise HTTPException(status_code=500, detail="Failed to initiate reconnect")
 
 @router.post("/accounts/reconnect/complete")
-def complete_reconnect(payload: dict, supabase: Client = Depends(get_supabase_client)):
+def complete_reconnect(
+    payload: dict,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id)
+):
     """Completes reconnect: validates token, stores new cookies, restores ACTIVE status."""
     from datetime import datetime, timezone
     from core.backend.core import crypto
@@ -1960,33 +1996,54 @@ def complete_reconnect(payload: dict, supabase: Client = Depends(get_supabase_cl
     if not token or not cookies_json:
         raise HTTPException(status_code=400, detail="Missing token or cookies")
         
-    # 1. Validate token
-    req_res = supabase.table("account_reconnect_requests").select("*").eq("token", token).eq("status", "pending").execute()
+    # 1. Atomically claim token to prevent replay/concurrency race
+    req_res = supabase.table("account_reconnect_requests").select("*").eq("token", token).execute()
     if not req_res.data:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        raise HTTPException(status_code=400, detail="Invalid token")
         
     req = req_res.data[0]
+    if req.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Token has already been used or is currently processing")
+
     expires_at = datetime.fromisoformat(req["expires_at"].replace("Z", "+00:00"))
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Token expired")
+
+    claim_res = (
+        supabase.table("account_reconnect_requests")
+        .update({"status": "processing"})
+        .eq("token", token)
+        .eq("status", "pending")
+        .execute()
+    )
+    if not claim_res.data:
+        raise HTTPException(status_code=409, detail="Concurrent reconnect request already in progress")
         
     account_id = req["account_id"]
     
-    acc_res = supabase.table("accounts").select("workspace_id, proxy_id, linkedin_profile_url, proxies(protocol, host, port, username)").eq("id", account_id).execute()
+    acc_res = (
+        supabase.table("accounts")
+        .select("workspace_id, proxy_id, linkedin_profile_url, proxies(protocol, host, port, username)")
+        .eq("id", account_id)
+        .eq("workspace_id", workspace_id)
+        .execute()
+    )
     if not acc_res.data:
-        raise HTTPException(status_code=404, detail="Account not found")
+        supabase.table("account_reconnect_requests").update({"status": "pending"}).eq("token", token).execute()
+        raise HTTPException(status_code=404, detail="Account not found in active workspace")
         
     acc = acc_res.data[0]
-    workspace_id = acc["workspace_id"]
     proxy_url = _build_proxy_url(acc, supabase)
     
     validation = validate_cookies({"session_cookies_json": cookies_json, "proxy_url": proxy_url}, workspace_id)
     if not validation.get("valid"):
+        supabase.table("account_reconnect_requests").update({"status": "failed"}).eq("token", token).execute()
         raise HTTPException(status_code=400, detail=validation.get("error", "Invalid cookies"))
         
     old_profile = acc.get("linkedin_profile_url")
     new_profile = validation.get("profile_url")
     if old_profile and new_profile and old_profile.strip("/") != new_profile.strip("/"):
+        supabase.table("account_reconnect_requests").update({"status": "failed"}).eq("token", token).execute()
         raise HTTPException(status_code=400, detail="Cookie mismatch! Profile does not match original account.")
         
     try:
@@ -2020,11 +2077,11 @@ def complete_reconnect(payload: dict, supabase: Client = Depends(get_supabase_cl
         update_data["cookie_expires_at"] = datetime.fromtimestamp(expires_at_ts, timezone.utc).isoformat()
 
     supabase.table("accounts").update(update_data).eq("id", account_id).execute()
-    supabase.table("account_reconnect_requests").update({"status": "completed"}).eq("id", req["id"]).execute()
+    supabase.table("account_reconnect_requests").update({"status": "completed", "completed_at": now}).eq("id", req["id"]).execute()
 
     # Layer 0: Log audit trail. Non-critical — a missing audit entry should NOT abort
     # an already-completed reconnect, but it MUST be surfaced in logs (not silently swallowed).
-    actor_id = req.get("requested_by") or "system"
+    actor_id = user_id or req.get("requested_by") or "system"
     log_audit(supabase, workspace_id, actor_id, "account.reconnected", "linkedin_account", account_id)
 
     return {"success": True, "account_id": account_id}

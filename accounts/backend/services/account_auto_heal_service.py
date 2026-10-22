@@ -219,6 +219,50 @@ def calculate_composite_health_score(
     return min(100, max(0, score))
 
 
+# ── PROXY RESOLUTION HELPER ───────────────────────────────────────────────────
+
+def _build_account_proxy_url(acc: dict, supabase: Client) -> Optional[str]:
+    proxy_id = acc.get("proxy_id")
+    if not proxy_id:
+        return None
+    try:
+        p_res = supabase.table("proxies").select("id, host, port, protocol, username, password, password_encrypted, workspace_id").eq("id", proxy_id).execute()
+        if not p_res.data:
+            return None
+        proxy = p_res.data[0]
+        acc_ws = acc.get("workspace_id")
+        p_ws = proxy.get("workspace_id")
+        if acc_ws and p_ws and str(acc_ws).strip() != str(p_ws).strip():
+            logger.warning(f"Proxy {proxy_id} workspace {p_ws} does not match account workspace {acc_ws}")
+            return None
+        
+        password_plain = ""
+        username = proxy.get("username")
+        if username:
+            if proxy.get("password_encrypted"):
+                try:
+                    rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id, "p_workspace_id": p_ws}).execute()
+                    if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                        raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                        dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
+                        password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode("utf-8")
+                except Exception as e:
+                    logger.warning(f"Could not decrypt proxy password for {proxy_id}: {e}")
+            elif proxy.get("password"):
+                password_plain = proxy["password"]
+
+        protocol = (proxy.get("protocol") or "http").lower().strip()
+        host = proxy.get("host")
+        port = proxy.get("port")
+        if not host or not port:
+            return None
+        auth = f"{username}:{password_plain}@" if username and password_plain else f"{username}@" if username else ""
+        return f"{protocol}://{auth}{host}:{port}"
+    except Exception as e:
+        logger.error(f"Failed to build proxy url for proxy {proxy_id}: {e}")
+        return None
+
+
 # ── AUTONOMOUS SINGLE-ACCOUNT AUTO-HEAL ───────────────────────────────────────
 
 def auto_heal_account(
@@ -260,6 +304,30 @@ def auto_heal_account(
         new_status = previous_status
         healed = False
         recommendation = "ALL_CLEAR"
+
+        # Multi-worker DB lease check
+        session_locked_until = account.get("session_locked_until")
+        if session_locked_until and not force:
+            try:
+                locked_dt = datetime.fromisoformat(session_locked_until.replace("Z", "+00:00"))
+                if locked_dt > now_utc:
+                    return {
+                        "account_id": account_id,
+                        "healed": False,
+                        "locked": True,
+                        "actions_taken": ["Auto-heal skipped: Another worker holds an active database lock for this account."],
+                        "recommendation": "LOCKED_IN_PROGRESS",
+                        "timestamp": now_iso
+                    }
+            except Exception:
+                pass
+
+        # Set database distributed lock for this account
+        lock_until_iso = (now_utc + timedelta(seconds=AUTO_HEAL_LOCK_TIMEOUT_SECONDS)).isoformat()
+        try:
+            supabase.table("accounts").update({"session_locked_until": lock_until_iso}).eq("id", account_id).execute()
+        except Exception as lock_err:
+            logger.warning(f"Could not set session_locked_until on account {account_id}: {lock_err}")
 
         # Quarantine & Force handling
         if force:
@@ -308,11 +376,19 @@ def auto_heal_account(
                 except Exception:
                     pass
 
-            # Rate limit check (max attempts in 24h)
+            # Rate limit check (max attempts in 24h, filtering out passing routine scans)
             since_24h = (now_utc - timedelta(hours=24)).isoformat()
             try:
-                checks_res = supabase.table("account_health_checks").select("id").eq("account_id", account_id).eq("check_type", "auto_heal").gte("checked_at", since_24h).execute()
-                attempts_today = len(checks_res.data or [])
+                checks_res = (
+                    supabase.table("account_health_checks")
+                    .select("id, result")
+                    .eq("account_id", account_id)
+                    .eq("check_type", "auto_heal")
+                    .gte("checked_at", since_24h)
+                    .execute()
+                )
+                raw_checks = checks_res.data or []
+                attempts_today = len([c for c in raw_checks if c.get("result") != "pass"])
                 if attempts_today >= MAX_AUTO_HEAL_ATTEMPTS_PER_24H:
                     return {
                         "account_id": account_id,
@@ -543,16 +619,33 @@ def auto_heal_account(
                 actions_taken.append(f"Auto-healed account status from {previous_status} -> ACTIVE.")
 
                 try:
-                    camps_res = supabase.table("campaigns").select("id, name, status").eq("workspace_id", workspace_id).eq("status", "PAUSED").execute()
+                    camps_res = (
+                        supabase.table("campaigns")
+                        .select("id, name, status, pod_emergency_paused, pod_pause_reason, metadata")
+                        .eq("workspace_id", workspace_id)
+                        .eq("status", "PAUSED")
+                        .execute()
+                    )
                     for camp in (camps_res.data or []):
+                        meta = camp.get("metadata") or {}
+                        is_auto_paused = (
+                            camp.get("pod_emergency_paused") is True
+                            or camp.get("pod_pause_reason") is not None
+                            or meta.get("paused_reason") in ("ACCOUNT_DISCONNECTED", "POD_SENDER_QUARANTINED", "ALL_SENDERS_UNAVAILABLE")
+                        )
+                        if not is_auto_paused:
+                            continue
+
                         camp_accs = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", camp["id"]).execute()
                         acc_ids = [row["account_id"] for row in (camp_accs.data or [])]
                         if account_id in acc_ids:
                             supabase.table("campaigns").update({
                                 "status": "ACTIVE",
+                                "pod_emergency_paused": False,
+                                "pod_pause_reason": None,
                                 "updated_at": now_iso
                             }).eq("id", camp["id"]).execute()
-                            actions_taken.append(f"Automatically resumed paused campaign '{camp['name']}'.")
+                            actions_taken.append(f"Automatically resumed account-paused campaign '{camp['name']}'.")
                 except Exception as camp_err:
                     logger.warning(f"Could not check/resume paused campaigns: {camp_err}")
             else:
@@ -627,6 +720,10 @@ def auto_heal_account(
             "timestamp": now_iso
         }
     finally:
+        try:
+            supabase.table("accounts").update({"session_locked_until": None}).eq("id", account_id).execute()
+        except Exception:
+            pass
         with _heal_locks_mutex:
             _active_heals.pop(account_id, None)
 
@@ -761,7 +858,8 @@ def renew_account_session(
         raise ValueError("Account not found or access denied")
     acc = acc_res.data[0]
 
-    worker = LinkedInWorker(cookies_json=cleaned, account_id=account_id)
+    proxy_url = _build_account_proxy_url(acc, supabase)
+    worker = LinkedInWorker(cookies_json=cleaned, account_id=account_id, proxy_url=proxy_url)
     try:
         resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
         if resp.status_code != 200:
@@ -821,13 +919,30 @@ def renew_account_session(
         }).eq("id", account_id).execute()
 
     try:
-        camps_res = supabase.table("campaigns").select("id, name, status").eq("workspace_id", workspace_id).eq("status", "PAUSED").execute()
+        camps_res = (
+            supabase.table("campaigns")
+            .select("id, name, status, pod_emergency_paused, pod_pause_reason, metadata")
+            .eq("workspace_id", workspace_id)
+            .eq("status", "PAUSED")
+            .execute()
+        )
         for camp in (camps_res.data or []):
+            meta = camp.get("metadata") or {}
+            is_auto_paused = (
+                camp.get("pod_emergency_paused") is True
+                or camp.get("pod_pause_reason") is not None
+                or meta.get("paused_reason") in ("ACCOUNT_DISCONNECTED", "POD_SENDER_QUARANTINED", "ALL_SENDERS_UNAVAILABLE")
+            )
+            if not is_auto_paused:
+                continue
+
             camp_accs = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", camp["id"]).execute()
             acc_ids = [row["account_id"] for row in (camp_accs.data or [])]
             if account_id in acc_ids:
                 supabase.table("campaigns").update({
                     "status": "ACTIVE",
+                    "pod_emergency_paused": False,
+                    "pod_pause_reason": None,
                     "updated_at": now_iso
                 }).eq("id", camp["id"]).execute()
     except Exception as e:
