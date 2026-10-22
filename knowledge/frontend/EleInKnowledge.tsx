@@ -442,7 +442,7 @@ export default function EleInKnowledge() {
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground font-sans overflow-x-hidden">
-      <main className="max-w-[1200px] mx-auto p-6 md:p-8 lg:p-10">
+      <main className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
 
         
         {/* ─── HEADER ─────────────────────────────────────────────── */}

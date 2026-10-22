@@ -148,11 +148,23 @@ export function EleInTemplates() {
       if (template.nodes && template.nodes.length > 0) {
         useHRTreeStore.getState().reset()
         useHRTreeStore.getState().loadTree(dagToTree(template.nodes, template.edges || []), [])
-        useHRTreeStore.getState().setFormState({ campaignName: `${template.name} - ${new Date().toLocaleDateString()}` })
+        const campaignName = `${template.name} - ${new Date().toLocaleDateString()}`
+        useHRTreeStore.getState().setFormState({ campaignName })
         useHRTreeStore.getState().setCampaignStep(1) // Step 1 is the sequence DAG canvas
+
+        // Layer 1 + 2 Paranoia: Persist draft so browser reload or crash does not lose loaded template
+        try {
+          localStorage.setItem("elein_unsaved_draft", JSON.stringify({
+            nodes: template.nodes,
+            edges: template.edges || [],
+            formState: { campaignName },
+            step: 1,
+            timestamp: Date.now()
+          }))
+        } catch (_) {}
       }
       toast.success(`Loaded "${template.name}" into Campaign Builder!`)
-      navigate('/elein/campaigns/new')
+      navigate('/elein/campaigns/new?step=1')
     } catch (e: any) {
       friendlyToast('Failed to load template into sequence builder.', e)
     }
