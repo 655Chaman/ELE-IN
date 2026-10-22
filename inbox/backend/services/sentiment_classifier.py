@@ -513,27 +513,36 @@ def snooze_campaign_for_ooo_lead(
             logger.debug(f"[OOOSnooze] Lead update fallback: {exc}")
 
         try:
-            # 2. Find and snooze active execution states
-            states_res = (
-                supabase.table("campaign_execution_states")
-                .select("id, status")
+            # 2. Find and snooze active execution states via campaign_enrollments
+            enr_res = (
+                supabase.table("campaign_enrollments")
+                .select("id")
                 .eq("workspace_id", clean_ws)
-                .eq("opportunity_id", clean_lead)
-                .in_("status", ["pending", "waiting_for_reply", "running", "active"])
+                .eq("lead_id", clean_lead)
                 .execute()
             )
-            data = getattr(states_res, "data", []) or []
-            if isinstance(data, list):
-                for st in data:
-                    if isinstance(st, dict):
-                        st_id = st.get("id")
-                        if st_id:
-                            supabase.table("campaign_execution_states").update({
-                                "status": "snoozed_ooo",
-                                "next_run_at": target_snooze_until,
-                                "updated_at": now_iso,
-                            }).eq("id", st_id).execute()
-                            updates_made += 1
+            enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+            if enr_ids:
+                states_res = (
+                    supabase.table("campaign_execution_states")
+                    .select("id, status")
+                    .eq("workspace_id", clean_ws)
+                    .in_("enrollment_id", enr_ids)
+                    .in_("status", ["pending", "waiting_for_reply", "running", "active"])
+                    .execute()
+                )
+                data = getattr(states_res, "data", []) or []
+                if isinstance(data, list):
+                    for st in data:
+                        if isinstance(st, dict):
+                            st_id = st.get("id")
+                            if st_id:
+                                supabase.table("campaign_execution_states").update({
+                                    "status": "snoozed_ooo",
+                                    "next_run_at": target_snooze_until,
+                                    "updated_at": now_iso,
+                                }).eq("id", st_id).execute()
+                                updates_made += 1
         except Exception as exc:
             logger.debug(f"[OOOSnooze] Execution states snooze fallback: {exc}")
 
@@ -662,18 +671,31 @@ def apply_inbound_sentiment_actions(
                         "updated_at": now_iso,
                     }).eq("workspace_id", clean_ws).in_("id", matched_lead_ids).execute()
 
-                    # Update all active execution states for that root domain to status="unsubscribed"
-                    upd_states = (
-                        supabase.table("campaign_execution_states")
-                        .update({
-                            "status": "unsubscribed",
-                            "updated_at": now_iso,
-                        })
+                    # Update all active execution states for that root domain to status="exited" via campaign_enrollments
+                    enr_res = (
+                        supabase.table("campaign_enrollments")
+                        .select("id")
                         .eq("workspace_id", clean_ws)
-                        .in_("opportunity_id", matched_lead_ids)
+                        .in_("lead_id", matched_lead_ids)
                         .execute()
                     )
-                    states_halted = len(getattr(upd_states, "data", []) or matched_lead_ids)
+                    enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                    if enr_ids:
+                        upd_states = (
+                            supabase.table("campaign_execution_states")
+                            .update({
+                                "status": "exited",
+                                "error_reason": "company_wide_domain_unsubscribed",
+                                "updated_at": now_iso,
+                            })
+                            .eq("workspace_id", clean_ws)
+                            .in_("enrollment_id", enr_ids)
+                            .in_("status", [
+                                "pending", "waiting_for_reply", "running", "active", "snoozed_ooo", "awaiting_approval", "paused"
+                            ])
+                            .execute()
+                        )
+                        states_halted = len(getattr(upd_states, "data", []) or enr_ids)
             except Exception as cascade_err:
                 logger.debug(f"[IntentAction] Cascade error: {cascade_err}")
 
@@ -751,11 +773,23 @@ def apply_inbound_sentiment_actions(
     if intent in (INTENT_MEETING_REQUESTED, INTENT_POSITIVE_INTEREST):
         if supabase:
             try:
-                # Stop ongoing sequence touches for this engaged prospect
-                supabase.table("campaign_execution_states").update({
-                    "status": "paused_replied_interest",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).eq("workspace_id", clean_ws).eq("opportunity_id", clean_lead).execute()
+                # Stop ongoing sequence touches for this engaged prospect via campaign_enrollments
+                enr_res = (
+                    supabase.table("campaign_enrollments")
+                    .select("id")
+                    .eq("workspace_id", clean_ws)
+                    .eq("lead_id", clean_lead)
+                    .execute()
+                )
+                enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                if enr_ids:
+                    supabase.table("campaign_execution_states").update({
+                        "status": "paused",
+                        "error_reason": "replied_positive_interest",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("workspace_id", clean_ws).in_("enrollment_id", enr_ids).in_("status", [
+                        "pending", "waiting_for_reply", "running", "active"
+                    ]).execute()
 
                 supabase.table("leads").update({
                     "status": "INTERESTED",
@@ -768,11 +802,23 @@ def apply_inbound_sentiment_actions(
     elif intent == INTENT_NOT_INTERESTED:
         if supabase:
             try:
-                # Halt sequence immediately and unsubscribe
-                supabase.table("campaign_execution_states").update({
-                    "status": "unsubscribed",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).eq("workspace_id", clean_ws).eq("opportunity_id", clean_lead).execute()
+                # Halt sequence immediately and unsubscribe via campaign_enrollments
+                enr_res = (
+                    supabase.table("campaign_enrollments")
+                    .select("id")
+                    .eq("workspace_id", clean_ws)
+                    .eq("lead_id", clean_lead)
+                    .execute()
+                )
+                enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                if enr_ids:
+                    supabase.table("campaign_execution_states").update({
+                        "status": "exited",
+                        "error_reason": "prospect_unsubscribed",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("workspace_id", clean_ws).in_("enrollment_id", enr_ids).in_("status", [
+                        "pending", "waiting_for_reply", "running", "active", "snoozed_ooo", "awaiting_approval", "paused"
+                    ]).execute()
 
                 supabase.table("leads").update({
                     "status": "UNSUBSCRIBED",

@@ -5044,3 +5044,122 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ============================================================================
 -- END OF MIGRATION 106
 -- ============================================================================
+
+
+-- ============================================================================
+-- MIGRATION 107: INBOX & UNIBOX SUBSYSTEM PARANOIA REMEDIATION
+-- ============================================================================
+
+DO $$
+BEGIN
+    -- Add campaign_id column and foreign key if not present
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'approval_queue' AND column_name = 'campaign_id'
+    ) THEN
+        ALTER TABLE public.approval_queue ADD COLUMN campaign_id UUID;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_campaign') THEN
+        ALTER TABLE public.approval_queue 
+            ADD CONSTRAINT fk_approval_queue_campaign FOREIGN KEY (campaign_id) 
+            REFERENCES public.campaigns(id) ON DELETE CASCADE;
+    END IF;
+
+    -- Add enrollment_id column and foreign key if not present
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'approval_queue' AND column_name = 'enrollment_id'
+    ) THEN
+        ALTER TABLE public.approval_queue ADD COLUMN enrollment_id UUID;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_enrollment') THEN
+        ALTER TABLE public.approval_queue 
+            ADD CONSTRAINT fk_approval_queue_enrollment FOREIGN KEY (enrollment_id) 
+            REFERENCES public.campaign_enrollments(id) ON DELETE CASCADE;
+    END IF;
+
+    -- Add node_id column and foreign key if not present
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'approval_queue' AND column_name = 'node_id'
+    ) THEN
+        ALTER TABLE public.approval_queue ADD COLUMN node_id UUID;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_node') THEN
+        ALTER TABLE public.approval_queue 
+            ADD CONSTRAINT fk_approval_queue_node FOREIGN KEY (node_id) 
+            REFERENCES public.campaign_nodes(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+-- Performance Composite Indexes
+CREATE INDEX IF NOT EXISTS idx_messages_ws_created 
+    ON public.messages (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_ws_acc_created 
+    ON public.messages (workspace_id, account_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_ws_sender 
+    ON public.messages (workspace_id, sender_name, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_ws_lead 
+    ON public.messages (workspace_id, lead_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_acc_text 
+    ON public.messages (account_id, message_text);
+
+CREATE INDEX IF NOT EXISTS idx_approval_queue_ws_status_created 
+    ON public.approval_queue (workspace_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_reply_approvals_ws_status_created 
+    ON public.ai_reply_approvals (workspace_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_approval_queue_campaign 
+    ON public.approval_queue (campaign_id);
+
+CREATE INDEX IF NOT EXISTS idx_approval_queue_enrollment 
+    ON public.approval_queue (enrollment_id);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_events_pending 
+    ON public.outbox_events (status, deliver_at) 
+    WHERE status = 'pending';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_lead_objections_workspace') THEN
+        ALTER TABLE public.lead_objections 
+            ADD CONSTRAINT fk_lead_objections_workspace FOREIGN KEY (workspace_id) 
+            REFERENCES public.workspaces(id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_notifications_workspace') THEN
+        ALTER TABLE public.notifications 
+            ADD CONSTRAINT fk_notifications_workspace FOREIGN KEY (workspace_id) 
+            REFERENCES public.workspaces(id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_notifications_outbox_event') THEN
+        ALTER TABLE public.notifications 
+            ADD CONSTRAINT fk_notifications_outbox_event FOREIGN KEY (outbox_event_id) 
+            REFERENCES public.outbox_events(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_lead_objections_ws_created 
+    ON public.lead_objections (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_lead_objections_ws_lead 
+    ON public.lead_objections (workspace_id, lead_id);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_ws_user_read 
+    ON public.notifications (workspace_id, user_id, read_at);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_ws_created 
+    ON public.notifications (workspace_id, created_at DESC);
+
+-- ============================================================================
+-- END OF MIGRATION 107
+-- ============================================================================

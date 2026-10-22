@@ -133,14 +133,22 @@ def send_inbox_reply(
         account_id = payload.account_id
         
         if account_id:
-            chk_acc = supabase.table("accounts").select("id").eq("id", account_id).eq("workspace_id", workspace_id).execute()
+            chk_acc = supabase.table("accounts").select("id, status, quarantined_until").eq("id", account_id).eq("workspace_id", workspace_id).execute()
             if not chk_acc.data:
                 raise HTTPException(status_code=403, detail="Specified account does not belong to this workspace")
+            acc_status = (chk_acc.data[0].get("status") or "").upper()
+            if acc_status and acc_status in ("DISCONNECTED", "RESTRICTED", "SUSPENDED", "QUARANTINED", "FAILED", "ERROR", "INACTIVE"):
+                raise HTTPException(status_code=400, detail=f"Selected LinkedIn account is {acc_status.lower()}. Please reconnect an active account.")
                 
         if lead_id and lead_id != "unknown":
-            chk_lead = supabase.table("leads").select("id, linkedin_url").eq("id", lead_id).eq("workspace_id", workspace_id).execute()
+            chk_lead = supabase.table("leads").select("id, linkedin_url, email, status, is_unsubscribed, metadata").eq("id", lead_id).eq("workspace_id", workspace_id).execute()
             if not chk_lead.data:
                 raise HTTPException(status_code=403, detail="Specified lead does not belong to this workspace")
+            lead_row = chk_lead.data[0]
+            from core.backend.api.routers.approvals import _is_lead_unsubscribed_or_suppressed
+            block_reason = _is_lead_unsubscribed_or_suppressed(supabase, workspace_id, lead_row)
+            if block_reason:
+                raise HTTPException(status_code=409, detail=f"Cannot send reply: lead is unsubscribed or suppressed ({block_reason}).")
 
         if payload.ai_generated:
             from inbox.backend.services.inbox_service import sanitize_ai_draft
@@ -212,14 +220,17 @@ def send_inbox_reply(
             }
             
         try:
-            supabase.table("processing_jobs").insert({
-                "workspace_id": workspace_id,
-                "job_type": "inbox_action",
-                "status": "pending",
-                "payload": job_payload
-            }).execute()
+            from core.backend.services.job_queue import enqueue_job
+            enqueue_job(
+                supabase=supabase,
+                job_type="inbox_action",
+                workspace_id=workspace_id,
+                asset_id=account_id,
+                payload=job_payload,
+                idempotency_key=f"inbox_reply_{msg_id}"
+            )
         except Exception as e_pj:
-            logger.warning(f"Failed to enqueue processing_job for inbox reply (unmigrated?): {e_pj}")
+            logger.warning(f"Failed to enqueue processing_job for inbox reply: {e_pj}")
         
         # Insert log
         try:
@@ -550,6 +561,7 @@ def get_inbox_threads(
                 threads_dict[key] = {
                     "sender_name": sn,
                     "lead_id": r.get("lead_id"),
+                    "account_id": r.get("account_id"),
                     "last_message": r["message_text"],
                     "direction": r["direction"],
                     "created_at": r["created_at"],
@@ -562,6 +574,8 @@ def get_inbox_threads(
                     "_has_replied": False,
                     "_seen_inbound": False
                 }
+            elif not threads_dict[key].get("account_id") and r.get("account_id"):
+                threads_dict[key]["account_id"] = r.get("account_id")
             
             # Track unread count (inbound messages before first outbound reply)
             t = threads_dict[key]
@@ -625,21 +639,29 @@ def get_inbox_threads(
                 if first or last:
                     sn = f"{first} {last}".strip()
                     event_time = a.get("executed_at")
-                    if sn not in threads_dict:
-                        threads_dict[sn] = {
+                    matching_thread = next((t for t in threads_dict.values() if t.get("sender_name") == sn), None)
+                    if matching_thread:
+                        if event_time > matching_thread["created_at"]:
+                            matching_thread["last_message"] = "Connection Accepted"
+                            matching_thread["direction"] = "inbound"
+                            matching_thread["created_at"] = event_time
+                            matching_thread["type"] = "connection_accepted"
+                    else:
+                        ca_key = f"{sn}_unknown"
+                        threads_dict[ca_key] = {
                             "sender_name": sn,
+                            "lead_id": None,
+                            "account_id": None,
                             "last_message": "Connection Accepted",
                             "direction": "inbound",
                             "created_at": event_time,
                             "type": "connection_accepted",
-                            "unread_count": 1
+                            "thread_key": ca_key,
+                            "unread_count": 1,
+                            "deal_stage": "NEW_REPLY",
+                            "objection_data": None,
+                            "lead_timezone": None,
                         }
-                    else:
-                        if event_time > threads_dict[sn]["created_at"]:
-                            threads_dict[sn]["last_message"] = "Connection Accepted"
-                            threads_dict[sn]["direction"] = "inbound"
-                            threads_dict[sn]["created_at"] = event_time
-                            threads_dict[sn]["type"] = "connection_accepted"
         except Exception as ex_act:
             logger.debug(f"Action log connection_accepted fetch skipped: {ex_act}")
                 
@@ -653,7 +675,7 @@ def get_inbox_threads(
 @router.get("/inbox/threads/{sender_name}", response_model=List[dict])
 def get_thread_messages(sender_name: str, lead_id: Optional[str] = None, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
-        query = supabase.table("messages").select("id, message_text, direction, created_at").eq("workspace_id", workspace_id).eq("sender_name", sender_name)
+        query = supabase.table("messages").select("id, message_text, direction, created_at, lead_id, account_id").eq("workspace_id", workspace_id).eq("sender_name", sender_name)
         if lead_id and lead_id != "unknown":
             query = query.eq("lead_id", lead_id)
         elif lead_id == "unknown":
@@ -666,36 +688,42 @@ def get_thread_messages(sender_name: str, lead_id: Optional[str] = None, supabas
             
         try:
             action_res = supabase.table("action_log") \
-                .select("id, executed_at, campaign_execution_states(campaign_enrollments(leads(first_name, last_name)))") \
+                .select("id, executed_at, campaign_execution_states(campaign_enrollments(leads(id, first_name, last_name)))") \
                 .eq("workspace_id", workspace_id) \
                 .eq("action_type", "connection_accepted") \
+                .order("executed_at", desc=True) \
+                .limit(100) \
                 .execute()
                 
             for a in action_res.data or []:
                 first = ""
                 last = ""
+                lid = None
                 try:
                     lead = a.get("campaign_execution_states", {}).get("campaign_enrollments", {}).get("leads", {})
                     if lead:
+                        lid = lead.get("id")
                         first = lead.get("first_name", "")
                         last = lead.get("last_name", "")
                 except Exception:
                     pass
                     
-                if first or last:
-                    sn = f"{first} {last}".strip()
-                    if sn == sender_name:
-                        messages.append({
-                            "id": a["id"],
-                            "message_text": "Connection Accepted",
-                            "direction": "inbound",
-                            "created_at": a["executed_at"],
-                            "type": "connection_accepted"
-                        })
+                matches_lead = (lead_id and lead_id != "unknown" and lid == lead_id)
+                sn = f"{first} {last}".strip() if (first or last) else ""
+                matches_name = (sn == sender_name and (not lead_id or lead_id == "unknown" or lid == lead_id))
+                
+                if matches_lead or matches_name:
+                    messages.append({
+                        "id": a["id"],
+                        "message_text": "Connection Accepted",
+                        "direction": "inbound",
+                        "created_at": a.get("executed_at"),
+                        "type": "connection_accepted"
+                    })
         except Exception as ex_act:
             logger.debug(f"Action log fetch skipped in get_thread_messages: {ex_act}")
                     
-        messages.sort(key=lambda x: x["created_at"])
+        messages.sort(key=lambda x: x.get("created_at") or "")
         return messages
     except Exception as e:
         logger.error(f"Error fetching thread messages: {e}", exc_info=True)
@@ -730,7 +758,7 @@ def get_threads_with_intent(
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
         
-        res = supabase.table("messages").select("sender_name, message_text, direction, created_at, intent, lead_id").eq("workspace_id", workspace_id).order("created_at", desc=True).limit(1000).execute()
+        res = supabase.table("messages").select("sender_name, message_text, direction, created_at, intent, lead_id, account_id").eq("workspace_id", workspace_id).order("created_at", desc=True).limit(1000).execute()
         
         threads_dict = {}
         lead_ids_to_fetch = set()
@@ -742,8 +770,8 @@ def get_threads_with_intent(
                 lead_ids_to_fetch.add(lid)
 
             key = f"{sn}_{lid or 'unknown'}"
-            if sn not in threads_dict:
-                threads_dict[sn] = {
+            if key not in threads_dict:
+                threads_dict[key] = {
                     "sender_name": sn,
                     "last_message": r["message_text"],
                     "message_text": r["message_text"],
@@ -753,28 +781,28 @@ def get_threads_with_intent(
                     "thread_key": key,
                     "intent": "unknown",
                     "lead_id": lid,
+                    "account_id": r.get("account_id"),
                     "deal_stage": "NEW_REPLY",
                     "objection_data": None,
                     "unread_count": 0,
                     "_seen_inbound": False
                 }
-            elif not threads_dict[sn].get("lead_id") and lid:
-                threads_dict[sn]["lead_id"] = lid
-                threads_dict[sn]["thread_key"] = key
+            elif not threads_dict[key].get("account_id") and r.get("account_id"):
+                threads_dict[key]["account_id"] = r.get("account_id")
                 
             # Grab intent and objection info of latest inbound
-            if r.get("direction") == "inbound" and not threads_dict[sn]["_seen_inbound"]:
+            if r.get("direction") == "inbound" and not threads_dict[key]["_seen_inbound"]:
                 raw_intent = r.get("intent") or "unknown"
-                threads_dict[sn]["intent"] = raw_intent
-                threads_dict[sn]["_seen_inbound"] = True
+                threads_dict[key]["intent"] = raw_intent
+                threads_dict[key]["_seen_inbound"] = True
                 
                 # Check for objection classification
                 obj_info = classify_objection(r.get("message_text") or "")
                 if obj_info.get("objection_type") != "GENERAL_INQUIRY":
-                    threads_dict[sn]["objection_data"] = obj_info
+                    threads_dict[key]["objection_data"] = obj_info
                     if raw_intent in ["unknown", None]:
-                        threads_dict[sn]["intent"] = "objection"
-                    threads_dict[sn]["deal_stage"] = "OBJECTION_RAISED"
+                        threads_dict[key]["intent"] = "objection"
+                    threads_dict[key]["deal_stage"] = "OBJECTION_RAISED"
 
         # Defensive enrichment of deal_stage from leads table if columns exist
         if lead_ids_to_fetch:

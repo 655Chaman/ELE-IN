@@ -27,6 +27,7 @@ export interface ObjectionData {
 export interface ThreadSummary {
   sender_name: string;
   lead_id?: string;
+  account_id?: string;
   thread_key: string;
   last_message: string;
   direction: string;

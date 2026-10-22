@@ -784,14 +784,23 @@ def process_advanced_inbound_reply(
                         "updated_at": now_iso,
                     }).eq("workspace_id", clean_ws).in_("id", matched_lead_ids).execute()
 
-                    # Halt active executions
-                    supabase.table("campaign_execution_states").update({
-                        "status": "unsubscribed_domain",
-                        "error_reason": f"Retroactive domain suppression for {suppress_domain}",
-                        "updated_at": now_iso,
-                    }).eq("workspace_id", clean_ws).in_("opportunity_id", matched_lead_ids).in_("status", [
-                        "pending", "waiting_for_reply", "running", "active", "snoozed_ooo", "awaiting_approval"
-                    ]).execute()
+                    # Halt active executions via campaign_enrollments
+                    enr_res = (
+                        supabase.table("campaign_enrollments")
+                        .select("id")
+                        .eq("workspace_id", clean_ws)
+                        .in_("lead_id", matched_lead_ids)
+                        .execute()
+                    )
+                    enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                    if enr_ids:
+                        supabase.table("campaign_execution_states").update({
+                            "status": "exited",
+                            "error_reason": f"Retroactive domain suppression for {suppress_domain}",
+                            "updated_at": now_iso,
+                        }).eq("workspace_id", clean_ws).in_("enrollment_id", enr_ids).in_("status", [
+                            "pending", "waiting_for_reply", "running", "active", "snoozed_ooo", "awaiting_approval", "paused"
+                        ]).execute()
 
                     summary["actions_taken"].append(
                         f"cascaded_domain_suppression:{len(matched_lead_ids)}_leads_purged"
@@ -832,14 +841,23 @@ def process_advanced_inbound_reply(
         if supabase:
             try:
                 snooze_iso = snooze_res["snooze_until_iso"]
-                supabase.table("campaign_execution_states").update({
-                    "status": "snoozed_ooo",
-                    "next_run_at": snooze_iso,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).eq("workspace_id", clean_ws).eq("opportunity_id", clean_lead).in_("status", [
-                    "pending", "waiting_for_reply", "running", "active"
-                ]).execute()
-                summary["actions_taken"].append(f"snoozed_campaign_ooo:{snooze_iso}")
+                enr_res = (
+                    supabase.table("campaign_enrollments")
+                    .select("id")
+                    .eq("workspace_id", clean_ws)
+                    .eq("lead_id", clean_lead)
+                    .execute()
+                )
+                enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                if enr_ids:
+                    supabase.table("campaign_execution_states").update({
+                        "status": "snoozed_ooo",
+                        "next_run_at": snooze_iso,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("workspace_id", clean_ws).in_("enrollment_id", enr_ids).in_("status", [
+                        "pending", "waiting_for_reply", "running", "active"
+                    ]).execute()
+                    summary["actions_taken"].append(f"snoozed_campaign_ooo:{snooze_iso}")
             except Exception as ooo_err:
                 logger.warning(f"[InboundReply] OOO execution state update error: {ooo_err}")
 

@@ -4,6 +4,7 @@ import os
 import re
 import time
 import threading
+import uuid
 import jwt
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Form
@@ -380,6 +381,35 @@ def approve_reply(
             logger.warning(f"Failed to enqueue job for approval {approval_id}: {eq_err}")
         
         now_iso = datetime.utcnow().isoformat()
+
+        # Paranoia Layer 0 & 1: Record approved outbound reply to messages table so conversation canvas updates
+        try:
+            msg_record = {
+                "id": str(uuid.uuid4()),
+                "workspace_id": workspace_id,
+                "account_id": account_id,
+                "sender_name": sender_name,
+                "message_text": final_message,
+                "direction": "outbound",
+                "intent": "reply",
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+            if lead_id:
+                msg_record["lead_id"] = lead_id
+            if item.get("campaign_id"):
+                msg_record["campaign_id"] = item["campaign_id"]
+            if item.get("enrollment_id"):
+                msg_record["enrollment_id"] = item["enrollment_id"]
+            if item.get("node_id"):
+                msg_record["node_id"] = item["node_id"]
+            if item.get("thread_url"):
+                msg_record["thread_url"] = item["thread_url"]
+
+            supabase.table("messages").insert(msg_record).execute()
+        except Exception as msg_ins_err:
+            logger.warning(f"Failed to insert approved message into messages table (non-blocking): {msg_ins_err}")
+
         if not is_ai_table:
             supabase.table("approval_queue").update({
                 "status": "approved",
@@ -954,6 +984,34 @@ def magic_approval_handler(
                 enqueue_job(supabase, 'inbox_action', item_ws, account_id, job_payload)
             except Exception as eq_err:
                 logger.warning(f"Failed to enqueue magic link job for approval {approval_id}: {eq_err}")
+
+            # Paranoia Layer 0 & 1: Record approved outbound reply to messages table
+            try:
+                msg_record = {
+                    "id": str(uuid.uuid4()),
+                    "workspace_id": item_ws,
+                    "account_id": account_id,
+                    "sender_name": sender_name,
+                    "message_text": draft_msg,
+                    "direction": "outbound",
+                    "intent": "reply",
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                }
+                if lead_id:
+                    msg_record["lead_id"] = lead_id
+                if item.get("campaign_id"):
+                    msg_record["campaign_id"] = item["campaign_id"]
+                if item.get("enrollment_id"):
+                    msg_record["enrollment_id"] = item["enrollment_id"]
+                if item.get("node_id"):
+                    msg_record["node_id"] = item["node_id"]
+                if item.get("thread_url"):
+                    msg_record["thread_url"] = item["thread_url"]
+
+                supabase.table("messages").insert(msg_record).execute()
+            except Exception as msg_ins_err:
+                logger.warning(f"Failed to insert magic approved message into messages table: {msg_ins_err}")
 
         table_name = "ai_reply_approvals" if is_ai_table else "approval_queue"
         col_time = "resolved_at" if is_ai_table else "reviewed_at"

@@ -453,8 +453,24 @@ def sync_inbox_messages(supabase, workspace_id: str, account_id: str, messages: 
                             existing_queues.add(k)
 
                     if queue_inserts:
-                        supabase.table("approval_queue").insert(queue_inserts).execute()
-                        queued += len(queue_inserts)
+                        try:
+                            supabase.table("approval_queue").insert(queue_inserts).execute()
+                            queued += len(queue_inserts)
+                        except Exception as e:
+                            err_str = str(e).lower()
+                            if "column" in err_str and any(col in err_str for col in ("node_id", "enrollment_id", "campaign_id")):
+                                # Paranoia Layer 1: Defensive fallback for pre-107 unmigrated DBs
+                                clean_inserts = [
+                                    {col: val for col, val in item.items() if col not in ("node_id", "enrollment_id", "campaign_id")}
+                                    for item in queue_inserts
+                                ]
+                                try:
+                                    supabase.table("approval_queue").insert(clean_inserts).execute()
+                                    queued += len(clean_inserts)
+                                except Exception as fallback_err:
+                                    logger.error(f"Error processing approval queue fallback: {fallback_err}")
+                            else:
+                                logger.error(f"Error inserting into approval queue: {e}")
                 except Exception as e:
                     logger.error(f"Error processing approval queue: {e}")
                     

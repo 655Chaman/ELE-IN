@@ -176,8 +176,8 @@ export function EleInApprovals({ onGoToConversations }: EleInApprovalsProps = {}
         toast.info('Draft is already concise')
       }
     } else if (type === 'calendar') {
-      const callCTA = "\n\nWould you be open to a quick 15-min chat next Tuesday or Thursday? Feel free to grab a time here if easier: [Your Booking Link]"
-      if (!draftText.includes("15-min") && !draftText.includes("Booking Link")) {
+      const callCTA = "\n\nWould you be open to a quick 15-minute conversation next week? Let me know what days work best on your end, or feel free to share your calendar link."
+      if (!draftText.includes("15-minute conversation") && !draftText.includes("quick 15-min")) {
         setDraftText(draftText.trim() + callCTA)
         toast.success('Appended calendar scheduling invitation')
       }

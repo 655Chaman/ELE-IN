@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { fetcher, fetchWithAuth } from '@/lib/apiClient';
 import { ElesiumLogo } from './components/ElesiumLogo';
 import { usePaywall } from '@/contexts/PaywallContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { EleInApprovals } from './EleInApprovals';
 import {
   DEAL_STAGES, OUTCOMES, type DealStage, type Message, type ObjectionData,
@@ -26,6 +27,7 @@ import { useUndoSend } from './hooks/useUndoSend';
 export function EleInInbox() {
   const navigate = useNavigate();
   const { openTopUp, openPaywall, openMilestoneModal } = usePaywall();
+  const { activeWorkspaceId } = useWorkspace();
   const { queueSend } = useUndoSend();
 
   // Paranoia Layer 0, 1 & 2: Invalidate global credit balance keys when AI or reply activity occurs
@@ -104,16 +106,13 @@ export function EleInInbox() {
   const [dealStageFilter, setDealStageFilter] = useState<'ALL' | DealStage>('ALL');
 
   // Pipeline outcomes cached by workspace
-  const activeWorkspace =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('elein_active_workspace') || 'default'
-      : 'default';
+  const activeWorkspace = activeWorkspaceId || 'default';
   const outcomesStorageKey = `elein_inbox_outcomes_${activeWorkspace}`;
 
   const [threadOutcomes, setThreadOutcomes] = useState<Record<string, OutcomeType>>(() => {
     if (typeof window === 'undefined') return {};
     try {
-      const saved = localStorage.getItem(outcomesStorageKey);
+      const saved = localStorage.getItem(`elein_inbox_outcomes_${activeWorkspaceId || 'default'}`);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -226,6 +225,34 @@ export function EleInInbox() {
   const isDraftingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const previousDraftRef = useRef<string>('');
+
+  // Paranoia Layer 1 & 2: Flush selected thread, cached drafts, and reload outcomes on workspace transition
+  const prevWorkspaceRef = useRef<string | null>(activeWorkspaceId);
+  useEffect(() => {
+    if (prevWorkspaceRef.current !== activeWorkspaceId) {
+      prevWorkspaceRef.current = activeWorkspaceId;
+      setSelectedThreadKey(null);
+      setSelectedSender(null);
+      setSelectedLeadId(null);
+      setReplyText('');
+      setSavedDraftBeforeAI(null);
+      previousDraftRef.current = '';
+      draftsByThreadRef.current = {};
+      setSearchQuery('');
+      setOutcomeFilter('ALL');
+      setDealStageFilter('ALL');
+
+      const newKey = `elein_inbox_outcomes_${activeWorkspaceId || 'default'}`;
+      try {
+        const saved = localStorage.getItem(newKey);
+        setThreadOutcomes(saved ? JSON.parse(saved) : {});
+      } catch {
+        setThreadOutcomes({});
+      }
+
+      mutateThreads();
+    }
+  }, [activeWorkspaceId, mutateThreads]);
 
   // Milestone detection
   useEffect(() => {
@@ -406,6 +433,7 @@ export function EleInInbox() {
     const currentSender = selectedSender;
     const currentLead = selectedLeadId;
     const currentThread = selectedThreadKey;
+    const currentAccountId = selectedThreadObj?.account_id || activeAccountId || undefined;
 
     // Clear textarea immediately for responsive feel
     setReplyText('');
@@ -422,7 +450,7 @@ export function EleInInbox() {
         messageText: finalText,
       },
       async () => {
-        await executeActualSend(finalText, currentSender, currentLead);
+        await executeActualSend(finalText, currentSender, currentLead, currentAccountId);
       },
       (restoredText) => {
         // On Undo Send
@@ -437,7 +465,8 @@ export function EleInInbox() {
   const executeActualSend = async (
     sentDraft: string,
     senderName: string,
-    leadId: string | null
+    leadId: string | null,
+    targetAccountId?: string
   ) => {
     isSendingRef.current = true;
     setIsSending(true);
@@ -450,7 +479,7 @@ export function EleInInbox() {
           sender_name: senderName,
           lead_id: leadId,
           message_text: sentDraft,
-          account_id: activeAccountId || undefined,
+          account_id: targetAccountId || activeAccountId || undefined,
         }),
       });
 
