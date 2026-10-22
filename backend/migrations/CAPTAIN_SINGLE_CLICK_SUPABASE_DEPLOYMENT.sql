@@ -65,15 +65,6 @@ ALTER TYPE public.outbox_event_status ADD VALUE IF NOT EXISTS 'suspended';
 ALTER TYPE public.outbox_event_status ADD VALUE IF NOT EXISTS 'sent';
 ALTER TYPE public.outbox_event_status ADD VALUE IF NOT EXISTS 'completed';
 ALTER TYPE public.proxy_status ADD VALUE IF NOT EXISTS 'active';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'snoozed_ooo';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'waiting_for_approval';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'waiting_for_reply';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'awaiting_approval';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'paused';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'failed';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'rate_limited';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'out_of_office';
-ALTER TYPE public.lead_state_status ADD VALUE IF NOT EXISTS 'skipped';
 ALTER TYPE public.campaign_status ADD VALUE IF NOT EXISTS 'draft';
 ALTER TYPE public.campaign_status ADD VALUE IF NOT EXISTS 'active';
 ALTER TYPE public.campaign_status ADD VALUE IF NOT EXISTS 'paused';
@@ -3236,15 +3227,51 @@ CREATE POLICY workspace_blueprints_service_role ON public.workspace_blueprints
     WITH CHECK (true);
 -- ============================================================================
 -- ============================================================================
+-- ============================================================================
 -- MIGRATION 104: CYCLE 4 CAMPAIGN SUBSYSTEM PARANOIA REMEDIATION
 -- Idempotent resolution for FLAW-DB-01 through FLAW-DB-31
 -- Standard: Zero Emojis, Complete Relational Integrity, Strict Multi-Tenancy
+-- Aligned with Live Supabase Production Database Schema
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 1. ENUM NORMALIZATION & VALUE EXTENSIONS (Executed at top of file)
+-- PRE-FLIGHT FUNCTION CLEANUP (Prevents 42P13 Parameter Rename Errors)
+-- ----------------------------------------------------------------------------
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN 
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN (
+            'create_campaign_atomic',
+            'enroll_leads_chunk_atomic',
+            'dequeue_due_leads',
+            'release_lead_claim',
+            'recover_stale_leases',
+            'advance_reply_waiting_leads',
+            'claim_processing_jobs',
+            'decrement_list_row_count',
+            'claim_outbox_events',
+            'set_outbox_events_updated_at',
+            'update_daily_campaign_stats'
+        )
+        AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig || ' CASCADE';
+    END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 1. ENUM NORMALIZATION & VALUE EXTENSIONS (FLAW-DB-08, FLAW-DB-09)
+-- lead_state_status enum is permanently superseded by standard TEXT column
+-- with chk_ces_status_valid check constraint in Section 3.
+-- Zero ALTER TYPE ... ADD VALUE statements are used, guaranteeing complete
+-- immunity to PostgreSQL 55P04 (unsafe new enum value) and 25001 transaction errors.
 -- ----------------------------------------------------------------------------
 
+-- ----------------------------------------------------------------------------
 -- 2. SCHEMA DRIFT & COLUMN RESTORATIONS (FLAW-DB-01, 03, 04, 05, 06, 11, 12)
 -- ----------------------------------------------------------------------------
 
@@ -3330,9 +3357,22 @@ DO $$ BEGIN
         WHERE table_schema = 'public' AND table_name = 'action_log' AND column_name = 'execution_state_id' AND data_type = 'text'
     ) THEN
         ALTER TABLE public.action_log 
-            ALTER COLUMN execution_state_id TYPE UUID USING NULLIF(execution_state_id, '')::UUID;
+            ALTER COLUMN execution_state_id TYPE UUID USING (
+                CASE 
+                    WHEN execution_state_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' 
+                    THEN execution_state_id::UUID 
+                    ELSE NULL 
+                END
+            );
     END IF;
+END $$;
 
+UPDATE public.action_log 
+SET execution_state_id = NULL 
+WHERE execution_state_id IS NOT NULL 
+  AND NOT EXISTS (SELECT 1 FROM public.campaign_execution_states ces WHERE ces.id = action_log.execution_state_id);
+
+DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_action_log_ces') THEN
         ALTER TABLE public.action_log
             ADD CONSTRAINT fk_action_log_ces FOREIGN KEY (execution_state_id) REFERENCES public.campaign_execution_states(id) ON DELETE SET NULL;
@@ -3371,18 +3411,20 @@ DO $$ BEGIN
                 END
             );
     END IF;
+END $$;
 
-    -- Clean up orphaned references before attaching foreign keys
-    UPDATE public.approval_queue 
-    SET lead_id = NULL 
-    WHERE lead_id IS NOT NULL 
-      AND NOT EXISTS (SELECT 1 FROM public.leads l WHERE l.id = approval_queue.lead_id);
+-- Clean up orphaned references after columns are guaranteed UUID in catalog
+UPDATE public.approval_queue 
+SET lead_id = NULL 
+WHERE lead_id IS NOT NULL 
+  AND NOT EXISTS (SELECT 1 FROM public.leads l WHERE l.id = approval_queue.lead_id);
 
-    UPDATE public.approval_queue 
-    SET exec_state_id = NULL 
-    WHERE exec_state_id IS NOT NULL 
-      AND NOT EXISTS (SELECT 1 FROM public.campaign_execution_states ces WHERE ces.id = approval_queue.exec_state_id);
+UPDATE public.approval_queue 
+SET exec_state_id = NULL 
+WHERE exec_state_id IS NOT NULL 
+  AND NOT EXISTS (SELECT 1 FROM public.campaign_execution_states ces WHERE ces.id = approval_queue.exec_state_id);
 
+DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_lead') THEN
         ALTER TABLE public.approval_queue
             ADD CONSTRAINT fk_approval_queue_lead FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE CASCADE;
@@ -3433,66 +3475,44 @@ EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
 END $$;
 
 -- FLAW-DB-07: Status checks on campaign_execution_states and campaign_enrollments
-DO $$ BEGIN
-    -- 1. Drop existing defaults to prevent "cannot cast default to text" error
-    BEGIN
-        ALTER TABLE public.campaign_execution_states ALTER COLUMN status DROP DEFAULT;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+-- Executed directly as top-level DDL & DML statements (outside PL/pgSQL function)
+-- to ensure status column is committed as TEXT before running value sanitization queries.
 
-    -- 2. Convert status column to TEXT
-    BEGIN
-        ALTER TABLE public.campaign_execution_states
-            ALTER COLUMN status TYPE TEXT USING status::TEXT;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+-- 1. Drop existing defaults to prevent "cannot cast default to text" error
+ALTER TABLE public.campaign_execution_states ALTER COLUMN status DROP DEFAULT;
+ALTER TABLE public.campaign_enrollments ALTER COLUMN status DROP DEFAULT;
 
-    -- 3. Restore default as TEXT
-    BEGIN
-        ALTER TABLE public.campaign_execution_states ALTER COLUMN status SET DEFAULT 'pending'::text;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+-- 2. Convert status columns directly to TEXT
+ALTER TABLE public.campaign_execution_states ALTER COLUMN status TYPE TEXT USING status::TEXT;
+ALTER TABLE public.campaign_enrollments ALTER COLUMN status TYPE TEXT USING status::TEXT;
 
-    BEGIN
-        ALTER TABLE public.campaign_enrollments ALTER COLUMN status DROP DEFAULT;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+-- 3. Restore defaults as TEXT
+ALTER TABLE public.campaign_execution_states ALTER COLUMN status SET DEFAULT 'pending';
+ALTER TABLE public.campaign_enrollments ALTER COLUMN status SET DEFAULT 'active';
 
-    BEGIN
-        ALTER TABLE public.campaign_enrollments
-            ALTER COLUMN status TYPE TEXT USING status::TEXT;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+-- 4. Sanitize invalid status values now that column is confirmed TEXT in the catalog
+UPDATE public.campaign_execution_states 
+SET status = 'pending' 
+WHERE status IS NULL 
+   OR status NOT IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo');
 
-    BEGIN
-        ALTER TABLE public.campaign_enrollments ALTER COLUMN status SET DEFAULT 'active'::text;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END;
+UPDATE public.campaign_enrollments 
+SET status = 'active' 
+WHERE status IS NULL 
+   OR status NOT IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced');
 
-    -- 4. Sanitize invalid status values
-    UPDATE public.campaign_execution_states 
-    SET status = 'pending' 
-    WHERE status IS NULL 
-       OR status NOT IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo');
+-- 5. Add check constraints cleanly
+ALTER TABLE public.campaign_execution_states DROP CONSTRAINT IF EXISTS chk_ces_status_valid;
+ALTER TABLE public.campaign_execution_states
+    ADD CONSTRAINT chk_ces_status_valid CHECK (
+        status IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo')
+    );
 
-    UPDATE public.campaign_enrollments 
-    SET status = 'active' 
-    WHERE status IS NULL 
-       OR status NOT IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced');
-
-    -- 5. Add check constraints cleanly
-    ALTER TABLE public.campaign_execution_states DROP CONSTRAINT IF EXISTS chk_ces_status_valid;
-    ALTER TABLE public.campaign_execution_states
-        ADD CONSTRAINT chk_ces_status_valid CHECK (
-            status IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo')
-        );
-
-    ALTER TABLE public.campaign_enrollments DROP CONSTRAINT IF EXISTS chk_ce_status_valid;
-    ALTER TABLE public.campaign_enrollments
-        ADD CONSTRAINT chk_ce_status_valid CHECK (
-            status IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced')
-        );
-END $$;
+ALTER TABLE public.campaign_enrollments DROP CONSTRAINT IF EXISTS chk_ce_status_valid;
+ALTER TABLE public.campaign_enrollments
+    ADD CONSTRAINT chk_ce_status_valid CHECK (
+        status IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced')
+    );
 
 -- FLAW-DB-10: Drop dangling trigger / function on action_log
 DROP TRIGGER IF EXISTS action_log_increment_daily_usage ON public.action_log;
