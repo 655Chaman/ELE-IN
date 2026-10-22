@@ -351,6 +351,44 @@ class TestMultiAccountHealthGuard(unittest.TestCase):
 
     @patch("accounts.backend.services.account_auto_heal_service.LinkedInWorker")
     @patch("accounts.backend.services.account_auto_heal_service.crypto")
+    def test_renew_account_session_raw_token_normalizes_and_succeeds(self, mock_crypto, mock_worker_cls):
+        """Layer 1: Normalizing raw li_at token string into full session array on renewal."""
+        raw_token = "AQEDASDFSDF12345678901234567890"
+
+        mock_acc_table = MagicMock()
+        mock_acc_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": self.account_id, "workspace_id": self.workspace_id}]
+        )
+        mock_camp_table = MagicMock()
+        mock_camp_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+
+        def table_side_effect(name):
+            if name == "accounts":
+                return mock_acc_table
+            if name == "campaigns":
+                return mock_camp_table
+            return MagicMock()
+
+        self.supabase.table.side_effect = table_side_effect
+
+        mock_instance = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {}
+        mock_instance._http_get.return_value = mock_resp
+        mock_worker_cls.return_value = mock_instance
+
+        mock_crypto.generate_dek.return_value = "ZGVr"
+        mock_crypto.encrypt_bytes.return_value = b"ciphertext"
+        mock_crypto.bytes_to_pg_hex.return_value = "\\x63697068"
+
+        res = renew_account_session(self.account_id, self.workspace_id, raw_token, self.supabase)
+
+        self.assertTrue(res["success"])
+        self.assertEqual(res["account_id"], self.account_id)
+
+    @patch("accounts.backend.services.account_auto_heal_service.LinkedInWorker")
+    @patch("accounts.backend.services.account_auto_heal_service.crypto")
     def test_renew_account_session_identity_mismatch_raises_value_error(self, mock_crypto, mock_worker_cls):
         """Layer 0 & 2: Aborts with ValueError when cookies belong to a different LinkedIn user."""
         valid_cookies = json.dumps([

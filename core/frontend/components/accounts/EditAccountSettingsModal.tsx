@@ -87,7 +87,7 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
         name: name.trim(),
         dailyLimit: Number(dailyLimit),
         messageLimit: Number(messageLimit),
-        proxyId: proxyId === 'none' ? undefined : proxyId,
+        proxyId: proxyId === 'none' ? 'none' : proxyId,
       })
 
       toast.success('Account settings updated successfully', {

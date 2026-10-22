@@ -5,7 +5,8 @@ import {
   Plus, X, ChevronRight, CheckCircle2, AlertCircle,
   Clock, Trash2, Shield, TrendingUp, Ban, AlertTriangle, RefreshCw, PauseCircle,
   UserPlus, MessageSquare, PlayCircle, ExternalLink, Search, ShieldCheck, Check,
-  Lock, Zap, ArrowRight, Server, Layers, MoreVertical, Radio, Activity, Sliders, Tag
+  Lock, Zap, ArrowRight, Server, Layers, MoreVertical, Radio, Activity, Sliders, Tag,
+  ShieldAlert
 } from "lucide-react"
 import { Linkedin } from "@/components/icons/Linkedin"
 import useSWR from "swr"
@@ -34,10 +35,15 @@ import { formatRelativeTime } from "@/lib/utils/date"
 const STATUS_CONFIG: Record<string, { label: string; icon: any; color: string; badge: string }> = {
   ACTIVE: { label: "Connected", icon: CheckCircle2, color: "text-success", badge: "bg-success/10 text-success border-success/20" },
   DISCONNECTED: { label: "Session Expired", icon: AlertCircle, color: "text-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
-  PENDING: { label: "Verifying…", icon: Clock, color: "text-warning", badge: "bg-warning/10 text-warning border-warning/20" },
-  BANNED: { label: "Account Banned", icon: Ban, color: "text-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
+  CHALLENGE_REQUIRED: { label: "Security Challenge", icon: ShieldAlert, color: "text-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
+  SUSPENDED: { label: "Suspended", icon: Ban, color: "text-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
+  NEEDS_ATTENTION: { label: "Needs Attention", icon: AlertTriangle, color: "text-warning", badge: "bg-warning/10 text-warning border-warning/20" },
   RATE_LIMITED: { label: "Rate Limited", icon: AlertTriangle, color: "text-warning", badge: "bg-warning/10 text-warning border-warning/20" },
   MANUAL_MODE: { label: "Manual Mode", icon: PauseCircle, color: "text-primary", badge: "bg-primary/10 text-primary border-primary/20" },
+  PAUSED: { label: "Paused", icon: PauseCircle, color: "text-warning", badge: "bg-warning/10 text-warning border-warning/20" },
+  PENDING: { label: "Verifying...", icon: Clock, color: "text-warning", badge: "bg-warning/10 text-warning border-warning/20" },
+  BANNED: { label: "Account Banned", icon: Ban, color: "text-destructive", badge: "bg-destructive/10 text-destructive border-destructive/20" },
+  DISABLED: { label: "Disabled", icon: Ban, color: "text-muted-foreground", badge: "bg-muted text-muted-foreground border-border" },
 }
 
 function AccountUsageDisplay({ accountId, usageData }: { accountId: string; usageData: any[] | undefined }) {
@@ -143,6 +149,11 @@ export function EleInAccounts() {
           description: 'Click Renew Session to update your LinkedIn cookies.'
         })
         setRenewAccountId(id)
+      } else if (res.new_status === 'CHALLENGE_REQUIRED' || res.recommendation?.includes('CHALLENGE')) {
+        toast.warning('Security Challenge Checkpoint Detected', {
+          description: 'LinkedIn requires browser verification. Log into LinkedIn, complete verification, then renew session.'
+        })
+        setRenewAccountId(id)
       } else {
         toast.info(`Diagnostic Completed: ${res.new_status}`, {
           description: res.actions_taken?.join(' · ')
@@ -240,11 +251,13 @@ export function EleInAccounts() {
     const active = accounts.filter(a => a.accountStatus === 'ACTIVE').length
     const warmup = accounts.filter(a => a.isWarmup).length
     const expired = accounts.filter(a => a.accountStatus === 'DISCONNECTED').length
-    const manual = accounts.filter(a => a.accountStatus === 'MANUAL_MODE').length
+    const challenges = accounts.filter(a => a.accountStatus === 'CHALLENGE_REQUIRED').length
+    const manual = accounts.filter(a => a.accountStatus === 'MANUAL_MODE' || a.accountStatus === 'PAUSED').length
+    const degradedSenders = accounts.filter(a => 
+      ['DISCONNECTED', 'BANNED', 'RATE_LIMITED', 'CHALLENGE_REQUIRED', 'SUSPENDED', 'NEEDS_ATTENTION'].includes(a.accountStatus)
+    ).length
     const actionRequiredCount = accounts.filter(a => 
-      a.accountStatus === 'DISCONNECTED' || 
-      a.accountStatus === 'BANNED' || 
-      a.accountStatus === 'RATE_LIMITED' || 
+      ['DISCONNECTED', 'BANNED', 'RATE_LIMITED', 'CHALLENGE_REQUIRED', 'SUSPENDED', 'NEEDS_ATTENTION'].includes(a.accountStatus) || 
       Boolean(a.manualSendSuspected)
     ).length
     
@@ -263,12 +276,14 @@ export function EleInAccounts() {
       active,
       warmup,
       expired,
+      challenges,
       manual,
+      degradedSenders,
       actionRequiredCount,
       totalConnectsToday,
       totalMessagesToday,
       totalCapacity,
-      healthScore: total > 0 ? Math.round(((total - expired) / total) * 100) : 100
+      healthScore: total > 0 ? Math.max(0, Math.round(((total - degradedSenders) / total) * 100)) : 100
     }
   }, [accounts, safeUsageData])
 
@@ -284,12 +299,10 @@ export function EleInAccounts() {
 
       if (statusFilter === 'active') return acc.accountStatus === 'ACTIVE'
       if (statusFilter === 'warmup') return acc.isWarmup
-      if (statusFilter === 'paused') return acc.accountStatus === 'MANUAL_MODE'
+      if (statusFilter === 'paused') return acc.accountStatus === 'MANUAL_MODE' || acc.accountStatus === 'PAUSED'
       if (statusFilter === 'action_required') {
         return (
-          acc.accountStatus === 'DISCONNECTED' ||
-          acc.accountStatus === 'BANNED' ||
-          acc.accountStatus === 'RATE_LIMITED' ||
+          ['DISCONNECTED', 'BANNED', 'RATE_LIMITED', 'CHALLENGE_REQUIRED', 'SUSPENDED', 'NEEDS_ATTENTION'].includes(acc.accountStatus) ||
           Boolean(acc.manualSendSuspected)
         )
       }
@@ -439,16 +452,22 @@ export function EleInAccounts() {
           <div className="p-4">
             <p className="text-xs text-muted-foreground">Fleet Health &amp; Proxy Tunnel</p>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className={cn("text-lg font-semibold tracking-tight", fleetStats.expired > 0 ? "text-destructive" : "text-foreground")}>
+              <span className={cn("text-lg font-semibold tracking-tight", fleetStats.degradedSenders > 0 ? "text-destructive" : "text-foreground")}>
                 {fleetSummary?.fleet_health_score || fleetStats.healthScore}% Safe
               </span>
               <span className="text-xs text-muted-foreground">
-                {fleetStats.expired > 0 ? `${fleetStats.expired} session expired` : 'All tunnels operational'}
+                {fleetStats.challenges > 0
+                  ? `${fleetStats.challenges} challenge required`
+                  : fleetStats.expired > 0
+                  ? `${fleetStats.expired} session expired`
+                  : fleetStats.degradedSenders > 0
+                  ? `${fleetStats.degradedSenders} require attention`
+                  : 'All tunnels operational'}
               </span>
             </div>
             <div className="w-full bg-muted/40 h-1.5 rounded-full overflow-hidden mt-3">
               <div 
-                className={cn("h-full rounded-full transition-all duration-500", fleetStats.expired > 0 ? "bg-destructive" : "bg-emerald-500")}
+                className={cn("h-full rounded-full transition-all duration-500", fleetStats.degradedSenders > 0 ? "bg-destructive" : "bg-emerald-500")}
                 style={{ width: `${fleetStats.healthScore}%` }}
               />
             </div>
@@ -515,6 +534,47 @@ export function EleInAccounts() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── ATTENTION BANNER: CHALLENGE REQUIRED ACCOUNTS ─────────────────── */}
+      {accounts.some(a => a.accountStatus === 'CHALLENGE_REQUIRED') && (
+        <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-destructive/30 bg-destructive/10 mb-6 shadow-xs">
+          <div className="flex items-center gap-3">
+            <ShieldAlert size={18} className="text-destructive shrink-0" />
+            <div>
+              <p className="text-xs text-destructive font-semibold">
+                Action Required: {fleetStats.challenges} account{fleetStats.challenges !== 1 ? 's require' : ' requires'} LinkedIn verification
+              </p>
+              <p className="text-[11px] text-destructive/80 mt-0.5">
+                LinkedIn checkpoint or CAPTCHA detected. Complete the verification in your browser, then run auto-heal or renew session to resume outreach.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const challenged = accounts.find(a => a.accountStatus === 'CHALLENGE_REQUIRED')
+                if (challenged) handleAutoHealAccount(challenged.id)
+              }}
+              disabled={healingAccountId !== null}
+              className="px-3 py-1.5 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/15 text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <RefreshCw size={12} className={healingAccountId ? "animate-spin" : ""} />
+              <span>Verify Session</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const challenged = accounts.find(a => a.accountStatus === 'CHALLENGE_REQUIRED')
+                if (challenged) setRenewAccountId(challenged.id)
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-semibold hover:bg-destructive/90 transition-all shrink-0 shadow-xs cursor-pointer"
+            >
+              Renew Cookies
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── ATTENTION BANNER: EXPIRED ACCOUNTS ─────────────────────────────── */}
       {accounts.some(a => a.accountStatus === 'DISCONNECTED') && (
@@ -673,7 +733,9 @@ export function EleInAccounts() {
             const isSelected = selectedAccounts.has(acc.id)
             const isExpanded = expandedAccounts.has(acc.id)
             const isDisconnected = acc.accountStatus === 'DISCONNECTED'
-            const isManual = acc.accountStatus === 'MANUAL_MODE'
+            const isCritical = ['DISCONNECTED', 'BANNED', 'SUSPENDED', 'CHALLENGE_REQUIRED'].includes(acc.accountStatus)
+            const isWarning = ['RATE_LIMITED', 'NEEDS_ATTENTION', 'MANUAL_MODE', 'PAUSED'].includes(acc.accountStatus)
+            const isManual = acc.accountStatus === 'MANUAL_MODE' || acc.accountStatus === 'PAUSED'
             const isWarmupToggling = togglingWarmupIds.has(acc.id)
             const statusCfg = STATUS_CONFIG[acc.accountStatus] || STATUS_CONFIG.ACTIVE
 
@@ -682,7 +744,7 @@ export function EleInAccounts() {
                 key={acc.id}
                 className={cn(
                   "p-5 rounded-xl border transition-all shadow-xs bg-card",
-                  isDisconnected
+                  isCritical
                     ? "border-destructive/40 bg-destructive/5"
                     : isSelected 
                       ? "border-primary/50 bg-primary/5" 
@@ -725,7 +787,7 @@ export function EleInAccounts() {
                     </div>
                     <span className={cn(
                       "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card",
-                      isDisconnected ? "bg-destructive" : isManual ? "bg-amber-500" : "bg-emerald-500"
+                      isCritical ? "bg-destructive" : isWarning ? "bg-amber-500" : "bg-emerald-500"
                     )} />
                   </div>
 
@@ -835,14 +897,14 @@ export function EleInAccounts() {
                   {/* Actions & More Menu */}
                   <div className="flex items-center gap-2 shrink-0 relative">
                     {/* Primary Button */}
-                    {isDisconnected ? (
+                    {isDisconnected || acc.accountStatus === 'CHALLENGE_REQUIRED' ? (
                       <button
                         type="button"
                         onClick={() => setRenewAccountId(acc.id)}
                         className="px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1"
                       >
                         <RefreshCw size={12} />
-                        <span>Renew Session</span>
+                        <span>{acc.accountStatus === 'CHALLENGE_REQUIRED' ? 'Resolve Challenge' : 'Renew Session'}</span>
                       </button>
                     ) : (
                       <button

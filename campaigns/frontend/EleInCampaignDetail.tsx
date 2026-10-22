@@ -19,6 +19,7 @@ import { usePaywall } from "@/contexts/PaywallContext"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { AnimatedList } from "@/components/ui/animated-list"
 import { NumberTicker } from "@/components/ui/number-ticker"
+import { buildSafeCsv } from "@/lib/csvSanitize"
 import { CampaignPreflightModal } from "./CampaignPreflightModal"
 import { CampaignROICertificateModal } from "@/components/campaigns/CampaignROICertificateModal"
 import { PreWarmStudioModal } from "@/components/campaigns/PreWarmStudioModal"
@@ -255,7 +256,7 @@ export function EleInCampaignDetail() {
     })
   }, [leads])
 
-  // Export Campaign Leads to CSV
+  // Export Campaign Leads to CSV with Formula Injection Defense
   const handleExportCsv = () => {
     if (!leads || leads.length === 0) {
       toast.info("No leads available in this campaign to export")
@@ -263,16 +264,16 @@ export function EleInCampaignDetail() {
     }
     const headers = ["Lead ID", "First Name", "Last Name", "Job Title", "Company", "Status", "LinkedIn URL", "Updated At"]
     const rows = leads.map((l: any) => [
-      `"${(l.id || l.opportunity_id || '').replace(/"/g, '""')}"`,
-      `"${(l.kdm_first || '').replace(/"/g, '""')}"`,
-      `"${(l.kdm_last || '').replace(/"/g, '""')}"`,
-      `"${(l.job_title || '').replace(/"/g, '""')}"`,
-      `"${(l.company_name || '').replace(/"/g, '""')}"`,
-      `"${(l.status || 'pending').replace(/"/g, '""')}"`,
-      `"${(l.linkedin_url || '').replace(/"/g, '""')}"`,
-      `"${(l.updated_at || l.next_run_at || '').replace(/"/g, '""')}"`
+      l.id || l.opportunity_id || "",
+      l.kdm_first || "",
+      l.kdm_last || "",
+      l.job_title || "",
+      l.company_name || "",
+      l.status || "pending",
+      l.linkedin_url || "",
+      l.updated_at || l.next_run_at || ""
     ])
-    const csvContent = [headers.join(","), ...rows.map((r: string[]) => r.join(","))].join("\n")
+    const csvContent = buildSafeCsv(headers, rows)
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")

@@ -12,13 +12,24 @@ interface SafetyIndicatorProps {
 
 export function computeSafetyIndicatorLocally(status: string): { level: SafetyStatus; label: string; desc: string } {
   switch (status) {
+    case "CHALLENGE_REQUIRED":
+      return { level: "critical", label: "Security Challenge", desc: "LinkedIn checkpoint or CAPTCHA challenge detected. Action required to resume outreach." }
+    case "SUSPENDED":
+      return { level: "critical", label: "Suspended", desc: "Account temporarily suspended by LinkedIn. Outreach paused." }
     case "BANNED":
+      return { level: "critical", label: "Banned", desc: "Account restricted by LinkedIn. Outreach halted." }
     case "DISCONNECTED":
       return { level: "critical", label: "Disconnected", desc: "Outreach paused to preserve account safety." }
+    case "NEEDS_ATTENTION":
+      return { level: "warning", label: "Needs Attention", desc: "Configuration, proxy, or session warning detected." }
     case "RATE_LIMITED":
       return { level: "warning", label: "Cooling Down", desc: "LinkedIn rate limit detected. Outreach is paused for safety and will auto-resume after cooling." }
     case "MANUAL_MODE":
       return { level: "watch", label: "Manual Mode", desc: "Actions require human sign-off." }
+    case "PAUSED":
+      return { level: "watch", label: "Paused", desc: "Outreach automation paused by user." }
+    case "DISABLED":
+      return { level: "watch", label: "Disabled", desc: "Account outreach disabled." }
     case "PENDING":
       return { level: "watch", label: "Warming Up", desc: "Gradually ramping up send volume according to safety curve." }
     case "ACTIVE":

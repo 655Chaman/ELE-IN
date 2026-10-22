@@ -185,7 +185,7 @@ export const useHRAccountsStore = create<EIAccountsState>()(
 
           set((state) => ({
             accounts: state.accounts.map((a) =>
-              a.id === id ? { ...a, ...updates } : a
+              a.id === id ? { ...a, ...updates, proxyId: updates.proxyId === 'none' ? undefined : (updates.proxyId ?? a.proxyId) } : a
             ),
             error: null
           }))

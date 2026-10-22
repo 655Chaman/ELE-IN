@@ -3,7 +3,7 @@ import useSWR from 'swr'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   X, Shield, ShieldCheck, AlertTriangle, RefreshCw, Plus, CheckCircle2,
-  Zap, Globe, Server, Check, ArrowRight, Activity
+  Zap, Globe, Server, Check, ArrowRight, Activity, Trash2
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetcher, fetchWithAuth } from '@/lib/apiClient'
@@ -78,20 +78,29 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
     }
   }
 
-  // Batch Test All Proxies
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [proxyToDelete, setProxyToDelete] = useState<ProxyItem | null>(null)
+  const [conflictError, setConflictError] = useState<string | null>(null)
+
+  // Batch Test All Proxies Concurrently (Layer 1 Paranoia: Non-blocking parallel execution)
   const handleTestAll = async () => {
     if (!proxies || proxies.length === 0) return
     setIsTestingAll(true)
     let passed = 0
     let failed = 0
 
-    for (const p of proxies) {
-      try {
+    const results = await Promise.allSettled(
+      proxies.map(async (p) => {
         const res = await fetchWithAuth(`/api/proxies/${p.id}/test`, { method: 'POST' })
         const data = await res.json()
-        if (res.ok && data.ok) passed++
-        else failed++
-      } catch {
+        return res.ok && data.ok
+      })
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) {
+        passed++
+      } else {
         failed++
       }
     }
@@ -99,6 +108,35 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
     setIsTestingAll(false)
     mutate()
     toast.info(`Proxy Pool Diagnostic Completed: ${passed} healthy, ${failed} degraded`)
+  }
+
+  // Delete Proxy from Pool (Layer 0 & Layer 1 Paranoia: Sticky failover & conflict handling)
+  const handleDeleteProxy = async (id: string, force = false) => {
+    setDeletingId(id)
+    try {
+      const res = await fetchWithAuth(`/api/proxies/${id}${force ? '?force=true' : ''}`, {
+        method: 'DELETE'
+      })
+      if (res.ok) {
+        toast.success(force ? 'Proxy removed and active senders decoupled' : 'Proxy removed from pool')
+        setProxyToDelete(null)
+        setConflictError(null)
+        mutate()
+      } else {
+        const err = await res.json().catch(() => null)
+        const detail = err?.detail || 'Failed to delete proxy'
+        if (res.status === 409 || detail.includes('assigned to') || detail.includes('force=true')) {
+          setConflictError(detail)
+        } else {
+          toast.error(detail)
+          setProxyToDelete(null)
+        }
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Network error deleting proxy')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   // Sync Webshare Proxies
@@ -203,7 +241,7 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col h-[90dvh] max-h-[90dvh] text-foreground"
+        className="w-full max-w-3xl rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col h-[90dvh] max-h-[90dvh] text-foreground relative"
       >
         {/* Modal Header */}
         <div className="p-6 border-b border-border flex items-center justify-between bg-muted/20 shrink-0">
@@ -483,16 +521,30 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleTestProxy(p.id)}
-                        disabled={isTesting}
+                        disabled={isTesting || deletingId === p.id}
                         className="px-2.5 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 border border-border text-foreground text-[11px] font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                         title="Ping proxy latency and check connection"
                       >
                         <RefreshCw size={11} className={isTesting ? "animate-spin text-primary" : "text-muted-foreground"} />
                         <span>{isTesting ? "Testing..." : "Ping"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConflictError(null)
+                          setProxyToDelete(p)
+                        }}
+                        disabled={isTesting || deletingId === p.id}
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-colors disabled:opacity-50 cursor-pointer"
+                        title="Delete proxy from pool"
+                        aria-label={`Delete proxy ${p.host}:${p.port}`}
+                      >
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </div>
@@ -513,6 +565,68 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
             Done
           </button>
         </div>
+
+        {/* Delete Proxy Confirmation Overlay */}
+        <AnimatePresence>
+          {proxyToDelete && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-md rounded-xl bg-card border border-border p-5 shadow-2xl text-foreground space-y-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">
+                      {conflictError ? "Proxy Assigned to Active Accounts" : `Remove Proxy ${proxyToDelete.host}:${proxyToDelete.port}?`}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {conflictError
+                        ? conflictError
+                        : `This will remove the proxy from your pool. Senders currently bound to this proxy will automatically fallback to another proxy or direct connection.`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={deletingId !== null}
+                    onClick={() => {
+                      setProxyToDelete(null)
+                      setConflictError(null)
+                    }}
+                    className="px-3 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 border border-border text-foreground text-xs font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingId !== null}
+                    onClick={() => handleDeleteProxy(proxyToDelete.id, Boolean(conflictError))}
+                    className="px-3.5 py-1.5 rounded-md bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    {deletingId === proxyToDelete.id ? (
+                      <>
+                        <RefreshCw size={11} className="animate-spin" />
+                        <span>Deleting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={12} />
+                        <span>{conflictError ? "Force Delete & Decouple" : "Delete Proxy"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   )

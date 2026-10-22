@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useSWR, { mutate } from 'swr';
 import {
-  MessageSquare, RefreshCw
+  MessageSquare, RefreshCw, AlertTriangle, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetcher, fetchWithAuth } from '@/lib/apiClient';
@@ -49,10 +49,21 @@ export function EleInInbox() {
     }
   }, []);
 
+  // ── Adaptive Visibility-Aware Polling (Subsystem 4 Improvement) ──
+  const [isTabVisible, setIsTabVisible] = useState(true);
+  const [sessionErrorWarning, setSessionErrorWarning] = useState<{ accountId?: string; message: string } | null>(null);
+
+  useEffect(() => {
+    const handleVisibility = () => setIsTabVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   // ── SWR Data Queries ──
   const { data: threads, mutate: mutateThreads } = useSWR<ThreadSummary[]>(
     '/api/elein/inbox/threads',
-    fetcher
+    fetcher,
+    { refreshInterval: isTabVisible ? 12_000 : 60_000, revalidateOnFocus: true }
   );
   const { data: billingData } = useSWR<{ tier?: string }>(
     '/api/elein/workspaces/billing',
@@ -71,7 +82,8 @@ export function EleInInbox() {
           selectedLeadId || 'unknown'
         )}`
       : null,
-    fetcher
+    fetcher,
+    { refreshInterval: isTabVisible ? 8_000 : 60_000, revalidateOnFocus: true }
   );
 
   const { data: approvalCount } = useSWR<{ count: number }>(
@@ -472,6 +484,7 @@ export function EleInInbox() {
     setIsSending(true);
 
     try {
+      setSessionErrorWarning(null);
       const res = await fetchWithAuth('/api/elein/inbox/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -490,7 +503,20 @@ export function EleInInbox() {
         invalidateCreditBalances();
       } else {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Server rejected reply');
+        const detail = err.detail || 'Server rejected reply';
+        if (
+          detail.toLowerCase().includes('session') ||
+          detail.toLowerCase().includes('disconnect') ||
+          detail.toLowerCase().includes('cookie') ||
+          detail.toLowerCase().includes('rate') ||
+          detail.toLowerCase().includes('challenge')
+        ) {
+          setSessionErrorWarning({
+            accountId: targetAccountId || activeAccountId,
+            message: `LinkedIn sender session alert: ${detail}`
+          });
+        }
+        throw new Error(detail);
       }
     } catch (error: any) {
       toast.error(error?.message || 'Failed to send reply. Draft restored.');
@@ -1024,6 +1050,30 @@ export function EleInInbox() {
                 toast.success(`Follow-up scheduled for ${dateText}. Draft check-in prepared.`);
               }}
             />
+
+            {sessionErrorWarning && (
+              <div className="mx-6 mb-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                  <span>{sessionErrorWarning.message}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="/elein/accounts"
+                    className="font-semibold underline hover:text-foreground text-xs"
+                  >
+                    Manage Account
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setSessionErrorWarning(null)}
+                    className="p-1 hover:bg-amber-500/20 rounded cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {selectedSender && (
               <ComposerStation

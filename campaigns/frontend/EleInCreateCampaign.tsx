@@ -19,7 +19,6 @@ import { Linkedin } from "@/components/icons/Linkedin"
 import SpotlightCard from "@/components/SpotlightCard"
 import { AdvancedSettingsPanel } from "@/components/AdvancedSettingsPanel"
 import StarBorder from "@/components/StarBorder"
-import ShinyText from "@/components/ShinyText"
 import SafetyIndicator, { computeSafetyIndicatorLocally } from "@/components/accounts/SafetyIndicator"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 
@@ -186,9 +185,11 @@ function StepHeader({
         <ChevronLeft size={14} /> Back
       </button>
 
-      <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-4">
+      <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-3">
         <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
-        <ShinyText text="Campaign Builder" disabled={false} speed={3} className="text-sm font-semibold tracking-wide" />
+        <span className="text-xs font-semibold text-foreground tracking-tight border-l border-border pl-3">
+          Campaign Studio
+        </span>
       </div>
 
       {STEPS.map((step, i) => {
@@ -695,6 +696,7 @@ function TemplateBrowser({ onClose, onImport }: {
 // ─── Live Preview Sidebar ───────────────────────────────────────────────────────
 function LivePreviewSidebar() {
   const { selectedNodeId, rootNodes, selectNode } = useHRTreeStore()
+  const [useFallbackMode, setUseFallbackMode] = useState(false)
 
   let selectedNode: any = null
   const findNode = (nodes: any[]) => {
@@ -717,6 +719,37 @@ function LivePreviewSidebar() {
   const isNoNote = type === "connection_no_note" || (isConnection && !selectedNode.data?.message && !selectedNode.data?.note)
   const isAction = type === "view_profile" || type.includes("like") || type.includes("endorse") || type.includes("follow")
 
+  // Mock Lead Data
+  const sampleLead = useFallbackMode ? {
+    firstName: "",
+    lastName: "",
+    company: "",
+    jobTitle: "",
+    industry: "",
+  } : {
+    firstName: "Alex",
+    lastName: "Mercer",
+    company: "Stripe",
+    jobTitle: "VP of Engineering",
+    industry: "Fintech",
+  }
+
+  const interpolateTemplate = (raw: string) => {
+    if (!raw) return ""
+    return raw.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
+      const parts = key.split("|").map((p: string) => p.trim())
+      const varName = parts[0].toLowerCase().replace(/_/g, "")
+      const fallback = parts[1] || ""
+
+      if (varName === "firstname" || varName === "first") return sampleLead.firstName || fallback || "there"
+      if (varName === "lastname" || varName === "last") return sampleLead.lastName || fallback || "there"
+      if (varName === "company" || varName === "companyname") return sampleLead.company || fallback || "your company"
+      if (varName === "jobtitle" || varName === "title") return sampleLead.jobTitle || fallback || "your team"
+      if (varName === "industry") return sampleLead.industry || fallback || "your space"
+      return fallback || `[${parts[0]}]`
+    })
+  }
+
   let previewContent = null
   let hint = ""
 
@@ -729,8 +762,8 @@ function LivePreviewSidebar() {
     previewContent = (
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">Y</div>
-        <div className="text-foreground">
-          <span className="font-bold">You</span> {actionText}
+        <div className="text-foreground text-xs">
+          <span className="font-semibold text-foreground">You</span> {actionText}
         </div>
       </div>
     )
@@ -739,29 +772,49 @@ function LivePreviewSidebar() {
     previewContent = (
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">Y</div>
-        <div className="text-foreground">
-          <span className="font-bold">You</span> sent a connection request
+        <div className="text-foreground text-xs">
+          <span className="font-semibold text-foreground">You</span> sent a connection request
         </div>
       </div>
     )
     hint = "The prospect will receive a blank connection request with no note."
   } else {
-    const defaultMsg = isConnection ? "Hi {{firstName}},\n\nI'd love to connect." : "Hi {{firstName}},\n\nJust following up!"
-    const msg = selectedNode.data?.message || selectedNode.data?.note || defaultMsg
+    const defaultMsg = isConnection ? "Hi {{first_name}},\n\nI noticed your work at {{company}} and would love to connect." : "Hi {{first_name}},\n\nJust following up on my previous message!"
+    const rawMsg = selectedNode.data?.message || selectedNode.data?.note || defaultMsg
+    const interpolatedMsg = interpolateTemplate(rawMsg)
+    const charCount = rawMsg.length
+    const maxLimit = isConnection ? 300 : 2000
+
     previewContent = (
       <>
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">P</div>
+          <div className="w-9 h-9 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center text-xs shrink-0 border border-primary/20">
+            {useFallbackMode ? "?" : "AM"}
+          </div>
           <div>
-            <div className="font-bold text-foreground text-sm">Prospect Name</div>
-            <div className="text-muted-foreground">Software Engineer</div>
+            <div className="font-semibold text-foreground text-xs">
+              {useFallbackMode ? "Unknown Contact (Fallback State)" : "Alex Mercer"}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {useFallbackMode ? "Missing profile variables" : "VP of Engineering at Stripe"}
+            </div>
           </div>
         </div>
         <div className="h-px w-full bg-border mb-3" />
-        <div className="text-foreground whitespace-pre-wrap">{msg}</div>
+        <div className="text-foreground whitespace-pre-wrap text-xs leading-relaxed">
+          {interpolatedMsg}
+        </div>
+        <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+          <span>{charCount} / {maxLimit} chars</span>
+          {charCount > maxLimit && (
+            <span className="text-rose-500 font-bold">Exceeds limit</span>
+          )}
+        </div>
       </>
     )
-    hint = "This is a mockup of the message the prospect will receive."
+    hint = isConnection 
+      ? "Preview of the personalized LinkedIn connection invitation note."
+      : "Preview of the personalized direct message."
   }
 
   if (type.startsWith("if_") || type.includes("check") || type.includes("delay")) {
@@ -769,21 +822,36 @@ function LivePreviewSidebar() {
   }
 
   return (
-    <FadeContent duration={0.3} className="w-80 border-l border-border bg-muted/10 p-5 flex flex-col gap-4 overflow-y-auto shrink-0 relative">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
-          <Eye size={16} /> Prospect POV
+    <FadeContent duration={0.3} className="w-80 border-l border-border bg-card/40 backdrop-blur-md p-4 flex flex-col gap-3 overflow-y-auto shrink-0 relative">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-foreground font-semibold text-xs">
+          <Eye size={14} className="text-primary" />
+          <span>Prospect POV</span>
         </div>
-        <button type="button" onClick={() => selectNode(null)} className="text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-muted/50 transition-colors">
-          <X size={16} />
+        <button type="button" onClick={() => selectNode(null)} className="text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-muted/50 transition-colors cursor-pointer">
+          <X size={14} />
         </button>
       </div>
+
+      {/* Fallback Simulator Toggle */}
+      {!isAction && !isNoNote && (
+        <div className="flex items-center justify-between p-2 rounded-lg bg-muted/40 border border-border/50 text-[10px]">
+          <span className="text-muted-foreground">Preview Mode:</span>
+          <button
+            type="button"
+            onClick={() => setUseFallbackMode(!useFallbackMode)}
+            className="text-primary hover:underline font-semibold cursor-pointer"
+          >
+            {useFallbackMode ? "Switch to Sample Lead" : "Simulate Missing Fields"}
+          </button>
+        </div>
+      )}
       
-      <div className="rounded-xl bg-background border border-border shadow-sm p-4 text-xs">
+      <div className="rounded-xl bg-background border border-border shadow-xs p-3.5">
         {previewContent}
       </div>
 
-      <p className="text-[10px] text-muted-foreground text-center px-4 leading-relaxed mt-2">
+      <p className="text-[10px] text-muted-foreground text-center px-2 leading-relaxed">
         {hint}
       </p>
     </FadeContent>
@@ -2870,7 +2938,19 @@ function EleInCreateCampaignInner() {
         )}
 
         {/* Right: Actions (Save Draft + Next / Launch CTA) */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {step < STEPS.length - 1 && isPreflightClear && (
+            <button
+              type="button"
+              onClick={() => setShowPreflightModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 transition-all cursor-pointer shadow-xs"
+              title="All requirements satisfied. Launch immediately without stepping through remaining screens."
+            >
+              <Zap size={13} className="text-emerald-500 fill-emerald-500" />
+              <span>Express Launch</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => handleSaveDraft("DRAFT")}

@@ -867,14 +867,16 @@ def renew_account_session(
     new_cookies_json: str,
     supabase: Client
 ) -> Dict[str, Any]:
-    cleaned = (new_cookies_json or "").strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.replace("```json", "").replace("```", "").strip()
-
-    try:
-        parsed_cookies = json.loads(cleaned)
-    except Exception:
-        raise ValueError("Invalid JSON format. Please export as a JSON array from your browser cookie editor.")
+    from campaigns.backend.routers.elein import normalize_linkedin_cookies_payload
+    parsed_cookies = normalize_linkedin_cookies_payload(new_cookies_json)
+    if not parsed_cookies:
+        cleaned = (new_cookies_json or "").strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+        try:
+            parsed_cookies = json.loads(cleaned)
+        except Exception:
+            raise ValueError("Invalid JSON format. Please export as a JSON array from your browser cookie editor.")
 
     if not isinstance(parsed_cookies, list):
         raise ValueError("Cookies must be a JSON array ([{...}]).")
@@ -889,7 +891,7 @@ def renew_account_session(
     acc = acc_res.data[0]
 
     proxy_url = _build_account_proxy_url(acc, supabase)
-    worker = LinkedInWorker(cookies_json=cleaned, account_id=account_id, proxy_url=proxy_url)
+    worker = LinkedInWorker(cookies_json=json.dumps(parsed_cookies), account_id=account_id, proxy_url=proxy_url)
     detected_profile_url = ""
     try:
         resp = worker._http_get("https://www.linkedin.com/voyager/api/me")

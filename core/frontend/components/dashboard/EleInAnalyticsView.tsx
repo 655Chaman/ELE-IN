@@ -807,9 +807,16 @@ export function EleInAnalyticsView({
                       <span className={`font-semibold transition-colors ${isHovered ? 'text-primary' : 'text-foreground'}`}>
                         {step.label}
                       </span>
-                      <span className="font-mono font-bold text-foreground">
-                        {(stepVal ?? 0).toLocaleString()}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {i > 0 && typeof activeFunnelSteps[i - 1]?.value === 'number' && activeFunnelSteps[i - 1].value > 0 && (
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {((stepVal / activeFunnelSteps[i - 1].value) * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        <span className="font-mono font-bold text-foreground">
+                          {(stepVal ?? 0).toLocaleString()}
+                        </span>
+                      </div>
                     </div>
                     <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                       <div 
