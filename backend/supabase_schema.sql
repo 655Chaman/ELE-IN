@@ -1308,7 +1308,8 @@ CREATE TABLE public.campaign_enrollments (
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_enrollment_version_integrity FOREIGN KEY (campaign_version_id, campaign_id) REFERENCES public.campaign_versions (id, campaign_id)
+    CONSTRAINT fk_enrollment_version_integrity FOREIGN KEY (campaign_version_id, campaign_id) REFERENCES public.campaign_versions (id, campaign_id),
+    CONSTRAINT uq_campaign_lead_enrollment UNIQUE (campaign_id, lead_id)
 );
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_campaign_enrollments_id_ws ON public.campaign_enrollments (id, workspace_id);
 

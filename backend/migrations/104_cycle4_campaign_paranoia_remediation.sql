@@ -2,10 +2,41 @@
 -- MIGRATION 104: CYCLE 4 CAMPAIGN SUBSYSTEM PARANOIA REMEDIATION
 -- Idempotent resolution for FLAW-DB-01 through FLAW-DB-31
 -- Standard: Zero Emojis, Complete Relational Integrity, Strict Multi-Tenancy
+-- Aligned with Live Supabase Production Database Schema
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
+-- PRE-FLIGHT FUNCTION CLEANUP (Prevents 42P13 Parameter Rename Errors)
+-- ----------------------------------------------------------------------------
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN 
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN (
+            'create_campaign_atomic',
+            'enroll_leads_chunk_atomic',
+            'dequeue_due_leads',
+            'release_lead_claim',
+            'recover_stale_leases',
+            'advance_reply_waiting_leads',
+            'claim_processing_jobs',
+            'decrement_list_row_count',
+            'claim_outbox_events',
+            'set_outbox_events_updated_at',
+            'update_daily_campaign_stats'
+        )
+        AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig || ' CASCADE';
+    END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
 -- 1. ENUM NORMALIZATION & VALUE EXTENSIONS (FLAW-DB-08, FLAW-DB-09)
+-- Must execute outside transaction blocks to satisfy PostgreSQL 25001 constraint
 -- ----------------------------------------------------------------------------
 
 -- Add lowercase compatibility values to campaign_status
@@ -51,6 +82,13 @@ WHERE ces.enrollment_id = ce.id AND ces.campaign_id IS NULL;
 ALTER TABLE public.campaign_nodes 
     ADD COLUMN IF NOT EXISTS position_x DOUBLE PRECISION DEFAULT 0.0,
     ADD COLUMN IF NOT EXISTS position_y DOUBLE PRECISION DEFAULT 0.0;
+
+-- Defensively ensure DAG versioning columns exist on campaign_versions
+ALTER TABLE public.campaign_versions
+    ADD COLUMN IF NOT EXISTS nodes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS edges_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ DEFAULT NOW();
 
 -- FLAW-DB-04: Add enrollment_id and normalize node_id on messages
 ALTER TABLE public.messages 
@@ -121,14 +159,20 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_action_log_ces_id 
     ON public.action_log (execution_state_id);
 
--- FLAW-DB-12: approval_queue.lead_id and exec_state_id UUID type and FK
+-- FLAW-DB-12: approval_queue.lead_id and exec_state_id UUID type and FK with orphaned ID cleanup
 DO $$ BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.columns 
         WHERE table_schema = 'public' AND table_name = 'approval_queue' AND column_name = 'lead_id' AND data_type = 'text'
     ) THEN
         ALTER TABLE public.approval_queue 
-            ALTER COLUMN lead_id TYPE UUID USING NULLIF(lead_id, '')::UUID;
+            ALTER COLUMN lead_id TYPE UUID USING (
+                CASE 
+                    WHEN lead_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' 
+                    THEN lead_id::UUID 
+                    ELSE NULL 
+                END
+            );
     END IF;
 
     IF EXISTS (
@@ -136,8 +180,25 @@ DO $$ BEGIN
         WHERE table_schema = 'public' AND table_name = 'approval_queue' AND column_name = 'exec_state_id' AND data_type = 'text'
     ) THEN
         ALTER TABLE public.approval_queue 
-            ALTER COLUMN exec_state_id TYPE UUID USING NULLIF(exec_state_id, '')::UUID;
+            ALTER COLUMN exec_state_id TYPE UUID USING (
+                CASE 
+                    WHEN exec_state_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' 
+                    THEN exec_state_id::UUID 
+                    ELSE NULL 
+                END
+            );
     END IF;
+
+    -- Clean up orphaned references before attaching foreign keys
+    UPDATE public.approval_queue 
+    SET lead_id = NULL 
+    WHERE lead_id IS NOT NULL 
+      AND NOT EXISTS (SELECT 1 FROM public.leads l WHERE l.id = approval_queue.lead_id);
+
+    UPDATE public.approval_queue 
+    SET exec_state_id = NULL 
+    WHERE exec_state_id IS NOT NULL 
+      AND NOT EXISTS (SELECT 1 FROM public.campaign_execution_states ces WHERE ces.id = approval_queue.exec_state_id);
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_lead') THEN
         ALTER TABLE public.approval_queue
@@ -151,15 +212,66 @@ DO $$ BEGIN
 END $$;
 
 -- ----------------------------------------------------------------------------
--- 3. CHECK CONSTRAINTS & COMPATIBILITY VIEWS (FLAW-DB-07, 10, 13)
+-- 3. CHECK CONSTRAINTS, DEDUPLICATION & COMPATIBILITY VIEWS (FLAW-DB-07, 10, 13)
 -- ----------------------------------------------------------------------------
+
+-- Enforce UNIQUE constraint on campaign_enrollments(campaign_id, lead_id)
+DELETE FROM public.campaign_enrollments a
+USING public.campaign_enrollments b
+WHERE a.id > b.id
+  AND a.campaign_id = b.campaign_id
+  AND a.lead_id = b.lead_id;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_campaign_lead_enrollment'
+    ) THEN
+        ALTER TABLE public.campaign_enrollments
+            ADD CONSTRAINT uq_campaign_lead_enrollment UNIQUE (campaign_id, lead_id);
+    END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $$;
+
+-- Enforce UNIQUE constraint on daily_campaign_stats(campaign_id, stat_date)
+DELETE FROM public.daily_campaign_stats a
+USING public.daily_campaign_stats b
+WHERE a.id > b.id
+  AND a.campaign_id = b.campaign_id
+  AND a.stat_date = b.stat_date;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_daily_campaign_stats_date'
+    ) THEN
+        ALTER TABLE public.daily_campaign_stats
+            ADD CONSTRAINT uq_daily_campaign_stats_date UNIQUE (campaign_id, stat_date);
+    END IF;
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $$;
 
 -- FLAW-DB-07: Status checks on campaign_execution_states and campaign_enrollments
 DO $$ BEGIN
-    -- Convert status column to TEXT if it was previously created as lead_state_status ENUM
+    -- 1. Drop existing defaults to prevent "cannot cast default to text" error
+    BEGIN
+        ALTER TABLE public.campaign_execution_states ALTER COLUMN status DROP DEFAULT;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 2. Convert status column to TEXT
     BEGIN
         ALTER TABLE public.campaign_execution_states
             ALTER COLUMN status TYPE TEXT USING status::TEXT;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    -- 3. Restore default as TEXT
+    BEGIN
+        ALTER TABLE public.campaign_execution_states ALTER COLUMN status SET DEFAULT 'pending'::text;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        ALTER TABLE public.campaign_enrollments ALTER COLUMN status DROP DEFAULT;
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
@@ -169,19 +281,34 @@ DO $$ BEGIN
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_ces_status_valid') THEN
-        ALTER TABLE public.campaign_execution_states
-            ADD CONSTRAINT chk_ces_status_valid CHECK (
-                status::text IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo')
-            );
-    END IF;
+    BEGIN
+        ALTER TABLE public.campaign_enrollments ALTER COLUMN status SET DEFAULT 'active'::text;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_ce_status_valid') THEN
-        ALTER TABLE public.campaign_enrollments
-            ADD CONSTRAINT chk_ce_status_valid CHECK (
-                status::text IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced')
-            );
-    END IF;
+    -- 4. Sanitize invalid status values
+    UPDATE public.campaign_execution_states 
+    SET status = 'pending' 
+    WHERE status IS NULL 
+       OR status NOT IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo');
+
+    UPDATE public.campaign_enrollments 
+    SET status = 'active' 
+    WHERE status IS NULL 
+       OR status NOT IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced');
+
+    -- 5. Add check constraints cleanly
+    ALTER TABLE public.campaign_execution_states DROP CONSTRAINT IF EXISTS chk_ces_status_valid;
+    ALTER TABLE public.campaign_execution_states
+        ADD CONSTRAINT chk_ces_status_valid CHECK (
+            status IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo')
+        );
+
+    ALTER TABLE public.campaign_enrollments DROP CONSTRAINT IF EXISTS chk_ce_status_valid;
+    ALTER TABLE public.campaign_enrollments
+        ADD CONSTRAINT chk_ce_status_valid CHECK (
+            status IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced')
+        );
 END $$;
 
 -- FLAW-DB-10: Drop dangling trigger / function on action_log
@@ -199,6 +326,7 @@ ALTER TABLE public.campaign_enrollments
 CREATE OR REPLACE VIEW public.campaign_leads AS
 SELECT 
     id,
+    workspace_id,
     campaign_id,
     lead_id,
     status,
@@ -425,22 +553,7 @@ $$;
 -- 8. RPC HARDENING: SCHEDULER DEQUEUE & LEASE RECOVERY (FLAW-DB-18, 19, 20, 21, 22)
 -- ----------------------------------------------------------------------------
 
--- Clean up duplicate overloads
-DO $$ 
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN 
-        SELECT oid::regprocedure AS func_sig 
-        FROM pg_proc 
-        WHERE proname IN ('release_lead_claim', 'dequeue_due_leads')
-          AND pronamespace = 'public'::regnamespace
-    LOOP
-        EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig || ' CASCADE';
-    END LOOP;
-END $$;
-
--- Canonical dequeue_due_leads
+-- Canonical dequeue_due_leads with case-insensitive campaign status match
 CREATE OR REPLACE FUNCTION public.dequeue_due_leads(
     p_batch_size INT DEFAULT 50,
     p_campaign_ids UUID[] DEFAULT NULL,
@@ -460,7 +573,7 @@ BEGIN
         FROM (
             SELECT id AS campaign_id, workspace_id 
             FROM public.campaigns
-            WHERE status = 'ACTIVE' 
+            WHERE UPPER(status::text) = 'ACTIVE' 
               AND (p_campaign_ids IS NULL OR id = ANY(p_campaign_ids))
         ) c
         CROSS JOIN LATERAL (
@@ -475,7 +588,7 @@ BEGIN
                   OR (ces.status = 'running' AND ces.lease_expires_at IS NOT NULL AND ces.lease_expires_at < now())
               )
               AND (ces.next_run_at IS NULL OR ces.next_run_at <= now())
-              AND (a.id IS NULL OR (a.status = 'ACTIVE' AND COALESCE(a.manual_send_suspected, false) = false))
+              AND (a.id IS NULL OR (a.status::text = 'ACTIVE' AND COALESCE(a.manual_send_suspected, false) = false))
             ORDER BY ces.next_run_at ASC NULLS FIRST
             LIMIT GREATEST(1, p_batch_size / 5)
         ) ces
@@ -495,7 +608,7 @@ BEGIN
 END;
 $$;
 
--- Canonical release_lead_claim
+-- Canonical release_lead_claim with safe UUID casting
 CREATE OR REPLACE FUNCTION public.release_lead_claim(
     p_state_id UUID,
     p_lease_token UUID,
@@ -512,7 +625,14 @@ SET search_path = public
 AS $$
 DECLARE
     v_rows INT;
+    v_next_node_uuid UUID;
 BEGIN
+    IF p_next_node IS NOT NULL AND p_next_node ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        v_next_node_uuid := p_next_node::UUID;
+    ELSE
+        v_next_node_uuid := NULL;
+    END IF;
+
     UPDATE public.campaign_execution_states
     SET 
         status = CASE 
@@ -520,7 +640,7 @@ BEGIN
             WHEN status = 'paused' THEN 'paused'
             ELSE p_next_status 
         END,
-        current_node_id = COALESCE(p_next_node, current_node_id),
+        current_node_id = COALESCE(v_next_node_uuid, current_node_id),
         next_run_at = p_next_run,
         variables = COALESCE(p_variables, variables),
         error_reason = p_error_reason,
@@ -700,14 +820,15 @@ BEGIN
     WITH candidate_events AS (
         SELECT id
         FROM public.outbox_events
-        WHERE status = 'pending'
-          AND (deliver_at IS NULL OR deliver_at <= NOW())
-        ORDER BY created_at ASC
+        WHERE (status = 'pending' AND deliver_at <= NOW())
+           OR (status = 'processing' AND deliver_at <= NOW() - (p_timeout_seconds || ' seconds')::INTERVAL)
+        ORDER BY deliver_at ASC
         LIMIT p_batch_size
         FOR UPDATE SKIP LOCKED
     )
     UPDATE public.outbox_events oe
     SET status = 'processing',
+        deliver_at = NOW() + (p_timeout_seconds || ' seconds')::INTERVAL,
         attempts = oe.attempts + 1,
         updated_at = NOW()
     FROM candidate_events ce
@@ -715,6 +836,9 @@ BEGIN
     RETURNING oe.*;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.claim_outbox_events(INT, INT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.claim_outbox_events(INT, INT) TO service_role;
 
 -- ----------------------------------------------------------------------------
 -- 10. REAL-TIME STATS ROLLUP TRIGGER FIX (FLAW-DB-27)
@@ -768,6 +892,10 @@ $$;
 -- ----------------------------------------------------------------------------
 -- 11. ROW-LEVEL SECURITY POLICY REPAIRS (FLAW-DB-26, 31)
 -- ----------------------------------------------------------------------------
+
+ALTER TABLE public.campaign_roi_certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_enrollments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_execution_states ENABLE ROW LEVEL SECURITY;
 
 -- FLAW-DB-26: Fix campaign_roi_certificates RLS
 DROP POLICY IF EXISTS campaign_roi_cert_workspace_isolation ON public.campaign_roi_certificates;
