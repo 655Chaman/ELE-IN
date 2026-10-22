@@ -249,6 +249,39 @@ END $$;
 -- Executed directly as top-level DDL & DML statements (outside PL/pgSQL function)
 -- to ensure status column is committed as TEXT before running value sanitization queries.
 
+-- Drop any dependent views before column type conversion
+DROP VIEW IF EXISTS public.campaign_leads CASCADE;
+
+-- Drop trigger dependencies on campaign_execution_states.status (prevents 0A000 trigger dependency error)
+DROP TRIGGER IF EXISTS execution_state_transition_guard ON public.campaign_execution_states CASCADE;
+
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN 
+        SELECT DISTINCT t.tgname, c.relname 
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' 
+          AND c.relname IN ('campaign_execution_states', 'campaign_enrollments')
+          AND NOT t.tgisinternal
+          AND (
+              t.tgname ILIKE '%transition%'
+              OR t.tgname ILIKE '%status%'
+              OR t.tgname ILIKE '%guard%'
+              OR EXISTS (
+                  SELECT 1 FROM pg_depend d
+                  JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.refobjsubid
+                  WHERE d.objid = t.oid AND a.attname = 'status'
+              )
+          )
+    LOOP
+        EXECUTE 'DROP TRIGGER IF EXISTS ' || quote_ident(r.tgname) || ' ON public.' || quote_ident(r.relname) || ' CASCADE';
+    END LOOP;
+END $$;
+
 -- 1. Drop existing defaults to prevent "cannot cast default to text" error
 ALTER TABLE public.campaign_execution_states ALTER COLUMN status DROP DEFAULT;
 ALTER TABLE public.campaign_enrollments ALTER COLUMN status DROP DEFAULT;
