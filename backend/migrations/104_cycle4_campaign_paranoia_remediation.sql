@@ -35,14 +35,234 @@ BEGIN
 END $$;
 
 -- ----------------------------------------------------------------------------
--- 1. ENUM NORMALIZATION & VALUE EXTENSIONS (FLAW-DB-08, FLAW-DB-09)
+-- ----------------------------------------------------------------------------
+-- 1. ENUM TO TEXT MIGRATION & DEPENDENCY DISSOLUTION (FLAW-DB-07, 08, 09, 13)
 -- lead_state_status enum is permanently superseded by standard TEXT column
--- with chk_ces_status_valid check constraint in Section 3.
+-- with chk_ces_status_valid check constraint. All legacy triggers, check constraints,
+-- dependent views, and partial indexes are dropped before altering column types.
+-- Custom operators are registered dynamically to eliminate PostgreSQL 42883 errors.
 -- Zero ALTER TYPE ... ADD VALUE statements are used, guaranteeing complete
 -- immunity to PostgreSQL 55P04 (unsafe new enum value) and 25001 transaction errors.
 -- ----------------------------------------------------------------------------
 
--- ----------------------------------------------------------------------------
+-- A. Register implicit equality and inequality operators between text and lead_state_status
+-- to permanently eliminate PostgreSQL 42883 (operator does not exist: text = lead_state_status)
+DO $$ 
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_type t 
+        JOIN pg_namespace n ON n.oid = t.typnamespace 
+        WHERE t.typname = 'lead_state_status' AND n.nspname = 'public'
+    ) THEN
+        EXECUTE $OP$
+            CREATE OR REPLACE FUNCTION public.lead_state_status_to_text(public.lead_state_status)
+            RETURNS text LANGUAGE sql IMMUTABLE STRICT AS 'SELECT $1::text;';
+
+            CREATE OR REPLACE FUNCTION public.text_eq_lead_state_status(text, public.lead_state_status)
+            RETURNS boolean LANGUAGE sql IMMUTABLE STRICT AS 'SELECT $1 = $2::text;';
+
+            CREATE OR REPLACE FUNCTION public.lead_state_status_eq_text(public.lead_state_status, text)
+            RETURNS boolean LANGUAGE sql IMMUTABLE STRICT AS 'SELECT $1::text = $2;';
+
+            CREATE OR REPLACE FUNCTION public.text_neq_lead_state_status(text, public.lead_state_status)
+            RETURNS boolean LANGUAGE sql IMMUTABLE STRICT AS 'SELECT $1 != $2::text;';
+
+            CREATE OR REPLACE FUNCTION public.lead_state_status_neq_text(public.lead_state_status, text)
+            RETURNS boolean LANGUAGE sql IMMUTABLE STRICT AS 'SELECT $1::text != $2;';
+        $OP$;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_operator o
+            JOIN pg_type t1 ON t1.oid = o.oprleft
+            JOIN pg_type t2 ON t2.oid = o.oprright
+            WHERE o.oprname = '=' AND t1.typname = 'text' AND t2.typname = 'lead_state_status'
+        ) THEN
+            EXECUTE $OP$
+                CREATE OPERATOR public.= (
+                    LEFTARG = text,
+                    RIGHTARG = public.lead_state_status,
+                    PROCEDURE = public.text_eq_lead_state_status,
+                    COMMUTATOR = =
+                );
+            $OP$;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_operator o
+            JOIN pg_type t1 ON t1.oid = o.oprleft
+            JOIN pg_type t2 ON t2.oid = o.oprright
+            WHERE o.oprname = '=' AND t1.typname = 'lead_state_status' AND t2.typname = 'text'
+        ) THEN
+            EXECUTE $OP$
+                CREATE OPERATOR public.= (
+                    LEFTARG = public.lead_state_status,
+                    RIGHTARG = text,
+                    PROCEDURE = public.lead_state_status_eq_text,
+                    COMMUTATOR = =
+                );
+            $OP$;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_operator o
+            JOIN pg_type t1 ON t1.oid = o.oprleft
+            JOIN pg_type t2 ON t2.oid = o.oprright
+            WHERE o.oprname = '<>' AND t1.typname = 'text' AND t2.typname = 'lead_state_status'
+        ) THEN
+            EXECUTE $OP$
+                CREATE OPERATOR public.<> (
+                    LEFTARG = text,
+                    RIGHTARG = public.lead_state_status,
+                    PROCEDURE = public.text_neq_lead_state_status,
+                    COMMUTATOR = <>
+                );
+            $OP$;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_operator o
+            JOIN pg_type t1 ON t1.oid = o.oprleft
+            JOIN pg_type t2 ON t2.oid = o.oprright
+            WHERE o.oprname = '<>' AND t1.typname = 'lead_state_status' AND t2.typname = 'text'
+        ) THEN
+            EXECUTE $OP$
+                CREATE OPERATOR public.<> (
+                    LEFTARG = public.lead_state_status,
+                    RIGHTARG = text,
+                    PROCEDURE = public.lead_state_status_neq_text,
+                    COMMUTATOR = <>
+                );
+            $OP$;
+        END IF;
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- B. Drop dependent views before column type conversion
+DROP VIEW IF EXISTS public.campaign_leads CASCADE;
+
+-- C. Drop all legacy triggers on campaign_execution_states and campaign_enrollments
+DROP TRIGGER IF EXISTS execution_state_transition_guard ON public.campaign_execution_states CASCADE;
+
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN 
+        SELECT DISTINCT t.tgname, c.relname 
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' 
+          AND c.relname IN ('campaign_execution_states', 'campaign_enrollments')
+          AND NOT t.tgisinternal
+    LOOP
+        EXECUTE 'DROP TRIGGER IF EXISTS ' || quote_ident(r.tgname) || ' ON public.' || quote_ident(r.relname) || ' CASCADE';
+    END LOOP;
+END $$;
+
+-- D. Drop all existing check constraints on campaign_execution_states and campaign_enrollments
+DO $$ 
+DECLARE
+    c RECORD;
+BEGIN
+    FOR c IN 
+        SELECT conname, conrelid::regclass AS table_name
+        FROM pg_constraint 
+        WHERE conrelid IN ('public.campaign_execution_states'::regclass, 'public.campaign_enrollments'::regclass)
+          AND contype = 'c'
+    LOOP
+        EXECUTE 'ALTER TABLE ' || c.table_name || ' DROP CONSTRAINT IF EXISTS ' || quote_ident(c.conname) || ' CASCADE';
+    END LOOP;
+END $$;
+
+-- E. Drop all status-dependent and partial indexes before column type alteration
+DO $$ 
+DECLARE
+    idx RECORD;
+BEGIN
+    FOR idx IN 
+        SELECT c.relname AS index_name
+        FROM pg_index i
+        JOIN pg_class c ON c.oid = i.indexrelid
+        JOIN pg_class t ON t.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+          AND t.relname IN ('campaign_execution_states', 'campaign_enrollments')
+          AND NOT i.indisprimary
+          AND (
+              EXISTS (
+                  SELECT 1 FROM pg_attribute a 
+                  WHERE a.attrelid = t.oid 
+                    AND a.attname = 'status' 
+                    AND a.attnum = ANY(i.indkey)
+              )
+              OR i.indpred IS NOT NULL
+              OR c.relname ILIKE '%status%'
+              OR c.relname ILIKE '%ces_next_run%'
+          )
+    LOOP
+        EXECUTE 'DROP INDEX IF EXISTS public.' || quote_ident(idx.index_name) || ' CASCADE';
+    END LOOP;
+END $$;
+
+-- F. Drop existing defaults to prevent "cannot cast default to text" error
+ALTER TABLE public.campaign_execution_states ALTER COLUMN status DROP DEFAULT;
+ALTER TABLE public.campaign_enrollments ALTER COLUMN status DROP DEFAULT;
+
+-- G. Convert status columns directly to TEXT
+ALTER TABLE public.campaign_execution_states ALTER COLUMN status TYPE TEXT USING status::TEXT;
+ALTER TABLE public.campaign_enrollments ALTER COLUMN status TYPE TEXT USING status::TEXT;
+
+-- H. Restore defaults as TEXT
+ALTER TABLE public.campaign_execution_states ALTER COLUMN status SET DEFAULT 'pending';
+ALTER TABLE public.campaign_enrollments ALTER COLUMN status SET DEFAULT 'active';
+
+-- I. Sanitize invalid status values now that column is confirmed TEXT in the catalog
+UPDATE public.campaign_execution_states 
+SET status = 'pending' 
+WHERE status IS NULL 
+   OR status NOT IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo');
+
+UPDATE public.campaign_enrollments 
+SET status = 'active' 
+WHERE status IS NULL 
+   OR status NOT IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced');
+
+-- J. Add check constraints cleanly
+ALTER TABLE public.campaign_execution_states DROP CONSTRAINT IF EXISTS chk_ces_status_valid;
+ALTER TABLE public.campaign_execution_states
+    ADD CONSTRAINT chk_ces_status_valid CHECK (
+        status IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo')
+    );
+
+ALTER TABLE public.campaign_enrollments DROP CONSTRAINT IF EXISTS chk_ce_status_valid;
+ALTER TABLE public.campaign_enrollments
+    ADD CONSTRAINT chk_ce_status_valid CHECK (
+        status IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced')
+    );
+
+-- K. Compatibility view with enrolled_at mapping and defensive timestamp columns
+ALTER TABLE public.campaign_enrollments 
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.campaign_enrollments 
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.campaign_enrollments 
+    ADD COLUMN IF NOT EXISTS enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE OR REPLACE VIEW public.campaign_leads AS
+SELECT 
+    id,
+    workspace_id,
+    campaign_id,
+    lead_id,
+    status,
+    account_id,
+    COALESCE(created_at, enrolled_at, NOW()) AS created_at,
+    COALESCE(enrolled_at, created_at, NOW()) AS enrolled_at,
+    COALESCE(updated_at, created_at, NOW()) AS updated_at
+FROM public.campaign_enrollments;
+
 -- 2. SCHEMA DRIFT & COLUMN RESTORATIONS (FLAW-DB-01, 03, 04, 05, 06, 11, 12)
 -- ----------------------------------------------------------------------------
 
@@ -208,7 +428,8 @@ DO $$ BEGIN
 END $$;
 
 -- ----------------------------------------------------------------------------
--- 3. CHECK CONSTRAINTS, DEDUPLICATION & COMPATIBILITY VIEWS (FLAW-DB-07, 10, 13)
+-- ----------------------------------------------------------------------------
+-- 3. DEDUPLICATION & UNIQUE INTEGRITY CONSTRAINTS (FLAW-DB-10)
 -- ----------------------------------------------------------------------------
 
 -- Enforce UNIQUE constraint on campaign_enrollments(campaign_id, lead_id)
@@ -245,105 +466,9 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
 END $$;
 
--- FLAW-DB-07: Status checks on campaign_execution_states and campaign_enrollments
--- Executed directly as top-level DDL & DML statements (outside PL/pgSQL function)
--- to ensure status column is committed as TEXT before running value sanitization queries.
-
--- Drop any dependent views before column type conversion
-DROP VIEW IF EXISTS public.campaign_leads CASCADE;
-
--- Drop trigger dependencies on campaign_execution_states.status (prevents 0A000 trigger dependency error)
-DROP TRIGGER IF EXISTS execution_state_transition_guard ON public.campaign_execution_states CASCADE;
-
-DO $$ 
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN 
-        SELECT DISTINCT t.tgname, c.relname 
-        FROM pg_trigger t
-        JOIN pg_class c ON c.oid = t.tgrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public' 
-          AND c.relname IN ('campaign_execution_states', 'campaign_enrollments')
-          AND NOT t.tgisinternal
-          AND (
-              t.tgname ILIKE '%transition%'
-              OR t.tgname ILIKE '%status%'
-              OR t.tgname ILIKE '%guard%'
-              OR EXISTS (
-                  SELECT 1 FROM pg_depend d
-                  JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.refobjsubid
-                  WHERE d.objid = t.oid AND a.attname = 'status'
-              )
-          )
-    LOOP
-        EXECUTE 'DROP TRIGGER IF EXISTS ' || quote_ident(r.tgname) || ' ON public.' || quote_ident(r.relname) || ' CASCADE';
-    END LOOP;
-END $$;
-
--- 1. Drop existing defaults to prevent "cannot cast default to text" error
-ALTER TABLE public.campaign_execution_states ALTER COLUMN status DROP DEFAULT;
-ALTER TABLE public.campaign_enrollments ALTER COLUMN status DROP DEFAULT;
-
--- 2. Convert status columns directly to TEXT
-ALTER TABLE public.campaign_execution_states ALTER COLUMN status TYPE TEXT USING status::TEXT;
-ALTER TABLE public.campaign_enrollments ALTER COLUMN status TYPE TEXT USING status::TEXT;
-
--- 3. Restore defaults as TEXT
-ALTER TABLE public.campaign_execution_states ALTER COLUMN status SET DEFAULT 'pending';
-ALTER TABLE public.campaign_enrollments ALTER COLUMN status SET DEFAULT 'active';
-
--- 4. Sanitize invalid status values now that column is confirmed TEXT in the catalog
-UPDATE public.campaign_execution_states 
-SET status = 'pending' 
-WHERE status IS NULL 
-   OR status NOT IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo');
-
-UPDATE public.campaign_enrollments 
-SET status = 'active' 
-WHERE status IS NULL 
-   OR status NOT IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced');
-
--- 5. Add check constraints cleanly
-ALTER TABLE public.campaign_execution_states DROP CONSTRAINT IF EXISTS chk_ces_status_valid;
-ALTER TABLE public.campaign_execution_states
-    ADD CONSTRAINT chk_ces_status_valid CHECK (
-        status IN ('pending', 'running', 'waiting_for_reply', 'awaiting_approval', 'waiting_for_approval', 'paused', 'completed', 'failed', 'exited', 'rate_limited', 'out_of_office', 'skipped', 'error', 'snoozed_ooo')
-    );
-
-ALTER TABLE public.campaign_enrollments DROP CONSTRAINT IF EXISTS chk_ce_status_valid;
-ALTER TABLE public.campaign_enrollments
-    ADD CONSTRAINT chk_ce_status_valid CHECK (
-        status IN ('active', 'completed', 'paused', 'exited', 'error', 'failed', 'bounced')
-    );
-
 -- FLAW-DB-10: Drop dangling trigger / function on action_log
 DROP TRIGGER IF EXISTS action_log_increment_daily_usage ON public.action_log;
 
--- FLAW-DB-13: campaign_leads compatibility view with enrolled_at mapping
--- Ensure created_at, updated_at, and enrolled_at exist defensively on campaign_enrollments
-ALTER TABLE public.campaign_enrollments 
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE public.campaign_enrollments 
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE public.campaign_enrollments 
-    ADD COLUMN IF NOT EXISTS enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-
-CREATE OR REPLACE VIEW public.campaign_leads AS
-SELECT 
-    id,
-    workspace_id,
-    campaign_id,
-    lead_id,
-    status,
-    account_id,
-    COALESCE(created_at, enrolled_at, NOW()) AS created_at,
-    COALESCE(enrolled_at, created_at, NOW()) AS enrolled_at,
-    COALESCE(updated_at, created_at, NOW()) AS updated_at
-FROM public.campaign_enrollments;
-
--- ----------------------------------------------------------------------------
 -- 4. B-TREE & COMPOSITE PERFORMANCE INDEXES (FLAW-DB-28, 29)
 -- ----------------------------------------------------------------------------
 
