@@ -1410,6 +1410,7 @@ export function EISequenceTree({
     let nodeCount = 0;
     let touchpoints = 0;
     let minDelay = 999;
+    let totalDelayDays = 0;
     let hasZeroDelaySubsequent = false;
 
     function walk(nodes: SeqTreeNode[], isRoot: boolean) {
@@ -1421,7 +1422,8 @@ export function EISequenceTree({
                       n.type === 'send_inmail' || 
                       n.type === 'send_voice_note';
         if (isMsg) touchpoints++;
-        const delay = n.data?.delay !== undefined ? Number(n.data.delay) : 1;
+        const delay = n.data?.delay !== undefined ? Number(n.data.delay) : 0;
+        totalDelayDays += delay;
         if (!isRoot) {
           if (delay < minDelay) minDelay = delay;
           if (delay < 1) hasZeroDelaySubsequent = true;
@@ -1439,6 +1441,7 @@ export function EISequenceTree({
     return {
       nodeCount,
       touchpoints,
+      totalDelayDays,
       minDelay: minDelay === 999 ? 0 : minDelay,
       hasZeroDelaySubsequent,
       errorCount,
@@ -1978,7 +1981,7 @@ export function EISequenceTree({
 
         {/* Safety & Health Radar */}
         {sequenceStats.nodeCount > 0 && (
-          <div className="flex items-center">
+          <div className="flex items-center gap-2">
             {sequenceStats.isFullySafe ? (
               <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold shadow-sm">
                 <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
@@ -1995,6 +1998,13 @@ export function EISequenceTree({
               <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-semibold shadow-sm">
                 <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
                 <span>{sequenceStats.warningCount} Optimization Notice{sequenceStats.warningCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+
+            {sequenceStats.totalDelayDays > 0 && (
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border text-xs font-medium text-muted-foreground shadow-sm">
+                <Clock size={13} className="text-primary" />
+                <span>{sequenceStats.totalDelayDays}d Cadence</span>
               </div>
             )}
           </div>
