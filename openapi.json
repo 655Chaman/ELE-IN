@@ -9133,7 +9133,7 @@
           "elein"
         ],
         "summary": "Pause Lead Execution",
-        "description": "Pauses all active campaign executions for a single lead.\n(Used by manual UI pause)",
+        "description": "Pauses active campaign executions for a single lead, optionally scoped to a campaign.\n(Used by manual UI pause)",
         "operationId": "pause_lead_execution_api_elein_leads__lead_id__pause_post",
         "parameters": [
           {
@@ -9143,6 +9143,22 @@
             "schema": {
               "type": "string",
               "title": "Lead Id"
+            }
+          },
+          {
+            "name": "campaign_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
             }
           }
         ],

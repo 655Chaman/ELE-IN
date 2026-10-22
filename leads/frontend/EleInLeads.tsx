@@ -84,6 +84,20 @@ export function EleInLeads() {
   const [listToDelete, setListToDelete] = useState<LeadList | null>(null)
   const [enrollListTarget, setEnrollListTarget] = useState<LeadList | null>(null)
 
+  // Paranoia Layer 1 & 2: Flush drawer and selection states on workspace transition
+  const prevWorkspaceRef = useRef<string | null>(activeWorkspaceId)
+  useEffect(() => {
+    if (prevWorkspaceRef.current !== activeWorkspaceId) {
+      prevWorkspaceRef.current = activeWorkspaceId
+      setSelectedList(null)
+      setListToDelete(null)
+      setEnrollListTarget(null)
+      setActiveStudio(null)
+      setSegmentationListId(undefined)
+      setSearch("")
+    }
+  }, [activeWorkspaceId])
+
   const prevListsRef = useRef<Map<string, LeadList>>(new Map())
   const errorShownRef = useRef<Set<string>>(new Set())
   

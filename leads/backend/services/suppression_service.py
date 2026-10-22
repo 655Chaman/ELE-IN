@@ -497,7 +497,7 @@ def check_lead_suppression(
     except Exception as e:
         logger.warning(f"[SuppressionCheck] Targeted suppression query failed: {e}")
         err_msg = str(e)
-        if "PGRST205" in err_msg or "schema cache" in err_msg or "FailingTableMock" in err_msg or "has no attribute 'or_'" in err_msg or "has no attribute 'select'" in err_msg:
+        if "FailingTableMock" in err_msg or "has no attribute 'or_'" in err_msg or "has no attribute 'select'" in err_msg:
             return {"suppressed": False, "matched_by": None, "matched_value": None, "reason": None}
         return {
             "suppressed": True,

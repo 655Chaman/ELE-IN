@@ -440,17 +440,23 @@ def evaluate_lead_condition(lead_attrs: Dict[str, Any], condition: Dict[str, Any
         return _normalize_condition_expected_item(raw_field, actual_val) != _normalize_condition_expected_item(raw_field, expected_val)
 
     # 4. Substring / String contains
+    exp_str = str(expected_val or "").strip().lower()
+    if not exp_str:
+        return False  # Paranoia Layer 1 & 2: Empty substring target must never match all leads or invert logic
+
+    act_str = str(actual_val or "").strip().lower()
+
     if raw_op == "contains":
-        return str(expected_val or "").strip().lower() in str(actual_val or "").strip().lower()
+        return exp_str in act_str
 
     if raw_op == "not_contains":
-        return str(expected_val or "").strip().lower() not in str(actual_val or "").strip().lower()
+        return exp_str not in act_str
 
     if raw_op == "starts_with":
-        return str(actual_val or "").strip().lower().startswith(str(expected_val or "").strip().lower())
+        return act_str.startswith(exp_str)
 
     if raw_op == "ends_with":
-        return str(actual_val or "").strip().lower().endswith(str(expected_val or "").strip().lower())
+        return act_str.endswith(exp_str)
 
     return False
 
@@ -769,8 +775,9 @@ def sync_dynamic_segment_members(
                 if len(batch) < 1000:
                     break
                 start += 1000
-            except Exception:
-                break
+            except Exception as page_err:
+                logger.error(f"[LeadSegmentation] Pagination failed at offset {start}: {page_err}")
+                raise RuntimeError(f"Dynamic segment sync aborted: pagination failed at offset {start}. Retaining existing membership to prevent audience truncation purge.")
 
     # 3. Evaluate rules
     matching_leads = filter_leads_in_memory(all_leads, rules)
@@ -973,7 +980,8 @@ def sync_dynamic_segment_members(
                     workspace_id=clean_ws,
                     client=supabase,
                     status_override="paused",
-                    error_reason_override="Disqualified from dynamic segment"
+                    error_reason_override="Disqualified from dynamic segment",
+                    campaign_id=auto_enroll_campaign_id
                 )
                 if pause_res.get("paused_count", 0) > 0:
                     paused_count += pause_res["paused_count"]

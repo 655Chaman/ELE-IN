@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { motion } from "motion/react"
 import { toast } from "sonner"
 import { X, ChevronRight, ArrowLeft, FileSpreadsheet, Compass, Link2, Search, Lock, Loader2, Sparkles } from "lucide-react"
@@ -37,6 +37,15 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
   const isPro = billing?.tier === 'PRO' || billing?.tier === 'ENTERPRISE';
 
   const isUploading = isSubmitting;
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Escape key dismiss handler with nested step unwinding
   useEffect(() => {
@@ -59,6 +68,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
   }, [isUploading, method, step, onClose, setStep, setMethod]);
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (!name.trim()) { toast.error("Please enter a list name"); return; }
     
     // Validate targetTimezone for methods that require it (all except hubspot)
@@ -117,7 +127,12 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         formData.append("target_region_label", regionLabel)
         formData.append("mappings", JSON.stringify(mappings))
         formData.append("clean_data", String(cleanData))
-        const res = await fetchWithAuth("/api/elein/leads/upload_csv", { method: "POST", body: formData })
+        abortControllerRef.current = new AbortController()
+        const res = await fetchWithAuth("/api/elein/leads/upload_csv", { 
+          method: "POST", 
+          body: formData,
+          signal: abortControllerRef.current.signal
+        })
         if (!res.ok) {
           let errDetail = "Failed to upload CSV";
           try {

@@ -110,13 +110,15 @@ class DataHygieneService:
         # If title removal emptied the name, fallback to raw_str
         final_candidate = without_titles if without_titles else raw_str
         if not final_candidate:
-            return raw_str
+            return DataHygieneService.sanitize_text(raw_str)
 
         # Format casing
         final_candidate = DataHygieneService._format_name_casing(final_candidate)
 
-        # Paranoia Layer 1 & 2 (B1-F09): Strip leading/trailing single/double quotes and hyphens so formula protection or CSV escaping does not leak into names
+        # Paranoia Layer 1 & 2 (B1-F09): Strip leading/trailing single/double quotes and hyphens so CSV escaping does not leak into names
         final_candidate = final_candidate.strip().strip("'\"-").strip()
+        if final_candidate.startswith(('=', '@', '\t', '\r')):
+            final_candidate = "'" + final_candidate
 
         return final_candidate
 
@@ -217,7 +219,10 @@ class DataHygieneService:
 
         # Fallback: If stripping leaves empty string or single letter (except 'X'), fallback to original trimmed company string
         if not cleaned or (len(cleaned) <= 1 and cleaned.upper() != "X") or cleaned.lower() in ["the", "a", "an"]:
-            return re.sub(r"\s+", " ", raw_str).strip()
+            fallback = re.sub(r"\s+", " ", raw_str).strip().strip("'\"-").strip()
+            if fallback.startswith(('=', '@', '\t', '\r')):
+                fallback = "'" + fallback
+            return fallback
 
         # Fix ALL CAPS for names > 4 letters (e.g. "APPLE, INC." -> "Apple"), while preserving short legitimate acronyms ("IBM", "AWS", "SAP", "BMW", "HP", "GMC")
         if cleaned.isupper():
@@ -232,8 +237,11 @@ class DataHygieneService:
             else:
                 cleaned = cleaned.title()
 
-        # Paranoia Layer 1 & 2 (B1-F09): Strip leading/trailing quotes and hyphens so formula defense never leaks into company tokens
-        return cleaned.strip().strip("'\"-").strip()
+        # Paranoia Layer 1 & 2 (B1-F09): Strip leading/trailing quotes and hyphens so CSV escaping does not leak into company tokens
+        final_company = cleaned.strip().strip("'\"-").strip()
+        if final_company.startswith(('=', '@', '\t', '\r')):
+            final_company = "'" + final_company
+        return final_company
 
     @staticmethod
     def is_search_url(url: Any) -> bool:

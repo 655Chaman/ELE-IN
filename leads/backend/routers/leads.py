@@ -320,18 +320,22 @@ async def remove_lead_from_list(
         # Delete membership
         await supabase.table("list_members").delete().eq("list_id", list_id).eq("opportunity_id", lead_id).execute()
 
-        # Layer 1 Paranoia: Pause any in-flight execution states for this lead
+        # Layer 1 Paranoia: Pause any in-flight execution states for this lead scoped to campaigns using this list
         try:
             from campaigns.backend.routers.elein import _pause_lead_execution_core
             from core.backend.api.auth_dep import get_service_client
             sync_client = get_service_client()
-            _pause_lead_execution_core(
-                lead_id=lead_id,
-                workspace_id=workspace_id,
-                client=sync_client,
-                status_override="paused",
-                error_reason_override=f"Lead removed from source list {list_id}"
-            )
+            linked_camps = await supabase.table("campaigns").select("id").eq("workspace_id", workspace_id).eq("lead_list_id", list_id).execute()
+            camp_ids = [c["id"] for c in (linked_camps.data or []) if c.get("id")]
+            for cid in camp_ids:
+                _pause_lead_execution_core(
+                    lead_id=lead_id,
+                    workspace_id=workspace_id,
+                    client=sync_client,
+                    status_override="paused",
+                    error_reason_override=f"Lead removed from source list {list_id}",
+                    campaign_id=cid
+                )
         except Exception as pause_err:
             import logging
             logging.getLogger(__name__).warning(f"Failed to auto-pause lead {lead_id} on list removal: {pause_err}")
@@ -377,22 +381,27 @@ async def bulk_remove_leads_from_list(
             await supabase.table("list_members").delete().eq("list_id", list_id).in_("opportunity_id", chunk).execute()
             removed_count += len(chunk)
 
-        # Layer 1 Paranoia: Auto-pause any in-flight campaign execution states for bulk removed leads
+        # Layer 1 Paranoia: Auto-pause in-flight execution states scoped to campaigns bound to this list
         try:
             from campaigns.backend.routers.elein import _pause_lead_execution_core
             from core.backend.api.auth_dep import get_service_client
             sync_client = get_service_client()
-            for lid in clean_ids:
-                try:
-                    _pause_lead_execution_core(
-                        lead_id=lid,
-                        workspace_id=workspace_id,
-                        client=sync_client,
-                        status_override="paused",
-                        error_reason_override=f"Lead bulk-removed from source list {list_id}"
-                    )
-                except Exception:
-                    pass
+            linked_camps = await supabase.table("campaigns").select("id").eq("workspace_id", workspace_id).eq("lead_list_id", list_id).execute()
+            camp_ids = [c["id"] for c in (linked_camps.data or []) if c.get("id")]
+            if camp_ids:
+                for lid in clean_ids:
+                    for cid in camp_ids:
+                        try:
+                            _pause_lead_execution_core(
+                                lead_id=lid,
+                                workspace_id=workspace_id,
+                                client=sync_client,
+                                status_override="paused",
+                                error_reason_override=f"Lead bulk-removed from source list {list_id}",
+                                campaign_id=cid
+                            )
+                        except Exception:
+                            pass
         except Exception as pause_batch_err:
             import logging
             logging.getLogger(__name__).warning(f"Failed to auto-pause leads on bulk list removal: {pause_batch_err}")
@@ -428,46 +437,25 @@ async def delete_lead_list_async(
             raise HTTPException(status_code=404, detail="Lead list not found or unauthorized.")
         list_name = list_res.data[0].get("name", "Untitled List")
 
-        # Check both top-level column and metadata fallback for active, running, or scheduled campaigns (Paranoia Layer 1)
-        active_camps = await supabase.table("campaigns") \
+        # Check all non-archived campaigns linked to this list (Paranoia Layer 1 & 2)
+        camps_res = await supabase.table("campaigns") \
             .select("id, name, status, lead_list_id, metadata") \
             .eq("workspace_id", workspace_id) \
-            .eq("status", "ACTIVE") \
-            .eq("lead_list_id", list_id) \
             .execute()
-        blocking_camps = list(active_camps.data or [])
-        if not blocking_camps:
-            try:
-                active_statuses = ["RUNNING", "SCHEDULED", "running", "scheduled", "ACTIVE", "active"]
-                other_camps = await supabase.table("campaigns") \
-                    .select("id, name, status, lead_list_id, metadata") \
-                    .eq("workspace_id", workspace_id) \
-                    .in_("status", active_statuses) \
-                    .eq("lead_list_id", list_id) \
-                    .execute()
-                blocking_camps = list(other_camps.data or [])
-            except Exception:
-                pass
-
-        if not blocking_camps:
-            try:
-                meta_camps = await supabase.table("campaigns") \
-                    .select("id, name, status, metadata") \
-                    .eq("workspace_id", workspace_id) \
-                    .eq("status", "ACTIVE") \
-                    .execute()
-                blocking_camps = [
-                    c for c in (meta_camps.data or [])
-                    if str((c.get("metadata") or {}).get("lead_list_id")) == str(list_id)
-                ]
-            except Exception:
-                pass
+        all_camps = camps_res.data or []
+        blocking_camps = [
+            c for c in all_camps 
+            if (str(c.get("lead_list_id")) == str(list_id) or str((c.get("metadata") or {}).get("lead_list_id")) == str(list_id))
+            and str(c.get("status", "")).upper() not in ["ARCHIVED", "DELETED", "COMPLETED"]
+        ]
 
         if blocking_camps:
-            camp_name = blocking_camps[0].get("name", "Active Campaign")
+            first_camp = blocking_camps[0]
+            camp_name = first_camp.get("name", "Campaign")
+            camp_status = first_camp.get("status", "ACTIVE")
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot delete list '{list_name}': It is currently being used by active campaign '{camp_name}'. Please pause the campaign before deleting this list."
+                detail=f"Cannot delete list '{list_name}': It is linked to campaign '{camp_name}' (status: {camp_status}). Please unassign this list from the campaign or archive the campaign before deleting."
             )
 
         try:
@@ -564,12 +552,13 @@ def batch_scan_social_radar_endpoint(
     Batch scans leads in a target list for live LinkedIn activity and buying intent signals.
     """
     from leads.backend.services.social_radar_service import batch_scan_list_social_signals
+    safe_max_leads = min(max(1, payload.max_leads or 20), 25)
     try:
         result = batch_scan_list_social_signals(
             list_id=payload.list_id,
             workspace_id=workspace_id,
             supabase=supabase,
-            max_leads=payload.max_leads,
+            max_leads=safe_max_leads,
             force_refresh=payload.force_refresh
         )
         return result

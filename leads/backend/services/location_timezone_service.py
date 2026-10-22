@@ -33,7 +33,8 @@ POISON_LOCATIONS = {
     "hybrid", "flexible", "tbd", "unspecified", "internet", "online",
     "cyberspace", "na", "n.a.", "not specified", "undisclosed", "any",
     "everywhere", "distributed", "remote only", "fully remote", "remote - any",
-    "work from anywhere", "wfa"
+    "work from anywhere", "wfa", "global remote", "remote worldwide", "worldwide remote",
+    "remote global", "remote - us", "remote us", "remote, us", "remote usa", "remote - usa"
 }
 
 # Common legacy/abbreviated timezone aliases mapped to standard IANA
@@ -1377,6 +1378,8 @@ class LocationTimezoneService:
                         valid_cached = cls.validate_iana_timezone(row["iana_timezone"])
                         if valid_cached:
                             return valid_cached
+                    elif row.get("resolution_status") == "unresolved":
+                        return None
             except Exception as cache_read_err:
                 logger.debug(f"location_timezone_cache read failed: {cache_read_err}")
 

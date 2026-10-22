@@ -880,6 +880,26 @@ def upload_csv(
     if not resolved_name:
         raise HTTPException(status_code=400, detail="List name is required.")
 
+    # Paranoia Layer 1 & 2: Check workspace tier lead storage quota
+    if workspace_id:
+        try:
+            from core.backend.services.credit_service import TIER_LIMITS
+            ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).single().execute()
+            ws_tier = ws_res.data.get("tier", "FREE") if ws_res.data else "FREE"
+            tier_caps = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
+            max_allowed = tier_caps.get("max_stored_leads", 2500)
+            cnt_res = supabase.table("leads").select("id", count="exact").eq("workspace_id", workspace_id).limit(1).execute()
+            current_leads = getattr(cnt_res, "count", 0) or 0
+            if current_leads >= max_allowed:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace lead limit reached ({current_leads}/{max_allowed} leads for {ws_tier} tier). Please upgrade to import more prospects."
+                )
+        except HTTPException:
+            raise
+        except Exception as quota_err:
+            logger.warning(f"upload_csv: lead quota check advisory bypass: {quota_err}")
+
     # Paranoia Layer 1: Check credit balance if data hygiene was selected
     is_clean = clean_data if isinstance(clean_data, bool) else False
     if is_clean and workspace_id:
@@ -966,14 +986,24 @@ def upload_csv(
         logger.warning(f"upload_csv: lead_lists insert warning ({e}); registered in-memory for zero-migration resilience")
 
     # Hand off the temp file path to background worker
-    enqueue_job(supabase, 'csv', workspace_id, list_id, {
-        'list_id': list_id, 
-        'temp_file': temp_file.name, 
-        'mapping_dict': mapping_dict, 
-        'clean_data': clean_data,
-        'target_timezone': target_timezone or "UTC",
-        'collision_policy': collision_policy or "merge"
-    })
+    try:
+        enqueue_res = enqueue_job(supabase, 'csv', workspace_id, list_id, {
+            'list_id': list_id, 
+            'temp_file': temp_file.name, 
+            'mapping_dict': mapping_dict, 
+            'clean_data': clean_data,
+            'target_timezone': target_timezone or "UTC",
+            'collision_policy': collision_policy or "merge"
+        })
+        if not enqueue_res:
+            logger.warning(f"upload_csv: enqueue_job returned None for list {list_id}")
+    except Exception as job_err:
+        if os.path.exists(temp_file.name):
+            try:
+                os.remove(temp_file.name)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue CSV import job: {job_err}")
 
     log_audit(supabase, workspace_id, user_id, "lead_list.imported", "lead_list", list_id)
 
@@ -1021,6 +1051,26 @@ def upload_urls(
                 status_code=400,
                 detail="No valid LinkedIn personal profile URLs found. Please check your URLs and ensure they point to profiles (e.g. linkedin.com/in/username)."
             )
+
+        # Paranoia Layer 1 & 2: Check workspace tier lead storage quota
+        if workspace_id:
+            try:
+                from core.backend.services.credit_service import TIER_LIMITS
+                ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).single().execute()
+                ws_tier = ws_res.data.get("tier", "FREE") if ws_res.data else "FREE"
+                tier_caps = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
+                max_allowed = tier_caps.get("max_stored_leads", 2500)
+                cnt_res = supabase.table("leads").select("id", count="exact").eq("workspace_id", workspace_id).limit(1).execute()
+                current_leads = getattr(cnt_res, "count", 0) or 0
+                if current_leads + len(leads_to_insert) > max_allowed:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Workspace lead limit exceeded ({current_leads + len(leads_to_insert)}/{max_allowed} leads for {ws_tier} tier). Please upgrade to import more prospects."
+                    )
+            except HTTPException:
+                raise
+            except Exception as quota_err:
+                logger.warning(f"upload_urls: lead quota check advisory bypass: {quota_err}")
 
         list_record = {
             "id": list_id,
@@ -4931,16 +4981,22 @@ def _pause_lead_execution_core(
     workspace_id: str,
     client: Client,
     status_override: str = "paused",
-    error_reason_override: str = None
+    error_reason_override: str = None,
+    campaign_id: str = None
 ):
     """
     Core internal logic for pausing/exiting a lead's execution states.
+    Supports optional campaign_id scoping to prevent cross-campaign blast radiuses.
     """
-    enr_res = client.table("campaign_enrollments") \
+    query = client.table("campaign_enrollments") \
         .select("id") \
         .eq("lead_id", lead_id) \
-        .eq("workspace_id", workspace_id) \
-        .execute()
+        .eq("workspace_id", workspace_id)
+
+    if campaign_id:
+        query = query.eq("campaign_id", campaign_id)
+
+    enr_res = query.execute()
         
     if not enr_res.data:
         return {"status": "success", "paused_count": 0}
@@ -4968,14 +5024,21 @@ def _pause_lead_execution_core(
 @router.post("/leads/{lead_id}/pause", response_model=dict)
 def pause_lead_execution(
     lead_id: str,
+    campaign_id: Optional[str] = Query(None),
     workspace_id: str = Depends(get_current_workspace),
     client: Client = Depends(get_supabase_client)
 ):
     """
-    Pauses all active campaign executions for a single lead.
+    Pauses active campaign executions for a single lead, optionally scoped to a campaign.
     (Used by manual UI pause)
     """
-    return _pause_lead_execution_core(lead_id, workspace_id, client)
+    return _pause_lead_execution_core(
+        lead_id=lead_id,
+        workspace_id=workspace_id,
+        client=client,
+        status_override="paused",
+        campaign_id=campaign_id
+    )
 
 @router.get("/campaigns/{campaign_id}/preflight", response_model=dict)
 def get_campaign_preflight(

@@ -243,16 +243,21 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
       })
       if (!res.ok) {
         // Fallback for backward compatibility
-        await Promise.all(
+        const fallbackRes = await Promise.all(
           idsToRemove.slice(0, 20).map(id => fetchWithAuth(`/api/leads/lists/${list.id}/leads/${id}`, { method: 'DELETE' }))
         )
+        const anySuccess = fallbackRes.some(r => r.ok)
+        if (!anySuccess) {
+          throw new Error('Server rejected batch lead removal.')
+        }
       }
       setSelectedIds(new Set())
       mutateLists()
+      mutate()
       toast.success(`Removed ${idsToRemove.length} leads from "${list.name}"`)
       setShowConfirmDelete(false)
     } catch (e: any) {
-      friendlyToast('Failed to remove some leads — please refresh.', e)
+      friendlyToast('Failed to remove leads — rolling back changes.', e)
       mutate()
     } finally {
       setIsBatchRemoving(false)
@@ -364,7 +369,11 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
               ) : (
                 <>
                   <Square size={14} />
-                  <span>Select All ({filteredLeads.length})</span>
+                  <span>
+                    {totalCount > leadList.length
+                      ? `Select Loaded (${filteredLeads.length})`
+                      : `Select All (${filteredLeads.length})`}
+                  </span>
                 </>
               )}
             </button>
