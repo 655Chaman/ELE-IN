@@ -3397,6 +3397,14 @@ END $$;
 DROP TRIGGER IF EXISTS action_log_increment_daily_usage ON public.action_log;
 
 -- FLAW-DB-13: campaign_leads compatibility view with enrolled_at mapping
+-- Ensure created_at, updated_at, and enrolled_at exist defensively on campaign_enrollments
+ALTER TABLE public.campaign_enrollments 
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.campaign_enrollments 
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.campaign_enrollments 
+    ADD COLUMN IF NOT EXISTS enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE OR REPLACE VIEW public.campaign_leads AS
 SELECT 
     id,
@@ -3404,9 +3412,9 @@ SELECT
     lead_id,
     status,
     account_id,
-    created_at,
-    created_at AS enrolled_at,
-    updated_at
+    COALESCE(created_at, enrolled_at, NOW()) AS created_at,
+    COALESCE(enrolled_at, created_at, NOW()) AS enrolled_at,
+    COALESCE(updated_at, created_at, NOW()) AS updated_at
 FROM public.campaign_enrollments;
 
 -- ----------------------------------------------------------------------------
