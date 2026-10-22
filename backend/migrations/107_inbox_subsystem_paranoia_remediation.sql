@@ -25,6 +25,12 @@ BEGIN
         ALTER TABLE public.approval_queue ADD COLUMN campaign_id UUID;
     END IF;
 
+    -- Cleanse orphaned campaign_id references before adding constraint
+    UPDATE public.approval_queue 
+    SET campaign_id = NULL 
+    WHERE campaign_id IS NOT NULL 
+      AND campaign_id NOT IN (SELECT id FROM public.campaigns);
+
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_campaign') THEN
         ALTER TABLE public.approval_queue 
             ADD CONSTRAINT fk_approval_queue_campaign FOREIGN KEY (campaign_id) 
@@ -39,6 +45,12 @@ BEGIN
         ALTER TABLE public.approval_queue ADD COLUMN enrollment_id UUID;
     END IF;
 
+    -- Cleanse orphaned enrollment_id references before adding constraint
+    UPDATE public.approval_queue 
+    SET enrollment_id = NULL 
+    WHERE enrollment_id IS NOT NULL 
+      AND enrollment_id NOT IN (SELECT id FROM public.campaign_enrollments);
+
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_enrollment') THEN
         ALTER TABLE public.approval_queue 
             ADD CONSTRAINT fk_approval_queue_enrollment FOREIGN KEY (enrollment_id) 
@@ -52,6 +64,12 @@ BEGIN
     ) THEN
         ALTER TABLE public.approval_queue ADD COLUMN node_id UUID;
     END IF;
+
+    -- Cleanse orphaned node_id references before adding constraint
+    UPDATE public.approval_queue 
+    SET node_id = NULL 
+    WHERE node_id IS NOT NULL 
+      AND node_id NOT IN (SELECT id FROM public.campaign_nodes);
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approval_queue_node') THEN
         ALTER TABLE public.approval_queue 
@@ -110,6 +128,10 @@ CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
+    -- Cleanse orphaned lead_objections references before adding constraint
+    DELETE FROM public.lead_objections 
+    WHERE workspace_id NOT IN (SELECT id FROM public.workspaces);
+
     -- Foreign key: lead_objections -> workspaces
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_lead_objections_workspace') THEN
         ALTER TABLE public.lead_objections 
@@ -117,12 +139,22 @@ BEGIN
             REFERENCES public.workspaces(id) ON DELETE CASCADE;
     END IF;
 
+    -- Cleanse orphaned notifications workspace references before adding constraint
+    DELETE FROM public.notifications 
+    WHERE workspace_id NOT IN (SELECT id FROM public.workspaces);
+
     -- Foreign key: notifications -> workspaces
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_notifications_workspace') THEN
         ALTER TABLE public.notifications 
             ADD CONSTRAINT fk_notifications_workspace FOREIGN KEY (workspace_id) 
             REFERENCES public.workspaces(id) ON DELETE CASCADE;
     END IF;
+
+    -- Cleanse orphaned outbox_event_id references in notifications before adding constraint
+    UPDATE public.notifications 
+    SET outbox_event_id = NULL 
+    WHERE outbox_event_id IS NOT NULL 
+      AND outbox_event_id NOT IN (SELECT id FROM public.outbox_events);
 
     -- Foreign key: notifications -> outbox_events
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_notifications_outbox_event') THEN
