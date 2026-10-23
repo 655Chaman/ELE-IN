@@ -54,7 +54,56 @@ interface CampaignBlueprintModalProps {
   preloadedBlueprint?: EleInBlueprint | null
 }
 
-export function CampaignBlueprintModal({
+class BlueprintModalErrorBoundary extends React.Component<
+  { children: React.ReactNode; onClose: () => void },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode; onClose: () => void }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("[BlueprintModalErrorBoundary] Safely caught modal error:", error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+              <AlertTriangle size={24} />
+            </div>
+            <h3 className="text-base font-bold text-foreground">Blueprint Studio Recovered</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              An unexpected format issue was safely isolated to protect your sequence canvas from crashing.
+            </p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  this.setState({ hasError: false, error: null })
+                  this.props.onClose()
+                }}
+                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
+              >
+                Close Studio
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function CampaignBlueprintModalContent({
   isOpen,
   onClose,
   initialTab = "gallery",
@@ -412,22 +461,27 @@ export function CampaignBlueprintModal({
 
   // Filter gallery items
   const allGalleryItems = useMemo(() => {
-    if (galleryFilter === "cloud") return cloudBlueprints
-    if (galleryFilter === "saved") return savedBlueprints
-    if (galleryFilter === "all") return [...CURATED_BLUEPRINTS, ...cloudBlueprints, ...savedBlueprints]
-    return [...CURATED_BLUEPRINTS, ...cloudBlueprints, ...savedBlueprints].filter(bp =>
-      bp.metadata.tags?.includes(galleryFilter)
+    const curated = Array.isArray(CURATED_BLUEPRINTS) ? CURATED_BLUEPRINTS : []
+    const cloud = Array.isArray(cloudBlueprints) ? cloudBlueprints : []
+    const saved = Array.isArray(savedBlueprints) ? savedBlueprints : []
+
+    if (galleryFilter === "cloud") return cloud
+    if (galleryFilter === "saved") return saved
+    if (galleryFilter === "all") return [...curated, ...cloud, ...saved]
+    return [...curated, ...cloud, ...saved].filter(bp =>
+      Array.isArray(bp?.metadata?.tags) && bp.metadata.tags.includes(galleryFilter)
     )
   }, [galleryFilter, savedBlueprints, cloudBlueprints])
 
   const filteredGalleryItems = useMemo(() => {
     if (!gallerySearch.trim()) return allGalleryItems
     const q = gallerySearch.toLowerCase().trim()
-    return allGalleryItems.filter(bp =>
-      bp.metadata.name.toLowerCase().includes(q) ||
-      (bp.metadata.description && bp.metadata.description.toLowerCase().includes(q)) ||
-      (bp.metadata.branding?.agencyName && bp.metadata.branding.agencyName.toLowerCase().includes(q))
-    )
+    return allGalleryItems.filter(bp => {
+      const name = String(bp?.metadata?.name || "").toLowerCase()
+      const desc = String(bp?.metadata?.description || "").toLowerCase()
+      const agency = String(bp?.metadata?.branding?.agencyName || "").toLowerCase()
+      return name.includes(q) || desc.includes(q) || agency.includes(q)
+    })
   }, [allGalleryItems, gallerySearch])
 
   // Channels required by imported blueprint
@@ -618,14 +672,17 @@ export function CampaignBlueprintModal({
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredGalleryItems.map(bp => {
-                    const stats = bp.metadata.stats || calculateBlueprintStats(bp.sequence.rootNodes, bp.sequence.stickyNotes)
-                    const accent = bp.metadata.branding?.accentColor || "#6366f1"
-                    const isCloudSynced = Boolean(bp.metadata.id)
-                    const isUserSaved = savedBlueprints.some(sb => sb.metadata.name === bp.metadata.name)
+                    const safeRoots = bp?.sequence?.rootNodes || []
+                    const safeNotes = bp?.sequence?.stickyNotes || []
+                    const stats = bp?.metadata?.stats || calculateBlueprintStats(safeRoots, safeNotes)
+                    const accent = bp?.metadata?.branding?.accentColor || "#6366f1"
+                    const isCloudSynced = Boolean(bp?.metadata?.id)
+                    const isUserSaved = savedBlueprints.some(sb => (sb?.metadata?.name || "") === (bp?.metadata?.name || ""))
+                    const bpName = bp?.metadata?.name || "Untitled Blueprint"
 
                     return (
                       <div
-                        key={bp.metadata.name}
+                        key={bpName}
                         className="rounded-xl border p-4 flex flex-col justify-between gap-3 bg-card/70 hover:border-primary/50 transition-all relative overflow-hidden group shadow-2xs"
                         style={{ borderColor: `${accent}30` }}
                       >
@@ -642,7 +699,7 @@ export function CampaignBlueprintModal({
                                 className="px-2 py-0.5 rounded text-[10px] font-bold text-white shadow-2xs truncate"
                                 style={{ backgroundColor: accent }}
                               >
-                                {bp.metadata.branding?.agencyName || "Curated Blueprint"}
+                                {bp?.metadata?.branding?.agencyName || "Curated Blueprint"}
                               </span>
                               {isCloudSynced && (
                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-primary/10 text-primary border border-primary/20 flex items-center gap-0.5 shrink-0">
@@ -652,14 +709,14 @@ export function CampaignBlueprintModal({
                               )}
                             </div>
                             <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                              {bp.metadata.version || "v1.0.0"}
+                              {bp?.metadata?.version || "v1.0.0"}
                             </span>
                           </div>
 
                           <h4 className="text-sm font-bold text-foreground mt-2 line-clamp-1">
-                            {bp.metadata.name}
+                            {bpName}
                           </h4>
-                          {bp.metadata.description && (
+                          {bp?.metadata?.description && (
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
                               {bp.metadata.description}
                             </p>
@@ -669,23 +726,23 @@ export function CampaignBlueprintModal({
                         {/* Metrics summary */}
                         <div className="grid grid-cols-3 gap-1.5 py-2 border-y border-border/50 text-center">
                           <div className="bg-muted/40 p-1.5 rounded-md">
-                            <div className="text-xs font-bold text-foreground">{stats.nodeCount}</div>
+                            <div className="text-xs font-bold text-foreground">{stats?.nodeCount ?? 0}</div>
                             <div className="text-[9px] text-muted-foreground">Steps</div>
                           </div>
                           <div className="bg-muted/40 p-1.5 rounded-md">
-                            <div className="text-xs font-bold text-foreground">{stats.conditionCount}</div>
+                            <div className="text-xs font-bold text-foreground">{stats?.conditionCount ?? 0}</div>
                             <div className="text-[9px] text-muted-foreground">Branches</div>
                           </div>
                           <div className="bg-muted/40 p-1.5 rounded-md">
-                            <div className="text-xs font-bold text-foreground">{stats.delayDaysTotal}d</div>
+                            <div className="text-xs font-bold text-foreground">{stats?.delayDaysTotal ?? 0}d</div>
                             <div className="text-[9px] text-muted-foreground">Cadence</div>
                           </div>
                         </div>
 
                         {/* Variables pills */}
-                        {stats.requiredVariables.length > 0 && (
+                        {(stats?.requiredVariables || []).length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {stats.requiredVariables.slice(0, 3).map(v => (
+                            {(stats?.requiredVariables || []).slice(0, 3).map(v => (
                               <span
                                 key={v}
                                 className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-muted text-muted-foreground border border-border"
@@ -693,9 +750,9 @@ export function CampaignBlueprintModal({
                                 {`{{${v}}}`}
                               </span>
                             ))}
-                            {stats.requiredVariables.length > 3 && (
+                            {(stats?.requiredVariables || []).length > 3 && (
                               <span className="text-[9px] text-muted-foreground font-mono">
-                                +{stats.requiredVariables.length - 3}
+                                +{(stats?.requiredVariables || []).length - 3}
                               </span>
                             )}
                           </div>
@@ -907,27 +964,27 @@ export function CampaignBlueprintModal({
                   {/* Stats Grid */}
                   <div className="grid grid-cols-3 gap-2 py-2 border-y border-border/60">
                     <div className="bg-muted/40 p-2 rounded-lg text-center">
-                      <div className="text-base font-bold text-foreground">{exportStats.nodeCount}</div>
+                      <div className="text-base font-bold text-foreground">{exportStats?.nodeCount ?? 0}</div>
                       <div className="text-[10px] text-muted-foreground font-medium">Total Steps</div>
                     </div>
                     <div className="bg-muted/40 p-2 rounded-lg text-center">
-                      <div className="text-base font-bold text-foreground">{exportStats.conditionCount}</div>
+                      <div className="text-base font-bold text-foreground">{exportStats?.conditionCount ?? 0}</div>
                       <div className="text-[10px] text-muted-foreground font-medium">Conditions</div>
                     </div>
                     <div className="bg-muted/40 p-2 rounded-lg text-center">
-                      <div className="text-base font-bold text-foreground">{exportStats.delayDaysTotal}d</div>
+                      <div className="text-base font-bold text-foreground">{exportStats?.delayDaysTotal ?? 0}d</div>
                       <div className="text-[10px] text-muted-foreground font-medium">Cadence Span</div>
                     </div>
                   </div>
 
                   {/* Required Variables */}
-                  {exportStats.requiredVariables.length > 0 && (
+                  {(exportStats?.requiredVariables || []).length > 0 && (
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground/80 tracking-wider">
                         Required Variables
                       </span>
                       <div className="flex flex-wrap gap-1">
-                        {exportStats.requiredVariables.map(v => (
+                        {(exportStats?.requiredVariables || []).map(v => (
                           <span
                             key={v}
                             className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted text-muted-foreground border border-border"
@@ -1180,25 +1237,25 @@ export function CampaignBlueprintModal({
                     <div className="grid grid-cols-4 gap-2 pt-2 border-t border-border/50 text-center">
                       <div className="bg-background/60 p-2 rounded-lg">
                         <div className="text-sm font-bold text-foreground">
-                          {validationResult.stats.nodeCount}
+                          {validationResult?.stats?.nodeCount ?? 0}
                         </div>
                         <div className="text-[10px] text-muted-foreground font-medium">Steps</div>
                       </div>
                       <div className="bg-background/60 p-2 rounded-lg">
                         <div className="text-sm font-bold text-foreground">
-                          {validationResult.stats.conditionCount}
+                          {validationResult?.stats?.conditionCount ?? 0}
                         </div>
                         <div className="text-[10px] text-muted-foreground font-medium">Branches</div>
                       </div>
                       <div className="bg-background/60 p-2 rounded-lg">
                         <div className="text-sm font-bold text-foreground">
-                          {validationResult.stats.delayDaysTotal}d
+                          {validationResult?.stats?.delayDaysTotal ?? 0}d
                         </div>
                         <div className="text-[10px] text-muted-foreground font-medium">Cadence</div>
                       </div>
                       <div className="bg-background/60 p-2 rounded-lg">
                         <div className="text-sm font-bold text-foreground">
-                          {validationResult.stats.stickyNotesCount}
+                          {validationResult?.stats?.stickyNotesCount ?? 0}
                         </div>
                         <div className="text-[10px] text-muted-foreground font-medium">Notes</div>
                       </div>
@@ -1450,7 +1507,7 @@ export function CampaignBlueprintModal({
                     className="mt-2 px-4 py-2 rounded-xl text-xs font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors cursor-pointer flex items-center gap-2"
                   >
                     <Camera size={14} />
-                    <span>Take First Snapshot ({exportStats.nodeCount} steps)</span>
+                    <span>Take First Snapshot ({exportStats?.nodeCount ?? 0} steps)</span>
                   </button>
                 </div>
               ) : (
@@ -1508,8 +1565,20 @@ export function CampaignBlueprintModal({
     </div>
   )
 
-  if (typeof document !== "undefined") {
-    return createPortal(modalContent, document.body)
-  }
   return modalContent
+}
+
+export function CampaignBlueprintModal(props: CampaignBlueprintModalProps) {
+  if (!props.isOpen) return null
+
+  const content = (
+    <BlueprintModalErrorBoundary onClose={props.onClose}>
+      <CampaignBlueprintModalContent {...props} />
+    </BlueprintModalErrorBoundary>
+  )
+
+  if (typeof document !== "undefined") {
+    return createPortal(content, document.body)
+  }
+  return content
 }

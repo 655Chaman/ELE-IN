@@ -1264,60 +1264,75 @@ export function EISequenceTree({
 
   // Direct 1-click export JSON (Universal format)
   const handleQuickExportJson = () => {
-    if (rootNodes.length === 0) {
-      toast.info("Sequence canvas is empty. Add steps to your sequence before exporting.")
-      return
-    }
-    const campaignName = formState?.campaignName || "Campaign Sequence"
-    const bp = exportBlueprint(rootNodes, stickyNotes, {
-      name: campaignName,
-      description: "Exported sequence blueprint",
-      version: "1.0.0"
-    }, { sanitize: true, includeStickyNotes: true })
+    try {
+      if (rootNodes.length === 0) {
+        toast.info("Sequence canvas is empty. Add steps to your sequence before exporting.")
+        setShowExportMenu(false)
+        return
+      }
+      const campaignName = formState?.campaignName || "Campaign Sequence"
+      const bp = exportBlueprint(rootNodes, stickyNotes, {
+        name: campaignName,
+        description: "Exported sequence blueprint",
+        version: "1.0.0"
+      }, { sanitize: true, includeStickyNotes: true })
 
-    downloadBlueprintFile(bp, `${campaignName}.json`, "json")
-    toast.success(`Exported "${campaignName}.json" (${rootNodes.length} steps)`)
-    setShowExportMenu(false)
+      downloadBlueprintFile(bp, `${campaignName}.json`, "json")
+      toast.success(`Exported "${campaignName}.json" (${rootNodes.length} steps)`)
+      setShowExportMenu(false)
+    } catch (err: any) {
+      toast.error("Failed to export sequence", { description: err.message || "An unexpected error occurred." })
+    }
   }
 
   // Direct 1-click export .elein (Native format)
   const handleQuickExportElein = () => {
-    if (rootNodes.length === 0) {
-      toast.info("Sequence canvas is empty. Add steps to your sequence before exporting.")
-      return
-    }
-    const campaignName = formState?.campaignName || "Campaign Sequence"
-    const bp = exportBlueprint(rootNodes, stickyNotes, {
-      name: campaignName,
-      description: "Exported sequence blueprint",
-      version: "1.0.0"
-    }, { sanitize: true, includeStickyNotes: true })
+    try {
+      if (rootNodes.length === 0) {
+        toast.info("Sequence canvas is empty. Add steps to your sequence before exporting.")
+        setShowExportMenu(false)
+        return
+      }
+      const campaignName = formState?.campaignName || "Campaign Sequence"
+      const bp = exportBlueprint(rootNodes, stickyNotes, {
+        name: campaignName,
+        description: "Exported sequence blueprint",
+        version: "1.0.0"
+      }, { sanitize: true, includeStickyNotes: true })
 
-    downloadBlueprintFile(bp, `${campaignName}.elein`, "elein")
-    toast.success(`Exported "${campaignName}.elein" (${rootNodes.length} steps)`)
-    setShowExportMenu(false)
+      downloadBlueprintFile(bp, `${campaignName}.elein`, "elein")
+      toast.success(`Exported "${campaignName}.elein" (${rootNodes.length} steps)`)
+      setShowExportMenu(false)
+    } catch (err: any) {
+      toast.error("Failed to export sequence", { description: err.message || "An unexpected error occurred." })
+    }
   }
 
   // Direct 1-click copy JSON to clipboard
   const handleQuickCopyJson = async () => {
-    if (rootNodes.length === 0) {
-      toast.info("Sequence canvas is empty.")
-      return
-    }
-    const campaignName = formState?.campaignName || "Campaign Sequence"
-    const bp = exportBlueprint(rootNodes, stickyNotes, {
-      name: campaignName,
-      description: "Exported sequence blueprint",
-      version: "1.0.0"
-    }, { sanitize: true, includeStickyNotes: true })
+    try {
+      if (rootNodes.length === 0) {
+        toast.info("Sequence canvas is empty.")
+        setShowExportMenu(false)
+        return
+      }
+      const campaignName = formState?.campaignName || "Campaign Sequence"
+      const bp = exportBlueprint(rootNodes, stickyNotes, {
+        name: campaignName,
+        description: "Exported sequence blueprint",
+        version: "1.0.0"
+      }, { sanitize: true, includeStickyNotes: true })
 
-    const ok = await copyBlueprintToClipboard(bp)
-    if (ok) {
-      toast.success("Copied sequence blueprint JSON to clipboard!")
-    } else {
-      toast.error("Failed to copy JSON to clipboard")
+      const ok = await copyBlueprintToClipboard(bp)
+      if (ok) {
+        toast.success("Copied sequence blueprint JSON to clipboard!")
+      } else {
+        toast.error("Failed to copy JSON to clipboard")
+      }
+      setShowExportMenu(false)
+    } catch (err: any) {
+      toast.error("Failed to copy sequence", { description: err.message || "An unexpected error occurred." })
     }
-    setShowExportMenu(false)
   }
 
   // Direct 1-click file selector import (Zero modal friction)
@@ -2118,20 +2133,8 @@ export function EISequenceTree({
                   >
                     <Download size={13} className="text-primary shrink-0" />
                     <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Download .json</span>
-                      <span className="text-[10px] text-muted-foreground">Universal JSON format</span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleQuickExportElein}
-                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
-                  >
-                    <Download size={13} className="text-primary shrink-0" />
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Download .elein</span>
-                      <span className="text-[10px] text-muted-foreground">Ele-in Native Blueprint</span>
+                      <span className="font-semibold text-foreground">Download File (.json)</span>
+                      <span className="text-[10px] text-muted-foreground">Save sequence to your computer</span>
                     </div>
                   </button>
 
@@ -2142,8 +2145,8 @@ export function EISequenceTree({
                   >
                     <Copy size={13} className="text-muted-foreground shrink-0" />
                     <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Copy JSON</span>
-                      <span className="text-[10px] text-muted-foreground">Copy payload to clipboard</span>
+                      <span className="font-semibold text-foreground">Copy to Clipboard</span>
+                      <span className="text-[10px] text-muted-foreground">Copy JSON payload</span>
                     </div>
                   </button>
 
@@ -2160,8 +2163,8 @@ export function EISequenceTree({
                   >
                     <Sparkles size={13} className="text-amber-500 shrink-0" />
                     <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Blueprint Studio...</span>
-                      <span className="text-[10px] text-muted-foreground">Metadata, branding & options</span>
+                      <span className="font-semibold text-foreground">Blueprint Studio & Gallery...</span>
+                      <span className="text-[10px] text-muted-foreground">Advanced templates & backup vault</span>
                     </div>
                   </button>
                 </div>
