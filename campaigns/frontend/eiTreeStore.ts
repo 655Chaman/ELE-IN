@@ -12,6 +12,8 @@ export interface StickyNote {
   category?: "note" | "todo" | "warning" | "strategy" | "handover";
   isPinned?: boolean;
   isCollapsed?: boolean;
+  width?: number;
+  height?: number;
   updatedAt?: string;
 }
 

@@ -5,7 +5,8 @@ import {
   X, Edit3, GripVertical, Pin, PinOff,
   Minimize2, Maximize2, Trash2, CheckSquare, Square,
   StickyNote as StickyIcon, Compass, UserCheck, AlertTriangle,
-  Palette, Check, ChevronDown, CheckCircle2, RotateCcw, Sparkles
+  Palette, Check, ChevronDown, CheckCircle2, RotateCcw, Sparkles,
+  Bold, List, Minus, CheckCheck
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { motion, AnimatePresence } from 'motion/react'
@@ -26,6 +27,7 @@ export const STICKY_PALETTES: Record<StickyColor, {
   dot: string
   accent: string
   focusRing: string
+  progressBar: string
 }> = {
   amber: {
     name: "Sun (Idea)",
@@ -37,7 +39,8 @@ export const STICKY_PALETTES: Record<StickyColor, {
     badgeBg: "bg-amber-200/70 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 border-amber-300/60 dark:border-amber-700/60",
     dot: "bg-amber-400",
     accent: "text-amber-600 dark:text-amber-400",
-    focusRing: "focus:ring-amber-500/30"
+    focusRing: "focus:ring-amber-500/30",
+    progressBar: "bg-amber-500"
   },
   emerald: {
     name: "Emerald (Goal)",
@@ -49,7 +52,8 @@ export const STICKY_PALETTES: Record<StickyColor, {
     badgeBg: "bg-emerald-200/70 dark:bg-emerald-900/70 text-emerald-900 dark:text-emerald-200 border-emerald-300/60 dark:border-emerald-700/60",
     dot: "bg-emerald-400",
     accent: "text-emerald-600 dark:text-emerald-400",
-    focusRing: "focus:ring-emerald-500/30"
+    focusRing: "focus:ring-emerald-500/30",
+    progressBar: "bg-emerald-500"
   },
   sky: {
     name: "Sky (Info)",
@@ -61,7 +65,8 @@ export const STICKY_PALETTES: Record<StickyColor, {
     badgeBg: "bg-sky-200/70 dark:bg-sky-900/70 text-sky-900 dark:text-sky-200 border-sky-300/60 dark:border-sky-700/60",
     dot: "bg-sky-400",
     accent: "text-sky-600 dark:text-sky-400",
-    focusRing: "focus:ring-sky-500/30"
+    focusRing: "focus:ring-sky-500/30",
+    progressBar: "bg-sky-500"
   },
   rose: {
     name: "Rose (Caution)",
@@ -73,7 +78,8 @@ export const STICKY_PALETTES: Record<StickyColor, {
     badgeBg: "bg-rose-200/70 dark:bg-rose-900/70 text-rose-900 dark:text-rose-200 border-rose-300/60 dark:border-rose-700/60",
     dot: "bg-rose-400",
     accent: "text-rose-600 dark:text-rose-400",
-    focusRing: "focus:ring-rose-500/30"
+    focusRing: "focus:ring-rose-500/30",
+    progressBar: "bg-rose-500"
   },
   violet: {
     name: "Violet (Strategy)",
@@ -85,7 +91,8 @@ export const STICKY_PALETTES: Record<StickyColor, {
     badgeBg: "bg-violet-200/70 dark:bg-violet-900/70 text-violet-900 dark:text-violet-200 border-violet-300/60 dark:border-violet-700/60",
     dot: "bg-violet-400",
     accent: "text-violet-600 dark:text-violet-400",
-    focusRing: "focus:ring-violet-500/30"
+    focusRing: "focus:ring-violet-500/30",
+    progressBar: "bg-violet-500"
   }
 }
 
@@ -149,7 +156,12 @@ function normalizeColor(raw?: string): StickyColor {
   return "amber"
 }
 
-export function EIStickyNote({ note }: { note: StickyNote }) {
+interface EIStickyNoteProps {
+  note: StickyNote
+  zoom?: number
+}
+
+export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
   const { 
     updateStickyNote, 
     updateStickyNoteFull, 
@@ -161,6 +173,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
   } = useHRTreeStore()
 
   const [isDragging, setIsDragging] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [isEditing, setIsEditing] = useState(!note.text && !note.title)
   const [isHovered, setIsHovered] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -172,10 +185,33 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
   const noteRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, noteX: note.x, noteY: note.y })
-  const posRef = useRef({ x: note.x, y: note.y })
 
-  // Keep local draft in sync with props when not actively editing
+  // Drag tracking refs (Layer 1 Environmental Paranoia: 120fps Pointer Capture + RAF)
+  const isDraggingRef = useRef(false)
+  const hasMovedRef = useRef(false)
+  const dragStartRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    noteX: note.x,
+    noteY: note.y,
+    zoom: 1
+  })
+  const currentPosRef = useRef({ x: note.x, y: note.y })
+  const dragRafIdRef = useRef<number | null>(null)
+
+  // Resize tracking refs
+  const isResizingRef = useRef(false)
+  const resizeStartRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    startWidth: note.width || 290,
+    zoom: 1
+  })
+  const currentWidthRef = useRef(note.width || 290)
+  const resizeRafIdRef = useRef<number | null>(null)
+
+  // Sync state when props change outside of edit mode
   useEffect(() => {
     if (!isEditing) {
       setDraftTitle(note.title || "")
@@ -184,96 +220,230 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
   }, [note.title, note.text, isEditing])
 
   useEffect(() => {
-    if (!isDragging) {
-      posRef.current = { x: note.x, y: note.y }
+    if (!isDraggingRef.current) {
+      currentPosRef.current = { x: note.x, y: note.y }
+      if (noteRef.current) {
+        noteRef.current.style.left = `${note.x}px`
+        noteRef.current.style.top = `${note.y}px`
+      }
     }
-  }, [note.x, note.y, isDragging])
+  }, [note.x, note.y])
+
+  useEffect(() => {
+    if (!isResizingRef.current) {
+      currentWidthRef.current = note.width || 290
+      if (noteRef.current) {
+        noteRef.current.style.width = `${note.width || 290}px`
+      }
+    }
+  }, [note.width])
+
+  // Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (dragRafIdRef.current !== null) cancelAnimationFrame(dragRafIdRef.current)
+      if (resizeRafIdRef.current !== null) cancelAnimationFrame(resizeRafIdRef.current)
+    }
+  }, [])
 
   const activeColorKey = normalizeColor(note.color)
   const palette = STICKY_PALETTES[activeColorKey]
   const activeCategoryKey: StickyCategory = (note.category as StickyCategory) || "note"
   const CategoryIcon = STICKY_CATEGORIES[activeCategoryKey]?.icon || StickyIcon
 
-  // Calculate subtle natural rotation from note ID hash for authentic post-it feel
+  // Calculate subtle natural rotation from note ID hash for authentic post-it aesthetic
   const naturalRotation = useMemo(() => {
     let hash = 0
     for (let i = 0; i < note.id.length; i++) {
       hash = (hash << 5) - hash + note.id.charCodeAt(i)
       hash |= 0
     }
-    // Return subtle -0.7deg to +0.7deg
-    return ((hash % 14) - 7) * 0.1
+    return ((hash % 14) - 7) * 0.08
   }, [note.id])
 
-  // Checklist statistics
+  // Checklist statistics & completion ratio
   const checklistStats = useMemo(() => {
     const text = note.text || ""
     const matches = text.match(/^\s*-\s*\[([ xX])\]/gm)
     if (!matches) return null
     const total = matches.length
     const checked = matches.filter(m => m.includes("x") || m.includes("X")).length
-    return { total, checked, allDone: total > 0 && checked === total }
+    const percentage = total > 0 ? Math.round((checked / total) * 100) : 0
+    return { total, checked, percentage, allDone: total > 0 && checked === total }
   }, [note.text])
 
-  // Delta-based, zoom-compensated drag handler (Layer 1 Environmental Paranoia)
-  const handleDragStart = (e: React.MouseEvent) => {
+  // Resolve active canvas zoom accurately
+  const getEffectiveZoom = useCallback(() => {
+    if (typeof zoom === 'number' && zoom > 0) return zoom
+    if (noteRef.current) {
+      const el = noteRef.current.closest('[data-canvas-zoom]') || noteRef.current.closest('[style*="zoom"]')
+      if (el) {
+        const parsed = parseFloat(el.getAttribute('data-canvas-zoom') || (el as HTMLElement).style.zoom || "1")
+        if (!isNaN(parsed) && parsed > 0) return parsed
+      }
+    }
+    return 1
+  }, [zoom])
+
+  // ─── Silky Smooth Pointer-Capture Drag Engine (Zero Lag, 120fps Native Feel) ─────
+  const startDrag = useCallback((e: React.PointerEvent) => {
     if (note.isPinned) return
-    if (isEditing) return
+    if (e.button !== 0) return // Left click only
+
     const target = e.target as HTMLElement
-    if (target.closest('button, input, textarea, select, [data-no-drag]')) return
+    // Disallow drag on interactive controls
+    if (target.closest('button, input, textarea, select, a, [data-no-drag], [role="menu"]')) return
+
+    // In edit mode: Allow drag ONLY via the top header / drag handle
+    if (isEditing && !target.closest('[data-drag-handle]')) return
 
     e.stopPropagation()
     e.preventDefault()
 
+    const effectiveZoom = getEffectiveZoom()
+    isDraggingRef.current = true
+    hasMovedRef.current = false
+
     dragStartRef.current = {
-      mouseX: e.clientX,
-      mouseY: e.clientY,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
       noteX: note.x,
-      noteY: note.y
+      noteY: note.y,
+      zoom: effectiveZoom
     }
+    currentPosRef.current = { x: note.x, y: note.y }
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {
+      // Fallback if browser limits capture
+    }
+
     setIsDragging(true)
-  }
+  }, [note.isPinned, note.x, note.y, isEditing, getEffectiveZoom])
 
-  useEffect(() => {
-    if (!isDragging) return
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current) return
+    if (e.pointerId !== dragStartRef.current.pointerId) return
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!noteRef.current) return
-      // Inspect canvas zoom compensation (FLAW-FE-18: standard data-canvas-zoom with style.zoom fallback)
-      const el = noteRef.current.closest('[data-canvas-zoom]') || noteRef.current.closest('[style*="zoom"]')
-      const zoom = el 
-        ? parseFloat(el.getAttribute('data-canvas-zoom') || (el as HTMLElement).style.zoom || "1") 
-        : 1
+    const deltaX = (e.clientX - dragStartRef.current.startX) / dragStartRef.current.zoom
+    const deltaY = (e.clientY - dragStartRef.current.startY) / dragStartRef.current.zoom
 
-      const deltaX = (e.clientX - dragStartRef.current.mouseX) / zoom
-      const deltaY = (e.clientY - dragStartRef.current.mouseY) / zoom
-
-      posRef.current.x = Math.round(dragStartRef.current.noteX + deltaX)
-      posRef.current.y = Math.round(dragStartRef.current.noteY + deltaY)
-
-      noteRef.current.style.left = `${posRef.current.x}px`
-      noteRef.current.style.top = `${posRef.current.y}px`
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      hasMovedRef.current = true
     }
 
-    const handleMouseUp = () => {
-      setIsDragging(false)
-      moveStickyNote(note.id, posRef.current.x, posRef.current.y)
+    const nextX = Math.round(dragStartRef.current.noteX + deltaX)
+    const nextY = Math.round(dragStartRef.current.noteY + deltaY)
+
+    currentPosRef.current = { x: nextX, y: nextY }
+
+    if (dragRafIdRef.current === null) {
+      dragRafIdRef.current = requestAnimationFrame(() => {
+        if (noteRef.current) {
+          noteRef.current.style.left = `${currentPosRef.current.x}px`
+          noteRef.current.style.top = `${currentPosRef.current.y}px`
+        }
+        dragRafIdRef.current = null
+      })
+    }
+  }, [])
+
+  const endDrag = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current) return
+    if (e.pointerId !== dragStartRef.current.pointerId) return
+
+    isDraggingRef.current = false
+    if (dragRafIdRef.current !== null) {
+      cancelAnimationFrame(dragRafIdRef.current)
+      dragRafIdRef.current = null
     }
 
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+    } catch {}
+
+    setIsDragging(false)
+
+    if (hasMovedRef.current) {
+      moveStickyNote(note.id, currentPosRef.current.x, currentPosRef.current.y)
+      // Clear movement flag after a tiny tick to prevent synthetic clicks
+      setTimeout(() => {
+        hasMovedRef.current = false
+      }, 50)
     }
-  }, [isDragging, note.id, moveStickyNote])
+  }, [note.id, moveStickyNote])
+
+  // ─── Smooth Width Resize Engine ──────────────────────────────────────────
+  const startResize = useCallback((e: React.PointerEvent) => {
+    if (note.isPinned) return
+    if (e.button !== 0) return
+
+    e.stopPropagation()
+    e.preventDefault()
+
+    const effectiveZoom = getEffectiveZoom()
+    isResizingRef.current = true
+
+    resizeStartRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startWidth: note.width || 290,
+      zoom: effectiveZoom
+    }
+    currentWidthRef.current = note.width || 290
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {}
+
+    setIsResizing(true)
+  }, [note.isPinned, note.width, getEffectiveZoom])
+
+  const handleResizeMove = useCallback((e: React.PointerEvent) => {
+    if (!isResizingRef.current) return
+    if (e.pointerId !== resizeStartRef.current.pointerId) return
+
+    const deltaX = (e.clientX - resizeStartRef.current.startX) / resizeStartRef.current.zoom
+    const nextWidth = Math.min(650, Math.max(250, Math.round(resizeStartRef.current.startWidth + deltaX)))
+
+    currentWidthRef.current = nextWidth
+
+    if (resizeRafIdRef.current === null) {
+      resizeRafIdRef.current = requestAnimationFrame(() => {
+        if (noteRef.current) {
+          noteRef.current.style.width = `${currentWidthRef.current}px`
+        }
+        resizeRafIdRef.current = null
+      })
+    }
+  }, [])
+
+  const endResize = useCallback((e: React.PointerEvent) => {
+    if (!isResizingRef.current) return
+    if (e.pointerId !== resizeStartRef.current.pointerId) return
+
+    isResizingRef.current = false
+    if (resizeRafIdRef.current !== null) {
+      cancelAnimationFrame(resizeRafIdRef.current)
+      resizeRafIdRef.current = null
+    }
+
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+    } catch {}
+
+    setIsResizing(false)
+    updateStickyNoteFull(note.id, { width: currentWidthRef.current })
+  }, [note.id, updateStickyNoteFull])
 
   // Auto-focus and resize textarea on edit
   useEffect(() => {
     if (isEditing) {
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
-        textareaRef.current.style.height = `${Math.max(80, textareaRef.current.scrollHeight)}px`
+        textareaRef.current.style.height = `${Math.max(90, textareaRef.current.scrollHeight)}px`
       }
     }
   }, [isEditing, draftText])
@@ -314,8 +484,28 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
       category: preset.category,
       updatedAt: new Date().toISOString()
     })
-    setIsEditing(false)
     toast.success(`Loaded "${preset.label}" template`)
+    // Focus textarea immediately for quick tweaking
+    setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 50)
+  }
+
+  // Quick Markdown formatting helpers
+  const insertFormatting = (prefix: string, suffix: string = "") => {
+    if (!textareaRef.current) return
+    const el = textareaRef.current
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    const current = draftText
+    const selected = current.slice(start, end)
+    const replacement = `${prefix}${selected || "item"}${suffix}`
+    const next = current.slice(0, start) + replacement + current.slice(end)
+    setDraftText(next)
+    setTimeout(() => {
+      el.focus()
+      el.setSelectionRange(start + prefix.length, start + replacement.length - suffix.length)
+    }, 20)
   }
 
   // Interactive Checklist Check/Uncheck toggle in View Mode
@@ -343,74 +533,82 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
   // ─── Collapsed State (Ultra-Compact Canvas Pill) ─────────────────────────
   if (note.isCollapsed) {
     return (
-      <motion.div
+      <div
         ref={noteRef}
-        layout
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
-        style={{ left: note.x, top: note.y }}
-        onMouseDown={handleDragStart}
+        onPointerDown={startDrag}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         onClick={(e) => {
           e.stopPropagation()
-          toggleStickyNoteCollapse(note.id)
+          if (!hasMovedRef.current) {
+            toggleStickyNoteCollapse(note.id)
+          }
         }}
+        style={{ left: note.x, top: note.y }}
         className={cn(
-          "sticky-note absolute rounded-full border px-3 py-1.5 flex items-center gap-2 backdrop-blur-md shadow-md hover:shadow-lg transition-all cursor-pointer z-30 select-none",
+          "sticky-note absolute rounded-full border px-3.5 py-1.5 flex items-center gap-2.5 backdrop-blur-md shadow-md z-30 select-none",
+          !isDragging && "transition-[box-shadow,border-color,background-color] duration-150 hover:shadow-lg cursor-grab",
+          isDragging && "cursor-grabbing ring-2 ring-primary/60 z-[100] shadow-2xl scale-[1.03] !transition-none",
           palette.bg,
           palette.border,
-          palette.text,
-          isDragging ? "cursor-grabbing ring-2 ring-primary/40 z-[100]" : "cursor-grab"
+          palette.text
         )}
       >
-        <span className={cn("w-2 h-2 rounded-full shrink-0", palette.dot)} />
+        <GripVertical size={12} className="opacity-40 shrink-0" />
+        <span className={cn("w-2 h-2 rounded-full shrink-0 shadow-2xs", palette.dot)} />
         <CategoryIcon size={12} className={cn("shrink-0", palette.accent)} />
-        <span className="text-xs font-bold truncate max-w-[160px]">
+        <span className="text-xs font-bold truncate max-w-[170px]">
           {note.title || (note.text ? note.text.slice(0, 24) : "Note")}
         </span>
         {checklistStats && (
-          <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10 shrink-0">
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10 shrink-0">
             {checklistStats.checked}/{checklistStats.total}
           </span>
         )}
         <button
           type="button"
+          data-no-drag="true"
           onClick={(e) => {
             e.stopPropagation()
             toggleStickyNoteCollapse(note.id)
           }}
-          className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors ml-1"
+          className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors ml-0.5 cursor-pointer"
           title="Expand note"
           aria-label="Expand sticky note"
         >
           <Maximize2 size={11} />
         </button>
-      </motion.div>
+      </div>
     )
   }
 
   // ─── Expanded State (Full Canvas Post-It Card) ───────────────────────────
   return (
-    <motion.div
+    <div
       ref={noteRef}
-      initial={{ opacity: 0, scale: 0.94, y: 8 }}
-      animate={{ 
-        opacity: 1, 
-        scale: 1, 
-        y: 0,
-        rotate: isHovered || isEditing || isDragging ? 0 : naturalRotation
-      }}
-      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+      onPointerDown={isEditing ? undefined : startDrag}
+      onPointerMove={isEditing ? undefined : handlePointerMove}
+      onPointerUp={isEditing ? undefined : endDrag}
+      onPointerCancel={isEditing ? undefined : endDrag}
       className={cn(
-        "sticky-note absolute rounded-2xl border shadow-xl transition-all duration-150 flex flex-col z-30 overflow-hidden select-none",
+        "sticky-note absolute rounded-2xl border shadow-xl flex flex-col z-30 select-none",
+        // Crucial: Only transition visual aesthetics, NEVER position or transform!
+        !isDragging && "transition-[box-shadow,border-color,background-color] duration-150",
+        isDragging && "cursor-grabbing z-[100] ring-2 ring-primary/60 shadow-2xl scale-[1.015] !transition-none",
+        isEditing && "ring-2 ring-primary/30 shadow-2xl",
+        note.isPinned && "border-dashed",
+        !isEditing && (note.isPinned ? "cursor-default" : "cursor-grab active:cursor-grabbing"),
         palette.bg,
         palette.border,
-        palette.text,
-        isDragging && "cursor-grabbing z-[100] ring-2 ring-primary/50 shadow-2xl scale-[1.02]",
-        isEditing && "ring-2 ring-primary/40 shadow-2xl",
-        note.isPinned && "border-dashed"
+        palette.text
       )}
-      style={{ left: note.x, top: note.y, width: 290 }}
+      style={{
+        left: note.x,
+        top: note.y,
+        width: note.width || 290,
+        transform: isDragging || isEditing || isHovered ? "none" : `rotate(${naturalRotation}deg)`
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => {
         setIsHovered(false)
@@ -421,18 +619,27 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
     >
       {/* ─── Top Control & Drag Header ─────────────────────────────────────── */}
       <div 
-        onMouseDown={handleDragStart}
+        data-drag-handle="true"
+        onPointerDown={startDrag}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         className={cn(
-          "px-3 py-2 flex items-center justify-between transition-colors",
+          "px-3 py-2 flex items-center justify-between transition-colors select-none",
           palette.headerBg,
-          note.isPinned ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+          note.isPinned ? "cursor-default" : "cursor-grab active:cursor-grabbing hover:bg-black/5 dark:hover:bg-white/5"
         )}
       >
         <div className="flex items-center gap-1.5 min-w-0">
-          <GripVertical size={13} className={cn("shrink-0", note.isPinned ? "opacity-30" : "opacity-60")} />
+          <div 
+            title={note.isPinned ? "Pinned (Unpin to drag)" : "Drag to move note anywhere"}
+            className="flex items-center gap-1 opacity-70 hover:opacity-100 transition-opacity p-0.5 rounded cursor-grab active:cursor-grabbing"
+          >
+            <GripVertical size={14} className="shrink-0" />
+          </div>
           
           {/* Category Badge Pill with Dropdown */}
-          <div className="relative">
+          <div className="relative" data-no-drag="true">
             <button
               type="button"
               onClick={(e) => {
@@ -496,7 +703,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0" data-no-drag="true">
           {/* Color Switcher Button */}
           <div className="relative">
             <button
@@ -510,7 +717,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
               title="Change palette"
               aria-label="Change sticky note color"
             >
-              <Palette size={12} className="opacity-70 hover:opacity-100" />
+              <Palette size={13} className="opacity-70 hover:opacity-100" />
             </button>
 
             {/* Color Palette Popover */}
@@ -561,7 +768,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
             title={note.isPinned ? "Unpin from canvas" : "Pin position on canvas"}
             aria-label={note.isPinned ? "Unpin sticky note" : "Pin sticky note"}
           >
-            {note.isPinned ? <Pin size={12} /> : <PinOff size={12} />}
+            {note.isPinned ? <Pin size={13} /> : <PinOff size={13} />}
           </button>
 
           {/* Minimize / Fold Button */}
@@ -575,7 +782,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
             title="Collapse to compact pill"
             aria-label="Collapse sticky note"
           >
-            <Minimize2 size={12} />
+            <Minimize2 size={13} />
           </button>
 
           {/* Delete Button with Undo */}
@@ -590,13 +797,23 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
             title={note.isPinned ? "Unpin before deleting" : "Delete note"}
             aria-label="Delete sticky note"
           >
-            <Trash2 size={12} />
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
 
+      {/* ─── Checklist Visual Progress Bar (if checklists exist) ────────────── */}
+      {checklistStats && (
+        <div className="w-full bg-black/10 dark:bg-white/10 h-1 overflow-hidden">
+          <div 
+            className={cn("h-full transition-all duration-300", palette.progressBar)}
+            style={{ width: `${checklistStats.percentage}%` }}
+          />
+        </div>
+      )}
+
       {/* ─── Note Content Area ────────────────────────────────────────────── */}
-      <div className="p-4 flex flex-col gap-2.5">
+      <div className="p-3.5 flex flex-col gap-2.5">
         {/* Title Field */}
         {isEditing ? (
           <input
@@ -658,6 +875,62 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
         {/* Body Editor or Rendered View */}
         {isEditing ? (
           <div className="space-y-2">
+            {/* Markdown Micro-Toolbar */}
+            <div className="flex items-center justify-between pb-1 border-b border-black/5 dark:border-white/5">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => insertFormatting("- [ ] ")}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                  title="Insert Checklist Item"
+                >
+                  <CheckSquare size={10} className="shrink-0" />
+                  <span>Checklist</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertFormatting("**", "**")}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                  title="Bold Text"
+                >
+                  <Bold size={10} className="shrink-0" />
+                  <span>Bold</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertFormatting("- ")}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                  title="Bullet List Item"
+                >
+                  <List size={10} className="shrink-0" />
+                  <span>Bullet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertFormatting("\n---\n")}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                  title="Horizontal Divider"
+                >
+                  <Minus size={10} className="shrink-0" />
+                  <span>Rule</span>
+                </button>
+              </div>
+
+              {/* Template re-apply shortcut */}
+              {(draftText || draftTitle) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftText("")
+                    setDraftTitle("")
+                  }}
+                  className="text-[9px] font-medium opacity-60 hover:opacity-100 hover:underline cursor-pointer"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
             <textarea
               ref={textareaRef}
               rows={4}
@@ -666,7 +939,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
               onChange={(e) => {
                 setDraftText(e.target.value)
                 e.target.style.height = 'auto'
-                e.target.style.height = `${Math.max(80, e.target.scrollHeight)}px`
+                e.target.style.height = `${Math.max(90, e.target.scrollHeight)}px`
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') handleSaveEdit()
@@ -690,7 +963,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
                   handleSaveEdit()
                 }}
                 className={cn(
-                  "px-3 py-1 rounded-md text-[11px] font-bold border transition-colors cursor-pointer shadow-2xs",
+                  "px-3.5 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer shadow-xs hover:brightness-105 active:scale-95",
                   palette.badgeBg
                 )}
               >
@@ -704,7 +977,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
               e.stopPropagation()
               setIsEditing(true)
             }}
-            className="text-xs font-medium leading-relaxed cursor-text select-text min-h-[40px]"
+            className="text-xs font-medium leading-relaxed cursor-text select-text min-h-[44px]"
           >
             {note.text ? (
               <ReactMarkdown
@@ -734,7 +1007,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
                               <Square size={13} className="opacity-60" />
                             )}
                           </span>
-                          <span className={cn("text-xs leading-relaxed", isChecked && "line-through opacity-60")}>
+                          <span className={cn("text-xs leading-relaxed transition-all", isChecked && "line-through opacity-50")}>
                             {labelText}
                           </span>
                         </li>
@@ -788,15 +1061,16 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
 
         {/* ─── Footer Details ─────────────────────────────────────────────── */}
         {!isEditing && (
-          <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[10px] opacity-60">
+          <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[10px] opacity-65">
             {checklistStats ? (
-              <span className="flex items-center gap-1 font-medium">
+              <span className="flex items-center gap-1 font-semibold">
                 {checklistStats.allDone ? (
                   <CheckCircle2 size={11} className="text-emerald-500" />
                 ) : (
                   <CheckSquare size={11} />
                 )}
-                {checklistStats.checked} of {checklistStats.total} done
+                <span>{checklistStats.checked} of {checklistStats.total} done</span>
+                <span className="opacity-50">({checklistStats.percentage}%)</span>
               </span>
             ) : (
               <span>Double-click to edit</span>
@@ -807,7 +1081,7 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
                 e.stopPropagation()
                 setIsEditing(true)
               }}
-              className="flex items-center gap-1 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+              className="flex items-center gap-1 hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-bold"
             >
               <Edit3 size={10} />
               <span>Edit</span>
@@ -815,6 +1089,28 @@ export function EIStickyNote({ note }: { note: StickyNote }) {
           </div>
         )}
       </div>
-    </motion.div>
+
+      {/* ─── Bottom-Right Resize Grip Handle ──────────────────────────────── */}
+      {!note.isPinned && !note.isCollapsed && (
+        <div
+          data-no-drag="true"
+          onPointerDown={startResize}
+          onPointerMove={handleResizeMove}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            updateStickyNoteFull(note.id, { width: 290 })
+          }}
+          title="Drag to resize width (Double-click to reset)"
+          className="absolute bottom-1 right-1 p-1 text-current/30 hover:text-current/80 cursor-se-resize select-none transition-colors"
+        >
+          <svg width="8" height="8" viewBox="0 0 8 8" className="stroke-current fill-none stroke-[1.5]">
+            <line x1="7" y1="1" x2="1" y2="7" />
+            <line x1="7" y1="4" x2="4" y2="7" />
+          </svg>
+        </div>
+      )}
+    </div>
   )
 }

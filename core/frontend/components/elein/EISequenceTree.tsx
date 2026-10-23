@@ -2255,7 +2255,7 @@ export function EISequenceTree({
             transformOrigin: "top center",
           }}
         >
-          {stickyNotes?.map(note => <EIStickyNote key={note.id} note={note} />)}
+          {stickyNotes?.map(note => <EIStickyNote key={note.id} note={note} zoom={zoom} />)}
           {/* Sequence start node */}
           <div ref={startNodeRef} className="sequence-start-node flex items-center gap-2 px-5 py-2.5 rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm text-foreground text-sm font-semibold">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
