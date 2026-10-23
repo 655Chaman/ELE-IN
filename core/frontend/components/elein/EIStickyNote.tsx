@@ -406,7 +406,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
     if (e.pointerId !== resizeStartRef.current.pointerId) return
 
     const deltaX = (e.clientX - resizeStartRef.current.startX) / resizeStartRef.current.zoom
-    const nextWidth = Math.min(650, Math.max(250, Math.round(resizeStartRef.current.startWidth + deltaX)))
+    const nextWidth = Math.min(650, Math.max(270, Math.round(resizeStartRef.current.startWidth + deltaX)))
 
     currentWidthRef.current = nextWidth
 
@@ -459,6 +459,18 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
     setShowCategoryPicker(false)
   }, [draftTitle, draftText, note.id, updateStickyNoteFull])
 
+  // Save changes automatically when clicking outside the sticky note card
+  useEffect(() => {
+    if (!isEditing) return
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (noteRef.current && !noteRef.current.contains(e.target as Node)) {
+        handleSaveEdit()
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick)
+    return () => document.removeEventListener("mousedown", handleOutsideClick)
+  }, [isEditing, handleSaveEdit])
+
   const handleDeleteWithUndo = () => {
     const backup = { ...note }
     removeStickyNote(note.id)
@@ -491,21 +503,64 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
     }, 50)
   }
 
-  // Quick Markdown formatting helpers
-  const insertFormatting = (prefix: string, suffix: string = "") => {
+  // Quick Markdown formatting helpers with zero-blur textarea preservation
+  const insertFormatting = (type: "checklist" | "bold" | "bullet" | "rule") => {
     if (!textareaRef.current) return
     const el = textareaRef.current
-    const start = el.selectionStart
-    const end = el.selectionEnd
+    const start = el.selectionStart ?? 0
+    const end = el.selectionEnd ?? 0
     const current = draftText
     const selected = current.slice(start, end)
-    const replacement = `${prefix}${selected || "item"}${suffix}`
+
+    let replacement = ""
+    let selectionOffsetStart = 0
+    let selectionOffsetEnd = 0
+
+    if (type === "checklist") {
+      if (selected) {
+        replacement = selected.split("\n").map(l => l.startsWith("- [ ] ") ? l : `- [ ] ${l}`).join("\n")
+        selectionOffsetStart = 0
+        selectionOffsetEnd = replacement.length
+      } else {
+        replacement = "- [ ] "
+        selectionOffsetStart = replacement.length
+        selectionOffsetEnd = replacement.length
+      }
+    } else if (type === "bullet") {
+      if (selected) {
+        replacement = selected.split("\n").map(l => l.startsWith("- ") ? l : `- ${l}`).join("\n")
+        selectionOffsetStart = 0
+        selectionOffsetEnd = replacement.length
+      } else {
+        replacement = "- "
+        selectionOffsetStart = replacement.length
+        selectionOffsetEnd = replacement.length
+      }
+    } else if (type === "bold") {
+      const inner = selected || "bold text"
+      replacement = `**${inner}**`
+      selectionOffsetStart = 2
+      selectionOffsetEnd = 2 + inner.length
+    } else if (type === "rule") {
+      const prefix = (start > 0 && current[start - 1] !== "\n") ? "\n---\n" : "---\n"
+      replacement = prefix
+      selectionOffsetStart = replacement.length
+      selectionOffsetEnd = replacement.length
+    }
+
     const next = current.slice(0, start) + replacement + current.slice(end)
     setDraftText(next)
+
+    // Dynamic auto-grow
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto"
+      textareaRef.current.style.height = `${Math.min(320, Math.max(90, textareaRef.current.scrollHeight))}px`
+    }
+
     setTimeout(() => {
       el.focus()
-      el.setSelectionRange(start + prefix.length, start + replacement.length - suffix.length)
-    }, 20)
+      el.setSelectionRange(start + selectionOffsetStart, start + selectionOffsetEnd)
+    }, 10)
   }
 
   // Interactive Checklist Check/Uncheck toggle in View Mode
@@ -592,7 +647,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
       onPointerUp={isEditing ? undefined : endDrag}
       onPointerCancel={isEditing ? undefined : endDrag}
       className={cn(
-        "sticky-note absolute rounded-2xl border shadow-xl flex flex-col z-30 select-none",
+        "sticky-note absolute rounded-2xl border shadow-xl flex flex-col z-30 select-none min-w-[270px] max-w-[650px]",
         // Crucial: Only transition visual aesthetics, NEVER position or transform!
         !isDragging && "transition-[box-shadow,border-color,background-color] duration-150",
         isDragging && "cursor-grabbing z-[100] ring-2 ring-primary/60 shadow-2xl scale-[1.015] !transition-none",
@@ -813,7 +868,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
       )}
 
       {/* ─── Note Content Area ────────────────────────────────────────────── */}
-      <div className="p-3.5 flex flex-col gap-2.5">
+      <div className="p-3.5 flex flex-col gap-2.5 min-w-0">
         {/* Title Field */}
         {isEditing ? (
           <input
@@ -831,14 +886,14 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
             }}
             placeholder="Note title (optional)..."
             className={cn(
-              "w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none placeholder:text-current/40 leading-snug",
+              "w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none placeholder:text-current/40 leading-snug min-w-0",
               palette.focusRing
             )}
           />
         ) : note.title ? (
           <div 
             onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-            className="text-xs font-bold leading-snug cursor-text select-text"
+            className="text-xs font-bold leading-snug cursor-text select-text truncate"
           >
             {note.title}
           </div>
@@ -874,59 +929,62 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
 
         {/* Body Editor or Rendered View */}
         {isEditing ? (
-          <div className="space-y-2">
-            {/* Markdown Micro-Toolbar */}
-            <div className="flex items-center justify-between pb-1 border-b border-black/5 dark:border-white/5">
-              <div className="flex items-center gap-1">
+          <div className="space-y-2 min-w-0">
+            {/* Markdown Micro-Toolbar - Contained, Responsive & Zero-Bleed */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-black/10 dark:border-white/10 text-xs min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
                 <button
                   type="button"
-                  onClick={() => insertFormatting("- [ ] ")}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-                  title="Insert Checklist Item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertFormatting("checklist")}
+                  className="px-2 py-1 rounded-md text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-all cursor-pointer"
+                  title="Checklist item (- [ ])"
                 >
-                  <CheckSquare size={10} className="shrink-0" />
+                  <CheckSquare size={12} className="shrink-0" />
                   <span>Checklist</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => insertFormatting("**", "**")}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-                  title="Bold Text"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertFormatting("bold")}
+                  className="w-6 h-6 rounded-md text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center justify-center opacity-80 hover:opacity-100 transition-all cursor-pointer shrink-0"
+                  title="Bold (**text**)"
                 >
-                  <Bold size={10} className="shrink-0" />
-                  <span>Bold</span>
+                  <Bold size={12} className="shrink-0" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => insertFormatting("- ")}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-                  title="Bullet List Item"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertFormatting("bullet")}
+                  className="w-6 h-6 rounded-md text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center justify-center opacity-80 hover:opacity-100 transition-all cursor-pointer shrink-0"
+                  title="Bullet list (- item)"
                 >
-                  <List size={10} className="shrink-0" />
-                  <span>Bullet</span>
+                  <List size={12} className="shrink-0" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => insertFormatting("\n---\n")}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-                  title="Horizontal Divider"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertFormatting("rule")}
+                  className="w-6 h-6 rounded-md text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center justify-center opacity-80 hover:opacity-100 transition-all cursor-pointer shrink-0"
+                  title="Divider rule (---)"
                 >
-                  <Minus size={10} className="shrink-0" />
-                  <span>Rule</span>
+                  <Minus size={12} className="shrink-0" />
                 </button>
               </div>
 
-              {/* Template re-apply shortcut */}
+              {/* Template re-apply / Clear draft */}
               {(draftText || draftTitle) && (
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     setDraftText("")
                     setDraftTitle("")
                   }}
-                  className="text-[9px] font-medium opacity-60 hover:opacity-100 hover:underline cursor-pointer"
+                  className="text-[10px] font-semibold opacity-60 hover:opacity-100 hover:text-destructive transition-colors cursor-pointer shrink-0 px-1 py-0.5"
+                  title="Clear note title and text"
                 >
-                  Reset
+                  Clear
                 </button>
               )}
             </div>
@@ -939,7 +997,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
               onChange={(e) => {
                 setDraftText(e.target.value)
                 e.target.style.height = 'auto'
-                e.target.style.height = `${Math.max(90, e.target.scrollHeight)}px`
+                e.target.style.height = `${Math.min(320, Math.max(90, e.target.scrollHeight))}px`
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') handleSaveEdit()
@@ -950,25 +1008,38 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
               }}
               placeholder="Type note (Markdown & checklists supported: - [ ] Task)..."
               className={cn(
-                "w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg p-2.5 text-xs font-medium leading-relaxed resize-none focus:outline-none placeholder:text-current/40",
+                "w-full max-h-[320px] overflow-y-auto bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg p-2.5 text-xs font-medium leading-relaxed resize-none focus:outline-none placeholder:text-current/40",
                 palette.focusRing
               )}
             />
             <div className="flex items-center justify-between pt-1">
               <span className="text-[10px] opacity-60">Cmd+Enter to save</span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleSaveEdit()
-                }}
-                className={cn(
-                  "px-3.5 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer shadow-xs hover:brightness-105 active:scale-95",
-                  palette.badgeBg
-                )}
-              >
-                Done
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftTitle(note.title || "")
+                    setDraftText(note.text || "")
+                    setIsEditing(false)
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSaveEdit()
+                  }}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer shadow-xs hover:brightness-105 active:scale-95",
+                    palette.badgeBg
+                  )}
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         ) : (
