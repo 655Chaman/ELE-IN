@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "motion/react"
 import {
   X, Download, Upload, Copy, Check, FileJson, Shield, AlertTriangle,
@@ -147,7 +148,9 @@ export function CampaignBlueprintModal({
   // Synchronize state on modal open
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialTab)
+      if (initialTab) {
+        setActiveTab(initialTab)
+      }
       setBlueprintName(formState?.campaignName || "High-Impact Outbound Sequence")
       setSnapshots(getCanvasSnapshots())
       setSavedBlueprints(getSavedWorkspaceBlueprints())
@@ -158,6 +161,16 @@ export function CampaignBlueprintModal({
       }
     }
   }, [isOpen, initialTab, preloadedBlueprint, formState?.campaignName])
+
+  // Escape key handler for accessible modal dismissal
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
 
   // Refresh variable audit whenever importedBlueprint changes
   const variableAudit = useMemo(() => {
@@ -420,14 +433,20 @@ export function CampaignBlueprintModal({
   // Channels required by imported blueprint
   const requiredChannels = validationResult?.stats?.channels || []
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+  const modalContent = (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
         className="w-full max-w-5xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/20">
@@ -929,16 +948,30 @@ export function CampaignBlueprintModal({
 
                 {/* Export Action Buttons */}
                 <div className="flex flex-col gap-2 pt-2 mt-auto">
-                  <div className="flex items-center gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => {
-                        downloadBlueprintFile(generatedExport, `${blueprintName || "elein_workflow"}.elein`)
-                        toast.success("Downloaded .elein blueprint file")
+                        downloadBlueprintFile(generatedExport, `${blueprintName || "elein_workflow"}.json`, "json")
+                        toast.success("Downloaded sequence blueprint (.json)")
                       }}
-                      className="flex-1 h-10 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm"
+                      className="h-10 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                      title="Download Universal JSON Blueprint"
                     >
-                      <Download size={15} />
+                      <Download size={14} />
+                      <span>Download .json</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        downloadBlueprintFile(generatedExport, `${blueprintName || "elein_workflow"}.elein`, "elein")
+                        toast.success("Downloaded native blueprint (.elein)")
+                      }}
+                      className="h-10 px-3 rounded-xl bg-card hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 border border-border transition-colors cursor-pointer shadow-2xs"
+                      title="Download Ele-in Native Blueprint (.elein)"
+                    >
+                      <Download size={14} className="text-primary" />
                       <span>Download .elein</span>
                     </button>
 
@@ -954,9 +987,9 @@ export function CampaignBlueprintModal({
                           toast.error("Failed to copy to clipboard")
                         }
                       }}
-                      className="h-10 px-4 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold flex items-center justify-center gap-2 border border-border transition-colors cursor-pointer"
+                      className="h-10 px-3 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 border border-border transition-colors cursor-pointer"
                     >
-                      {isCopied ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
+                      {isCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                       <span>{isCopied ? "Copied" : "Copy JSON"}</span>
                     </button>
                   </div>
@@ -1474,4 +1507,9 @@ export function CampaignBlueprintModal({
       </motion.div>
     </div>
   )
+
+  if (typeof document !== "undefined") {
+    return createPortal(modalContent, document.body)
+  }
+  return modalContent
 }

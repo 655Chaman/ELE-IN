@@ -1,6 +1,14 @@
 import { EIStickyNote } from "./EIStickyNote";
 import { CampaignBlueprintModal } from "./CampaignBlueprintModal";
-import { parseBlueprintFile, sniffDroppedFile, type EleInBlueprint } from "@/lib/blueprintSchema";
+import { 
+  parseBlueprintFile, 
+  sniffDroppedFile, 
+  exportBlueprint, 
+  downloadBlueprintFile, 
+  copyBlueprintToClipboard, 
+  saveCanvasSnapshot, 
+  type EleInBlueprint 
+} from "@/lib/blueprintSchema";
 import React from "react";
 import { cn } from "@/lib/utils"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
@@ -13,7 +21,8 @@ import {
   UserPlus, MessageSquare, Eye, Heart, Users, Mail,
   AtSign, Zap, CheckCircle2, Shield, StopCircle, AlertCircle,
   Phone, CalendarCheck, Star, Mic2, Tag, Bell, Database, Info, ZoomIn, ZoomOut, Maximize, Undo, Redo, FileText, Save,
-  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote, Download, Upload
+  Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote, Download, Upload,
+  ChevronDown, Copy
 } from "lucide-react"
 import useSWR, { useSWRConfig } from "swr"
 import { fetcher } from "@/lib/apiClient"
@@ -1215,7 +1224,7 @@ export function EISequenceTree({
 }) {
   const storeRootNodes = useHRTreeStore(s => s.rootNodes)
   const rootNodes = (readOnly && initialNodes !== undefined) ? initialNodes : storeRootNodes
-  const { addRoot, addChild, stickyNotes, addStickyNote, loadTree } = useHRTreeStore()
+  const { addRoot, addChild, stickyNotes, addStickyNote, loadTree, formState } = useHRTreeStore()
   const updateNodeData = useHRTreeStore(s => s.updateNodeData)
   const historyLength = useHRTreeStore(s => s.history.length)
   const futureLength = useHRTreeStore(s => s.future.length)
@@ -1233,10 +1242,124 @@ export function EISequenceTree({
 
   // Blueprint Export/Import Engine State
   const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState(false)
-  const [blueprintModalTab, setBlueprintModalTab] = useState<"export" | "import">("export")
+  const [blueprintModalTab, setBlueprintModalTab] = useState<"gallery" | "export" | "import" | "vault">("export")
   const [preloadedBlueprint, setPreloadedBlueprint] = useState<EleInBlueprint | null>(null)
   const [isDraggingBlueprintFile, setIsDraggingBlueprintFile] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const canvasFileInputRef = useRef<HTMLInputElement>(null)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!showExportMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [showExportMenu])
+
+  // Direct 1-click export JSON (Universal format)
+  const handleQuickExportJson = () => {
+    if (rootNodes.length === 0) {
+      toast.info("Sequence canvas is empty. Add steps to your sequence before exporting.")
+      return
+    }
+    const campaignName = formState?.campaignName || "Campaign Sequence"
+    const bp = exportBlueprint(rootNodes, stickyNotes, {
+      name: campaignName,
+      description: "Exported sequence blueprint",
+      version: "1.0.0"
+    }, { sanitize: true, includeStickyNotes: true })
+
+    downloadBlueprintFile(bp, `${campaignName}.json`, "json")
+    toast.success(`Exported "${campaignName}.json" (${rootNodes.length} steps)`)
+    setShowExportMenu(false)
+  }
+
+  // Direct 1-click export .elein (Native format)
+  const handleQuickExportElein = () => {
+    if (rootNodes.length === 0) {
+      toast.info("Sequence canvas is empty. Add steps to your sequence before exporting.")
+      return
+    }
+    const campaignName = formState?.campaignName || "Campaign Sequence"
+    const bp = exportBlueprint(rootNodes, stickyNotes, {
+      name: campaignName,
+      description: "Exported sequence blueprint",
+      version: "1.0.0"
+    }, { sanitize: true, includeStickyNotes: true })
+
+    downloadBlueprintFile(bp, `${campaignName}.elein`, "elein")
+    toast.success(`Exported "${campaignName}.elein" (${rootNodes.length} steps)`)
+    setShowExportMenu(false)
+  }
+
+  // Direct 1-click copy JSON to clipboard
+  const handleQuickCopyJson = async () => {
+    if (rootNodes.length === 0) {
+      toast.info("Sequence canvas is empty.")
+      return
+    }
+    const campaignName = formState?.campaignName || "Campaign Sequence"
+    const bp = exportBlueprint(rootNodes, stickyNotes, {
+      name: campaignName,
+      description: "Exported sequence blueprint",
+      version: "1.0.0"
+    }, { sanitize: true, includeStickyNotes: true })
+
+    const ok = await copyBlueprintToClipboard(bp)
+    if (ok) {
+      toast.success("Copied sequence blueprint JSON to clipboard!")
+    } else {
+      toast.error("Failed to copy JSON to clipboard")
+    }
+    setShowExportMenu(false)
+  }
+
+  // Direct 1-click file selector import (Zero modal friction)
+  const handleDirectCanvasFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = "" // Reset for re-selection
+
+    try {
+      const blueprint = await parseBlueprintFile(file)
+      // Save safety snapshot in vault
+      saveCanvasSnapshot(rootNodes, stickyNotes, `Pre-import: ${blueprint.metadata?.name || file.name}`)
+      const prevRoots = [...rootNodes]
+      const prevNotes = [...stickyNotes]
+
+      const importedRoots = blueprint.sequence?.rootNodes || []
+      const importedNotes = blueprint.sequence?.stickyNotes || []
+
+      loadTree(importedRoots, importedNotes)
+      toast.success(`Imported blueprint "${blueprint.metadata?.name || file.name}" (${importedRoots.length} steps)`, {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            loadTree(prevRoots, prevNotes)
+            toast.info("Import reverted.")
+          }
+        },
+        duration: 9000
+      })
+    } catch (err: any) {
+      toast.error("Failed to import blueprint", {
+        description: err.message || "Invalid blueprint structure.",
+        action: {
+          label: "Open Studio",
+          onClick: () => {
+            setBlueprintModalTab("import")
+            setIsBlueprintModalOpen(true)
+          }
+        }
+      })
+    }
+  }
 
   const handleCanvasFileDrop = async (e: React.DragEvent) => {
     e.preventDefault()
@@ -1941,30 +2064,109 @@ export function EISequenceTree({
       <div className="absolute top-6 right-6 z-40 flex items-center gap-2.5 pointer-events-auto">
         {!readOnly && (
           <>
-            <button
-              type="button"
-              onClick={() => {
-                setBlueprintModalTab("import")
-                setIsBlueprintModalOpen(true)
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
-              title="Import sequence (.elein, .json)"
-            >
-              <Upload size={14} className="text-primary" />
-              <span>Import</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setBlueprintModalTab("export")
-                setIsBlueprintModalOpen(true)
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
-              title="Export sequence blueprint (.elein, .json)"
-            >
-              <Download size={14} className="text-primary" />
-              <span>Export</span>
-            </button>
+            {/* Direct Import Button with Studio dropdown option */}
+            <div className="relative inline-flex items-center rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm hover:border-primary/50 transition-all">
+              <button
+                type="button"
+                onClick={() => canvasFileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+                title="Direct 1-Click Import Sequence (.json, .elein)"
+              >
+                <Upload size={14} className="text-primary" />
+                <span>Import</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBlueprintModalTab("import")
+                  setIsBlueprintModalOpen(true)
+                }}
+                className="px-1.5 py-2 border-l border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer rounded-r-xl"
+                title="Open Blueprint Studio & Gallery"
+              >
+                <ChevronDown size={12} />
+              </button>
+            </div>
+
+            {/* Direct Export Button with Quick Options Dropdown */}
+            <div className="relative inline-flex items-center rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm hover:border-primary/50 transition-all" ref={exportMenuRef}>
+              <button
+                type="button"
+                onClick={handleQuickExportJson}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+                title="Direct 1-Click Export Sequence (.json)"
+              >
+                <Download size={14} className="text-primary" />
+                <span>Export</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="px-1.5 py-2 border-l border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer rounded-r-xl"
+                title="Export Options"
+              >
+                <ChevronDown size={12} />
+              </button>
+
+              {/* Export Dropdown Menu */}
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1.5 w-56 rounded-xl bg-card border border-border shadow-xl py-1.5 z-50 flex flex-col text-xs animate-in fade-in zoom-in-95 duration-150">
+                  <button
+                    type="button"
+                    onClick={handleQuickExportJson}
+                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
+                  >
+                    <Download size={13} className="text-primary shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-foreground">Download .json</span>
+                      <span className="text-[10px] text-muted-foreground">Universal JSON format</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleQuickExportElein}
+                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
+                  >
+                    <Download size={13} className="text-primary shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-foreground">Download .elein</span>
+                      <span className="text-[10px] text-muted-foreground">Ele-in Native Blueprint</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleQuickCopyJson}
+                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
+                  >
+                    <Copy size={13} className="text-muted-foreground shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-foreground">Copy JSON</span>
+                      <span className="text-[10px] text-muted-foreground">Copy payload to clipboard</span>
+                    </div>
+                  </button>
+
+                  <div className="my-1 border-t border-border" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExportMenu(false)
+                      setBlueprintModalTab("export")
+                      setIsBlueprintModalOpen(true)
+                    }}
+                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
+                  >
+                    <Sparkles size={13} className="text-amber-500 shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-foreground">Blueprint Studio...</span>
+                      <span className="text-[10px] text-muted-foreground">Metadata, branding & options</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -2139,24 +2341,18 @@ export function EISequenceTree({
             <div className="border-b border-border p-2 bg-card/40 flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  setBlueprintModalTab("export")
-                  setIsBlueprintModalOpen(true)
-                }}
+                onClick={handleQuickExportJson}
                 className="flex-1 flex items-center justify-center gap-1.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 cursor-pointer border border-border/50"
-                title="Export Sequence Blueprint (.elein, JSON)"
+                title="Direct 1-Click Export Sequence (.json)"
               >
                 <Download size={13} className="text-primary shrink-0" />
                 <span>Export</span>
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setBlueprintModalTab("import")
-                  setIsBlueprintModalOpen(true)
-                }}
+                onClick={() => canvasFileInputRef.current?.click()}
                 className="flex-1 flex items-center justify-center gap-1.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 cursor-pointer border border-border/50"
-                title="Import Sequence Blueprint (.elein, JSON)"
+                title="Direct 1-Click Import Sequence (.json, .elein)"
               >
                 <Upload size={13} className="text-primary shrink-0" />
                 <span>Import</span>
@@ -2283,6 +2479,15 @@ export function EISequenceTree({
       
       {/* Side-panel for configuring selected node */}
       <EITreeNodeConfigPanel />
+
+      {/* Hidden File Input for Direct 1-Click Sequence Import */}
+      <input
+        type="file"
+        ref={canvasFileInputRef}
+        onChange={handleDirectCanvasFileInput}
+        accept=".json,.elein,application/json"
+        className="hidden"
+      />
 
       {/* Campaign Blueprint Modal (Make / n8n Export & Import) */}
       <CampaignBlueprintModal

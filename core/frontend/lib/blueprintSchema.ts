@@ -988,13 +988,22 @@ export function repairTruncatedJson(jsonStr: string): string {
 }
 
 // ─── Download and Clipboard Helpers ──────────────────────────────────────────
-export function downloadBlueprintFile(blueprint: EleInBlueprint, customFilename?: string): void {
-  const cleanName = (customFilename || blueprint.metadata.name || "elein_workflow")
+export function downloadBlueprintFile(
+  blueprint: EleInBlueprint, 
+  customFilename?: string, 
+  format: "json" | "elein" = "json"
+): void {
+  const rawBase = customFilename || blueprint.metadata?.name || "elein_workflow"
+  // Strip any existing .elein or .json extension before sanitizing
+  const baseWithoutExt = rawBase.replace(/\.(elein|json)$/i, "")
+  const cleanBase = baseWithoutExt
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, "_")
     .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || "elein_workflow"
 
-  const filename = cleanName.endsWith(".elein") ? cleanName : `${cleanName}.elein`
+  const ext = format === "elein" ? ".elein" : ".json"
+  const filename = `${cleanBase}${ext}`
   const jsonContent = JSON.stringify(blueprint, null, 2)
   const blob = new Blob([jsonContent], { type: "application/json" })
   const url = URL.createObjectURL(blob)

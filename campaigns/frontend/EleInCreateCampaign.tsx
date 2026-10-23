@@ -9,6 +9,7 @@ import { Zap, Play, Loader2, Save, MoreHorizontal, ArrowLeft, Plus, UserPlus, Fi
 import { usePaywall } from "@/contexts/PaywallContext"
 import { cn } from "@/lib/utils"
 import { useHRTreeStore, dagToTree, treeToDag, saveDraftToLocalStorage } from "@campaigns/eiTreeStore"
+import { parseBlueprintFile } from "@/lib/blueprintSchema"
 import { validateTree } from "@/lib/treeValidator"
 import { useTemplatesStore } from "@campaigns/eiTemplatesStore"
 import { HR_TEMPLATES, TEMPLATE_TAGS, TEMPLATE_TAG_LABELS } from "@/lib/eiTemplates"
@@ -891,44 +892,20 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
     }
   }, [])
   
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string)
-        if (json?.sequence?.rootNodes && Array.isArray(json.sequence.rootNodes)) {
-          loadTree(json.sequence.rootNodes, json.sequence.stickyNotes || [])
-          setMode("build")
-          toast.success(`Blueprint "${json.metadata?.name || file.name}" imported successfully`)
-          return
-        }
-        if (Array.isArray(json?.rootNodes)) {
-          loadTree(json.rootNodes, json.stickyNotes || [])
-          setMode("build")
-          toast.success(`Template "${file.name}" imported successfully`)
-          return
-        }
-        if (Array.isArray(json)) {
-          loadTree(json)
-          setMode("build")
-          toast.success(`Template "${file.name}" imported successfully`)
-          return
-        }
-        if (json?.nodes) {
-          loadTree(dagToTree(json.nodes, json.edges || []))
-          setMode("build")
-          toast.success(`Template "${file.name}" imported successfully`)
-          return
-        }
-        throw new Error("Unrecognized sequence or template format")
-      } catch (err: any) {
-        toast.error("Failed to parse template file", { description: err.message || "Invalid JSON or unsupported schema." })
-      }
-    }
-    reader.readAsText(file)
     e.target.value = "" // reset
+    try {
+      const blueprint = await parseBlueprintFile(file)
+      const importedRoots = blueprint.sequence?.rootNodes || []
+      const importedNotes = blueprint.sequence?.stickyNotes || []
+      loadTree(importedRoots, importedNotes)
+      setMode("build")
+      toast.success(`Blueprint "${blueprint.metadata?.name || file.name}" imported successfully (${importedRoots.length} steps)`)
+    } catch (err: any) {
+      toast.error("Failed to parse template file", { description: err.message || "Invalid JSON or unsupported schema." })
+    }
   }
 
   const handleImportTemplate = (templateId: string) => {
