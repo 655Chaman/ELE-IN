@@ -1,0 +1,43 @@
+name: REA Voyager Canary & Schema Drift Detection
+
+on:
+  schedule:
+    # Runs every Thursday at 23:00 UTC (LinkedIn typically deploys schema updates mid-to-late week)
+    - cron: '0 23 * * 4'
+  workflow_dispatch:
+    inputs:
+      target_dir:
+        description: 'Directory or unpacked extension to analyze'
+        required: false
+        default: 'extension'
+
+jobs:
+  canary-audit:
+    name: REA Cryptographic AST & Voyager Drift Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Execute REA Canary Analysis Pipeline
+        run: |
+          chmod +x bin/rea-canary-voyager.sh
+          TARGET_DIR="${{ github.event.inputs.target_dir || 'extension' }}"
+          ./bin/rea-canary-voyager.sh "$TARGET_DIR" /tmp/rea_canary_output.json
+
+      - name: Upload Canary Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-voyager-canary-report
+          path: /tmp/rea_canary_output.json
