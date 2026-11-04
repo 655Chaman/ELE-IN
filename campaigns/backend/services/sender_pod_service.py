@@ -181,7 +181,7 @@ def get_workspace_sender_pods(
     all_accounts = {}
     try:
         acc_res = supabase.table("accounts") \
-            .select("id, name, first_name, last_name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, linkedin_profile_url, timezone") \
+            .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, linkedin_profile_url") \
             .eq("workspace_id", workspace_id) \
             .execute()
         all_accounts = {acc["id"]: acc for acc in (acc_res.data or [])}
@@ -189,7 +189,7 @@ def get_workspace_sender_pods(
         logger.warning(f"Failed to query accounts with pod columns, trying fallback: {a_err}")
         try:
             acc_res = supabase.table("accounts") \
-                .select("id, name, first_name, last_name, status, is_warmup, daily_connection_limit, daily_message_limit, linkedin_profile_url, timezone") \
+                .select("id, name, status, is_warmup, daily_connection_limit, daily_message_limit, linkedin_profile_url") \
                 .eq("workspace_id", workspace_id) \
                 .execute()
             all_accounts = {acc["id"]: acc for acc in (acc_res.data or [])}
@@ -410,7 +410,7 @@ def select_pod_sender(
             if initiating_acc_id and initiating_acc_id not in exclude_set:
                 # Fetch initiating account status
                 acc_res = supabase.table("accounts") \
-                    .select("id, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, workspace_id, timezone, proxy_id") \
+                    .select("id, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, workspace_id, proxy_id") \
                     .eq("id", initiating_acc_id) \
                     .execute()
                 if acc_res.data:
@@ -522,7 +522,7 @@ def select_pod_sender(
 
     # Fetch candidate accounts
     candidates_res = supabase.table("accounts") \
-        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, timezone, workspace_id, proxy_id") \
+        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, workspace_id, proxy_id") \
         .in_("id", account_ids) \
         .execute()
     candidate_accounts = candidates_res.data or []

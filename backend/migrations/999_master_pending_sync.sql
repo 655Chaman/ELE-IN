@@ -327,7 +327,7 @@ BEGIN
     FROM public.accounts
     WHERE id = p_account_id;
 
-    IF v_is_warmup = true AND warmup_start_date IS NOT NULL AND p_action_type IN ('connection_request', 'message', 'inmail') THEN
+    IF v_is_warmup = true AND v_warmup_start_date IS NOT NULL AND p_action_type IN ('connection_request', 'message', 'inmail') THEN
         v_warmup_limit := 15 + ( GREATEST(0, (CURRENT_DATE - v_warmup_start_date::date)) / 3 ) * 5;
         RETURN LEAST(v_warmup_limit, v_global_limit);
     END IF;
@@ -3405,5 +3405,31 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.check_and_reserve_account_slot(UUID, UUID) TO authenticated, service_role;
+
+-- ------------------------------------------------------------------------------
+-- MIGRATION FIX: COLUMNS & PARTITION RECONCILIATION
+-- ------------------------------------------------------------------------------
+
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS execution_channel VARCHAR(20) DEFAULT 'CLOUD';
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC';
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_partitioned_table pt
+        JOIN pg_class c ON pt.partrelid = c.oid
+        WHERE c.relname = 'campaign_events'
+    ) THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_inherits i
+            JOIN pg_class c ON i.inhrelid = c.oid
+            WHERE c.relname = 'campaign_events_default'
+        ) THEN
+            EXECUTE 'CREATE TABLE IF NOT EXISTS public.campaign_events_default PARTITION OF public.campaign_events DEFAULT;';
+        END IF;
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Partition check notice: %', SQLERRM;
+END $$;
 
 COMMIT;

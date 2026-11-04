@@ -712,7 +712,7 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
 
         # Layer 1 Paranoia: Prevent Cross-Tenant Impersonation / IDOR
         try:
-            res = await db.table("workspaces").select("id, status, require_2fa, owner_id, metadata").eq("id", requested_workspace_id).execute()
+            res = await db.table("workspaces").select("id, status, require_2fa, owner_id, agency_id").eq("id", requested_workspace_id).execute()
         except Exception as e:
             logger.error(f"Database error retrieving requested workspace {requested_workspace_id}: {e}")
             raise HTTPException(status_code=500, detail="Database error retrieving workspace")
@@ -776,12 +776,12 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
             default_ws_id = member_workspaces[0]["workspace_id"] if member_workspaces else None
             
             if default_ws_id:
-                ws_res = await db.table("workspaces").select("id, status, require_2fa, owner_id, metadata").eq("id", default_ws_id).execute()
+                ws_res = await db.table("workspaces").select("id, status, require_2fa, owner_id, agency_id").eq("id", default_ws_id).execute()
                 if ws_res.data:
                     workspace_data = ws_res.data[0]
             else:
                 # Fallback: check if user owns any workspace directly
-                owned_res = await db.table("workspaces").select("id, status, require_2fa, owner_id, metadata").eq("owner_id", user_id).order("created_at", desc=False).limit(2).execute()
+                owned_res = await db.table("workspaces").select("id, status, require_2fa, owner_id, agency_id").eq("owner_id", user_id).order("created_at", desc=False).limit(2).execute()
                 owned_workspaces = owned_res.data or []
                 if request.method in ("POST", "PUT", "PATCH", "DELETE") and len(owned_workspaces) > 1:
                     raise HTTPException(
@@ -865,7 +865,7 @@ async def get_current_user_id_with_2fa(
     if workspace_id:
         db = (await get_async_service_client()) or supabase
         try:
-            ws_res = await db.table("workspaces").select("require_2fa, metadata").eq("id", workspace_id).single().execute()
+            ws_res = await db.table("workspaces").select("require_2fa").eq("id", workspace_id).single().execute()
             workspace_row = ws_res.data or {}
         except Exception as e:
             logger.error(f"DB error fetching require_2fa for {workspace_id}: {e}")

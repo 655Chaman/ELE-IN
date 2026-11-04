@@ -3192,9 +3192,14 @@ class EleInOrchestrator:
                     # skipped is handled by process_lead as a 45s orchestration pause
                     return {"status": "skipped", "reason": "account_locked"}
                     
-                acc_res = self.supabase.table("accounts").select(
-                    "id, workspace_id, status, status_changed_at, proxy_id, execution_channel, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id)"
-                ).eq("id", chosen_sender_id).execute()
+                try:
+                    acc_res = self.supabase.table("accounts").select(
+                        "id, workspace_id, status, status_changed_at, proxy_id, execution_channel, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id)"
+                    ).eq("id", chosen_sender_id).execute()
+                except Exception:
+                    acc_res = self.supabase.table("accounts").select(
+                        "id, workspace_id, status, status_changed_at, proxy_id, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id)"
+                    ).eq("id", chosen_sender_id).execute()
                 account_row = acc_res.data[0] if acc_res.data else None
                 
                 if not account_row:
