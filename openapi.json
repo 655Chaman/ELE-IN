@@ -572,7 +572,7 @@
           "leads"
         ],
         "summary": "Get Social Radar Feed Endpoint",
-        "description": "Retrieves live Buying Intent Feed across workspace leads with top signals and posts.",
+        "description": "Retrieves live Buying Intent Feed across workspace leads with top signals and posts.\nEnforces can_use_trigger_radar tier permission.",
         "operationId": "get_social_radar_feed_endpoint_api_leads_social_radar_feed_get",
         "parameters": [
           {
@@ -736,7 +736,7 @@
           "leads"
         ],
         "summary": "Batch Scan Social Radar Endpoint",
-        "description": "Batch scans leads in a target list for live LinkedIn activity and buying intent signals.",
+        "description": "Batch scans leads in a target list for live LinkedIn activity and buying intent signals.\nEnforces can_use_trigger_radar tier permission.",
         "operationId": "batch_scan_social_radar_endpoint_api_leads_social_radar_batch_scan_post",
         "requestBody": {
           "content": {
@@ -780,7 +780,7 @@
           "leads"
         ],
         "summary": "Get Lead Social Radar Endpoint",
-        "description": "Retrieves a single lead's social radar data, posts, intent signals, and opening hook.",
+        "description": "Retrieves a single lead's social radar data, posts, intent signals, and opening hook.\nEnforces can_use_trigger_radar tier permission.",
         "operationId": "get_lead_social_radar_endpoint_api_leads__lead_id__social_radar_get",
         "parameters": [
           {
@@ -1380,7 +1380,7 @@
           "leads"
         ],
         "summary": "Get Suppression List Endpoint",
-        "description": "Lists workspace suppression entries with clamped limit and offset.",
+        "description": "Lists workspace suppression entries with clamped limit, offset, and optional search/type filtering.",
         "operationId": "get_suppression_list_endpoint_api_leads_suppression_get",
         "parameters": [
           {
@@ -1404,6 +1404,38 @@
               "minimum": 0,
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "entry_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Type"
             }
           }
         ],
@@ -1469,6 +1501,26 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/leads/suppression/export": {
+      "get": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Export Suppression Csv Endpoint",
+        "description": "Exports workspace suppression entries as a sanitized CSV.",
+        "operationId": "export_suppression_csv_endpoint_api_leads_suppression_export_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -1563,13 +1615,57 @@
         }
       }
     },
+    "/api/leads/suppression/batch-delete": {
+      "post": {
+        "tags": [
+          "leads"
+        ],
+        "summary": "Delete Suppression Batch Endpoint",
+        "description": "Deletes multiple suppression entries in a single atomic batch operation.\n\nLayer 1 \u2014 Environmental failure analysis:\n  \u2022 Large list (>500) capped to protect database query bounds.\n  \u2022 DB failure returns 500 cleanly.\n  \nLayer 2 \u2014 Human paranoia:\n  \u2022 Strips whitespace and verifies valid non-empty IDs.\n  \u2022 Strictly enforces workspace_id isolation to prevent IDOR across tenants.\n  \u2022 Logs audit trail for security compliance and SOC-2 traceability.",
+        "operationId": "delete_suppression_batch_endpoint_api_leads_suppression_batch_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuppressionBatchDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Delete Suppression Batch Endpoint Api Leads Suppression Batch Delete Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/leads/suppression/{entry_id}": {
       "delete": {
         "tags": [
           "leads"
         ],
         "summary": "Delete Suppression Entry Endpoint",
-        "description": "Deletes a suppression entry by ID, verifying workspace ownership.",
+        "description": "Deletes a suppression entry by ID, verifying workspace ownership and writing audit log.",
         "operationId": "delete_suppression_entry_endpoint_api_leads_suppression__entry_id__delete",
         "parameters": [
           {
@@ -1938,7 +2034,7 @@
           "sender-pods"
         ],
         "summary": "List Workspace Pods Endpoint",
-        "description": "Layer 0: Returns all campaign sender pods, health states, remaining capacities,\nand account allocations for the current workspace.",
+        "description": "Layer 0: Returns all campaign sender pods, health states, remaining capacities,\nand account allocations for the current workspace. Requires Enterprise tier.",
         "operationId": "list_workspace_pods_endpoint_api_campaigns_pods_get",
         "responses": {
           "200": {
@@ -2664,6 +2760,22 @@
               ],
               "title": "Token"
             }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
           }
         ],
         "responses": {
@@ -2692,7 +2804,7 @@
           "unsubscribe"
         ],
         "summary": "RFC 8058 Unsubscribe Confirmation (GET)",
-        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nValidates cryptographic token, processes unsubscription, and displays an accessible,\nresponsive confirmation card.",
+        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nRenders a confirmation prompt card (FLAW-SEC-09) to prevent anti-spam link scanners\n(Proofpoint, Defender, Mimecast) from triggering accidental unsubscriptions.\nIf 'confirm=true' is passed, processes unsubscription and renders confirmed card.",
         "operationId": "rfc8058_unsubscribe_get_api_elein_unsubscribe_get",
         "parameters": [
           {
@@ -2709,6 +2821,22 @@
                 }
               ],
               "title": "Token"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirm"
             }
           }
         ],
@@ -2760,6 +2888,22 @@
               ],
               "title": "Token"
             }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
           }
         ],
         "responses": {
@@ -2788,7 +2932,7 @@
           "unsubscribe"
         ],
         "summary": "RFC 8058 Unsubscribe Confirmation (GET)",
-        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nValidates cryptographic token, processes unsubscription, and displays an accessible,\nresponsive confirmation card.",
+        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nRenders a confirmation prompt card (FLAW-SEC-09) to prevent anti-spam link scanners\n(Proofpoint, Defender, Mimecast) from triggering accidental unsubscriptions.\nIf 'confirm=true' is passed, processes unsubscription and renders confirmed card.",
         "operationId": "rfc8058_unsubscribe_get_api_unsubscribe_get",
         "parameters": [
           {
@@ -2805,6 +2949,22 @@
                 }
               ],
               "title": "Token"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirm"
             }
           }
         ],
@@ -2856,6 +3016,22 @@
               ],
               "title": "Token"
             }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Format"
+            }
           }
         ],
         "responses": {
@@ -2884,7 +3060,7 @@
           "unsubscribe"
         ],
         "summary": "RFC 8058 Unsubscribe Confirmation (GET)",
-        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nValidates cryptographic token, processes unsubscription, and displays an accessible,\nresponsive confirmation card.",
+        "description": "Unsubscribe GET endpoint for human clickers navigating from email footers or browsers.\nRenders a confirmation prompt card (FLAW-SEC-09) to prevent anti-spam link scanners\n(Proofpoint, Defender, Mimecast) from triggering accidental unsubscriptions.\nIf 'confirm=true' is passed, processes unsubscription and renders confirmed card.",
         "operationId": "rfc8058_unsubscribe_get_unsubscribe_get",
         "parameters": [
           {
@@ -2901,6 +3077,22 @@
                 }
               ],
               "title": "Token"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirm"
             }
           }
         ],
@@ -5975,7 +6167,7 @@
           "waterfall_enrichment"
         ],
         "summary": "Enrich Batch Endpoint",
-        "description": "Batch multi-vendor waterfall enrichment across multiple target prospects.",
+        "description": "Batch multi-vendor waterfall enrichment across multiple target prospects.\nParanoia Layer 0 & 1: Strict credit escrow and Token Bucket rate limiting.",
         "operationId": "enrich_batch_endpoint_api_elein_waterfall_enrich_batch_post",
         "requestBody": {
           "content": {
@@ -6347,6 +6539,53 @@
         }
       }
     },
+    "/api/elein/warmup/swarm/execute-batch": {
+      "post": {
+        "tags": [
+          "email_warmup"
+        ],
+        "summary": "Execute Swarm Batch Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2:\nExecutes a high-reputation P2P warmup swarm batch across active workspace mailboxes.\nEvaluates deliverability health (0-100), throttles compromised inboxes by 50% or pauses them,\nand inserts exchange records into warmup_swarm_exchanges.",
+        "operationId": "execute_swarm_batch_endpoint_api_elein_warmup_swarm_execute_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ExecuteSwarmBatchPayload"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/crm-sync/accounts": {
       "get": {
         "tags": [
@@ -6580,6 +6819,156 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/crm-sync/deals": {
+      "post": {
+        "tags": [
+          "crm_sync_and_attribution"
+        ],
+        "summary": "Sync Deal Endpoint",
+        "description": "Pillar 6.4: Bi-directional CRM Deal Sync with Dead Letter Queue failover on 429 rate limits.",
+        "operationId": "sync_deal_endpoint_api_elein_crm_sync_deals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncDealPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/crm-sync/dlq": {
+      "get": {
+        "tags": [
+          "crm_sync_and_attribution"
+        ],
+        "summary": "List Dlq Endpoint",
+        "description": "Pillar 6.4: Lists Dead Letter Queue items for the workspace.",
+        "operationId": "list_dlq_endpoint_api_elein_crm_sync_dlq_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/crm-sync/dlq/retry": {
+      "post": {
+        "tags": [
+          "crm_sync_and_attribution"
+        ],
+        "summary": "Retry Dlq Endpoint",
+        "description": "Pillar 6.4: Triggers worker sweep to retry pending CRM DLQ items with exponential backoff.",
+        "operationId": "retry_dlq_endpoint_api_elein_crm_sync_dlq_retry_post",
+        "parameters": [
+          {
+            "name": "max_retries",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "title": "Max Retries"
+            }
+          },
+          {
+            "name": "base_backoff_seconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Base Backoff Seconds"
+            }
+          },
+          {
+            "name": "simulate_fail_all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Simulate Fail All"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -7088,15 +7477,45 @@
         "summary": "Upload Csv",
         "description": "Streams a CSV file to local disk and processes it in a background task to prevent OOM.",
         "operationId": "upload_csv_api_elein_leads_upload_csv_post",
+        "parameters": [
+          {
+            "name": "background_tasks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Background Tasks"
+            }
+          },
+          {
+            "name": "db",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Db"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_upload_csv_api_elein_leads_upload_csv_post"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -7104,8 +7523,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
                   "type": "object",
+                  "additionalProperties": true,
                   "title": "Response Upload Csv Api Elein Leads Upload Csv Post"
                 }
               }
@@ -8771,6 +9190,216 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Renew Session Endpoint Api Elein Accounts  Account Id  Renew Session Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/accounts/{account_id}/session-death-check": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Check Account Session Death",
+        "description": "Paranoia Layer 0, 1 & 2: Probes account session cookies and detects definitive session death.",
+        "operationId": "check_account_session_death_api_elein_accounts__account_id__session_death_check_post",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "force_probe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force Probe"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Check Account Session Death Api Elein Accounts  Account Id  Session Death Check Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/accounts/{account_id}/rotate-dek": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Rotate Account Dek Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2: Rotates account credential Vault DEK with memory zeroization.",
+        "operationId": "rotate_account_dek_endpoint_api_elein_accounts__account_id__rotate_dek_post",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Rotate Account Dek Endpoint Api Elein Accounts  Account Id  Rotate Dek Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/accounts/{account_id}/challenge-alert": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Trigger Challenge Alert Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2: Triggers security challenge quarantine and halts tied campaigns.",
+        "operationId": "trigger_challenge_alert_endpoint_api_elein_accounts__account_id__challenge_alert_post",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeAlertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Trigger Challenge Alert Endpoint Api Elein Accounts  Account Id  Challenge Alert Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/accounts/{account_id}/mailbox-reputation-check": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Check Mailbox Reputation Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2: Evaluates deliverability score and gracefully pauses degraded mailboxes.",
+        "operationId": "check_mailbox_reputation_endpoint_api_elein_accounts__account_id__mailbox_reputation_check_post",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailboxReputationCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Check Mailbox Reputation Endpoint Api Elein Accounts  Account Id  Mailbox Reputation Check Post"
                 }
               }
             }
@@ -10605,7 +11234,7 @@
           "elein"
         ],
         "summary": "Generate Spintax Endpoint",
-        "description": "Paranoia Layer 0, 1 & 2 (Issue 7):\nAutomatically enriches plain outbound copy into high-converting B2B linguistic spintax\nwhile strictly protecting mustache variables and pre-existing spintax blocks.",
+        "description": "Paranoia Layer 0, 1 & 2 (Issue 7):\nAutomatically enriches plain outbound copy into high-converting B2B linguistic spintax\nwhile strictly protecting mustache variables and pre-existing spintax blocks.\nRequires Pro or Enterprise tier subscription.",
         "operationId": "generate_spintax_endpoint_api_elein_spintax_generate_post",
         "requestBody": {
           "content": {
@@ -11917,6 +12546,235 @@
         }
       }
     },
+    "/api/elein/campaigns/simulate-dag": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Simulate Sequence Dag",
+        "description": "Phase S: Multi-Channel Sequence DAG Simulation & Dry-Run Sandbox.\nSimulates sequence DAG execution across sample leads and senders, verifying\nspintax entropy, dynamic token resolution, multi-channel pacing, and daily quota limits.",
+        "operationId": "api_simulate_sequence_dag_api_elein_campaigns_simulate_dag_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DAGSimulationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Simulate Sequence Dag Api Elein Campaigns Simulate Dag Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/leads/export": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Export Workspace Leads",
+        "description": "Phase T: Scoped lead export with RBAC exfiltration shield and Formula Injection Defense.\nRequires 'lead:export' permission (owner, admin, manager).\nBlocks analysts and unassigned senders with 403 Forbidden and logs security audit trail.\nEnforces Free-tier contact masking and Excel/Sheets formula injection sanitization.",
+        "operationId": "api_export_workspace_leads_api_elein_leads_export_get",
+        "parameters": [
+          {
+            "name": "list_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "List Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Export Workspace Leads Api Elein Leads Export Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/workspaces/members/role": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Update Workspace Member Role",
+        "description": "Phase T: Updates a workspace member's role with anti-privilege escalation\nand last-admin lockout prevention.",
+        "operationId": "api_update_workspace_member_role_api_elein_workspaces_members_role_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberRoleUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Api Update Workspace Member Role Api Elein Workspaces Members Role Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/workspaces/audit-trail": {
+      "get": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Api Get Workspace Audit Trail",
+        "description": "Phase T: Retrieves tamper-evident workspace audit logs for compliance & security review.\nRequires 'analytics:view' permission or admin/owner role, and tier entitlement (Growth Pro or Enterprise).",
+        "operationId": "api_get_workspace_audit_trail_api_elein_workspaces_audit_trail_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Api Get Workspace Audit Trail Api Elein Workspaces Audit Trail Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/campaigns/preflight-collision-check": {
+      "post": {
+        "tags": [
+          "elein"
+        ],
+        "summary": "Preflight Collision Check",
+        "operationId": "preflight_collision_check_api_elein_campaigns_preflight_collision_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreflightCollisionCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Preflight Collision Check Api Elein Campaigns Preflight Collision Check Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/reply": {
       "post": {
         "tags": [
@@ -12181,6 +13039,47 @@
         }
       }
     },
+    "/api/elein/inbox/sync": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Sync Inbox Api",
+        "operationId": "sync_inbox_api_api_elein_inbox_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/inbox/threads": {
       "get": {
         "tags": [
@@ -12403,6 +13302,50 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Sync Inbox With Classification Api Elein Inbox Sync And Classify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/inbox/webhooks/inbound": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Ingest Inbound Webhook Endpoint",
+        "description": "Pillar 6.1: Real-Time Inbound Sync & Webhook Buffer endpoint.\nStages incoming webhooks, deduplicates against replay, and collapses into thread history.",
+        "operationId": "ingest_inbound_webhook_endpoint_api_elein_inbox_webhooks_inbound_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundWebhookIngestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Ingest Inbound Webhook Endpoint Api Elein Inbox Webhooks Inbound Post"
                 }
               }
             }
@@ -12989,7 +13932,7 @@
     "/api/elein/billing/cancel-subscription": {
       "post": {
         "summary": "Cancel Subscription",
-        "description": "Paranoia Layer 1 & 2: Graceful Churn Handler\nMarks the subscription for cancellation at the end of the current billing cycle.\nNever abruptly terminates service or wipes user work immediately.",
+        "description": "Paranoia Layer 1 & 2: Graceful Churn Handler\nMarks the subscription for cancellation at the end of the current billing cycle.\nNever abruptly terminates service or wipes user work immediately.\nSyncs with Stripe cancel_at_period_end=True if active subscription exists.",
         "operationId": "cancel_subscription_api_elein_billing_cancel_subscription_post",
         "requestBody": {
           "content": {
@@ -13026,7 +13969,7 @@
     "/api/elein/billing/reactivate-subscription": {
       "post": {
         "summary": "Reactivate Subscription",
-        "description": "Paranoia Layer 1 & 2: 1-Click Subscription Reactivation.\nInstantly revokes pending cancellation or unpauses account,\nrestoring active workspace status without requiring re-entry of payment info.",
+        "description": "Paranoia Layer 1 & 2: 1-Click Subscription Reactivation.\nInstantly revokes pending cancellation or unpauses account,\nrestoring active workspace status without requiring re-entry of payment info.\nSyncs with Stripe cancel_at_period_end=False if pending cancellation exists.",
         "operationId": "reactivate_subscription_api_elein_billing_reactivate_subscription_post",
         "responses": {
           "200": {
@@ -13109,7 +14052,7 @@
       },
       "put": {
         "summary": "Update Auto Recharge",
-        "description": "Paranoia Layer 0, 1 & 2: Update auto-recharge configuration.\nEnforces Growth/Pro tier gate, validates bounds, prevents enabling without verified payment method on file, and sets circuit breakers.",
+        "description": "Paranoia Layer 0, 1 & 2: Update auto-recharge configuration.\nEnforces Growth/Pro tier gate, validates bounds, prevents enabling without verified payment method on file, sets circuit breakers, and enforces owner/admin RBAC.",
         "operationId": "update_auto_recharge_api_elein_billing_auto_recharge_put",
         "requestBody": {
           "content": {
@@ -13173,6 +14116,44 @@
             "schema": {
               "type": "string",
               "title": "Transaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/elein/billing/invoices/{invoice_number}/pdf": {
+      "get": {
+        "summary": "Download Invoice Pdf",
+        "description": "Paranoia Layer 0, 1 & 2: Downloads statutory 18% GST Tax Invoice PDF.\n- Scopes validation to the caller's workspace (Layer 2 IDOR defense).\n- Returns application/pdf inline with cached bytes.",
+        "operationId": "download_invoice_pdf_api_elein_billing_invoices__invoice_number__pdf_get",
+        "parameters": [
+          {
+            "name": "invoice_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Invoice Number"
             }
           }
         ],
@@ -13785,6 +14766,87 @@
         }
       }
     },
+    "/api/master-view/rollup-summary": {
+      "get": {
+        "tags": [
+          "master-view"
+        ],
+        "summary": "Get Master View Rollup Summary Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2: Fast Single-Pass Materialized Rollup Summary.\nDelivers sub-15ms cached aggregation across workspace campaigns and conversion funnels.",
+        "operationId": "get_master_view_rollup_summary_endpoint_api_master_view_rollup_summary_get",
+        "parameters": [
+          {
+            "name": "date_start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Start"
+            }
+          },
+          {
+            "name": "date_end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date End"
+            }
+          },
+          {
+            "name": "bypass_cache",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Bypass Cache"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/master-view/stats": {
       "post": {
         "tags": [
@@ -14080,7 +15142,7 @@
           "proxies"
         ],
         "summary": "Test Existing Proxy",
-        "description": "Tests an existing proxy from the workspace pool and updates its latency and status.",
+        "description": "Tests an existing proxy from the workspace pool or system pool and updates its latency and status.",
         "operationId": "test_existing_proxy_api_proxies__proxy_id__test_post",
         "parameters": [
           {
@@ -14178,6 +15240,101 @@
         }
       }
     },
+    "/api/proxies/webshare/webhook": {
+      "post": {
+        "tags": [
+          "proxies"
+        ],
+        "summary": "Webshare Webhook",
+        "operationId": "webshare_webhook_api_proxies_webshare_webhook_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-webshare-signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Webshare-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assets/knowledge/assets": {
       "get": {
         "tags": [
@@ -14198,6 +15355,60 @@
                   },
                   "type": "array",
                   "title": "Response Get Knowledge Base Api Assets Knowledge Assets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assets/": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Get Knowledge Base",
+        "description": "Endpoint for getting AI knowledge documents.",
+        "operationId": "get_knowledge_base_api_assets__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Knowledge Base Api Assets  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assets": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Get Knowledge Base",
+        "description": "Endpoint for getting AI knowledge documents.",
+        "operationId": "get_knowledge_base_api_assets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Knowledge Base Api Assets Get"
                 }
               }
             }
@@ -14623,7 +15834,7 @@
           "assets"
         ],
         "summary": "Get Pending Templates",
-        "description": "Fetch all pending templates for review (Requires admin/service role in real app).",
+        "description": "Fetch all pending templates for review (Requires superadmin authorization).",
         "operationId": "get_pending_templates_api_assets_templates_admin_pending_get",
         "responses": {
           "200": {
@@ -14650,7 +15861,7 @@
           "assets"
         ],
         "summary": "Approve Template",
-        "description": "Approve a template (set status to 'public').",
+        "description": "Approve a template (set status to 'public' with state machine validation).",
         "operationId": "approve_template_api_assets_templates_admin__template_id__approve_post",
         "parameters": [
           {
@@ -14702,7 +15913,7 @@
           "assets"
         ],
         "summary": "Reject Template",
-        "description": "Reject a template (set status to 'rejected').",
+        "description": "Reject a template (set status to 'rejected' with state machine validation).",
         "operationId": "reject_template_api_assets_templates_admin__template_id__reject_post",
         "parameters": [
           {
@@ -16489,6 +17700,141 @@
         }
       }
     },
+    "/api/webhooks/dlq/replay": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Replay Crm Dlq Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2: Replays failed CRM sync events from the dead-letter queue.\nApplies exponential retry backoff and clamps batch limit to 100 max.",
+        "operationId": "replay_crm_dlq_endpoint_api_webhooks_dlq_replay_post",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Force"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhooks/dlq/stats": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Get Crm Dlq Stats Endpoint",
+        "description": "Paranoia Layer 0 & 2: Returns CRM DLQ telemetry (pending, replayed, quarantined counts).",
+        "operationId": "get_crm_dlq_stats_endpoint_api_webhooks_dlq_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhooks/buffer/drain": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Drain Inbound Buffer Endpoint",
+        "description": "Paranoia Layer 0, 1 & 2: Drains staged inbound webhooks into target subsystems.\nGuarantees asynchronous event ingestion resilience across backend restarts.",
+        "operationId": "drain_inbound_buffer_endpoint_api_webhooks_buffer_drain_post",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/elein/hubspot/status": {
       "get": {
         "summary": "Get Hubspot Status",
@@ -16677,6 +18023,22 @@
               "type": "string",
               "title": "X-Api-Key"
             }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
+            }
           }
         ],
         "requestBody": {
@@ -16728,6 +18090,22 @@
             "schema": {
               "type": "string",
               "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
             }
           }
         ],
@@ -16797,12 +18175,38 @@
             }
           },
           {
+            "name": "force_takeover",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force Takeover"
+            }
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": true,
             "schema": {
               "type": "string",
               "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
             }
           }
         ],
@@ -16851,6 +18255,22 @@
               "type": "string",
               "title": "X-Api-Key"
             }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
+            }
           }
         ],
         "requestBody": {
@@ -16871,6 +18291,234 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extension/session-state": {
+      "post": {
+        "summary": "Update Extension Session State",
+        "description": "Paranoia Layer 0, 1 & 2: Reports immediate changes in local browser LinkedIn session state.\n- If user logs out locally (li_at deleted), transitions account to DISCONNECTED.\n- Releases any pending running task leases for this account to prevent stuck states.\n- Idempotent and verified against workspace ownership.",
+        "operationId": "update_extension_session_state_api_extension_session_state_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionSessionStatePayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extension/diagnostic": {
+      "post": {
+        "summary": "Report Extension Diagnostic",
+        "description": "Paranoia Layer 2: Ingests sanitized DOM selector mutation diagnostics and API anomalies\nfor proactive triage and engineering alerting.",
+        "operationId": "report_extension_diagnostic_api_extension_diagnostic_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionDiagnosticPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extension/scrape/profile": {
+      "post": {
+        "summary": "Ingest Scraped Profile",
+        "description": "Paranoia Layer 0, 1 & 2: Ingests LinkedIn profile scraped via Chrome Extension DOM.\n- Layer 0: Normalizes LinkedIn URL, parses name/title/company, inserts or updates lead record.\n- Layer 1: Validates cryptographic HMAC signature and timestamp drift against API Key.\n- Layer 2: Sanitizes spreadsheet formula injection prefixes (=, +, -, @) and caps payload attributes.",
+        "operationId": "ingest_scraped_profile_api_extension_scrape_profile_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Workspace-Id"
+            }
+          },
+          {
+            "name": "x-extension-signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Extension-Signature"
+            }
+          },
+          {
+            "name": "x-extension-timestamp",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Extension-Timestamp"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionScrapedProfilePayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Ingest Scraped Profile Api Extension Scrape Profile Post"
+                }
               }
             }
           },
@@ -16944,6 +18592,45 @@
       }
     },
     "/api/workspaces/{workspace_id}": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Workspace Details",
+        "description": "Paranoia Layer 0 & 2: Get workspace profile, status, 2FA, deletion state, tier, and member role.",
+        "operationId": "get_workspace_details_api_workspaces__workspace_id__get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "put": {
         "tags": [
           "workspaces"
@@ -17510,7 +19197,7 @@
           "workspaces"
         ],
         "summary": "Get Sending Defaults",
-        "description": "Return sending defaults for a workspace.\n\nLayer 1 \u2014 Environmental failure analysis:\n  \u2022 workspace_id doesn't exist \u2192 404\n  \u2022 caller not a member \u2192 403\n  \u2022 DB down \u2192 503",
+        "description": "Return sending defaults and deliverability guardrails for a workspace.\n\nLayer 1 \u2014 Environmental failure analysis:\n  \u2022 workspace_id doesn't exist \u2192 404\n  \u2022 caller not a member \u2192 403\n  \u2022 DB down \u2192 503",
         "operationId": "get_sending_defaults_api_workspaces__workspace_id__sending_defaults_get",
         "parameters": [
           {
@@ -17924,7 +19611,7 @@
           "workspaces"
         ],
         "summary": "Get Audit Log",
-        "description": "Return paginated audit log entries for a workspace.\n\nLayer 1 \u2014 Environmental failure analysis:\n  \u2022 workspace_id doesn't exist \u2192 404\n  \u2022 caller not a member \u2192 403\n  \u2022 DB down \u2192 503\n\nLayer 2 \u2014 Human paranoia:\n  \u2022 limit capped at 100 \u2014 prevents a single request from pulling unbounded rows\n    and exhausting backend memory / Supabase row budget.\n  \u2022 offset < 0 is normalised to 0 to prevent negative range queries.",
+        "description": "Return paginated audit log entries for a workspace with server-side category and query filtering.\n\nLayer 1 \u2014 Environmental failure analysis:\n  \u2022 workspace_id doesn't exist \u2192 404\n  \u2022 caller not a member \u2192 403\n  \u2022 DB down \u2192 503\n\nLayer 2 \u2014 Human paranoia:\n  \u2022 limit capped at 100 \u2014 prevents a single request from pulling unbounded rows\n    and exhausting backend memory / Supabase row budget.\n  \u2022 offset < 0 is normalised to 0 to prevent negative range queries.\n  \u2022 query strings sanitized against SQL wildcards and injected characters.",
         "operationId": "get_audit_log_api_workspaces__workspace_id__audit_log_get",
         "parameters": [
           {
@@ -17961,6 +19648,38 @@
               "type": "integer",
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           }
         ],
@@ -18021,6 +19740,989 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/legal-profile": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Workspace Legal Profile",
+        "description": "Fetches CAN-SPAM physical postal address, tax ID, and regional formats.",
+        "operationId": "get_workspace_legal_profile_api_workspaces__workspace_id__legal_profile_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Update Workspace Legal Profile",
+        "description": "Updates legal physical mailing address, CAN-SPAM custom footer, and regional formats.",
+        "operationId": "update_workspace_legal_profile_api_workspaces__workspace_id__legal_profile_put",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalProfileUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/sessions": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "List Workspace Sessions",
+        "description": "Lists active device sessions with IP address, browser/OS, and last activity timestamp.",
+        "operationId": "list_workspace_sessions_api_workspaces__workspace_id__sessions_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Revoke Workspace Session",
+        "description": "Revokes a specific active device session.",
+        "operationId": "revoke_workspace_session_api_workspaces__workspace_id__sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/sessions/revoke-all": {
+      "delete": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Revoke All Other Sessions",
+        "description": "Revokes all other active device sessions across the workspace.",
+        "operationId": "revoke_all_other_sessions_api_workspaces__workspace_id__sessions_revoke_all_delete",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/api-keys": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "List Workspace Api Keys",
+        "description": "Lists workspace developer API keys with masked secret previews.",
+        "operationId": "list_workspace_api_keys_api_workspaces__workspace_id__api_keys_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Create Workspace Api Key",
+        "description": "Generates a new scoped workspace developer API key. Raw secret returned once.",
+        "operationId": "create_workspace_api_key_api_workspaces__workspace_id__api_keys_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceApiKeyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/api-keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Revoke Workspace Api Key",
+        "description": "Revokes and invalidates a developer API key.",
+        "operationId": "revoke_workspace_api_key_api_workspaces__workspace_id__api_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/ip-allowlist": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Workspace Ip Allowlist",
+        "description": "Fetches IP allowlist CIDR blocks.",
+        "operationId": "get_workspace_ip_allowlist_api_workspaces__workspace_id__ip_allowlist_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Update Workspace Ip Allowlist",
+        "description": "Updates IP allowlist. Paranoia Layer 2: Checks caller's IP to prevent self-lockout.",
+        "operationId": "update_workspace_ip_allowlist_api_workspaces__workspace_id__ip_allowlist_put",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpAllowlistUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/members/{target_user_id}/permissions": {
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Update Member Permissions",
+        "description": "Updates custom granular permissions for a workspace member.",
+        "operationId": "update_member_permissions_api_workspaces__workspace_id__members__target_user_id__permissions_put",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "target_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Target User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPermissionsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/invites/{invite_id}/resend": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Resend Workspace Invite",
+        "description": "Resends invitation email with anti-spam check.",
+        "operationId": "resend_workspace_invite_api_workspaces__workspace_id__invites__invite_id__resend_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "invite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Invite Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/notifications/test": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Test Notification Webhook",
+        "description": "Dispatches a live simulated notification test payload with latency diagnostics.",
+        "operationId": "test_notification_webhook_api_workspaces__workspace_id__notifications_test_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationTestPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/export-archive": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Export Workspace Data Archive",
+        "description": "Generates complete JSON archive of all workspace data prior to deletion or backup.",
+        "operationId": "export_workspace_data_archive_api_workspaces__workspace_id__export_archive_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/webhooks": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Workspace Webhooks",
+        "description": "Retrieves configured Slack, Discord, and custom webhooks with channel-specific routing matrix.",
+        "operationId": "get_workspace_webhooks_api_workspaces__workspace_id__webhooks_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Update Workspace Webhooks",
+        "description": "Updates persistent Slack, Discord, and custom webhooks with input sanitization and SSRF guards.",
+        "operationId": "update_workspace_webhooks_api_workspaces__workspace_id__webhooks_put",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceWebhooksUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/session-timeout": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Get Session Timeout",
+        "description": "Retrieves workspace inactivity idle timeout and session fingerprinting policy.",
+        "operationId": "get_session_timeout_api_workspaces__workspace_id__session_timeout_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Update Session Timeout",
+        "description": "Updates workspace session idle timeout with strict duration validation.",
+        "operationId": "update_session_timeout_api_workspaces__workspace_id__session_timeout_put",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionTimeoutUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/invites/bulk": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "Bulk Invite Workspace Members",
+        "description": "Dispatches bulk team invites with deduplication, regex validation, and seat cap enforcement.",
+        "operationId": "bulk_invite_workspace_members_api_workspaces__workspace_id__invites_bulk_post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkInviteRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -18457,7 +21159,7 @@
     "/api/agencies/{agency_id}/credits": {
       "get": {
         "summary": "Get Agency Credits Overview",
-        "description": "Paranoia Layer 0 & 1: Master agency credit pool, sub-workspace allocations,\nand consumption telemetry.",
+        "description": "Paranoia Layer 0, 1 & 2: Master agency credit pool, sub-workspace allocations,\nand consumption telemetry. Restricted strictly to Agency Owners and Admins.",
         "operationId": "get_agency_credits_overview_api_agencies__agency_id__credits_get",
         "parameters": [
           {
@@ -19054,7 +21756,7 @@
           "system"
         ],
         "summary": "Readiness probe for API reverse proxy",
-        "description": "Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity\nand essential services before routing traffic. Returns HTTP 200 if connected, or\nHTTP 503 with degraded status if unreachable.",
+        "description": "Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity\nand connection pool responsiveness before routing traffic. Returns HTTP 200 if connected,\nor HTTP 503 with degraded status if unreachable or experiencing severe latency (>5000ms).",
         "operationId": "readiness_probe_api_ready_get",
         "responses": {
           "200": {
@@ -19074,7 +21776,7 @@
           "system"
         ],
         "summary": "Readiness probe verifying DB connectivity",
-        "description": "Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity\nand essential services before routing traffic. Returns HTTP 200 if connected, or\nHTTP 503 with degraded status if unreachable.",
+        "description": "Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity\nand connection pool responsiveness before routing traffic. Returns HTTP 200 if connected,\nor HTTP 503 with degraded status if unreachable or experiencing severe latency (>5000ms).",
         "operationId": "readiness_probe_ready_get",
         "responses": {
           "200": {
@@ -19248,6 +21950,42 @@
               }
             ],
             "title": "Idempotency Key"
+          },
+          "objection_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objection Type"
+          },
+          "objection_playbook": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objection Playbook"
+          },
+          "detected_competitor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Competitor"
           }
         },
         "type": "object",
@@ -19633,6 +22371,72 @@
             ],
             "title": "Status",
             "default": "ACTIVE"
+          },
+          "session_death_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Death Reason"
+          },
+          "auto_heal_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Heal Status"
+          },
+          "health_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Score"
+          },
+          "cookie_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cookie Expires At"
+          },
+          "quarantined_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarantined Until"
+          },
+          "quarantine_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarantine Reason"
           },
           "manual_send_suspected": {
             "anyOf": [
@@ -20589,6 +23393,34 @@
         ],
         "title": "BulkApplyDefaultsRequest"
       },
+      "BulkInviteRequest": {
+        "properties": {
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emails"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role",
+            "default": "member"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emails"
+        ],
+        "title": "BulkInviteRequest"
+      },
       "BulkRemoveListMembersRequest": {
         "properties": {
           "lead_ids": {
@@ -21011,6 +23843,28 @@
           "domain"
         ],
         "title": "CatchAllCheckRequest"
+      },
+      "ChallengeAlertRequest": {
+        "properties": {
+          "challenge_type": {
+            "type": "string",
+            "title": "Challenge Type",
+            "default": "SECURITY_CHALLENGE"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "ChallengeAlertRequest"
       },
       "CheckoutRequest": {
         "properties": {
@@ -22144,6 +24998,62 @@
         ],
         "title": "CreditReclaimRequest"
       },
+      "DAGSimulationRequest": {
+        "properties": {
+          "dag": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Dag"
+          },
+          "sample_leads": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Leads"
+          },
+          "sender_profiles": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Profiles"
+          },
+          "simulation_options": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulation Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dag"
+        ],
+        "title": "DAGSimulationRequest"
+      },
       "DMARCAlignmentAuditRequest": {
         "properties": {
           "from_domain": {
@@ -23252,6 +26162,283 @@
         ],
         "title": "ExecuteFallbackPayload"
       },
+      "ExecuteSwarmBatchPayload": {
+        "properties": {
+          "target_exchanges_per_box": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Exchanges Per Box",
+            "description": "Target peer exchanges per active mailbox",
+            "default": 3
+          },
+          "mailbox_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mailbox Ids",
+            "description": "Optional subset of mailbox IDs"
+          }
+        },
+        "type": "object",
+        "title": "ExecuteSwarmBatchPayload"
+      },
+      "ExtensionDiagnosticPayload": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "error_type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "error_detail": {
+            "type": "string",
+            "title": "Error Detail"
+          },
+          "failed_selectors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Selectors"
+          },
+          "dom_snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dom Snippet"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error_type",
+          "error_detail"
+        ],
+        "title": "ExtensionDiagnosticPayload"
+      },
+      "ExtensionScrapedProfilePayload": {
+        "properties": {
+          "linkedin_url": {
+            "type": "string",
+            "title": "Linkedin Url"
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "skills": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skills"
+          },
+          "lead_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Id"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "raw_attributes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Attributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "linkedin_url"
+        ],
+        "title": "ExtensionScrapedProfilePayload"
+      },
+      "ExtensionSessionStatePayload": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "status"
+        ],
+        "title": "ExtensionSessionStatePayload"
+      },
       "ExtensionSyncPayload": {
         "properties": {
           "account_id": {
@@ -24154,6 +27341,80 @@
         ],
         "title": "HubspotWonStage"
       },
+      "InboundWebhookIngestPayload": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Message Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
+          "lead_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Id"
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "payload"
+        ],
+        "title": "InboundWebhookIngestPayload"
+      },
       "InboundWebhookPayload": {
         "properties": {
           "event_type": {
@@ -24326,6 +27587,27 @@
         ],
         "title": "InviteCreate"
       },
+      "IpAllowlistUpdate": {
+        "properties": {
+          "allowed_cidrs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Cidrs"
+          },
+          "enforce_ip_allowlist": {
+            "type": "boolean",
+            "title": "Enforce Ip Allowlist",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed_cidrs"
+        ],
+        "title": "IpAllowlistUpdate"
+      },
       "LaunchDisplacementPayload": {
         "properties": {
           "displacement_id": {
@@ -24422,6 +27704,148 @@
         ],
         "title": "LeadItem"
       },
+      "LegalProfileUpdate": {
+        "properties": {
+          "company_legal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Legal Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "address_line1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line1"
+          },
+          "address_line2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_province": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Province"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country",
+            "default": "United States"
+          },
+          "custom_unsubscribe_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Unsubscribe Text"
+          },
+          "date_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Format",
+            "default": "YYYY-MM-DD"
+          },
+          "time_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Format",
+            "default": "24h"
+          },
+          "default_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Currency",
+            "default": "USD"
+          }
+        },
+        "type": "object",
+        "title": "LegalProfileUpdate"
+      },
       "MXVerifyRequest": {
         "properties": {
           "domain": {
@@ -24446,6 +27870,48 @@
           "domain"
         ],
         "title": "MXVerifyRequest"
+      },
+      "MailboxReputationCheckRequest": {
+        "properties": {
+          "deliverability_score_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deliverability Score Threshold",
+            "default": 70.0
+          },
+          "max_bounce_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Bounce Rate Pct",
+            "default": 5.0
+          },
+          "max_spam_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Spam Rate Pct",
+            "default": 0.1
+          }
+        },
+        "type": "object",
+        "title": "MailboxReputationCheckRequest"
       },
       "MasterViewRequest": {
         "properties": {
@@ -24502,6 +27968,38 @@
         },
         "type": "object",
         "title": "MasterViewRequest"
+      },
+      "MemberPermissionsUpdate": {
+        "properties": {
+          "permissions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "permissions"
+        ],
+        "title": "MemberPermissionsUpdate"
+      },
+      "MemberRoleUpdateRequest": {
+        "properties": {
+          "target_user_id": {
+            "type": "string",
+            "title": "Target User Id"
+          },
+          "new_role": {
+            "type": "string",
+            "title": "New Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_user_id",
+          "new_role"
+        ],
+        "title": "MemberRoleUpdateRequest"
       },
       "MutateVariantPayload": {
         "properties": {
@@ -24746,6 +28244,31 @@
           "enabled"
         ],
         "title": "NotificationPreferenceUpdate"
+      },
+      "NotificationTestPayload": {
+        "properties": {
+          "webhook_url": {
+            "type": "string",
+            "title": "Webhook Url"
+          },
+          "channel_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Type",
+            "default": "slack"
+          }
+        },
+        "type": "object",
+        "required": [
+          "webhook_url"
+        ],
+        "title": "NotificationTestPayload"
       },
       "OOORescheduleRequest": {
         "properties": {
@@ -25072,6 +28595,37 @@
           "strategy"
         ],
         "title": "PodStrategyUpdateRequest"
+      },
+      "PreflightCollisionCheckRequest": {
+        "properties": {
+          "linkedin_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Linkedin Urls"
+          },
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emails"
+          },
+          "exclude_campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Campaign Id"
+          }
+        },
+        "type": "object",
+        "title": "PreflightCollisionCheckRequest"
       },
       "PreflightValidateRequest": {
         "properties": {
@@ -25484,6 +29038,30 @@
               }
             ],
             "title": "Quarantine Reason"
+          },
+          "is_system": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is System",
+            "default": false
+          },
+          "assigned_accounts_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Accounts Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -26915,6 +30493,28 @@
               }
             ],
             "title": "Lead Id"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "client_draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Draft Id"
           }
         },
         "type": "object",
@@ -27039,6 +30639,102 @@
               }
             ],
             "title": "Warmup Days"
+          },
+          "bounce_rate_killswitch_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bounce Rate Killswitch Threshold",
+            "default": 3.5
+          },
+          "spam_complaint_killswitch_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spam Complaint Killswitch Threshold",
+            "default": 0.1
+          },
+          "auto_warmup_throttle_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Warmup Throttle Enabled",
+            "default": true
+          },
+          "day_schedule_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Schedule Overrides"
+          },
+          "min_action_delay_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Action Delay Seconds",
+            "default": 45
+          },
+          "max_action_delay_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Action Delay Seconds",
+            "default": 120
+          },
+          "pause_on_national_holidays": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause On National Holidays",
+            "default": false
+          },
+          "national_holiday_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "National Holiday Country",
+            "default": "US"
           }
         },
         "type": "object",
@@ -27056,6 +30752,31 @@
           "session_cookies_json"
         ],
         "title": "SessionRenewalRequest"
+      },
+      "SessionTimeoutUpdate": {
+        "properties": {
+          "timeout_minutes": {
+            "type": "integer",
+            "title": "Timeout Minutes"
+          },
+          "enforce_device_fingerprint": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enforce Device Fingerprint",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "timeout_minutes"
+        ],
+        "title": "SessionTimeoutUpdate"
       },
       "SetAccountCooldownRequest": {
         "properties": {
@@ -27458,6 +31179,22 @@
         ],
         "title": "SuppressDomainRequest"
       },
+      "SuppressionBatchDeleteRequest": {
+        "properties": {
+          "entry_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Entry Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_ids"
+        ],
+        "title": "SuppressionBatchDeleteRequest"
+      },
       "SuppressionBulkRequest": {
         "properties": {
           "entries": {
@@ -27744,6 +31481,44 @@
           "stage"
         ],
         "title": "SyncCrmDealStageRequest"
+      },
+      "SyncDealPayload": {
+        "properties": {
+          "deal_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Deal Data"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "default": "hubspot"
+          },
+          "simulate_429": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulate 429",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "deal_data"
+        ],
+        "title": "SyncDealPayload"
       },
       "TemplateCreate": {
         "properties": {
@@ -28654,6 +32429,33 @@
         ],
         "title": "WithdrawStaleInvitationsRequest"
       },
+      "WorkspaceApiKeyCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "WorkspaceApiKeyCreate"
+      },
       "WorkspaceBlueprintCreate": {
         "properties": {
           "name": {
@@ -28789,6 +32591,57 @@
           "name"
         ],
         "title": "WorkspaceRename"
+      },
+      "WorkspaceWebhooksUpdate": {
+        "properties": {
+          "slack_webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slack Webhook Url"
+          },
+          "discord_webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discord Webhook Url"
+          },
+          "custom_webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Webhook Url"
+          },
+          "channel_routing": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Routing"
+          }
+        },
+        "type": "object",
+        "title": "WorkspaceWebhooksUpdate"
       },
       "campaigns__backend__routers__elein__ToggleWarmupPayload": {
         "properties": {

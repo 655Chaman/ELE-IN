@@ -84,11 +84,20 @@ export function WaterfallEnrichmentStudioModal({
       toast.error('No enriched runs to export.');
       return;
     }
+    const sanitizeCsvCell = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val).replace(/"/g, '""');
+      const clean = str.trimStart();
+      if (clean && ['=', '+', '-', '@', '\t', '\r'].includes(clean[0])) {
+        return `'${str}`;
+      }
+      return str;
+    };
     const headers = 'Name,Domain,Resolved Email,Vendor,Status,Confidence,Credits Cost\n';
     const rows = runsList
       .map(
         (r) =>
-          `"${r.lead_name || ''}","${r.company_domain || ''}","${r.resolved_email || ''}","${r.resolved_vendor || ''}","${r.deliverability_status || ''}","${r.confidence_score || 0}","${r.total_cost_credits || 0}"`
+          `"${sanitizeCsvCell(r.lead_name)}","${sanitizeCsvCell(r.company_domain)}","${sanitizeCsvCell(r.resolved_email)}","${sanitizeCsvCell(r.resolved_vendor)}","${sanitizeCsvCell(r.deliverability_status)}","${r.confidence_score || 0}","${r.total_cost_credits || 0}"`
       )
       .join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv' });

@@ -21,6 +21,9 @@ class TestPhase1OrchestratorWorkerEngine(unittest.TestCase):
     """
 
     def setUp(self):
+        import campaigns.backend.services.elein_orchestrator as eo
+        eo._DEQUEUE_RPC_AVAILABLE = True
+        eo._OUTBOX_SUPPORTS_PROCESSING = True
         self.mock_supabase = MagicMock()
         self.workspace_id = "ws_orch_phase1"
         self.campaign_id = "camp_phase1"
@@ -28,6 +31,11 @@ class TestPhase1OrchestratorWorkerEngine(unittest.TestCase):
         self.enrollment_id = "enr_phase1"
         self.state_id = "state_phase1"
         self.lease_token = "lease_phase1_token"
+
+    def tearDown(self):
+        import campaigns.backend.services.elein_orchestrator as eo
+        eo._DEQUEUE_RPC_AVAILABLE = True
+        eo._OUTBOX_SUPPORTS_PROCESSING = True
 
     # =========================================================================
     # Layer 0: The Foundational Layer (Core Mechanics)
@@ -133,7 +141,7 @@ class TestPhase1OrchestratorWorkerEngine(unittest.TestCase):
         # Make RPC throw PGRST202 Function not found
         def rpc_dispatcher(name, params):
             r = MagicMock()
-            if name == "dequeue_due_leads":
+            if name in ("dequeue_due_leads", "dequeue_due_leads_v2"):
                 r.execute.side_effect = Exception("PGRST202: Function dequeue_due_leads not found in schema public")
             else:
                 r.execute.return_value = MagicMock(data=True)
@@ -328,9 +336,15 @@ class TestPhase1OrchestratorWorkerEngine(unittest.TestCase):
         orchestrator = EleInOrchestrator(supabase=self.mock_supabase)
 
         # When campaign is checked in process_lead, status is PAUSED
-        camp_check = MagicMock()
-        camp_check.execute.return_value = MagicMock(data=[{"status": "PAUSED"}])
-        self.mock_supabase.table.return_value.select.return_value.eq.return_value = camp_check
+        def table_dispatch(name):
+            t = MagicMock()
+            if name == "campaigns":
+                t.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"status": "PAUSED"}])
+            elif name == "messages":
+                t.select.return_value.eq.return_value.or_.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+                t.select.return_value.eq.return_value.or_.return_value.gt.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+            return t
+        self.mock_supabase.table.side_effect = table_dispatch
 
         mock_update = MagicMock()
         with patch.object(orchestrator, "update_state", mock_update):

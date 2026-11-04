@@ -2763,4 +2763,647 @@ DO $$ BEGIN
 END $$;
 
 
+-- ------------------------------------------------------------------------------
+-- MIGRATION 117: WORKSPACE AUDIT LOGS (PHASE T RBAC & TAMPER-EVIDENT AUDIT TRAIL)
+-- ------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.workspace_audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+    actor_id TEXT NOT NULL,
+    actor_role TEXT NOT NULL DEFAULT 'unknown',
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(100) NOT NULL,
+    resource_id TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'SUCCESS',
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ip_address VARCHAR(45) NOT NULL DEFAULT 'internal',
+    user_agent TEXT NOT NULL DEFAULT 'internal',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_audit_logs_ws_created
+    ON public.workspace_audit_logs (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_audit_logs_actor_created
+    ON public.workspace_audit_logs (actor_id, created_at DESC);
+
+ALTER TABLE public.workspace_audit_logs ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'workspace_audit_logs' AND policyname = 'workspace_audit_logs_ws_policy') THEN
+        CREATE POLICY workspace_audit_logs_ws_policy ON public.workspace_audit_logs FOR ALL USING (workspace_id IN (SELECT public.my_workspace_ids()) OR auth.role() = 'service_role');
+    END IF;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- MIGRATION 119: SCALE AND TIER SECURITY PATCH (PHASE 1 REMEDIATION)
+-- ------------------------------------------------------------------------------
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_deductions_ws_idemp 
+    ON public.credit_deductions(workspace_id, idempotency_key);
+
+CREATE INDEX IF NOT EXISTS idx_ces_due_scheduler 
+    ON public.campaign_execution_states(status, next_run_at) 
+    WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS public.processing_locks (
+    lock_name TEXT PRIMARY KEY,
+    locked_until TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01 00:00:00+00'
+);
+
+CREATE OR REPLACE FUNCTION public.try_acquire_distributed_lock(
+    p_lock_name TEXT,
+    p_ttl_seconds INT DEFAULT 60
+) RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_acquired BOOLEAN := FALSE;
+BEGIN
+    INSERT INTO public.processing_locks (lock_name, locked_until)
+    VALUES (p_lock_name, now() + (p_ttl_seconds || ' seconds')::interval)
+    ON CONFLICT (lock_name) DO UPDATE
+    SET locked_until = now() + (p_ttl_seconds || ' seconds')::interval
+    WHERE processing_locks.locked_until <= now()
+    RETURNING true INTO v_acquired;
+
+    RETURN COALESCE(v_acquired, false);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_distributed_lock(
+    p_lock_name TEXT
+) RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    UPDATE public.processing_locks
+    SET locked_until = '1970-01-01 00:00:00+00'
+    WHERE lock_name = p_lock_name;
+END;
+$$;
+
+GRANT ALL ON TABLE public.processing_locks TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.try_acquire_distributed_lock(TEXT, INT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.release_distributed_lock(TEXT) TO authenticated, service_role;
+
+-- ==============================================================================
+-- 11.0 RESILIENCE & SECURITY VAULT TABLES (Migrations 111-118 Hardening)
+-- ==============================================================================
+
+-- 11.1 Campaign Lead Sender Locks (Pillar 3: Multi-Sender Pod Balancing & Thread Affinity)
+CREATE TABLE IF NOT EXISTS public.campaign_lead_sender_locks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    campaign_id UUID,
+    lead_id UUID NOT NULL,
+    account_id TEXT,
+    inbox_id TEXT,
+    locked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_campaign_lead_sender UNIQUE (workspace_id, campaign_id, lead_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_lead_sender_locks_lead 
+    ON public.campaign_lead_sender_locks(workspace_id, lead_id);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_lead_sender_locks_account 
+    ON public.campaign_lead_sender_locks(account_id);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_lead_sender_locks_inbox 
+    ON public.campaign_lead_sender_locks(inbox_id);
+
+ALTER TABLE public.campaign_lead_sender_locks ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.campaign_lead_sender_locks TO authenticated, service_role;
+
+-- 11.2 Cold Email Reputation, Multi-ESP Webhooks & Peer Warmup Swarm (Migration 112)
+CREATE TABLE IF NOT EXISTS public.esp_webhook_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider TEXT NOT NULL,
+    event_id TEXT,
+    message_id TEXT,
+    event_type TEXT NOT NULL,
+    email TEXT,
+    workspace_id UUID,
+    payload JSONB,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_esp_event UNIQUE (provider, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_esp_webhook_events_email 
+    ON public.esp_webhook_events(email);
+
+CREATE INDEX IF NOT EXISTS idx_esp_webhook_events_msg 
+    ON public.esp_webhook_events(provider, message_id);
+
+ALTER TABLE public.esp_webhook_events ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.esp_webhook_events TO authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.warmup_swarm_exchanges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    sender_inbox_id TEXT NOT NULL,
+    recipient_inbox_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    subject TEXT,
+    stage TEXT NOT NULL DEFAULT 'SENT',
+    simulated_deliverability_status TEXT DEFAULT 'INBOX',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_warmup_swarm_sender 
+    ON public.warmup_swarm_exchanges(sender_inbox_id);
+
+CREATE INDEX IF NOT EXISTS idx_warmup_swarm_recipient 
+    ON public.warmup_swarm_exchanges(recipient_inbox_id);
+
+ALTER TABLE public.warmup_swarm_exchanges ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.warmup_swarm_exchanges TO authenticated, service_role;
+
+-- 11.3 Inbound Webhook Buffer & CRM Sync Dead Letter Queue (Migration 113)
+CREATE TABLE IF NOT EXISTS public.inbound_webhook_buffer (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    platform TEXT NOT NULL,
+    platform_message_id TEXT NOT NULL,
+    thread_id TEXT,
+    lead_id TEXT,
+    sender_name TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'staged',
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at TIMESTAMPTZ,
+    CONSTRAINT uq_inbound_buffer UNIQUE (platform, platform_message_id, workspace_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbound_buffer_workspace_status 
+    ON public.inbound_webhook_buffer(workspace_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_inbound_buffer_thread 
+    ON public.inbound_webhook_buffer(workspace_id, thread_id);
+
+CREATE INDEX IF NOT EXISTS idx_inbound_buffer_lead 
+    ON public.inbound_webhook_buffer(workspace_id, lead_id);
+
+ALTER TABLE public.inbound_webhook_buffer ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.inbound_webhook_buffer TO authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.crm_sync_dead_letter_queue (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    provider TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    status_code INT,
+    retry_count INT NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    next_retry_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_dlq_pending_retry 
+    ON public.crm_sync_dead_letter_queue(status, next_retry_at) 
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_crm_dlq_workspace_provider 
+    ON public.crm_sync_dead_letter_queue(workspace_id, provider, entity_id);
+
+ALTER TABLE public.crm_sync_dead_letter_queue ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.crm_sync_dead_letter_queue TO authenticated, service_role;
+
+-- 11.4 Security Vault Envelope Encryption & Account Rate Limits (Migration 114)
+CREATE TABLE IF NOT EXISTS public.workspace_deks (
+    workspace_id UUID PRIMARY KEY,
+    wrapped_dek TEXT NOT NULL,
+    key_version INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rotated_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS public.encryption_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    operation TEXT NOT NULL,
+    key_version INT NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'success',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_encryption_audit_ws_time 
+    ON public.encryption_audit_log(workspace_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.account_rate_limits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id TEXT NOT NULL,
+    workspace_id UUID NOT NULL,
+    period_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    period_hour INT NOT NULL DEFAULT EXTRACT(HOUR FROM now())::INT,
+    conn_requests_daily INT NOT NULL DEFAULT 0,
+    messages_daily INT NOT NULL DEFAULT 0,
+    conn_requests_hourly INT NOT NULL DEFAULT 0,
+    messages_hourly INT NOT NULL DEFAULT 0,
+    cooldown_until TIMESTAMPTZ,
+    cooldown_reason TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_account_rate_period UNIQUE (account_id, period_date, period_hour)
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_rate_limits_cooldown 
+    ON public.account_rate_limits(account_id, cooldown_until)
+    WHERE cooldown_until IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_account_rate_limits_ws 
+    ON public.account_rate_limits(workspace_id);
+
+ALTER TABLE public.workspace_deks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.encryption_audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_rate_limits ENABLE ROW LEVEL SECURITY;
+
+GRANT ALL ON TABLE public.workspace_deks TO authenticated, service_role;
+GRANT ALL ON TABLE public.encryption_audit_log TO authenticated, service_role;
+GRANT ALL ON TABLE public.account_rate_limits TO authenticated, service_role;
+
+-- 11.5 GST Invoices & Billing Hardening (Migration 115)
+CREATE TABLE IF NOT EXISTS public.invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    invoice_number TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL,
+    payment_id TEXT,
+    base_amount NUMERIC(12,2) NOT NULL,
+    tax_amount NUMERIC(12,2) NOT NULL,
+    total_amount NUMERIC(12,2) NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'INR',
+    tax_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    customer_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'PAID',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_ws_time 
+    ON public.invoices(workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_payment_id 
+    ON public.invoices(provider, payment_id);
+
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.invoices TO authenticated, service_role;
+
+-- 11.6 Impossible Travel Audit Logs (Migration 118)
+CREATE TABLE IF NOT EXISTS public.impossible_travel_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id TEXT NOT NULL,
+    prev_country TEXT,
+    curr_country TEXT,
+    prev_ip TEXT,
+    curr_ip TEXT,
+    distance_km NUMERIC(10, 2),
+    time_delta_seconds NUMERIC(10, 2),
+    velocity_kmh NUMERIC(10, 2),
+    channel TEXT,
+    detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    flagged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS channel TEXT;
+ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS time_delta_seconds NUMERIC(10, 2);
+
+CREATE INDEX IF NOT EXISTS idx_impossible_travel_acc_time 
+    ON public.impossible_travel_logs(account_id, detected_at DESC);
+
+ALTER TABLE public.impossible_travel_logs ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.impossible_travel_logs TO authenticated, service_role;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'campaign_lead_sender_locks' 
+        AND policyname = 'campaign_lead_sender_locks_workspace_isolation'
+    ) THEN
+        CREATE POLICY campaign_lead_sender_locks_workspace_isolation ON public.campaign_lead_sender_locks
+            FOR ALL
+            TO authenticated
+            USING (workspace_id IN (SELECT public.my_workspace_ids()) OR auth.role() = 'service_role')
+            WITH CHECK (workspace_id IN (SELECT public.my_workspace_ids()) OR auth.role() = 'service_role');
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_campaign_lead_sender_nulls_not_distinct 
+    ON public.campaign_lead_sender_locks(workspace_id, campaign_id, lead_id) NULLS NOT DISTINCT;
+
+CREATE OR REPLACE FUNCTION public.deduct_credits_safely(
+    p_workspace_id UUID,
+    p_amount INT,
+    p_action_type TEXT,
+    p_idempotency_key TEXT,
+    p_metadata JSONB DEFAULT '{}'::jsonb
+) RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+    v_current_balance INT;
+    v_tier TEXT;
+    v_min_balance INT := 0;
+    v_actual_cost INT;
+    v_new_balance INT;
+    v_already_processed BOOLEAN;
+BEGIN
+    SELECT data_cleaning_credits, COALESCE(tier::TEXT, 'FREE')
+    INTO v_current_balance, v_tier
+    FROM public.workspaces
+    WHERE id = p_workspace_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'balance', 0,
+            'reason', 'workspace_not_found',
+            'error', 'workspace_not_found'
+        );
+    END IF;
+
+    v_current_balance := COALESCE(v_current_balance, 0);
+    v_tier := UPPER(COALESCE(v_tier, 'FREE'));
+
+    IF v_tier IN ('PRO', 'GROWTH', 'ENTERPRISE', 'AGENCY', 'UNLIMITED', 'SCALE') THEN
+        v_min_balance := -500;
+    ELSE
+        v_min_balance := 0;
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1 FROM public.credit_deductions 
+        WHERE workspace_id = p_workspace_id AND idempotency_key = p_idempotency_key
+    ) INTO v_already_processed;
+
+    IF v_already_processed THEN
+        SELECT balance_after INTO v_new_balance
+        FROM public.credit_deductions
+        WHERE workspace_id = p_workspace_id AND idempotency_key = p_idempotency_key;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'balance', v_new_balance,
+            'reason', 'already_processed',
+            'already_processed', true
+        );
+    END IF;
+
+    IF p_amount = 0 THEN
+        SELECT credits INTO v_actual_cost
+        FROM public.credit_action_costs
+        WHERE action_type = p_action_type AND is_active = true;
+
+        v_actual_cost := COALESCE(v_actual_cost, 0);
+    ELSE
+        v_actual_cost := p_amount;
+    END IF;
+
+    v_new_balance := v_current_balance - v_actual_cost;
+    IF v_new_balance < v_min_balance THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'balance', v_current_balance,
+            'reason', 'insufficient_credits',
+            'error', 'insufficient_credits',
+            'shortfall', (v_min_balance - v_new_balance),
+            'min_allowed', v_min_balance
+        );
+    END IF;
+
+    UPDATE public.workspaces
+    SET data_cleaning_credits = v_new_balance,
+        updated_at = NOW()
+    WHERE id = p_workspace_id;
+
+    INSERT INTO public.credit_deductions (
+        workspace_id, action_type, amount, balance_after, idempotency_key, metadata
+    ) VALUES (
+        p_workspace_id, p_action_type, v_actual_cost, v_new_balance, p_idempotency_key, p_metadata
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'balance', v_new_balance,
+        'reason', 'ok'
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.deduct_credits_safely(UUID, INT, TEXT, TEXT, JSONB) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.dequeue_due_leads_v2(
+    p_batch_size INT DEFAULT 500,
+    p_max_per_campaign INT DEFAULT 10,
+    p_lease_seconds INT DEFAULT 300
+) RETURNS SETOF public.campaign_execution_states
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_token UUID := gen_random_uuid();
+    v_expires TIMESTAMPTZ := now() + (p_lease_seconds || ' seconds')::INTERVAL;
+BEGIN
+    RETURN QUERY
+    WITH prioritized AS (
+        SELECT ces.id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY ce.campaign_id 
+                   ORDER BY ces.next_run_at ASC NULLS FIRST
+               ) as rank
+        FROM public.campaign_execution_states ces
+        JOIN public.campaign_enrollments ce ON ce.id = ces.enrollment_id
+        JOIN public.campaigns c ON c.id = ce.campaign_id
+        WHERE ces.status = 'pending'
+          AND (ces.next_run_at IS NULL OR ces.next_run_at <= now())
+          AND UPPER(c.status::text) = 'ACTIVE'
+        FOR UPDATE OF ces SKIP LOCKED
+    ),
+    selected AS (
+        SELECT id FROM prioritized WHERE rank <= p_max_per_campaign LIMIT p_batch_size
+    )
+    UPDATE public.campaign_execution_states u
+    SET status = 'running',
+        lease_token = v_token,
+        lease_expires_at = v_expires,
+        updated_at = now()
+    FROM selected s
+    WHERE u.id = s.id
+    RETURNING u.*;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.dequeue_due_leads_v2(INT, INT, INT) TO authenticated, service_role;
+
+-- ============================================================================
+-- Migration 119: 10,000-Tenant Concurrency Composite Indexes & Atomic Quotas
+-- ============================================================================
+CREATE INDEX IF NOT EXISTS idx_campaigns_ws_status_created 
+    ON public.campaigns (workspace_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_campaigns_ws_created 
+    ON public.campaigns (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_ws_created 
+    ON public.accounts (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_ws_status 
+    ON public.accounts (workspace_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_workspaces_owner_tier 
+    ON public.workspaces (owner_id, tier);
+
+CREATE INDEX IF NOT EXISTS idx_leads_ws_status_created 
+    ON public.leads (workspace_id, status, created_at DESC);
+
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS lead_list_id UUID;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS list_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_leads_ws_lead_list 
+    ON public.leads (workspace_id, lead_list_id);
+
+CREATE INDEX IF NOT EXISTS idx_leads_ws_list 
+    ON public.leads (workspace_id, list_id);
+
+CREATE INDEX IF NOT EXISTS idx_billing_txns_ws_status 
+    ON public.billing_transactions (workspace_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_audit_logs_ws_created 
+    ON public.workspace_audit_logs (workspace_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION public.activate_campaign_safely(
+    p_workspace_id UUID,
+    p_campaign_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_tier TEXT;
+    v_max_campaigns INT := 1;
+    v_active_count INT := 0;
+    v_exists BOOLEAN := FALSE;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('camp_act_' || p_workspace_id::text));
+
+    SELECT EXISTS(
+        SELECT 1 FROM public.campaigns 
+        WHERE id = p_campaign_id AND workspace_id = p_workspace_id
+    ) INTO v_exists;
+
+    IF NOT v_exists THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'campaign_not_found');
+    END IF;
+
+    SELECT UPPER(COALESCE(tier, 'FREE')) INTO v_tier 
+    FROM public.workspaces 
+    WHERE id = p_workspace_id;
+
+    IF v_tier IN ('PRO', 'GROWTH', 'STARTER') THEN
+        v_max_campaigns := 20;
+    ELSIF v_tier = 'AGENCY' THEN
+        v_max_campaigns := 50;
+    ELSIF v_tier IN ('ENTERPRISE', 'SCALE', 'UNLIMITED') THEN
+        v_max_campaigns := 100;
+    ELSE
+        v_max_campaigns := 1;
+    END IF;
+
+    SELECT count(*) INTO v_active_count
+    FROM public.campaigns
+    WHERE workspace_id = p_workspace_id 
+      AND status = 'ACTIVE' 
+      AND id != p_campaign_id;
+
+    IF v_active_count >= v_max_campaigns THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'reason', 'quota_exceeded',
+            'tier', v_tier,
+            'max_allowed', v_max_campaigns,
+            'current_active', v_active_count
+        );
+    END IF;
+
+    UPDATE public.campaigns
+    SET status = 'ACTIVE', updated_at = NOW()
+    WHERE id = p_campaign_id AND workspace_id = p_workspace_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'status', 'ACTIVE',
+        'tier', v_tier,
+        'max_allowed', v_max_campaigns,
+        'active_count', v_active_count + 1
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.activate_campaign_safely(UUID, UUID) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.check_and_reserve_account_slot(
+    p_workspace_id UUID,
+    p_account_id UUID DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_tier TEXT;
+    v_max_accounts INT := 1;
+    v_current_count INT := 0;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext('acc_conn_' || p_workspace_id::text));
+
+    SELECT UPPER(COALESCE(tier, 'FREE')) INTO v_tier 
+    FROM public.workspaces 
+    WHERE id = p_workspace_id;
+
+    IF v_tier IN ('PRO', 'GROWTH', 'STARTER') THEN
+        v_max_accounts := 5;
+    ELSIF v_tier = 'AGENCY' THEN
+        v_max_accounts := 15;
+    ELSIF v_tier IN ('ENTERPRISE', 'SCALE', 'UNLIMITED') THEN
+        v_max_accounts := 50;
+    ELSE
+        v_max_accounts := 1;
+    END IF;
+
+    SELECT count(*) INTO v_current_count
+    FROM public.accounts
+    WHERE workspace_id = p_workspace_id 
+      AND (p_account_id IS NULL OR id != p_account_id)
+      AND COALESCE(status, '') != 'DISCONNECTED';
+
+    IF v_current_count >= v_max_accounts THEN
+        RETURN jsonb_build_object(
+            'allowed', false,
+            'reason', 'quota_exceeded',
+            'tier', v_tier,
+            'max_allowed', v_max_accounts,
+            'current_count', v_current_count
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'allowed', true,
+        'tier', v_tier,
+        'max_allowed', v_max_accounts,
+        'current_count', v_current_count
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.check_and_reserve_account_slot(UUID, UUID) TO authenticated, service_role;
+
 COMMIT;

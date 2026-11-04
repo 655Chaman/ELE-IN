@@ -145,3 +145,131 @@ def is_lead_active_in_other_campaign(
     except Exception as e:
         logger.error(f"[CollisionGuard] Preflight query failed for lead {clean_lid}: {e}. Failing closed.", exc_info=True)
         return True
+
+
+# Common consumer freemail domains exempt from corporate account exclusivity
+_FREEMAIL_EXEMPT_DOMAINS = frozenset({
+    "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com",
+    "outlook.com", "live.com", "msn.com", "icloud.com", "me.com", "mac.com",
+    "aol.com", "proton.me", "protonmail.com", "zoho.com", "mail.com", "gmx.com"
+})
+
+
+def check_company_domain_exclusivity(
+    supabase_client,
+    workspace_id: str,
+    company_domain: str,
+    exclude_campaign_id: Optional[str] = None,
+    strict_account_exclusivity: bool = True,
+    active_statuses: Optional[List[str]] = None,
+    enterprise_workspace_ids: Optional[List[str]] = None,
+) -> dict:
+    """
+    Paranoia Layer 0, 1 & 2:
+    Strict Account Exclusivity Guard & Multi-Workspace Enterprise Collision Shield.
+    Prevents cross-campaign and cross-workspace friendly fire at the corporate account level.
+    If Campaign A or Sister Workspace A is actively engaging Acme Corp (acme.com), Campaign B
+    is prohibited from simultaneously reaching out to another prospect at acme.com.
+    
+    - Layer 0: Identifies sibling leads belonging to the same company domain across all specified
+               workspaces and detects if any have in-flight execution states in another active campaign.
+    - Layer 1: Excludes consumer freemail domains (gmail.com, etc.) so B2C/freemail leads aren't blocked.
+               Fails closed gracefully on database/network timeout.
+               Searches both exact domain column and email domain patterns (@company.com) for un-normalized leads.
+    - Layer 2: Sanitizes domain string, strips protocol/www/paths, and prevents unauthorized cross-tenant leaks.
+    """
+    if not supabase_client or not workspace_id or not company_domain:
+        return {"collision_detected": False, "company_domain": "", "reason": "MISSING_PARAMETERS"}
+
+    clean_ws = str(workspace_id).strip()
+    clean_domain = str(company_domain).strip().lower()
+    
+    # Strip URL schemes and path prefixes if a full URL was passed
+    if "://" in clean_domain:
+        clean_domain = clean_domain.split("://", 1)[1]
+    if "/" in clean_domain:
+        clean_domain = clean_domain.split("/", 1)[0]
+    if clean_domain.startswith("www."):
+        clean_domain = clean_domain[4:]
+    clean_domain = clean_domain.strip()
+
+    if not clean_domain:
+        return {"collision_detected": False, "company_domain": "", "reason": "EMPTY_DOMAIN"}
+
+    if not strict_account_exclusivity:
+        return {"collision_detected": False, "company_domain": clean_domain, "reason": "EXCLUSIVITY_DISABLED"}
+
+    if clean_domain in _FREEMAIL_EXEMPT_DOMAINS:
+        return {"collision_detected": False, "company_domain": clean_domain, "reason": "FREEMAIL_DOMAIN_EXEMPT"}
+
+    # Determine target workspaces for enterprise scope
+    target_workspaces = [clean_ws]
+    if enterprise_workspace_ids and isinstance(enterprise_workspace_ids, list):
+        for e_ws in enterprise_workspace_ids:
+            s_ws = str(e_ws).strip()
+            if s_ws and s_ws not in target_workspaces:
+                target_workspaces.append(s_ws)
+
+    try:
+        domain_leads: List[str] = []
+        for target_ws in target_workspaces:
+            # 1. Fetch leads by domain column
+            leads_res = supabase_client.table("leads").select("id").eq("workspace_id", target_ws).eq("domain", clean_domain).limit(500).execute()
+            l_data = getattr(leads_res, "data", None) or []
+            if isinstance(l_data, list):
+                for r in l_data:
+                    if isinstance(r, dict) and "id" in r:
+                        domain_leads.append(str(r["id"]).strip())
+
+            # 2. Un-normalized email domain fallback (e.g. leads where domain was not yet indexed)
+            if len(domain_leads) < 50:
+                try:
+                    email_pattern = f"%@{clean_domain}"
+                    email_leads_res = supabase_client.table("leads").select("id").eq("workspace_id", target_ws).ilike("email", email_pattern).limit(200).execute()
+                    e_data = getattr(email_leads_res, "data", None) or []
+                    if isinstance(e_data, list):
+                        for r in e_data:
+                            if isinstance(r, dict) and "id" in r:
+                                lid = str(r["id"]).strip()
+                                if lid not in domain_leads:
+                                    domain_leads.append(lid)
+                except Exception as _email_fallback_err:
+                    logger.debug(f"[CollisionGuard] Email pattern fallback notice: {_email_fallback_err}")
+
+        if not domain_leads:
+            return {"collision_detected": False, "company_domain": clean_domain, "reason": "NO_SIBLING_LEADS_FOUND"}
+
+        # 3. Check if any sibling lead is actively in-flight in another active campaign across target workspaces
+        for target_ws in target_workspaces:
+            colliding_ids = get_conflicting_active_leads(
+                supabase_client=supabase_client,
+                workspace_id=target_ws,
+                lead_ids=domain_leads,
+                exclude_campaign_id=exclude_campaign_id,
+                active_statuses=active_statuses,
+            )
+
+            if colliding_ids:
+                conflicting_lid = next(iter(colliding_ids))
+                logger.info(
+                    f"[CollisionGuard] Account exclusivity collision detected for domain '{clean_domain}' "
+                    f"in workspace '{target_ws}' (conflicting lead: {conflicting_lid})"
+                )
+                return {
+                    "collision_detected": True,
+                    "company_domain": clean_domain,
+                    "conflicting_lead_id": conflicting_lid,
+                    "colliding_workspace_id": target_ws,
+                    "reason": "ACCOUNT_EXCLUSIVITY_COLLISION",
+                }
+
+        return {"collision_detected": False, "company_domain": clean_domain}
+
+    except Exception as exc:
+        logger.error(f"[CollisionGuard] check_company_domain_exclusivity error for domain {clean_domain}: {exc}", exc_info=True)
+        # Paranoia Layer 1: Fail closed on unexpected exception
+        return {
+            "collision_detected": True,
+            "company_domain": clean_domain,
+            "reason": f"FAIL_CLOSED_ERROR: {str(exc)}",
+        }

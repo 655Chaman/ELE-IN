@@ -323,39 +323,57 @@ export function EleInLeads() {
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/40 border border-border/50">
           <button
             onClick={() => setPrimaryTab("lists")}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
               primaryTab === "lists"
-                ? "bg-card text-foreground shadow-xs border border-border/60"
+                ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Database size={13} className={primaryTab === "lists" ? "text-primary" : ""} />
-            <span>Lead Lists</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-muted font-mono text-muted-foreground">
-              {totalLists}
+            {primaryTab === "lists" && (
+              <motion.div
+                layoutId="leads-primary-tab"
+                className="absolute inset-0 bg-card rounded-lg shadow-xs border border-border/60"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Database size={13} className={primaryTab === "lists" ? "text-primary" : ""} />
+              <span>Lead Lists</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-muted font-mono text-muted-foreground">
+                {totalLists}
+              </span>
             </span>
           </button>
 
           <button
             onClick={() => setPrimaryTab("radar")}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
               primaryTab === "radar"
-                ? "bg-card text-foreground shadow-xs border border-border/60"
+                ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Radio size={13} className={primaryTab === "radar" ? "text-primary animate-pulse" : ""} />
-            <span>Social Signal Radar</span>
-            {hotCount > 0 ? (
-              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 font-bold">
-                <Flame size={10} />
-                <span>{hotCount} Hot</span>
-              </span>
-            ) : (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-primary/10 text-primary font-bold">
-                Intent
-              </span>
+            {primaryTab === "radar" && (
+              <motion.div
+                layoutId="leads-primary-tab"
+                className="absolute inset-0 bg-card rounded-lg shadow-xs border border-border/60"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
             )}
+            <span className="relative z-10 flex items-center gap-2">
+              <Radio size={13} className={primaryTab === "radar" ? "text-primary animate-pulse" : ""} />
+              <span>Social Signal Radar</span>
+              {hotCount > 0 ? (
+                <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 font-bold">
+                  <Flame size={10} />
+                  <span>{hotCount} Hot</span>
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-primary/10 text-primary font-bold">
+                  Intent
+                </span>
+              )}
+            </span>
           </button>
         </div>
 

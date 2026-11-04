@@ -131,7 +131,7 @@ class CredentialVault:
         self._quarantine: Dict[Tuple[str, str], Tuple[str, float]] = {}
         self._lock = threading.Lock()
 
-    def sanitize_key(self, raw_val: Any) -> Optional[str]:
+    def sanitize_key(self, raw_val: Any, workspace_id: Optional[str] = None) -> Optional[str]:
         """Strip control characters, formula injection prefixes, and validate non-placeholder."""
         if not raw_val or not isinstance(raw_val, str):
             return None
@@ -144,7 +144,17 @@ class CredentialVault:
         if clean.lower() in placeholders:
             return None
 
-        # Paranoia Layer 0 & 1: Transparent AES-256-GCM BYOK envelope decryption
+        # Paranoia Layer 0 & 1: Transparent AES-256-GCM Envelope Decryption (v2:env: or v1:gcm:)
+        if clean.startswith("v2:env:"):
+            try:
+                from core.backend.services.envelope_encryption import decrypt_envelope
+                decrypted = decrypt_envelope(clean, workspace_id=workspace_id or "default")
+                if decrypted:
+                    clean = decrypted.strip()
+            except Exception as env_err:
+                logger.error(f"[CredentialVault] Failed to decrypt v2 envelope: {env_err}")
+                return None
+
         if clean.startswith("v1:gcm:"):
             try:
                 from knowledge.backend.services.byok_vault import decrypt_byok_key
@@ -194,7 +204,7 @@ class CredentialVault:
         )
 
     def clear_quarantine(self, workspace_id: Optional[str], provider: str):
-        """Clear quarantine status when a workspace updates their integration keys."""
+        """Clear quarantine status and evict cached values when integration keys are updated."""
         if not workspace_id:
             return
         prov_key = provider.lower().strip()
@@ -204,6 +214,34 @@ class CredentialVault:
                 del self._quarantine[cache_key]
             if cache_key in self._cache:
                 del self._cache[cache_key]
+
+    def zeroize_cache(self, workspace_id: Optional[str] = None):
+        """
+        Paranoia Layer 2: Securely evicts and zeroes in-memory credential buffers.
+        If workspace_id is provided, only that workspace's secrets are zeroed and evicted.
+        """
+        with self._lock:
+            keys_to_delete = [
+                k for k in self._cache.keys()
+                if workspace_id is None or k[0] == str(workspace_id)
+            ]
+            for k in keys_to_delete:
+                del self._cache[k]
+
+    def encrypt_credential(self, plaintext: str, workspace_id: str, supabase: Optional[Any] = None) -> str:
+        """
+        Paranoia Layer 0 & 2: Encrypts a sensitive integration secret using AES-256-GCM
+        KMS Envelope Encryption bound to workspace_id via AAD.
+        """
+        from core.backend.services.envelope_encryption import encrypt_envelope
+        return encrypt_envelope(plaintext, workspace_id=workspace_id, supabase=supabase)
+
+    def decrypt_credential(self, envelope_str: str, workspace_id: str, supabase: Optional[Any] = None) -> str:
+        """
+        Paranoia Layer 0 & 2: Decrypts an envelope-encrypted credential bound to workspace_id.
+        """
+        from core.backend.services.envelope_encryption import decrypt_envelope
+        return decrypt_envelope(envelope_str, workspace_id=workspace_id, supabase=supabase)
 
     def resolve_credential(
         self,
@@ -252,7 +290,7 @@ class CredentialVault:
                         # A. Check dedicated column
                         col_name = mapping.get("column")
                         if col_name and row.get(col_name):
-                            resolved_key = self.sanitize_key(row.get(col_name))
+                            resolved_key = self.sanitize_key(row.get(col_name), workspace_id=workspace_id)
 
                         # B. Check settings JSONB payload
                         if not resolved_key:
@@ -260,7 +298,7 @@ class CredentialVault:
                             if isinstance(settings_dict, dict):
                                 for s_key in mapping.get("settings_keys", []):
                                     if settings_dict.get(s_key):
-                                        candidate = self.sanitize_key(settings_dict[s_key])
+                                        candidate = self.sanitize_key(settings_dict[s_key], workspace_id=workspace_id)
                                         if candidate:
                                             resolved_key = candidate
                                             break

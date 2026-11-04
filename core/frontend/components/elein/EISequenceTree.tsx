@@ -1,5 +1,6 @@
 import { EIStickyNote } from "./EIStickyNote";
 import { CampaignBlueprintModal } from "./CampaignBlueprintModal";
+import { DAGSimulationDrawer } from "./DAGSimulationDrawer";
 import { 
   parseBlueprintFile, 
   sniffDroppedFile, 
@@ -7,6 +8,7 @@ import {
   downloadBlueprintFile, 
   copyBlueprintToClipboard, 
   saveCanvasSnapshot, 
+  prepareImportNodes,
   type EleInBlueprint 
 } from "@/lib/blueprintSchema";
 import React from "react";
@@ -22,10 +24,10 @@ import {
   AtSign, Zap, CheckCircle2, Shield, StopCircle, AlertCircle,
   Phone, CalendarCheck, Star, Mic2, Tag, Bell, Database, Info, ZoomIn, ZoomOut, Maximize, Undo, Redo, FileText, Save,
   Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote, Download, Upload,
-  ChevronDown, Copy
+  ChevronDown, Copy, FileCode
 } from "lucide-react"
 import useSWR, { useSWRConfig } from "swr"
-import { fetcher } from "@/lib/apiClient"
+import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { HR_NODE_DEFS } from "@/lib/eiNodeDefs"
@@ -240,7 +242,7 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const { openPaywall } = usePaywall()
   const { data: billingData } = useSWR<any>('/api/elein/workspaces/billing', fetcher)
-  const isWorkspacePro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE'
+  const isWorkspacePro = billingData?.tier === 'PRO' || billingData?.tier === 'ENTERPRISE' || billingData?.tier === 'AGENCY'
   const canUseIcp = isWorkspacePro || Boolean(billingData?.tier_limits?.can_use_bayesian_icp)
 
   // Escape key handling
@@ -364,7 +366,11 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                       const color = CAT_ICON_COLORS[cat] || "#6366f1"
                       const isEnrichmentNode = cat === "enrichment" || type === "find_email" || type.includes("enrich") || type.includes("scrape")
                       const isIcpNode = type === "ai_score_icp" || type === "icp_score_gate"
-                      const isLocked = (isEnrichmentNode && !isWorkspacePro) || (isIcpNode && !canUseIcp)
+                      const isOmniNode = type === "retarget_omnichannel" || type === "fallback_to_inmail"
+                      const isAbmNode = type === "abm_committee_touch" || type === "champion_job_change"
+                      const isRevivalNode = type === "boomerang_revival" || type === "competitive_displacement"
+                      const isPremiumNode = isOmniNode || isAbmNode || isRevivalNode
+                      const isLocked = (isEnrichmentNode && !isWorkspacePro) || (isIcpNode && !canUseIcp) || (isPremiumNode && !isWorkspacePro)
                       return (
                         <div key={type} className="relative group h-full">
                           <button
@@ -376,6 +382,24 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                                     campaignName: "Bayesian ICP Machine Learning",
                                     featureName: def.label,
                                     reason: `Unlock ${def.label} with Growth Pro to qualify prospects probabilistically using continuous Bayesian learning.`,
+                                  });
+                                } else if (isOmniNode) {
+                                  openPaywall({
+                                    campaignName: "Omnichannel Retargeting Cascade",
+                                    featureName: def.label,
+                                    reason: `Unlock ${def.label} with Growth Pro to orchestrate multi-channel outreach across LinkedIn and Email.`,
+                                  });
+                                } else if (isAbmNode) {
+                                  openPaywall({
+                                    campaignName: "ABM Multithreading & Buying Committees",
+                                    featureName: def.label,
+                                    reason: `Unlock ${def.label} with Growth Pro to penetrate enterprise accounts with buying committee multithreading.`,
+                                  });
+                                } else if (isRevivalNode) {
+                                  openPaywall({
+                                    campaignName: "Revival & Takeover Engine",
+                                    featureName: def.label,
+                                    reason: `Unlock ${def.label} with Growth Pro to automatically revive lost deals and displace competitors.`,
                                   });
                                 } else {
                                   openPaywall({
@@ -462,47 +486,63 @@ function PickerPanel({ isFirstStep, onPick, onClose }: PickerPanelProps) {
                   onClick={e => e.stopPropagation()}
                 >
                   <div className="p-6 border-b border-border/40 bg-card">
-                    <div className="flex items-center justify-between mb-4">
-                      <div 
-                        className="w-12 h-12 rounded-xl flex items-center justify-center border"
-                        style={{ 
-                          color: CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category] || "currentColor",
-                          borderColor: `${CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category]}40`,
-                          background: `${CAT_ICON_COLORS[HR_NODE_DEFS[infoNode].category]}15`
-                        }}
-                      >
-                        {(() => {
-                          const Icon = NODE_ICONS[infoNode] || Zap
-                          return <Icon size={24} />
-                        })()}
-                      </div>
-                      <button type="button" onClick={() => setInfoNode(null)} className="p-2 text-muted-foreground hover:text-foreground bg-muted/50 rounded-lg transition-colors cursor-pointer" aria-label="Close info">
-                        <X size={16} />
-                      </button>
-                    </div>
-                    <h3 className="text-lg font-bold text-foreground mb-1">{HR_NODE_DEFS[infoNode].label}</h3>
-                    <div className="flex gap-2 mb-4">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/40">
-                        {CAT_LABELS[HR_NODE_DEFS[infoNode].category]}
-                      </span>
-                    </div>
-                    <p className="text-[13px] text-muted-foreground leading-relaxed">
-                      {HR_NODE_DEFS[infoNode].description}
-                    </p>
+                    {(() => {
+                      const def = HR_NODE_DEFS[infoNode] || {
+                        label: infoNode,
+                        category: "actions",
+                        description: "Custom sequence step imported from workflow blueprint.",
+                        outputs: ["next"]
+                      }
+                      const Icon = NODE_ICONS[infoNode] || Zap
+                      const catColor = CAT_ICON_COLORS[def.category] || "currentColor"
+                      return (
+                        <>
+                          <div className="flex items-center justify-between mb-4">
+                            <div 
+                              className="w-12 h-12 rounded-xl flex items-center justify-center border"
+                              style={{ 
+                                color: catColor,
+                                borderColor: `${catColor}40`,
+                                background: `${catColor}15`
+                              }}
+                            >
+                              <Icon size={24} />
+                            </div>
+                            <button type="button" onClick={() => setInfoNode(null)} className="p-2 text-muted-foreground hover:text-foreground bg-muted/50 rounded-lg transition-colors cursor-pointer" aria-label="Close info">
+                              <X size={16} />
+                            </button>
+                          </div>
+                          <h3 className="text-lg font-bold text-foreground mb-1">{def.label}</h3>
+                          <div className="flex gap-2 mb-4">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/40">
+                              {CAT_LABELS[def.category] || "Action"}
+                            </span>
+                          </div>
+                          <p className="text-[13px] text-muted-foreground leading-relaxed">
+                            {def.description}
+                          </p>
+                        </>
+                      )
+                    })()}
                   </div>
                   <div className="p-6 bg-muted/10 space-y-4">
                     <div>
                       <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Branches / Outputs</p>
-                      <div className="flex flex-wrap gap-2">
-                        {HR_NODE_DEFS[infoNode].outputs?.map(out => (
-                          <span key={out} className="text-xs font-semibold text-foreground bg-muted/30 border border-border/40 px-2 py-1 rounded-md">
-                            {out}
-                          </span>
-                        ))}
-                        {!HR_NODE_DEFS[infoNode].outputs?.length && (
-                          <span className="text-xs text-muted-foreground italic">None (Ends Sequence)</span>
-                        )}
-                      </div>
+                      {(() => {
+                        const def = HR_NODE_DEFS[infoNode] || { outputs: ["next"] }
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            {def.outputs?.map(out => (
+                              <span key={out} className="text-xs font-semibold text-foreground bg-muted/30 border border-border/40 px-2 py-1 rounded-md">
+                                {out}
+                              </span>
+                            ))}
+                            {!def.outputs?.length && (
+                              <span className="text-xs text-muted-foreground italic">None (Ends Sequence)</span>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                     <button 
                       type="button"
@@ -564,9 +604,6 @@ function AddEndPair({ isFirstStep, parentId, branchLabel, onEnd }: AddEndPairPro
           </div>
         )}
       </div>
-      
-      {/* Side-panel for configuring selected node */}
-      <EITreeNodeConfigPanel />
     </div>
   )
 }
@@ -883,9 +920,14 @@ function BranchPill({ label }: { label: string }) {
     : "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.8)]"
 
   return (
-    <div className="branch-pill flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase bg-background border border-border/80 shadow-sm z-10 transition-all hover:border-border hover:shadow-md">
-      <div className={`w-2 h-2 rounded-full ${dotClass}`} />
-      <span className="text-foreground font-bold">{label}</span>
+    <div className={cn(
+      "branch-pill flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase border shadow-xs z-10 transition-all hover:shadow-md",
+      isNegative ? "bg-rose-500/10 border-rose-500/40 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/20" :
+      isPositive ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400" :
+      "bg-background border-border/80 text-foreground"
+    )}>
+      <div className={`w-2 h-2 rounded-full ${dotClass} ${isNegative ? 'animate-pulse' : ''}`} />
+      <span className="font-bold">{label}</span>
     </div>
   )
 }
@@ -1051,11 +1093,17 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                 <VLine height={24} />
                 <div className="relative flex flex-row items-start justify-center" style={{ gap: "2rem" }}>
 
-                  {branchLabels.map((bl, i) => (
+                  {branchLabels.map((bl, i) => {
+                    const norm = bl.toLowerCase();
+                    const isFallback = norm === "ignored" || norm === "not_replied" || norm === "unopened" || norm === "bounced" || norm === "timeout" || norm === "closed" || norm.includes("weak fit") || norm.includes("disqualif");
+                    return (
                     <div key={bl} className="relative flex flex-col items-center min-w-[320px] flex-1">
                       {branchLabels.length > 1 && (
                         <div 
-                          className="absolute top-0 h-[2px] bg-zinc-300 dark:bg-zinc-600/90 z-0 shadow-[0_0_2px_rgba(255,255,255,0.08)]"
+                          className={cn(
+                            "absolute top-0 h-[2px] z-0",
+                            isFallback ? "border-t-2 border-dashed border-rose-500/60 dark:border-rose-400/60" : "bg-zinc-300 dark:bg-zinc-600/90 shadow-[0_0_2px_rgba(255,255,255,0.08)]"
+                          )}
                           style={{
                             left: i === 0 ? '50%' : '-1rem',
                             right: i === branchLabels.length - 1 ? '50%' : '-1rem'
@@ -1063,7 +1111,10 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                         />
                       )}
                       {/* Vertical line dropping down to the pill */}
-                      <div className="w-[2px] h-4 bg-zinc-300 dark:bg-zinc-600/90 z-0 shadow-[0_0_2px_rgba(255,255,255,0.08)]" />
+                      <div className={cn(
+                        "w-[2px] h-4 z-0 shadow-[0_0_2px_rgba(255,255,255,0.08)]",
+                        isFallback ? "border-l-2 border-dashed border-rose-500/60 dark:border-rose-400/60" : "bg-zinc-300 dark:bg-zinc-600/90"
+                      )} />
                       
                       <div className="relative z-10 bg-background rounded-full">
                         <BranchPill label={bl} />
@@ -1083,7 +1134,8 @@ function Branch({ nodes, parentId, branchLabel, depth, isFirstStep, readOnly, no
                         onSafeDelete={onSafeDelete}
                       />
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               </div>
             )}
@@ -1246,21 +1298,41 @@ export function EISequenceTree({
   const [preloadedBlueprint, setPreloadedBlueprint] = useState<EleInBlueprint | null>(null)
   const [isDraggingBlueprintFile, setIsDraggingBlueprintFile] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [showImportMenu, setShowImportMenu] = useState(false)
   const canvasFileInputRef = useRef<HTMLInputElement>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const importMenuRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
 
-  // Close export dropdown on outside click
+  // Multi-Channel DAG Simulation Studio State
+  const [isSimulationDrawerOpen, setIsSimulationDrawerOpen] = useState(false)
+  const [simulationResult, setSimulationResult] = useState<any>(null)
+  const [isSimulating, setIsSimulating] = useState(false)
+
+  // Close export & import dropdowns on outside pointerdown or Escape
   useEffect(() => {
-    if (!showExportMenu) return
-    const handleClickOutside = (e: MouseEvent) => {
+    if (!showExportMenu && !showImportMenu) return
+    const handleClickOutside = (e: PointerEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
         setShowExportMenu(false)
       }
+      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) {
+        setShowImportMenu(false)
+      }
     }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [showExportMenu])
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowExportMenu(false)
+        setShowImportMenu(false)
+      }
+    }
+    document.addEventListener("pointerdown", handleClickOutside)
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", handleClickOutside)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [showExportMenu, showImportMenu])
 
   // Direct 1-click export JSON (Universal format)
   const handleQuickExportJson = () => {
@@ -1335,6 +1407,50 @@ export function EISequenceTree({
     }
   }
 
+  // Phase S: Multi-Channel Sequence DAG Simulation Sandbox
+  const handleRunSimulation = async () => {
+    try {
+      const { treeToDag } = await import("@campaigns/eiTreeStore");
+      const { nodes, edges } = treeToDag(rootNodes);
+      if (!nodes || nodes.length === 0) {
+        toast.info("Sequence canvas is empty. Add steps to your sequence before running simulation.");
+        return;
+      }
+      setIsSimulating(true);
+      toast.info("Simulating Sequence DAG execution...");
+      const res = await fetchWithAuth("/api/elein/campaigns/simulate-dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dag: { nodes, edges }
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || "Simulation failed");
+        setIsSimulating(false);
+        return;
+      }
+      const data = await res.json();
+      setSimulationResult(data);
+      setIsSimulationDrawerOpen(true);
+      setIsSimulating(false);
+
+      const dispatches = data.simulation_summary?.total_dispatches ?? data.summary?.total_dispatches ?? 0;
+      const days = data.simulation_summary?.timeline_span_days ?? data.summary?.timeline_span_days ?? 0;
+      const collisions = data.simulation_summary?.collisions_detected ?? data.summary?.collisions_detected ?? 0;
+      const coverage = data.token_resolution_report?.resolution_percentage ?? data.token_resolution_coverage?.resolution_percentage ?? 100;
+      if (collisions > 0) {
+        toast.warning(`Simulation Complete: ${dispatches} steps across ~${days}d. ${collisions} pacing collision(s) detected. Token coverage: ${coverage}%.`);
+      } else {
+        toast.success(`Simulation Complete: ${dispatches} steps across ~${days}d with zero collisions. Token coverage: ${coverage}%.`);
+      }
+    } catch (e: any) {
+      setIsSimulating(false);
+      toast.error(e?.message || "Failed to execute DAG simulation.");
+    }
+  };
+
   // Direct 1-click file selector import (Zero modal friction)
   const handleDirectCanvasFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -1343,16 +1459,21 @@ export function EISequenceTree({
 
     try {
       const blueprint = await parseBlueprintFile(file)
+      const bpName = blueprint.metadata?.name || file.name
       // Save safety snapshot in vault
-      saveCanvasSnapshot(rootNodes, stickyNotes, `Pre-import: ${blueprint.metadata?.name || file.name}`)
+      saveCanvasSnapshot(rootNodes, stickyNotes, `Pre-import: ${bpName}`)
       const prevRoots = [...rootNodes]
       const prevNotes = [...stickyNotes]
 
-      const importedRoots = blueprint.sequence?.rootNodes || []
-      const importedNotes = blueprint.sequence?.stickyNotes || []
+      const { nodes: importedRoots, stickyNotes: importedNotes } = prepareImportNodes(
+        blueprint,
+        rootNodes,
+        stickyNotes,
+        "replace"
+      )
 
       loadTree(importedRoots, importedNotes)
-      toast.success(`Imported blueprint "${blueprint.metadata?.name || file.name}" (${importedRoots.length} steps)`, {
+      toast.success(`Imported blueprint "${bpName}" (${importedRoots.length} steps)`, {
         action: {
           label: "Undo",
           onClick: () => {
@@ -1417,7 +1538,7 @@ export function EISequenceTree({
       setPreloadedBlueprint(blueprint)
       setBlueprintModalTab("import")
       setIsBlueprintModalOpen(true)
-      toast.success(`Loaded blueprint: "${blueprint.metadata.name}"`)
+      toast.success(`Loaded blueprint: "${blueprint.metadata?.name || 'Workflow Blueprint'}"`)
     } catch (err: any) {
       toast.error("Failed to parse blueprint", {
         description: err.message || "Invalid blueprint file structure.",
@@ -1612,9 +1733,16 @@ export function EISequenceTree({
   const handleAddStickyNote = useCallback((color: string = "amber", category: string = "note") => {
     const currentCount = stickyNotes?.length || 0;
     const stagger = (currentCount % 6) * 32;
-    let x = window.innerWidth / 2 - 145 + stagger;
+    let x = 40 + stagger;
     let y = 140 + stagger;
-    if (containerRef.current) {
+    if (contentWrapperRef.current && containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const wrapperRect = contentWrapperRef.current.getBoundingClientRect();
+      const centerScreenX = containerRect.left + containerRect.width / 2;
+      const centerScreenY = containerRect.top + 200;
+      x = Math.round((centerScreenX - wrapperRect.left) / zoom - 145 + stagger);
+      y = Math.round((centerScreenY - wrapperRect.top) / zoom + stagger);
+    } else if (containerRef.current) {
       x = Math.round(((containerRef.current.scrollLeft + containerRef.current.clientWidth / 2) / zoom - 145) + stagger);
       y = Math.round(((containerRef.current.scrollTop + 140) / zoom) + stagger);
     }
@@ -1823,13 +1951,23 @@ export function EISequenceTree({
   }, [onSave, rootNodes, isSaving, readOnly, selectedNodeId, isPickerOpen, fitToCanvas, handleAddStickyNote]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Dismiss floating dropdowns on background click without initiating canvas pan
+    if (showExportMenu) {
+      setShowExportMenu(false)
+      return
+    }
+    if (showImportMenu) {
+      setShowImportMenu(false)
+      return
+    }
+
     // Alt/Option + Left Click: Drop a new sticky note right under the mouse cursor!
-    if (e.altKey && e.button === 0 && !readOnly && containerRef.current) {
+    if (e.altKey && e.button === 0 && !readOnly && contentWrapperRef.current) {
       const target = e.target as HTMLElement;
       if (!target.closest('button, input, textarea, select, .node-card, .sticky-note, [role="dialog"]')) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const clickX = Math.round((e.clientX - rect.left + containerRef.current.scrollLeft) / zoom - 145);
-        const clickY = Math.round((e.clientY - rect.top + containerRef.current.scrollTop) / zoom - 30);
+        const wrapperRect = contentWrapperRef.current.getBoundingClientRect();
+        const clickX = Math.round((e.clientX - wrapperRect.left) / zoom - 145);
+        const clickY = Math.round((e.clientY - wrapperRect.top) / zoom - 30);
         addStickyNote(clickX, clickY, "amber", "note");
         toast.success("Sticky note dropped at cursor!");
         return;
@@ -2075,148 +2213,7 @@ export function EISequenceTree({
         )}
       </AnimatePresence>
 
-      {/* Top Right Floating Toolbar: Safety Radar & Quick Presets */}
-      <div className="absolute top-6 right-6 z-40 flex items-center gap-2.5 pointer-events-auto">
-        {!readOnly && (
-          <>
-            {/* Direct Import Button with Studio dropdown option */}
-            <div className="relative inline-flex items-center rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm hover:border-primary/50 transition-all">
-              <button
-                type="button"
-                onClick={() => canvasFileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
-                title="Direct 1-Click Import Sequence (.json, .elein)"
-              >
-                <Upload size={14} className="text-primary" />
-                <span>Import</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setBlueprintModalTab("import")
-                  setIsBlueprintModalOpen(true)
-                }}
-                className="px-1.5 py-2 border-l border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer rounded-r-xl"
-                title="Open Blueprint Studio & Gallery"
-              >
-                <ChevronDown size={12} />
-              </button>
-            </div>
-
-            {/* Direct Export Button with Quick Options Dropdown */}
-            <div className="relative inline-flex items-center rounded-xl bg-card/90 backdrop-blur-md border border-border shadow-sm hover:border-primary/50 transition-all" ref={exportMenuRef}>
-              <button
-                type="button"
-                onClick={handleQuickExportJson}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
-                title="Direct 1-Click Export Sequence (.json)"
-              >
-                <Download size={14} className="text-primary" />
-                <span>Export</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowExportMenu(!showExportMenu)}
-                className="px-1.5 py-2 border-l border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer rounded-r-xl"
-                title="Export Options"
-              >
-                <ChevronDown size={12} />
-              </button>
-
-              {/* Export Dropdown Menu */}
-              {showExportMenu && (
-                <div className="absolute right-0 top-full mt-1.5 w-56 rounded-xl bg-card border border-border shadow-xl py-1.5 z-50 flex flex-col text-xs animate-in fade-in zoom-in-95 duration-150">
-                  <button
-                    type="button"
-                    onClick={handleQuickExportJson}
-                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
-                  >
-                    <Download size={13} className="text-primary shrink-0" />
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Download File (.json)</span>
-                      <span className="text-[10px] text-muted-foreground">Save sequence to your computer</span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleQuickCopyJson}
-                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
-                  >
-                    <Copy size={13} className="text-muted-foreground shrink-0" />
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Copy to Clipboard</span>
-                      <span className="text-[10px] text-muted-foreground">Copy JSON payload</span>
-                    </div>
-                  </button>
-
-                  <div className="my-1 border-t border-border" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowExportMenu(false)
-                      setBlueprintModalTab("export")
-                      setIsBlueprintModalOpen(true)
-                    }}
-                    className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted text-foreground transition-colors cursor-pointer"
-                  >
-                    <Sparkles size={13} className="text-amber-500 shrink-0" />
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Blueprint Studio & Gallery...</span>
-                      <span className="text-[10px] text-muted-foreground">Advanced templates & backup vault</span>
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {!readOnly && onTemplatesClick && (
-          <button
-            type="button"
-            onClick={onTemplatesClick}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border hover:border-primary/50 shadow-sm text-xs font-semibold text-foreground hover:text-primary transition-all cursor-pointer"
-          >
-            <Layers size={14} className="text-primary" />
-            <span>Templates</span>
-          </button>
-        )}
-
-        {/* Safety & Health Radar */}
-        {sequenceStats.nodeCount > 0 && (
-          <div className="flex items-center gap-2">
-            {sequenceStats.isFullySafe ? (
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold shadow-sm">
-                <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
-                <span>100% Anti-Spam Safe</span>
-                <span className="text-emerald-500/40">•</span>
-                <span>{sequenceStats.touchpoints} Touch{sequenceStats.touchpoints !== 1 ? 'es' : ''}</span>
-              </div>
-            ) : sequenceStats.errorCount > 0 ? (
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs font-semibold shadow-sm">
-                <AlertCircle size={14} className="text-rose-600 dark:text-rose-400" />
-                <span>{sequenceStats.errorCount} Issue{sequenceStats.errorCount > 1 ? 's' : ''} to Resolve</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-semibold shadow-sm">
-                <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
-                <span>{sequenceStats.warningCount} Optimization Notice{sequenceStats.warningCount > 1 ? 's' : ''}</span>
-              </div>
-            )}
-
-            {sequenceStats.totalDelayDays > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-card/90 backdrop-blur-md border border-border text-xs font-medium text-muted-foreground shadow-sm">
-                <Clock size={13} className="text-primary" />
-                <span>{sequenceStats.totalDelayDays}d Cadence</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Left Vertical Toolbar */}
+      {/* Left Vertical Toolbar - All Controls Unified */}
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-3 pointer-events-auto">
         {/* Zoom Group */}
         <div className="flex flex-row items-center bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden w-fit">
@@ -2260,23 +2257,86 @@ export function EISequenceTree({
 
         {/* Action Group */}
         {!readOnly && (
-          <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl overflow-hidden mt-1">
-            <button
-              type="button"
-              onClick={undo}
-              disabled={historyLength === 0}
-              className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-b border-border w-full cursor-pointer"
-            >
-              <Undo size={14} className="shrink-0" /> <span className="font-medium">Undo</span>
-            </button>
-            <button
-              type="button"
-              onClick={redo}
-              disabled={futureLength === 0}
-              className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-b border-border w-full cursor-pointer"
-            >
-              <Redo size={14} className="shrink-0" /> <span className="font-medium">Redo</span>
-            </button>
+          <div className="flex flex-col bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl mt-1 w-52 relative">
+            {/* Safety & Health Radar Badge */}
+            {sequenceStats.nodeCount > 0 && (
+              <div className="px-3 py-2 bg-muted/40 border-b border-border flex flex-col gap-1 rounded-t-xl">
+                {sequenceStats.isFullySafe ? (
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
+                    <ShieldCheck size={13} className="shrink-0" />
+                    <span>Anti-Spam Safe</span>
+                    <span className="opacity-40">•</span>
+                    <span>{sequenceStats.touchpoints} Touch{sequenceStats.touchpoints !== 1 ? 'es' : ''}</span>
+                  </div>
+                ) : sequenceStats.errorCount > 0 ? (
+                  <div className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 text-[11px] font-semibold">
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>{sequenceStats.errorCount} Issue{sequenceStats.errorCount > 1 ? 's' : ''} to Resolve</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-[11px] font-semibold">
+                    <AlertTriangle size={13} className="shrink-0" />
+                    <span>{sequenceStats.warningCount} Notice{sequenceStats.warningCount > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+                {sequenceStats.totalDelayDays > 0 && (
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium">
+                    <Clock size={11} className="text-primary shrink-0" />
+                    <span>{sequenceStats.totalDelayDays}d Cadence</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Primary Workflow Tools: Templates & Simulate DAG */}
+            <div className={cn("border-b border-border p-1.5 bg-card/40 flex flex-col gap-1", sequenceStats.nodeCount === 0 && "rounded-t-xl")}>
+              {onTemplatesClick && (
+                <button
+                  type="button"
+                  onClick={onTemplatesClick}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer w-full text-left"
+                  title="Open Sequence Templates Gallery"
+                >
+                  <Layers size={14} className="text-primary shrink-0" />
+                  <span>Templates</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleRunSimulation}
+                disabled={isSimulating}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted text-xs font-semibold text-foreground hover:text-primary transition-colors cursor-pointer w-full text-left disabled:opacity-50"
+                title="Run Multi-Channel DAG Simulation Sandbox"
+              >
+                <Sparkles size={14} className={cn("text-primary shrink-0", isSimulating && "animate-spin")} />
+                <span>{isSimulating ? "Simulating..." : "Simulate DAG"}</span>
+              </button>
+            </div>
+
+            {/* History: Undo & Redo */}
+            <div className="grid grid-cols-2 border-b border-border bg-card/20">
+              <button
+                type="button"
+                onClick={undo}
+                disabled={historyLength === 0}
+                className="flex items-center justify-center gap-1.5 py-2 hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors border-r border-border cursor-pointer"
+                title="Undo (Cmd+Z)"
+              >
+                <Undo size={13} />
+                <span>Undo</span>
+              </button>
+              <button
+                type="button"
+                onClick={redo}
+                disabled={futureLength === 0}
+                className="flex items-center justify-center gap-1.5 py-2 hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                title="Redo (Cmd+Shift+Z)"
+              >
+                <Redo size={13} />
+                <span>Redo</span>
+              </button>
+            </div>
+
             {/* Sticky Notes Tool */}
             <div className="border-b border-border p-2 bg-card/40 flex flex-col gap-1.5">
               <button
@@ -2290,27 +2350,27 @@ export function EISequenceTree({
                 <kbd className="ml-auto font-mono text-[9px] px-1.5 py-0.2 bg-muted rounded border border-border/60 text-muted-foreground">N</kbd>
               </button>
 
-              {/* Quick Palette Chips */}
+              {/* Quick Palette Chips - Drop Instant Category Templates */}
               <div className="flex items-center justify-between px-1 gap-1">
-                <span className="text-[10px] text-muted-foreground/60 font-medium">Color:</span>
+                <span className="text-[10px] text-muted-foreground/60 font-medium">Templates:</span>
                 <div className="flex items-center gap-1.5">
                   {[
-                    { key: "amber", title: "Sun (Idea)", dot: "bg-amber-400" },
-                    { key: "emerald", title: "Emerald (Goal)", dot: "bg-emerald-400" },
-                    { key: "sky", title: "Sky (Info)", dot: "bg-sky-400" },
-                    { key: "rose", title: "Rose (Caution)", dot: "bg-rose-400" },
-                    { key: "violet", title: "Violet (Strategy)", dot: "bg-violet-400" }
+                    { key: "amber", category: "note", title: "Idea Note", dot: "bg-amber-400" },
+                    { key: "emerald", category: "todo", title: "Launch Checklist", dot: "bg-emerald-400" },
+                    { key: "sky", category: "handover", title: "SDR Handover", dot: "bg-sky-400" },
+                    { key: "rose", category: "warning", title: "Caution / Curfew", dot: "bg-rose-400" },
+                    { key: "violet", category: "strategy", title: "A/B Strategy", dot: "bg-violet-400" }
                   ].map(c => (
                     <button
                       key={c.key}
                       type="button"
-                      onClick={() => handleAddStickyNote(c.key, "note")}
+                      onClick={() => handleAddStickyNote(c.key, c.category)}
                       className={cn(
                         "w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 cursor-pointer shadow-2xs",
                         c.dot
                       )}
-                      title={`Drop ${c.title} Note`}
-                      aria-label={`Drop ${c.title} Note`}
+                      title={`Drop ${c.title}`}
+                      aria-label={`Drop ${c.title}`}
                     />
                   ))}
                 </div>
@@ -2340,27 +2400,176 @@ export function EISequenceTree({
               </div>
             )}
 
-            {/* Blueprint Hub (Export & Import) */}
-            <div className="border-b border-border p-2 bg-card/40 flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleQuickExportJson}
-                className="flex-1 flex items-center justify-center gap-1.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 cursor-pointer border border-border/50"
-                title="Direct 1-Click Export Sequence (.json)"
-              >
-                <Download size={13} className="text-primary shrink-0" />
-                <span>Export</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => canvasFileInputRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-lg px-2 py-1.5 cursor-pointer border border-border/50"
-                title="Direct 1-Click Import Sequence (.json, .elein)"
-              >
-                <Upload size={13} className="text-primary shrink-0" />
-                <span>Import</span>
-              </button>
+            {/* Import & Export Dropdowns */}
+            <div className="border-b border-border p-1.5 bg-card/30 flex items-center gap-1.5 relative z-20">
+              {/* Import Dropdown */}
+              <div className={cn("relative flex-1", showImportMenu && "z-30")} ref={importMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImportMenu(!showImportMenu)
+                    setShowExportMenu(false)
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1 text-[11px] font-semibold transition-colors rounded-lg px-2 py-1.5 border cursor-pointer",
+                    showImportMenu 
+                      ? "bg-primary/10 border-primary/40 text-primary shadow-xs" 
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground border-border/50"
+                  )}
+                  title="Import sequence (.json, .elein)"
+                >
+                  <Upload size={12} className="text-primary shrink-0" />
+                  <span>Import</span>
+                  <ChevronDown size={10} className={cn("opacity-60 transition-transform duration-150", showImportMenu && "rotate-180")} />
+                </button>
+
+                {showImportMenu && (
+                  <div 
+                    role="menu" 
+                    aria-label="Import Options Menu"
+                    className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-card/98 backdrop-blur-md border border-border shadow-2xl py-1.5 z-[60] flex flex-col text-xs animate-in fade-in zoom-in-95 duration-150 divide-y divide-border/30"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowImportMenu(false)
+                        canvasFileInputRef.current?.click()
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/70 text-foreground transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
+                        <Upload size={12} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground text-xs">Upload File</span>
+                        <span className="text-[10px] text-muted-foreground">.json or .elein format</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowImportMenu(false)
+                        setBlueprintModalTab("import")
+                        setIsBlueprintModalOpen(true)
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/70 text-foreground transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 group-hover:scale-105 transition-transform">
+                        <FileText size={12} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground text-xs">Paste JSON</span>
+                        <span className="text-[10px] text-muted-foreground">Direct raw sequence JSON</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowImportMenu(false)
+                        setBlueprintModalTab("gallery")
+                        setIsBlueprintModalOpen(true)
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/70 text-foreground transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500 shrink-0 group-hover:scale-105 transition-transform">
+                        <Sparkles size={12} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground text-xs">Blueprint Gallery</span>
+                        <span className="text-[10px] text-muted-foreground">Curated multi-channel cadences</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Export Dropdown */}
+              <div className={cn("relative flex-1", showExportMenu && "z-30")} ref={exportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExportMenu(!showExportMenu)
+                    setShowImportMenu(false)
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1 text-[11px] font-semibold transition-colors rounded-lg px-2 py-1.5 border cursor-pointer",
+                    showExportMenu 
+                      ? "bg-primary/10 border-primary/40 text-primary shadow-xs" 
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground border-border/50"
+                  )}
+                  title="Export sequence options"
+                >
+                  <Download size={12} className="text-primary shrink-0" />
+                  <span>Export</span>
+                  <ChevronDown size={10} className={cn("opacity-60 transition-transform duration-150", showExportMenu && "rotate-180")} />
+                </button>
+
+                {showExportMenu && (
+                  <div 
+                    role="menu"
+                    aria-label="Export Options Menu"
+                    className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-card/98 backdrop-blur-md border border-border shadow-2xl py-1.5 z-[60] flex flex-col text-xs animate-in fade-in zoom-in-95 duration-150 divide-y divide-border/30"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowExportMenu(false)
+                        handleQuickExportJson()
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/70 text-foreground transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
+                        <Download size={12} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground text-xs">Export JSON</span>
+                        <span className="text-[10px] text-muted-foreground">Standard sequence file</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowExportMenu(false)
+                        handleQuickExportElein()
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/70 text-foreground transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0 group-hover:scale-105 transition-transform">
+                        <FileCode size={12} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground text-xs">Export Native (.elein)</span>
+                        <span className="text-[10px] text-muted-foreground">Canvas nodes + notes backup</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowExportMenu(false)
+                        handleQuickCopyJson()
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/70 text-foreground transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 group-hover:scale-105 transition-transform">
+                        <Copy size={12} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-foreground text-xs">Copy to Clipboard</span>
+                        <span className="text-[10px] text-muted-foreground">Serialized JSON payload</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Save Canvas Button */}
             <button
               type="button"
               onClick={async () => {
@@ -2374,7 +2583,7 @@ export function EISequenceTree({
                 }
               }}
               disabled={isSaving}
-              className="flex items-center gap-2 px-3.5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-colors w-full disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-colors w-full disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer rounded-b-xl"
             >
               {isSaving ? (
                 <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -2502,6 +2711,40 @@ export function EISequenceTree({
         initialTab={blueprintModalTab}
         preloadedBlueprint={preloadedBlueprint}
       />
+
+      {/* Multi-Channel Sequence DAG Simulation Drawer */}
+      <DAGSimulationDrawer
+        isOpen={isSimulationDrawerOpen}
+        onClose={() => setIsSimulationDrawerOpen(false)}
+        simulationData={simulationResult}
+        onReRun={handleRunSimulation}
+        isSimulating={isSimulating}
+      />
+
+      {/* Floating Canvas Navigation & Accelerator HUD */}
+      <div className="absolute bottom-6 left-6 z-40 pointer-events-auto">
+        <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-card/85 backdrop-blur-md border border-border/80 shadow-sm text-[11px] text-muted-foreground select-none">
+          <span className="flex items-center gap-1">
+            <kbd className="font-mono text-[10px] px-1 py-0.2 bg-muted rounded border border-border/60 text-foreground font-semibold">Space</kbd>
+            <span>+ Drag pan</span>
+          </span>
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1">
+            <kbd className="font-mono text-[10px] px-1 py-0.2 bg-muted rounded border border-border/60 text-foreground font-semibold">Scroll</kbd>
+            <span>zoom</span>
+          </span>
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1">
+            <kbd className="font-mono text-[10px] px-1 py-0.2 bg-muted rounded border border-border/60 text-foreground font-semibold">⌘Z</kbd>
+            <span>undo</span>
+          </span>
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1">
+            <kbd className="font-mono text-[10px] px-1 py-0.2 bg-muted rounded border border-border/60 text-foreground font-semibold">N</kbd>
+            <span>note</span>
+          </span>
+        </div>
+      </div>
     </div>
   )
 }

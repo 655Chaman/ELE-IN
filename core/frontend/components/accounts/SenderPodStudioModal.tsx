@@ -113,7 +113,7 @@ export function SenderPodStudioModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, testingDispatchPod, onClose]);
 
-  const pods = useMemo(() => podResponse?.data?.pods || [], [podResponse])
+  const pods = useMemo(() => Array.isArray(podResponse?.data?.pods) ? podResponse.data.pods : [], [podResponse])
   const summary = useMemo(() => podResponse?.data?.summary, [podResponse])
 
   // Change Strategy Handler
@@ -475,7 +475,7 @@ export function SenderPodStudioModal({
 
                       {/* Accounts Grid within Pod */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {pod.accounts.map((acc) => {
+                        {(Array.isArray(pod.accounts) ? pod.accounts : []).map((acc) => {
                           const isAccQuarantined = acc.is_quarantined
                           const isAccHealthy = acc.status === "ACTIVE" && !isAccQuarantined
 
@@ -493,7 +493,7 @@ export function SenderPodStudioModal({
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                   <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center font-bold text-[10px] uppercase text-foreground">
-                                    {acc.name[0] || "A"}
+                                    {(acc.name && acc.name[0]) ? acc.name[0] : "A"}
                                   </div>
                                   <div>
                                     <span className="font-bold text-foreground block truncate max-w-[120px]">
@@ -652,12 +652,14 @@ export function SenderPodStudioModal({
                         </span>
                       </div>
                       <p className="text-xs font-bold text-foreground">
-                        {testDispatchResult.account_name || testDispatchResult.account_id}
+                        {testDispatchResult.account_name || testDispatchResult.account_id || testDispatchResult.message || "No eligible sender found"}
                       </p>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>Headroom: <strong>{testDispatchResult.remaining_headroom} actions</strong></span>
-                        <span>Used: <strong>{testDispatchResult.consumed_today}/{testDispatchResult.daily_limit}</strong></span>
-                      </div>
+                      {testDispatchResult.account_id && (
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>Headroom: <strong>{testDispatchResult.remaining_headroom ?? 0} actions</strong></span>
+                          <span>Used: <strong>{testDispatchResult.consumed_today ?? 0}/{testDispatchResult.daily_limit ?? 0}</strong></span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

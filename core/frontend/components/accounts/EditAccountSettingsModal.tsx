@@ -28,6 +28,7 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
 
   // Fetch available workspace proxies
   const { data: proxies } = useSWR<any[]>('/api/elein/proxies/health', fetcher)
+  const safeProxies = Array.isArray(proxies) ? proxies : []
   const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_use_custom_proxies?: boolean } }>(
     '/api/elein/workspaces/billing',
     fetcher
@@ -270,7 +271,7 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No Proxy (Direct Workspace Connection)</SelectItem>
-                {proxies?.map((p: any) => (
+                {safeProxies.map((p: any) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.provider || "Residential"} - {p.country_code || "US"} ({p.host})
                   </SelectItem>

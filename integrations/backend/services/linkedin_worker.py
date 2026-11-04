@@ -7,8 +7,26 @@ import time
 import random
 import re
 from typing import Dict, Any, Optional, List
-from playwright.sync_api import sync_playwright, Page
+
+try:
+    from patchright.sync_api import sync_playwright, Page
+    IS_PATCHRIGHT = True
+except ImportError:
+    from playwright.sync_api import sync_playwright, Page
+    IS_PATCHRIGHT = False
+
+try:
+    from curl_cffi import requests as curl_requests
+    HAS_CURL_CFFI = True
+except ImportError:
+    HAS_CURL_CFFI = False
+
+from core.backend.services.proxy_routing import ProxyRequiredError
 class SecurityChallengeError(Exception):
+    pass
+
+class LinkedInRateLimitError(Exception):
+    """Raised when LinkedIn returns HTTP 429 Too Many Requests (rate limiting, not a security challenge)."""
     pass
 
 class SessionExpiredError(Exception):
@@ -29,6 +47,137 @@ from integrations.backend.services.linkedin_invitation_manager import (
 import logging
 logger = logging.getLogger(__name__)
 
+from urllib.parse import urlsplit, unquote, urlparse, urlencode, parse_qsl, urlunparse
+
+COUNTRY_BROWSER_PROFILES = {
+    "US": {"timezone_id": "America/New_York", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 40.7128, "longitude": -74.0060, "accuracy": 100}},
+    "GB": {"timezone_id": "Europe/London", "locale": "en-GB", "languages": ["en-GB", "en-US", "en"], "geo": {"latitude": 51.5074, "longitude": -0.1278, "accuracy": 100}},
+    "CA": {"timezone_id": "America/Toronto", "locale": "en-CA", "languages": ["en-CA", "en-US", "en", "fr-CA"], "geo": {"latitude": 43.6532, "longitude": -79.3832, "accuracy": 100}},
+    "DE": {"timezone_id": "Europe/Berlin", "locale": "de-DE", "languages": ["de-DE", "de", "en-US", "en"], "geo": {"latitude": 52.5200, "longitude": 13.4050, "accuracy": 100}},
+    "FR": {"timezone_id": "Europe/Paris", "locale": "fr-FR", "languages": ["fr-FR", "fr", "en-US", "en"], "geo": {"latitude": 48.8566, "longitude": 2.3522, "accuracy": 100}},
+    "NL": {"timezone_id": "Europe/Amsterdam", "locale": "nl-NL", "languages": ["nl-NL", "nl", "en-US", "en"], "geo": {"latitude": 52.3676, "longitude": 4.9041, "accuracy": 100}},
+    "AU": {"timezone_id": "Australia/Sydney", "locale": "en-AU", "languages": ["en-AU", "en-GB", "en-US", "en"], "geo": {"latitude": -33.8688, "longitude": 151.2093, "accuracy": 100}},
+    "IN": {"timezone_id": "Asia/Kolkata", "locale": "en-IN", "languages": ["en-IN", "en-GB", "en-US", "en", "hi"], "geo": {"latitude": 19.0760, "longitude": 72.8777, "accuracy": 100}},
+    "AE": {"timezone_id": "Asia/Dubai", "locale": "en-AE", "languages": ["en-AE", "ar-AE", "en-US", "en", "ar"], "geo": {"latitude": 25.2048, "longitude": 55.2708, "accuracy": 100}},
+    "SG": {"timezone_id": "Asia/Singapore", "locale": "en-SG", "languages": ["en-SG", "en-GB", "en-US", "en", "zh-SG"], "geo": {"latitude": 1.3521, "longitude": 103.8198, "accuracy": 100}},
+    "IE": {"timezone_id": "Europe/Dublin", "locale": "en-IE", "languages": ["en-IE", "en-GB", "en-US", "en"], "geo": {"latitude": 53.3498, "longitude": -6.2603, "accuracy": 100}},
+    "ES": {"timezone_id": "Europe/Madrid", "locale": "es-ES", "languages": ["es-ES", "es", "en-US", "en"], "geo": {"latitude": 40.4168, "longitude": -3.7038, "accuracy": 100}},
+    "IT": {"timezone_id": "Europe/Rome", "locale": "it-IT", "languages": ["it-IT", "it", "en-US", "en"], "geo": {"latitude": 41.9028, "longitude": 12.4964, "accuracy": 100}},
+    "BR": {"timezone_id": "America/Sao_Paulo", "locale": "pt-BR", "languages": ["pt-BR", "pt", "en-US", "en"], "geo": {"latitude": -23.5505, "longitude": -46.6333, "accuracy": 100}},
+    "JP": {"timezone_id": "Asia/Tokyo", "locale": "ja-JP", "languages": ["ja-JP", "ja", "en-US", "en"], "geo": {"latitude": 35.6762, "longitude": 139.6503, "accuracy": 100}},
+}
+
+REGIONAL_BROWSER_PROFILES = {
+    # United States sub-national regions
+    "US-CA": {"timezone_id": "America/Los_Angeles", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 34.0522, "longitude": -118.2437, "accuracy": 100}},
+    "US-NY": {"timezone_id": "America/New_York", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 40.7128, "longitude": -74.0060, "accuracy": 100}},
+    "US-IL": {"timezone_id": "America/Chicago", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 41.8781, "longitude": -87.6298, "accuracy": 100}},
+    "US-TX": {"timezone_id": "America/Chicago", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 29.7604, "longitude": -95.3698, "accuracy": 100}},
+    "US-WA": {"timezone_id": "America/Los_Angeles", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 47.6062, "longitude": -122.3321, "accuracy": 100}},
+    "US-FL": {"timezone_id": "America/New_York", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 25.7617, "longitude": -80.1918, "accuracy": 100}},
+    "US-MA": {"timezone_id": "America/New_York", "locale": "en-US", "languages": ["en-US", "en"], "geo": {"latitude": 42.3601, "longitude": -71.0589, "accuracy": 100}},
+    # Canada sub-national regions
+    "CA-BC": {"timezone_id": "America/Vancouver", "locale": "en-CA", "languages": ["en-CA", "en-US", "en", "fr-CA"], "geo": {"latitude": 49.2827, "longitude": -123.1207, "accuracy": 100}},
+    "CA-ON": {"timezone_id": "America/Toronto", "locale": "en-CA", "languages": ["en-CA", "en-US", "en", "fr-CA"], "geo": {"latitude": 43.6532, "longitude": -79.3832, "accuracy": 100}},
+    "CA-QC": {"timezone_id": "America/Montreal", "locale": "fr-CA", "languages": ["fr-CA", "fr", "en-CA", "en"], "geo": {"latitude": 45.5017, "longitude": -73.5673, "accuracy": 100}},
+    # Australia sub-national regions
+    "AU-NSW": {"timezone_id": "Australia/Sydney", "locale": "en-AU", "languages": ["en-AU", "en-GB", "en-US", "en"], "geo": {"latitude": -33.8688, "longitude": 151.2093, "accuracy": 100}},
+    "AU-VIC": {"timezone_id": "Australia/Melbourne", "locale": "en-AU", "languages": ["en-AU", "en-GB", "en-US", "en"], "geo": {"latitude": -37.8136, "longitude": 144.9631, "accuracy": 100}},
+    "AU-WA": {"timezone_id": "Australia/Perth", "locale": "en-AU", "languages": ["en-AU", "en-GB", "en-US", "en"], "geo": {"latitude": -31.9505, "longitude": 115.8605, "accuracy": 100}},
+    # India regions
+    "IN-MH": {"timezone_id": "Asia/Kolkata", "locale": "en-IN", "languages": ["en-IN", "en-GB", "en-US", "en", "hi"], "geo": {"latitude": 19.0760, "longitude": 72.8777, "accuracy": 100}},
+    "IN-DL": {"timezone_id": "Asia/Kolkata", "locale": "en-IN", "languages": ["en-IN", "en-GB", "en-US", "en", "hi"], "geo": {"latitude": 28.7041, "longitude": 77.1025, "accuracy": 100}},
+    "IN-KA": {"timezone_id": "Asia/Kolkata", "locale": "en-IN", "languages": ["en-IN", "en-GB", "en-US", "en", "hi"], "geo": {"latitude": 12.9716, "longitude": 77.5946, "accuracy": 100}},
+    # UAE regions
+    "AE-DU": {"timezone_id": "Asia/Dubai", "locale": "en-AE", "languages": ["en-AE", "ar-AE", "en-US", "en", "ar"], "geo": {"latitude": 25.2048, "longitude": 55.2708, "accuracy": 100}},
+    "AE-AZ": {"timezone_id": "Asia/Dubai", "locale": "en-AE", "languages": ["en-AE", "ar-AE", "en-US", "en", "ar"], "geo": {"latitude": 24.4539, "longitude": 54.3773, "accuracy": 100}},
+    # UK regions
+    "GB-ENG": {"timezone_id": "Europe/London", "locale": "en-GB", "languages": ["en-GB", "en-US", "en"], "geo": {"latitude": 51.5074, "longitude": -0.1278, "accuracy": 100}},
+    "GB-SCT": {"timezone_id": "Europe/London", "locale": "en-GB", "languages": ["en-GB", "en-US", "en"], "geo": {"latitude": 55.9533, "longitude": -3.1883, "accuracy": 100}},
+    # Germany regions
+    "DE-BY": {"timezone_id": "Europe/Berlin", "locale": "de-DE", "languages": ["de-DE", "de", "en-US", "en"], "geo": {"latitude": 48.1351, "longitude": 11.5820, "accuracy": 100}},
+    "DE-BE": {"timezone_id": "Europe/Berlin", "locale": "de-DE", "languages": ["de-DE", "de", "en-US", "en"], "geo": {"latitude": 52.5200, "longitude": 13.4050, "accuracy": 100}},
+}
+
+def resolve_browser_profile(country_code_or_region: Optional[str] = None, timezone: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Resolves browser viewport, locale, timezone_id, and geolocation coordinates.
+    Supports sub-national regional resolution (e.g. US-CA -> America/Los_Angeles, CA-BC -> America/Vancouver)
+    and custom timezone matching to prevent Akamai/LinkedIn timezone-IP mismatch detection.
+    """
+    profile = None
+    if country_code_or_region:
+        cleaned_code = country_code_or_region.strip().upper().replace("_", "-")
+        # 1. Direct regional match (e.g. US-CA, AU-VIC)
+        if cleaned_code in REGIONAL_BROWSER_PROFILES:
+            profile = dict(REGIONAL_BROWSER_PROFILES[cleaned_code])
+        # 2. Direct country match (e.g. US, IN, AE)
+        elif cleaned_code in COUNTRY_BROWSER_PROFILES:
+            profile = dict(COUNTRY_BROWSER_PROFILES[cleaned_code])
+        # 3. Base country fallback (e.g. US-TX -> US)
+        elif "-" in cleaned_code:
+            base_country = cleaned_code.split("-")[0]
+            if base_country in COUNTRY_BROWSER_PROFILES:
+                profile = dict(COUNTRY_BROWSER_PROFILES[base_country])
+
+    if not profile:
+        profile = dict(DEFAULT_BROWSER_PROFILE)
+
+    # If explicit valid timezone provided, align timezone_id and geolocation
+    if timezone and isinstance(timezone, str) and timezone.strip():
+        clean_tz = timezone.strip()
+        profile["timezone_id"] = clean_tz
+        if clean_tz in ("America/Los_Angeles", "US/Pacific", "PST8PDT") and profile["locale"] == "en-US":
+            profile["geo"] = {"latitude": 34.0522, "longitude": -118.2437, "accuracy": 100}
+        elif clean_tz in ("America/Chicago", "US/Central", "CST6CDT") and profile["locale"] == "en-US":
+            profile["geo"] = {"latitude": 41.8781, "longitude": -87.6298, "accuracy": 100}
+        elif clean_tz in ("America/Denver", "US/Mountain", "MST7MDT") and profile["locale"] == "en-US":
+            profile["geo"] = {"latitude": 39.7392, "longitude": -104.9903, "accuracy": 100}
+        elif clean_tz in ("America/New_York", "US/Eastern", "EST5EDT") and profile["locale"] == "en-US":
+            profile["geo"] = {"latitude": 40.7128, "longitude": -74.0060, "accuracy": 100}
+
+    return profile
+
+DEFAULT_BROWSER_PROFILE = {
+    "timezone_id": "America/New_York",
+    "locale": "en-US",
+    "languages": ["en-US", "en"],
+    "geo": {"latitude": 40.7128, "longitude": -74.0060, "accuracy": 100}
+}
+
+def parse_playwright_proxy(raw_proxy_url: Optional[str]) -> Optional[Dict[str, str]]:
+    """
+    Paranoia Layer 0, 1 & 2: Transforms any proxy URL into a strict Playwright ProxySettings dict.
+    Strips inline user:pass from server to prevent Chromium 407 stripping,
+    decodes special characters, and isolates username and password.
+    """
+    if not raw_proxy_url or not isinstance(raw_proxy_url, str):
+        return None
+    cleaned = raw_proxy_url.strip()
+    if not cleaned:
+        return None
+
+    try:
+        parsed = urlsplit(cleaned)
+        scheme = (parsed.scheme or "http").lower()
+        if scheme == "socks5h":
+            scheme = "socks5"
+        if not parsed.hostname:
+            return None
+        
+        server_str = f"{scheme}://{parsed.hostname}:{parsed.port}" if parsed.port else f"{scheme}://{parsed.hostname}"
+        proxy_settings: Dict[str, str] = {"server": server_str}
+
+        if parsed.username:
+            proxy_settings["username"] = unquote(parsed.username)
+        if parsed.password:
+            proxy_settings["password"] = unquote(parsed.password)
+
+        return proxy_settings
+    except Exception as e:
+        logger.error(f"[LinkedInWorker] Failed to parse proxy URL '{cleaned}': {e}")
+        return None
+
 from functools import wraps
 import contextlib
 
@@ -47,6 +196,9 @@ def linkedin_action_safe(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
+        except LinkedInRateLimitError as e:
+            logger.warning(f"LinkedIn rate limit (HTTP 429) encountered: {e}")
+            return {"status": "rate_limited", "error": str(e), "retry_after_seconds": 3600}
         except SecurityChallengeError as e:
             logger.error(f"Security challenge encountered: {e}")
             return {"status": "security_challenge"}
@@ -101,13 +253,15 @@ class LinkedInWorker:
     Human-like delays and scrolls are applied throughout.
     """
 
-    def __init__(self, cookies_json: Any = None, proxy_url: str = None, account_id: str = None, cookies: Any = None, headless: bool = True, mock_mode: bool = False, **kwargs):
+    def __init__(self, cookies_json: Any = None, proxy_url: str = None, account_id: str = None, cookies: Any = None, headless: bool = True, mock_mode: bool = False, country_code: Optional[str] = None, timezone: Optional[str] = None, **kwargs):
         if account_id is None:
             raise ValueError("LinkedInWorker requires a non-None account_id to prevent cross-account pool contamination.")
         self.proxy_url = proxy_url
         self.account_id = account_id
         self.headless = headless
         self.mock_mode = mock_mode
+        self.country_code = (country_code or "").strip().upper() or None
+        self.timezone = timezone or kwargs.get("timezone_id")
         self._last_security_event = None
 
         import ast
@@ -212,30 +366,49 @@ class LinkedInWorker:
     def _setup_browser_headless(self, p):
         import os
         
-        # Paranoia Layer 1: Chromium Fingerprint Masking
+        proxy_config = parse_playwright_proxy(self.proxy_url)
+
+        # Paranoia Layer 1: Chromium Fingerprint Masking & WebRTC Leak Protection
         launch_args = {
             "headless": True,
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=IsolateOrigins,site-per-process",
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+                "--enforce-webrtc-ip-permission-check",
                 "--no-sandbox",
                 "--disable-dev-shm-usage"
             ]
         }
-        if self.proxy_url:
-            launch_args["proxy"] = {"server": self.proxy_url}
+        if proxy_config:
+            launch_args["proxy"] = proxy_config
             
         browserless_url = os.environ.get("BROWSERLESS_URL")
         if browserless_url:
-            browser = p.chromium.connect_over_cdp(browserless_url)
+            if proxy_config:
+                parsed_cdp = urlparse(browserless_url)
+                cdp_params = dict(parse_qsl(parsed_cdp.query))
+                cdp_params["--proxy"] = proxy_config["server"]
+                cdp_params["--force-webrtc-ip-handling-policy"] = "disable_non_proxied_udp"
+                if "username" in proxy_config:
+                    cdp_params["--proxy-username"] = proxy_config["username"]
+                if "password" in proxy_config:
+                    cdp_params["--proxy-password"] = proxy_config["password"]
+                remote_cdp_url = urlunparse(parsed_cdp._replace(query=urlencode(cdp_params)))
+            else:
+                remote_cdp_url = browserless_url
+            browser = p.chromium.connect_over_cdp(remote_cdp_url)
         else:
             browser = p.chromium.launch(**launch_args)
             
-        proxy_config = {"server": self.proxy_url} if self.proxy_url else None
+        profile = resolve_browser_profile(self.country_code, getattr(self, "timezone", None))
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 800},
-            locale="en-US",
+            locale=profile["locale"],
+            timezone_id=profile["timezone_id"],
+            geolocation=profile["geo"],
+            permissions=["geolocation"],
             proxy=proxy_config,
         )
         context.add_cookies(self.cookies)
@@ -270,27 +443,23 @@ class LinkedInWorker:
         # Hash the account_id so the same account ALWAYS gets the same hardware profile
         acc_hash = int(hashlib.md5(self.account_id.encode('utf-8')).hexdigest(), 16) if self.account_id else 0
         vendor, renderer = hardware_profiles[acc_hash % len(hardware_profiles)]
+        languages_json = json.dumps(profile.get("languages", ["en-US", "en"]))
         
         script = """
-            // Spoof WebGL vendor and renderer across WebGL and WebGL2
+            // Spoof WebGL vendor and renderer across WebGL and WebGL2 using Proxy (Eradicates FLAW-21)
             const vendor = "V_REPLACE";
             const renderer = "R_REPLACE";
             
             const patchWebGL = (proto) => {
                 if (!proto || !proto.getParameter) return;
-                const origGetParameter = proto.getParameter;
-                proto.getParameter = function(parameter) {
-                    if (parameter === 37445) return vendor; // UNMASKED_VENDOR_WEBGL
-                    if (parameter === 37446) return renderer; // UNMASKED_RENDERER_WEBGL
-                    return origGetParameter.apply(this, arguments);
-                };
-                try {
-                    Object.defineProperty(proto.getParameter, 'toString', {
-                        value: () => 'function getParameter() { [native code] }',
-                        configurable: true,
-                        writable: true
-                    });
-                } catch (e) {}
+                const orig = proto.getParameter;
+                proto.getParameter = new Proxy(orig, {
+                    apply(target, thisArg, args) {
+                        if (args[0] === 37445) return vendor; // UNMASKED_VENDOR_WEBGL
+                        if (args[0] === 37446) return renderer; // UNMASKED_RENDERER_WEBGL
+                        return Reflect.apply(target, thisArg, args);
+                    }
+                });
             };
 
             if (typeof WebGLRenderingContext !== 'undefined') {
@@ -300,10 +469,50 @@ class LinkedInWorker:
                 patchWebGL(WebGL2RenderingContext.prototype);
             }
             
-            // Deterministic browser environment properties (no Math.random() canvas noise which triggers Arkose anti-bot flags)
+            // Deterministic browser environment properties
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-        """.replace("V_REPLACE", vendor).replace("R_REPLACE", renderer)
+
+            // Paranoia Layer 1: Align UserAgentData with macOS User-Agent (Eradicates FLAW-24)
+            if (navigator.userAgentData) {
+                try {
+                    Object.defineProperty(navigator.userAgentData, 'platform', {
+                        get: () => 'macOS',
+                        configurable: true
+                    });
+                } catch (e) {}
+            }
+
+            // Spoof navigator.languages to align with the proxy country
+            const spoofedLanguages = LANG_REPLACE;
+            try {
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => spoofedLanguages,
+                    configurable: true
+                });
+            } catch (e) {}
+
+            // Paranoia Layer 0 & 1: Genuine prototype delegation for webdriver (Eradicates FLAW-09)
+            try {
+                if (Navigator.prototype && 'webdriver' in Navigator.prototype) {
+                    Object.defineProperty(Navigator.prototype, 'webdriver', {
+                        get: () => false,
+                        enumerable: true,
+                        configurable: true
+                    });
+                }
+            } catch (e) {}
+
+            // Mock window.chrome runtime object
+            if (!window.chrome) {
+                window.chrome = {
+                    app: { isInstalled: false },
+                    runtime: { OnInstalledReason: {}, OnRestartRequiredReason: {} },
+                    loadTimes: function() {},
+                    csi: function() {}
+                };
+            }
+        """.replace("V_REPLACE", vendor).replace("R_REPLACE", renderer).replace("LANG_REPLACE", languages_json)
         
         context.add_init_script(script)
         
@@ -325,7 +534,15 @@ class LinkedInWorker:
         account_id = self.account_id
         
         # Acquire context from bounded LRU pool (increments active_count)
-        context = global_browser_pool.acquire(account_id, self._setup_browser_headless)
+        # Paranoia Layer 1: Pass proxy_url and cookie fingerprint to detect rotations
+        import hashlib
+        cookie_fingerprint = hashlib.md5(str(self.cookies).encode('utf-8')).hexdigest()
+        context = global_browser_pool.acquire(
+            account_id,
+            self._setup_browser_headless,
+            proxy_url=self.proxy_url,
+            cookies_hash=cookie_fingerprint
+        )
         try:
             context.add_cookies(self.cookies)
         except Exception:
@@ -349,8 +566,10 @@ class LinkedInWorker:
 
             def on_response(response):
                 if "linkedin.com" in response.url.lower():
-                    if response.status in (403, 429):
-                        self._last_security_event = f"HTTP {response.status} from {response.url}"
+                    if response.status == 429:
+                        self._last_rate_limit_event = f"HTTP 429 Too Many Requests from {response.url}"
+                    elif response.status == 403:
+                        self._last_security_event = f"HTTP 403 from {response.url}"
                     if "/checkpoint" in response.url.lower():
                         self._last_security_event = f"Checkpoint URL: {response.url}" 
             page.on("response", on_response)
@@ -379,7 +598,13 @@ class LinkedInWorker:
             raise LinkedInActionOutcomeUnknown(f"Unknown external outcome: {str(e)}") from e
 
     def _http_get(self, url: str):
-        import httpx
+        # Paranoia Layer 0 & 1: Hard Fail-Closed Proxy Guard (Eradicates FLAW-01)
+        if not self.proxy_url and not os.environ.get("ALLOW_DIRECT_SCRAPE_FOR_TESTS"):
+            raise ProxyRequiredError(
+                f"[LinkedInWorker] Direct execution prohibited for account {self.account_id}. "
+                "Proxy URL is strictly required to protect LinkedIn account from datacenter IP bans."
+            )
+
         # Extract li_at and JSESSIONID for cookies and CSRF
         li_at = next((c["value"] for c in self.cookies if c["name"] == "li_at"), None)
         jsessionid = next((c["value"] for c in self.cookies if c["name"] == "JSESSIONID"), None)
@@ -389,11 +614,18 @@ class LinkedInWorker:
             
         # Clean JSESSIONID (often wrapped in quotes)
         csrf_token = jsessionid.strip('"')
+
+        # Paranoia Layer 1: Geolocation-aligned Accept-Language and x-li-lang headers
+        profile = resolve_browser_profile(self.country_code, getattr(self, "timezone", None))
+        lang = profile["locale"].replace("-", "_")
+        langs = profile.get("languages", ["en-US", "en"])
+        accept_lang = f"{','.join(langs)};q=0.9"
         
         headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "csrf-token": csrf_token,
-            "x-li-lang": "en_US",
+            "x-li-lang": lang,
+            "Accept-Language": accept_lang,
             "x-restli-protocol-version": "2.0.0",
         }
         
@@ -401,15 +633,57 @@ class LinkedInWorker:
             "li_at": li_at,
             "JSESSIONID": jsessionid
         }
-        
+        for c in self.cookies:
+            if isinstance(c, dict) and c.get("name") and c.get("value"):
+                if c["name"] not in cookies:
+                    cookies[c["name"]] = str(c["value"])
+
+        max_attempts = 2
+        last_error = None
+
+        # Paranoia Layer 0 & 1: curl_cffi exact Chrome 124 TLS JA4 & HTTP/2 impersonation (Eradicates FLAW-02)
+        if HAS_CURL_CFFI:
+            proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
+            for attempt in range(max_attempts):
+                try:
+                    s = curl_requests.Session(impersonate="chrome124")
+                    response = s.get(url, headers=headers, cookies=cookies, proxies=proxies, timeout=12.0)
+                    return response
+                except Exception as transport_err:
+                    last_error = transport_err
+                    logger.warning(
+                        f"[LinkedInWorker] Transient proxy transport error on attempt {attempt+1}/{max_attempts} "
+                        f"for account {self.account_id}: {transport_err}"
+                    )
+                    if attempt < max_attempts - 1:
+                        time.sleep(0.5)
+            if last_error:
+                raise last_error
+
+        # Fallback to httpx if curl_cffi is missing
+        import httpx
         mounts = {"all://": httpx.HTTPTransport(proxy=self.proxy_url)} if self.proxy_url else None
-        
-        client = httpx.Client(headers=headers, cookies=cookies, mounts=mounts, timeout=10.0)
-        try:
-            response = client.get(url)
-            return response
-        finally:
-            client.close()
+        for attempt in range(max_attempts):
+            try:
+                client = httpx.Client(headers=headers, cookies=cookies, mounts=mounts, timeout=12.0, http2=True)
+            except Exception:
+                client = httpx.Client(headers=headers, cookies=cookies, mounts=mounts, timeout=12.0)
+            try:
+                response = client.get(url)
+                return response
+            except (httpx.ProxyError, httpx.ConnectTimeout, httpx.ConnectError) as transport_err:
+                last_error = transport_err
+                logger.warning(
+                    f"[LinkedInWorker] Transient proxy transport error on attempt {attempt+1}/{max_attempts} "
+                    f"for account {self.account_id}: {transport_err}"
+                )
+                if attempt < max_attempts - 1:
+                    time.sleep(0.5)
+            finally:
+                client.close()
+
+        if last_error:
+            raise last_error
 
     def _human_delay(self, min_sec: float = 2.0, max_sec: float = 5.0):
         time.sleep(random.uniform(min_sec, max_sec))
@@ -418,10 +692,63 @@ class LinkedInWorker:
         page.mouse.wheel(0, random.randint(200, 600))
         self._human_delay(0.5, 1.5)
 
+    def _human_mouse_move(self, page: Page, element) -> None:
+        """
+        Paranoia Layer 0 & 1: Generates human-like cubic Bezier curve trajectories
+        with randomized micro-jitter and acceleration/deceleration curves (Eradicates FLAW-28).
+        """
+        try:
+            box = element.bounding_box()
+            if not box:
+                return
+            target_x = box["x"] + box["width"] * random.uniform(0.25, 0.75)
+            target_y = box["y"] + box["height"] * random.uniform(0.25, 0.75)
+
+            start_x = random.uniform(100, 300)
+            start_y = random.uniform(100, 300)
+
+            ctrl1_x = start_x + (target_x - start_x) * 0.25 + random.uniform(-40, 40)
+            ctrl1_y = start_y + (target_y - start_y) * 0.25 + random.uniform(-40, 40)
+            ctrl2_x = start_x + (target_x - start_x) * 0.75 + random.uniform(-25, 25)
+            ctrl2_y = start_y + (target_y - start_y) * 0.75 + random.uniform(-25, 25)
+
+            steps = random.randint(15, 25)
+            for i in range(1, steps + 1):
+                t = i / steps
+                bx = (
+                    ((1 - t) ** 3) * start_x
+                    + 3 * ((1 - t) ** 2) * t * ctrl1_x
+                    + 3 * (1 - t) * (t ** 2) * ctrl2_x
+                    + (t ** 3) * target_x
+                )
+                by = (
+                    ((1 - t) ** 3) * start_y
+                    + 3 * ((1 - t) ** 2) * t * ctrl1_y
+                    + 3 * (1 - t) * (t ** 2) * ctrl2_y
+                    + (t ** 3) * target_y
+                )
+                page.mouse.move(bx, by)
+                time.sleep(random.uniform(0.005, 0.015))
+
+            time.sleep(random.uniform(0.08, 0.18))
+        except Exception as e:
+            logger.debug(f"[LinkedInWorker] Non-blocking mouse trajectory notice: {e}")
+
+    def _human_type(self, element, text: str) -> None:
+        """
+        Paranoia Layer 0 & 1: Types text with variable digraph latency, Gaussian jitter (40-120ms),
+        and cognitive micro-pauses (200-450ms) after punctuation marks.
+        """
+        for char in text:
+            element.type(char, delay=random.randint(45, 115))
+            if char in ('.', '!', '?', ','):
+                time.sleep(random.uniform(0.2, 0.45))
+
     def _safe_click(self, page: Page, selector: str) -> bool:
         try:
             el = page.locator(selector).first
             if el.is_visible(timeout=3000):
+                self._human_mouse_move(page, el)
                 el.click(delay=random.randint(50, 150))
                 return True
         except Exception:
@@ -445,11 +772,14 @@ class LinkedInWorker:
 
     def _check_for_challenge(self, page: Page) -> None:
         """
-        B4: Raises SecurityChallengeError if LinkedIn has served a security challenge page.
+        B4: Raises SecurityChallengeError if LinkedIn has served a security challenge page,
+        or LinkedInRateLimitError if an HTTP 429 was returned.
         Call this immediately after every page.goto() completes.
-        The orchestrator will catch this, mark the account as NEEDS_REVIEW,
-        and stop processing any more leads on that account until a human clears it.
         """
+        if getattr(self, '_last_rate_limit_event', None):
+            rate_event = self._last_rate_limit_event
+            self._last_rate_limit_event = None
+            raise LinkedInRateLimitError(rate_event)
         if getattr(self, '_last_security_event', None):
             raise SecurityChallengeError(self._last_security_event)
         current_url = page.url.lower()
@@ -1468,9 +1798,28 @@ class LinkedInWorker:
         """Send a message and then paste the attachment URL inline (LinkedIn downloads/previews from URL)."""
         if attachment_url:
             attachment_url = str(attachment_url).strip().strip("\"'<>")
-            if not (attachment_url.startswith("http://") or attachment_url.startswith("https://")):
-                if attachment_url.startswith("/"):
-                    attachment_url = f"http://127.0.0.1:8000{attachment_url}"
+            if attachment_url.startswith("/"):
+                base_url = os.environ.get("PUBLIC_ASSET_BASE_URL") or os.environ.get("APP_URL") or os.environ.get("FRONTEND_BASE_URL")
+                if base_url:
+                    attachment_url = f"{base_url.rstrip('/')}{attachment_url}"
+                else:
+                    logger.error(f"[LinkedInWorker] Refusing to send relative attachment '{attachment_url}': PUBLIC_ASSET_BASE_URL is not configured.")
+                    return {
+                        "status": "error",
+                        "error": f"Cannot send attachment: relative path '{attachment_url}' provided but PUBLIC_ASSET_BASE_URL is not configured. Attachments must be public HTTPS URLs."
+                    }
+
+            # Paranoia Layer 1 & 2: Validate URL scheme and reject loopback/private hosts
+            parsed = urlparse(attachment_url)
+            if parsed.scheme not in ("http", "https"):
+                return {"status": "error", "error": f"Invalid attachment URL scheme '{parsed.scheme}'. Attachments must use HTTP or HTTPS."}
+            hostname = (parsed.hostname or "").lower()
+            if hostname in ("127.0.0.1", "localhost", "0.0.0.0", "::1") or hostname.endswith(".local") or hostname.endswith(".internal"):
+                logger.error(f"[LinkedInWorker] SSRF / Loopback Guard blocked attachment URL: {attachment_url}")
+                return {
+                    "status": "error",
+                    "error": f"Security Guard: Loopback or internal attachment host '{hostname}' cannot be sent in public LinkedIn messages."
+                }
 
         with self._get_or_create_context() as page:
 

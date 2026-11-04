@@ -1,5 +1,8 @@
 import asyncio
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
     """
@@ -14,6 +17,15 @@ async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
     request_id = res.data[0]['id']
 
     try:
+        # 1.5 Abort any in-flight background processing jobs for this workspace
+        try:
+            supabase_client.table('processing_jobs').update({
+                'status': 'failed',
+                'error': 'Workspace purged under GDPR Article 17'
+            }).eq('workspace_id', workspace_id).eq('status', 'running').execute()
+        except Exception as _pj_err:
+            logger.debug(f"Non-fatal abort of in-flight processing jobs: {_pj_err}")
+
         # 2. Explicitly delete vector embeddings from knowledge_chunks first
         # (Though ON DELETE CASCADE might handle it, explicitly logging it is required)
         kc_res = supabase_client.table('knowledge_chunks').delete().eq('workspace_id', workspace_id).execute()
@@ -26,8 +38,10 @@ async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
             'notifications', 'outbox_events',
             'campaign_execution_states', 'campaign_node_executions', 'campaign_enrollments',
             'campaign_edges', 'campaign_nodes', 'campaign_versions', 'campaign_accounts',
-            'workspace_blueprints', 'meeting_bookings', 'competitor_displacements',
-            'sender_pods', 'bandit_experiments', 'account_daily_action_counts', 'account_limit_overrides'
+            'campaign_lead_sender_locks', 'workspace_blueprints', 'meeting_bookings', 'competitor_displacements',
+            'sender_pods', 'bandit_experiments', 'account_daily_action_counts', 'account_limit_overrides',
+            'list_members', 'lead_lists', 'workspace_members', 'workspace_invites',
+            'workspace_sending_defaults', 'workspace_subscriptions', 'credit_deductions', 'credit_balances'
         ]
         for table in tables_to_purge:
             try:
@@ -64,6 +78,7 @@ async def purge_workspace_data(workspace_id: str, supabase_client) -> bool:
 
     except Exception as e:
         # Mark as failed for retry cron
+        logger.error(f"GDPR purge failure for workspace {workspace_id}: {e}")
         supabase_client.table('gdpr_deletion_requests').update({
             'status': 'failed',
             'error_log': str(e)

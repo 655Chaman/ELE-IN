@@ -459,5 +459,18 @@ export function validateTree(rootNodes: SeqTreeNode[]): { errors: Record<string,
     traverse(root, { connectionStatus: 'unknown', lastAction: null, lastMessageDelayAccumulator: 0, hasSentMessage: false }, null, new Set());
   }
 
+  // Paranoia Layer 2 (VULN-21): Prevent disconnected multiple entry roots on canvas
+  if (rootNodes.length > 1) {
+    for (let i = 1; i < rootNodes.length; i++) {
+      const detached = rootNodes[i];
+      if (detached && detached.id) {
+        if (!errors[detached.id]) errors[detached.id] = [];
+        errors[detached.id].push(
+          `Disconnected Step: "${getNodeLabel(detached)}" is not connected to the main sequence. Campaigns must follow a single connected flow. How to correct: Connect this step to a parent node or delete it.`
+        );
+      }
+    }
+  }
+
   return { errors, warnings };
 }

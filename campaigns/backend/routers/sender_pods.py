@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from supabase import Client
 
 from core.backend.api.auth_dep import get_supabase_client, get_current_workspace
+from campaigns.backend.routers.elein import _check_workspace_tier_permission
 from campaigns.backend.services.sender_pod_service import (
     get_workspace_sender_pods,
     select_pod_sender,
@@ -57,8 +58,9 @@ def list_workspace_pods_endpoint(
 ):
     """
     Layer 0: Returns all campaign sender pods, health states, remaining capacities,
-    and account allocations for the current workspace.
+    and account allocations for the current workspace. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     try:
         pods = get_workspace_sender_pods(workspace_id=workspace_id, supabase=supabase)
         total_senders = sum(p["total_senders"] for p in pods)

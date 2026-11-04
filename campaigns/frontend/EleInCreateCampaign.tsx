@@ -187,6 +187,10 @@ function StepHeader({
       </button>
 
       <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-3">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shadow-2xs">
+          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Auto-saved to draft</span>
+        </div>
         <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
         <span className="text-xs font-semibold text-foreground tracking-tight border-l border-border pl-3">
           Campaign Studio
@@ -199,26 +203,33 @@ function StepHeader({
         const active = i === current
         const clickable = isReached && !active
         return (
-          <div key={step.id} className="flex items-center">
+          <div key={step.id} className="flex items-center relative">
             <button
               type="button"
               onClick={() => { if (clickable && onStepClick) onStepClick(i) }}
               disabled={!clickable}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all outline-none",
+                "relative flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all outline-none",
                 clickable ? "text-foreground cursor-pointer hover:bg-muted/50" : active ? "text-foreground" : "text-muted-foreground/40",
                 !clickable && !active && "cursor-not-allowed"
               )}>
+              {active && (
+                <motion.div
+                  layoutId="step-header-active"
+                  className="absolute inset-0 bg-muted rounded-full border border-border/80 shadow-2xs"
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
+                />
+              )}
               <div className={cn(
-                "w-5 h-5 rounded-full flex items-center justify-center border-2 transition-all",
-                done ? "bg-foreground/20 border-foreground/20" : active ? "border-foreground bg-foreground" : "border-border"
+                "w-5 h-5 rounded-full flex items-center justify-center border-2 transition-all relative z-10",
+                done ? "bg-foreground/20 border-foreground/20" : active ? "border-primary bg-primary text-primary-foreground" : "border-border"
               )}>
                 {done
                   ? <CheckCircle2 size={11} className="text-foreground" />
-                  : <span className={cn("text-[9px] font-bold", active ? "text-background" : "text-muted-foreground/40")}>{i + 1}</span>
+                  : <span className={cn("text-[9px] font-bold", active ? "text-primary-foreground" : "text-muted-foreground/40")}>{i + 1}</span>
                 }
               </div>
-              {step.label}
+              <span className="relative z-10">{step.label}</span>
             </button>
             {i < STEPS.length - 1 && (
               <div className={cn("w-8 h-px mx-1 transition-colors", done ? "bg-foreground/20" : "bg-border")} />
@@ -933,61 +944,189 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
   }
 
   if (mode === "choose") {
+    const { isEnterprise, isPro, isPlatformOwner, openPaywall } = usePaywall();
+
+    const modernPlaybooks = [
+      {
+        id: "omnichannel_waterfall",
+        title: "Enterprise Omnichannel Waterfall",
+        tagline: "High-leverage multi-touch pipeline engineering across LinkedIn & verified work email",
+        badge: "Enterprise / Agency VIP",
+        badgeColor: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
+        requiredTier: "ENTERPRISE",
+        isLocked: !isEnterprise && !isPlatformOwner,
+        conversionStat: "68% Accept • 38% Reply",
+        icon: Sparkles,
+        pillars: [
+          "Ghidra Wasm Canary Fingerprint Shield",
+          "Residential Warmup & Multi-Profile Visits",
+          "Open InMail Arbitrage (0 Connection Credits)",
+          "Zero-Cost SMTP Discovery & Work Email Fallback"
+        ],
+        onSelect: () => {
+          if (!isEnterprise && !isPlatformOwner) {
+            openPaywall({ featureName: "Enterprise Omnichannel Waterfall", minTier: "ENTERPRISE" });
+            return;
+          }
+          handleImportTemplate("omnichannel_waterfall");
+        }
+      },
+      {
+        id: "bayesian_account_nurture",
+        title: "B2B Pipeline & Account Penetration",
+        tagline: "Account-based qualification and multi-threaded consensus outreach for high ACV deals",
+        badge: "Growth Pro & Enterprise",
+        badgeColor: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+        requiredTier: "PRO",
+        isLocked: !isPro && !isEnterprise && !isPlatformOwner,
+        conversionStat: "58% Accept • 29% Reply",
+        icon: Users,
+        pillars: [
+          "Bayesian ICP Scoring Gate (>75 Match)",
+          "Dynamic Spintax Combinatorial Engine",
+          "STO (Send Time Optimization) Delivery",
+          "Multi-Threaded Champion to Economic Buyer Routing"
+        ],
+        onSelect: () => {
+          if (!isPro && !isEnterprise && !isPlatformOwner) {
+            openPaywall({ featureName: "B2B Pipeline & Account Penetration", minTier: "PRO" });
+            return;
+          }
+          handleImportTemplate("get_customers");
+        }
+      },
+      {
+        id: "executive_advisory_network",
+        title: "Executive & Advisory Network",
+        tagline: "Peer-to-peer executive dialogue with strategic benchmark sharing and zero spam friction",
+        badge: "Growth Pro & Enterprise",
+        badgeColor: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+        requiredTier: "PRO",
+        isLocked: !isPro && !isEnterprise && !isPlatformOwner,
+        conversionStat: "55% Accept • 28% Reply",
+        icon: Briefcase,
+        pillars: [
+          "High-Status Consultative Peer Cadence",
+          "Industry Velocity & Benchmark Sharing",
+          "Zero-Spam Low-Friction Touchpoints",
+          "Calibrated Auto-Withdrawal & Anti-Tripwire Safeguards"
+        ],
+        onSelect: () => {
+          if (!isPro && !isEnterprise && !isPlatformOwner) {
+            openPaywall({ featureName: "Executive & Advisory Network", minTier: "PRO" });
+            return;
+          }
+          handleImportTemplate("get_customers");
+        }
+      },
+      {
+        id: "safe_warmup_sentinel",
+        title: "Safe Account Warmup & Health Sentinel",
+        tagline: "Protective infrastructure ramping to build sender trust and insulate accounts from bans",
+        badge: "All Tiers",
+        badgeColor: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+        requiredTier: "FREE",
+        isLocked: false,
+        conversionStat: "100% Zero-Ban Safety Score",
+        icon: ShieldCheck,
+        pillars: [
+          "Gradual Sigmoid & Linear Action Ramping",
+          "DMARC / SPF / DKIM Alignment Verification",
+          "DNS Drift Sentinel & Blacklist Monitoring",
+          "Silent Profile Warming & Native Touchpoints"
+        ],
+        onSelect: () => {
+          setMode("wizard");
+        }
+      }
+    ];
+
     return (
-      <div className="flex-1 flex items-center justify-center p-8 bg-background relative z-10 h-full">
-        <div className="max-w-5xl w-full">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-light tracking-tight text-foreground mb-3">Start outreach</h2>
-            <p className="text-sm text-muted-foreground">Pick a goal to load a proven day-one sequence, or start with your own blueprint.</p>
+      <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-10 bg-background relative z-10 min-h-full">
+        <div className="max-w-6xl w-full space-y-8">
+          {/* Header Title & Status Bar */}
+          <div className="text-center space-y-2.5 max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-muted/50 border border-border/80 text-muted-foreground mb-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>ELE-IN SEQUENCE STUDIO • ARCHITECTURE SELECTOR</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extralight tracking-tight text-foreground">
+              Select Strategic Outbound Playbook
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Deploy battle-tested, anti-spam architectural sequences designed for high-ACV enterprise pipelines, 
+              probabilistic lead qualification, and zero-ban account health.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {/* Option A */}
-            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              setSelectedTemplateId('get_customers');
-              setMode("template_choice");
-            }}>
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-                <Users size={22} className="text-primary" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground mb-1.5">Get customers</h3>
-              <p className="text-xs text-muted-foreground">Message people who can buy. Goal: book a meeting.</p>
-            </SpotlightCard>
+          {/* 4 Playbook Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {modernPlaybooks.map((playbook) => {
+              const IconComp = playbook.icon;
+              return (
+                <SpotlightCard
+                  key={playbook.id}
+                  className={cn(
+                    "p-5 rounded-2xl border transition-all flex flex-col justify-between group relative overflow-hidden text-left bg-card/40 hover:bg-card/70 hover:shadow-xl hover:border-primary/40 cursor-pointer",
+                    playbook.isLocked ? "border-border/60 opacity-90" : "border-border/80"
+                  )}
+                  onClick={playbook.onSelect}
+                >
+                  <div className="space-y-4">
+                    {/* Top Row: Icon + Badge */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                        <IconComp size={20} />
+                      </div>
+                      <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider", playbook.badgeColor)}>
+                        {playbook.badge}
+                      </span>
+                    </div>
 
-            {/* Option B */}
-            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              setSelectedTemplateId('hire_people');
-              setMode("template_choice");
-            }}>
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-                <Briefcase size={22} className="text-primary" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground mb-1.5">Hire people</h3>
-              <p className="text-xs text-muted-foreground">Message people you want on the team. Goal: a hire.</p>
-            </SpotlightCard>
+                    {/* Title & Tagline */}
+                    <div>
+                      <h3 className="text-base font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                        {playbook.title}
+                        {playbook.isLocked && <Lock size={13} className="text-muted-foreground" />}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                        {playbook.tagline}
+                      </p>
+                    </div>
 
-            {/* Option C */}
-            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              setSelectedTemplateId('get_intros');
-              setMode("template_choice");
-            }}>
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-                <LinkIcon size={22} className="text-primary" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground mb-1.5">Get intros</h3>
-              <p className="text-xs text-muted-foreground">Message people who can open a door  -  investor, partner, or network.</p>
-            </SpotlightCard>
+                    {/* Architectural Pillars / Features */}
+                    <div className="space-y-1.5 pt-2 border-t border-border/40">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Architecture Stack
+                      </div>
+                      <ul className="space-y-1">
+                        {playbook.pillars.map((pillar, pIdx) => (
+                          <li key={pIdx} className="text-[11px] text-foreground/80 flex items-start gap-1.5 leading-snug">
+                            <span className="text-primary font-bold shrink-0 mt-0.5">•</span>
+                            <span>{pillar}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
 
-            {/* Option D */}
-            <SpotlightCard className="p-6 border border-border/50 bg-card/30 rounded-xl cursor-pointer hover:border-foreground/30 transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden" onClick={() => {
-              setMode("wizard");
-            }}>
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-                <Shield size={22} className="text-primary" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground mb-1.5">Warm-up Only</h3>
-              <p className="text-xs text-muted-foreground">Set up a slow sequence to build account trust safely.</p>
-            </SpotlightCard>
+                  {/* Card Bottom CTA & Stat */}
+                  <div className="mt-5 pt-3 border-t border-border/50 flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                      {playbook.conversionStat}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-primary group-hover:translate-x-0.5 transition-transform cursor-pointer"
+                    >
+                      <span>{playbook.isLocked ? "Unlock" : "Deploy"}</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                </SpotlightCard>
+              );
+            })}
           </div>
 
           {/* Quick Actions Bar */}
@@ -1132,8 +1271,6 @@ function StepSequence({ onSave }: { onSave?: () => void | Promise<void> }) {
         </div>
         <LivePreviewSidebar />
       </div>
-
-      <EITreeNodeConfigPanel />
     </div>
   )
 }
@@ -2053,6 +2190,23 @@ function EleInCreateCampaignInner() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showPreflightModal, setShowPreflightModal] = useState(false)
   const [showUnsavedModal, setShowUnsavedModal] = useState(false)
+  const [crossTabDraftAlert, setCrossTabDraftAlert] = useState<{ timestamp: number } | null>(null)
+
+  // Layer 2 Paranoia: Cross-tab draft sync and overwrite guard
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "elein_unsaved_draft" && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue)
+          if (parsed && typeof parsed.timestamp === "number") {
+            setCrossTabDraftAlert({ timestamp: parsed.timestamp })
+          }
+        } catch {}
+      }
+    }
+    window.addEventListener("storage", handleStorage)
+    return () => window.removeEventListener("storage", handleStorage)
+  }, [])
 
   const [maxStepReached, setMaxStepReached] = useState(step)
   useEffect(() => {
@@ -2179,7 +2333,7 @@ function EleInCreateCampaignInner() {
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       const state = useHRTreeStore.getState()
-      const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || Boolean(state.formState.campaignName)
+      const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || (state.stickyNotes && state.stickyNotes.length > 0) || Boolean(state.formState.campaignName?.trim())
       if (hasUnsavedWork && !isSavingRef.current) {
         e.preventDefault()
         e.returnValue = ""
@@ -2197,7 +2351,7 @@ function EleInCreateCampaignInner() {
 
     const handlePopState = () => {
       const state = useHRTreeStore.getState()
-      const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || Boolean(state.formState.campaignName)
+      const hasUnsavedWork = (state.rootNodes && state.rootNodes.length > 0) || (state.stickyNotes && state.stickyNotes.length > 0) || Boolean(state.formState.campaignName?.trim())
       if (hasUnsavedWork && !isSavingRef.current) {
         // Reinstate location to stay on current wizard view and present the confirmation dialog
         window.history.pushState({ eleinGuard: true }, "", window.location.href)
@@ -2306,7 +2460,9 @@ function EleInCreateCampaignInner() {
             searchUrl: data.sales_nav_url || data.metadata?.sales_nav_url || "",
             limit: data.metadata?.limit ?? data.limit ?? 50,
             schedule: data.metadata?.schedule || data.schedule || {},
-            stopOnReply: data.metadata?.stop_on_reply ?? true
+            stopOnReply: data.metadata?.stop_on_reply ?? true,
+            campaignVersion: data.version,
+            campaignUpdatedAt: data.updated_at
           }))
           // Jump directly to the Sequence builder (now Step 0)
           setStep(0)
@@ -2359,9 +2515,18 @@ function EleInCreateCampaignInner() {
           useHRTreeStore.getState().setFormState(draft.formState)
         }
         if (typeof draft.step === "number") {
-          navigateToStep(draft.step)
+          setStep(Math.max(0, Math.min(4, draft.step)))
         } else {
           setStep(0)
+        }
+        if (params.get('resume') !== 'true' && (loadedNodes.length > 0 || (draft.stickyNotes && draft.stickyNotes.length > 0))) {
+          toast.info("Recovered unsaved draft", {
+            description: "Restored your previous in-progress campaign.",
+            action: {
+              label: "Start Fresh",
+              onClick: () => handleDiscardAndExit()
+            }
+          })
         }
       } catch (e) {
         console.error("Failed to parse or restore draft:", e)
@@ -2432,9 +2597,13 @@ function EleInCreateCampaignInner() {
 
       if (allErrors.length > 0) {
         setActivationErrors(allErrors);
+        setShowPreflightModal(false);
         isSavingRef.current = false;
         setIsSaving(false);
-        throw new Error(allErrors[0] || "Cannot launch: Campaign configuration has validation errors.");
+        toast.error("Cannot launch campaign", {
+          description: allErrors[0] || "Campaign configuration has validation errors."
+        });
+        return;
       }
     }
 
@@ -2464,6 +2633,8 @@ function EleInCreateCampaignInner() {
           },
           limit: state.limit,
           lead_list_id: state.leadListId || null,
+          expected_version: state.campaignVersion,
+          expected_updated_at: state.campaignUpdatedAt,
           metadata: { 
             lead_list_id: state.leadListId || null,
             stop_on_reply: state.stopOnReply ?? true,
@@ -2474,6 +2645,9 @@ function EleInCreateCampaignInner() {
         })
       });
       if (!res.ok) {
+        if (res.status === 409) {
+          throw new Error("Campaign modification conflict (HTTP 409): This campaign was modified in another session or has active leads running. Please pause the campaign or refresh.");
+        }
         let errorDetail = `API Error ${res.status}`;
         try {
           const jsonBody = await res.json();
@@ -2586,8 +2760,8 @@ function EleInCreateCampaignInner() {
         }
         setShowUpgradeModal(true);
       } else if (e instanceof TypeError || (e instanceof Error && e.name === 'AbortError') || msg === 'Failed to fetch' || msg.includes('ERR_CONNECTION_REFUSED') || msg.includes('NetworkError')) {
-        toast.error("Cannot reach the backend server.", {
-          description: "The backend is not running. Open a terminal, go to the backend/ folder and run: ./start.sh"
+        toast.error("Unable to connect to server", {
+          description: "We couldn't reach the server. Please check your network connection and try again."
         })
       } else {
         toast.error("Failed to save campaign: " + msg)
@@ -2841,6 +3015,60 @@ function EleInCreateCampaignInner() {
         onSaveDraft={handleSaveDraftAndExit}
       />
 
+      {/* Layer 2 Paranoia: Cross-Tab Autosave Stomp Guard Floating Banner */}
+      {crossTabDraftAlert && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[80] max-w-lg w-full px-4 animate-in fade-in slide-in-from-top-3 duration-200">
+          <div className="p-3.5 rounded-xl bg-card border border-amber-500/40 shadow-2xl flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+              <div>
+                <span className="font-bold text-foreground block">Draft Updated in Another Tab</span>
+                <span className="text-[11px] text-muted-foreground">
+                  A newer campaign draft was saved in another window.
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setCrossTabDraftAlert(null)}
+                className="px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Dismiss
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCrossTabDraftAlert(null)
+                  const draftStr = localStorage.getItem("elein_unsaved_draft")
+                  if (draftStr) {
+                    try {
+                      const draft = JSON.parse(draftStr)
+                      const loadedNodes = (draft.nodes && draft.nodes.length > 0)
+                        ? dagToTree(draft.nodes, draft.edges || [])
+                        : []
+                      useHRTreeStore.getState().loadTree(loadedNodes, draft.stickyNotes || [])
+                      if (draft.formState) {
+                        useHRTreeStore.getState().setFormState(draft.formState)
+                      }
+                      if (typeof draft.step === "number") {
+                        setStep(Math.max(0, Math.min(4, draft.step)))
+                      }
+                      toast.success("Synchronized canvas with latest draft from other tab")
+                    } catch {
+                      toast.error("Failed to parse draft from other tab")
+                    }
+                  }
+                }}
+                className="px-3 py-1 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 text-xs cursor-pointer shadow-xs"
+              >
+                Sync Latest
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step Header */}
       <StepHeader 
         current={step} 
@@ -2862,41 +3090,47 @@ function EleInCreateCampaignInner() {
       />
       
       <div className="flex-1 overflow-y-auto relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute inset-0 flex flex-col"
-          >
-            {step === 0 && <StepSequence onSave={() => handleSaveDraft("DRAFT")} />}
-            {step === 1 && (
-              <div className="flex-1 overflow-auto p-8 relative z-10 flex flex-col items-center justify-center min-h-0">
-                <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center">
-                  <div className="mb-10 text-center">
-                    <h1 className="text-4xl font-light tracking-tight text-foreground mb-3">Audience Setup</h1>
-                    <p className="text-base text-muted-foreground">Give your campaign a name and select your target audience.</p>
-                  </div>
-                  <div className="w-full">
-                    <StepLeads state={state} onChange={handleStateChange} onNext={handleNext} showErrors={showErrors} />
+        {/* Step 0: Sequence Canvas - Permanently mounted in DOM to preserve pan/zoom and node selection state */}
+        <div className={cn("absolute inset-0 flex flex-col", step !== 0 && "hidden")}>
+          <StepSequence onSave={() => handleSaveDraft("DRAFT")} />
+        </div>
+
+        {step !== 0 && (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute inset-0 flex flex-col"
+            >
+              {step === 1 && (
+                <div className="flex-1 overflow-auto p-8 relative z-10 flex flex-col items-center justify-center min-h-0">
+                  <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center">
+                    <div className="mb-10 text-center">
+                      <h1 className="text-4xl font-light tracking-tight text-foreground mb-3">Audience Setup</h1>
+                      <p className="text-base text-muted-foreground">Give your campaign a name and select your target audience.</p>
+                    </div>
+                    <div className="w-full">
+                      <StepLeads state={state} onChange={handleStateChange} onNext={handleNext} showErrors={showErrors} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            {step === 2 && <StepSenders state={state} onChange={handleStateChange} showErrors={showErrors} />}
-            {step === 3 && <StepSchedule state={state} onChange={handleStateChange} />}
-            {step === 4 && (
-              <StepPreview 
-                state={state} 
-                onChange={handleStateChange} 
-                onJumpToStep={(s) => navigateToStep(s)} 
-                onOpenPreflightModal={() => setShowPreflightModal(true)}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
+              )}
+              {step === 2 && <StepSenders state={state} onChange={handleStateChange} showErrors={showErrors} />}
+              {step === 3 && <StepSchedule state={state} onChange={handleStateChange} />}
+              {step === 4 && (
+                <StepPreview 
+                  state={state} 
+                  onChange={handleStateChange} 
+                  onJumpToStep={(s) => navigateToStep(s)} 
+                  onOpenPreflightModal={() => setShowPreflightModal(true)}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
 
       {/* ─── Sticky Bottom Action Dock ─── */}

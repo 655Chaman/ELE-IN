@@ -202,6 +202,65 @@ def prune_expired_notifications(
         "unread_cutoff": unread_cutoff
     }
 
+def purge_expired_pending_deletion_workspaces(
+    svc,
+    grace_period_days: int = 14,
+    dry_run: bool = False
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1, 2: Sweeps and completely purges workspaces that have remained
+    in 'pending_deletion' status beyond their 14-day statutory grace period.
+    """
+    import asyncio
+    safe_grace_days = max(1, int(grace_period_days))
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=safe_grace_days)).isoformat()
+    purged_ids = []
+
+    try:
+        res = svc.table("workspaces").select("id, name, deletion_requested_at") \
+            .eq("status", "pending_deletion") \
+            .lt("deletion_requested_at", cutoff) \
+            .limit(50).execute()
+        expired_workspaces = res.data or []
+    except Exception as e:
+        logger.warning(f"[Retention] Could not query expired pending_deletion workspaces: {e}")
+        return {"purged_workspaces": 0, "workspace_ids": [], "dry_run": dry_run}
+
+    for ws in expired_workspaces:
+        ws_id = ws.get("id")
+        if not ws_id:
+            continue
+        if dry_run:
+            purged_ids.append(ws_id)
+            continue
+
+        try:
+            from core.backend.services.gdpr_service import purge_workspace_data
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, purge_workspace_data(ws_id, svc))
+                        future.result(timeout=60)
+                else:
+                    loop.run_until_complete(purge_workspace_data(ws_id, svc))
+            except RuntimeError:
+                asyncio.run(purge_workspace_data(ws_id, svc))
+
+            purged_ids.append(ws_id)
+            logger.info(f"[Retention] Purged expired workspace {ws_id} ({ws.get('name')}) past 14-day grace period.")
+        except Exception as ws_err:
+            logger.error(f"[Retention] Failed to purge expired workspace {ws_id}: {ws_err}")
+
+    return {
+        "purged_workspaces": len(purged_ids),
+        "workspace_ids": purged_ids,
+        "dry_run": dry_run,
+        "cutoff": cutoff
+    }
+
 def run_retention_prune_cycle(
     svc,
     workspace_id: Optional[str] = None,
@@ -210,17 +269,19 @@ def run_retention_prune_cycle(
     notification_days: int = DEFAULT_NOTIFICATION_READ_RETENTION_DAYS
 ) -> Dict[str, Any]:
     """
-    Combined retention housekeeping cycle across both Outbox and In-App Notifications.
+    Combined retention housekeeping cycle across Outbox, Notifications, and Expired Workspaces.
     """
     start_t = time.perf_counter()
     outbox_res = prune_expired_outbox_events(svc, retention_days=outbox_days, workspace_id=workspace_id, dry_run=dry_run)
     notif_res = prune_expired_notifications(svc, read_retention_days=notification_days, workspace_id=workspace_id, dry_run=dry_run)
+    ws_res = purge_expired_pending_deletion_workspaces(svc, dry_run=dry_run) if not workspace_id else {"purged_workspaces": 0}
     elapsed = max(0.001, time.perf_counter() - start_t)
 
     return {
         "outbox": outbox_res,
         "notifications": notif_res,
-        "total_deleted": outbox_res.get("total_deleted", 0) + notif_res.get("total_deleted", 0),
+        "workspaces": ws_res,
+        "total_deleted": outbox_res.get("total_deleted", 0) + notif_res.get("total_deleted", 0) + ws_res.get("purged_workspaces", 0),
         "duration_seconds": round(elapsed, 4),
         "dry_run": dry_run,
         "timestamp": datetime.now(timezone.utc).isoformat()

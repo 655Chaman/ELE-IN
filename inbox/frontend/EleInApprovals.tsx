@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
 import { fetcher, fetchWithAuth } from '@/lib/apiClient'
+import { usePaywall } from '@/contexts/PaywallContext'
 import { 
   CheckCircle, CheckCircle2, XCircle, Loader2, Inbox, ChevronRight, Flame,
   RefreshCw, Sparkles, HelpCircle, ShieldAlert, CalendarCheck, RotateCcw, 
@@ -63,6 +64,7 @@ function IntentBadge({ intent }: { intent: string }) {
 }
 
 export function EleInApprovals({ onGoToConversations }: EleInApprovalsProps = {}) {
+  const { openPaywall, isPro } = usePaywall()
   const { data, error, isLoading, mutate } = useSWR<ApprovalListResponse>(
     '/api/approvals?status=pending&limit=100',
     fetcher,
@@ -194,6 +196,13 @@ export function EleInApprovals({ onGoToConversations }: EleInApprovalsProps = {}
   // ── Autonomous Auto-Approval for High-Heat Responses ──
   const handleAutoApproveHighHeat = async () => {
     if (isAutoApproving) return
+    if (!isPro) {
+      openPaywall({
+        featureName: 'High-Heat Auto Dispatch',
+        reason: '1-click autonomous dispatch for high-intent replies requires Growth Pro or Enterprise.'
+      });
+      return;
+    }
     setIsAutoApproving(true)
     try {
       const res = await fetchWithAuth('/api/approvals/auto-approve-high-heat', {
@@ -279,6 +288,13 @@ export function EleInApprovals({ onGoToConversations }: EleInApprovalsProps = {}
   // ── Batch Actions (Layer 1 Paranoia: Atomic Server-Side Execution with Error Resilience) ──
   const handleBatchApprove = async () => {
     if (selectedItemIds.size === 0 || isBatchActing) return
+    if (!isPro) {
+      openPaywall({
+        featureName: 'One-Click Batch Approvals',
+        reason: 'Bulk approving and dispatching replies requires Growth Pro or Enterprise.'
+      });
+      return;
+    }
     setIsBatchActing(true)
     const idsToApprove = Array.from(selectedItemIds)
 
@@ -305,6 +321,13 @@ export function EleInApprovals({ onGoToConversations }: EleInApprovalsProps = {}
 
   const handleBatchReject = async () => {
     if (selectedItemIds.size === 0 || isBatchActing) return
+    if (!isPro) {
+      openPaywall({
+        featureName: 'One-Click Batch Approvals',
+        reason: 'Bulk actions require Growth Pro or Enterprise.'
+      });
+      return;
+    }
     setIsBatchActing(true)
     const idsToReject = Array.from(selectedItemIds)
 

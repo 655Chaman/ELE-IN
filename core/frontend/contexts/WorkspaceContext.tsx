@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { fetcher, fetchWithAuth } from "@/lib/apiClient";
+import { fetcher, fetchWithAuth, getActiveWorkspaceId, setActiveWorkspaceStorage, clearActiveWorkspaceStorage } from "@/lib/apiClient";
 import { mutate } from 'swr';
 import { useAuth } from '@/lib/AuthContext';
 import { setTelemetryWorkspaceContext } from '@/lib/telemetry';
@@ -9,6 +9,8 @@ interface Workspace {
   name: string;
   account_count: number;
   status?: string;
+  tier?: string;
+  is_platform_owner?: boolean;
 }
 
 interface AgencyInfo {
@@ -20,6 +22,11 @@ interface AgencyInfo {
 interface WorkspaceContextType {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
+  activeWorkspace: Workspace | null;
+  activeWorkspaceTier: string;
+  isFree: boolean;
+  isPro: boolean;
+  isEnterprise: boolean;
   setActiveWorkspaceId: (id: string) => void;
   refreshWorkspaces: () => Promise<void>;
   createWorkspace: (name: string) => Promise<Workspace>;
@@ -28,14 +35,14 @@ interface WorkspaceContextType {
   myAgencies: AgencyInfo[];
 }
 
-const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
+export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [myAgencies, setMyAgencies] = useState<AgencyInfo[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string | null>(
-    localStorage.getItem('elein_active_workspace')
+    getActiveWorkspaceId()
   );
 
   const fetchWorkspaces = async () => {
@@ -43,17 +50,32 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const data = await fetcher('/api/workspaces');
       setWorkspaces(data);
       if (data.length > 0) {
-        const currentId = localStorage.getItem('elein_active_workspace');
-        if (!currentId || !data.some((w: any) => w.id === currentId)) {
-          setActiveWorkspaceId(data[0].id);
-        } else if (currentId !== activeWorkspaceId) {
-          // If the React state is out of sync with valid localStorage state, update it
-          setActiveWorkspaceIdState(currentId);
+        const currentId = getActiveWorkspaceId();
+        if (currentId && data.some((w: any) => w.id === currentId)) {
+          if (currentId !== activeWorkspaceId) {
+            setActiveWorkspaceIdState(currentId);
+          }
+        } else if (currentId) {
+          // Paranoia Layer 1 & 2 (FLAW-10): Verify if currentId is an Agency client workspace before resetting
+          try {
+            const checkWs = await fetcher(`/api/workspaces/${currentId}`);
+            if (checkWs && checkWs.id === currentId) {
+              if (currentId !== activeWorkspaceId) {
+                setActiveWorkspaceIdState(currentId);
+              }
+              return;
+            }
+          } catch (e) {
+            // Accessible verification failed, proceed to fallback reset
+          }
+          setActiveWorkspaceId(data[0].id, false);
+        } else {
+          setActiveWorkspaceId(data[0].id, false);
         }
       } else {
         // Fallback: Hard clear if the user somehow has 0 workspaces (e.g. network drop during signup)
         setActiveWorkspaceIdState(null);
-        localStorage.removeItem('elein_active_workspace');
+        clearActiveWorkspaceStorage();
       }
     } catch (error) {
       console.error("Failed to fetch workspaces:", error);
@@ -67,19 +89,36 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } else {
       setWorkspaces([]);
       setMyAgencies([]);
+      clearActiveWorkspaceStorage();
     }
   }, [session]);
+
+  // Paranoia Layer 1 & 2: Listen for workspace:stale from apiClient to recover smoothly without page reloads
+  useEffect(() => {
+    const handleStaleWorkspace = () => {
+      clearActiveWorkspaceStorage();
+      if (workspaces.length > 0) {
+        setActiveWorkspaceId(workspaces[0].id, true);
+      } else {
+        fetchWorkspaces();
+      }
+    };
+    window.addEventListener('workspace:stale', handleStaleWorkspace);
+    return () => window.removeEventListener('workspace:stale', handleStaleWorkspace);
+  }, [workspaces]);
 
   useEffect(() => {
     setTelemetryWorkspaceContext(activeWorkspaceId);
   }, [activeWorkspaceId]);
 
-  const setActiveWorkspaceId = (id: string) => {
+  const setActiveWorkspaceId = (id: string, shouldRevalidate: boolean = true) => {
     setActiveWorkspaceIdState(id);
-    localStorage.setItem('elein_active_workspace', id);
+    setActiveWorkspaceStorage(id);
     setTelemetryWorkspaceContext(id);
-    // Reload after a short delay to ensure localStorage write flushes
-    mutate(() => true, undefined, { revalidate: true });
+    if (shouldRevalidate) {
+      // Revalidate tenant-scoped queries without aggressively flushing all global keys
+      mutate((key: any) => typeof key === 'string' && key.startsWith('/api/elein'), undefined, { revalidate: true });
+    }
   };
 
   const createWorkspace = async (name: string) => {
@@ -110,11 +149,21 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || null;
   const isPendingDeletion = activeWorkspace?.status === 'pending_deletion';
+  const rawTier = (activeWorkspace?.tier || 'FREE').toUpperCase();
+  const activeWorkspaceTier = rawTier;
+  const isFree = activeWorkspaceTier === 'FREE' || activeWorkspaceTier === 'STARTER' || activeWorkspaceTier === 'BASIC';
+  const isEnterprise = activeWorkspaceTier === 'ENTERPRISE' || activeWorkspaceTier === 'AGENCY' || Boolean(activeWorkspace?.is_platform_owner);
+  const isPro = activeWorkspaceTier === 'PRO' || activeWorkspaceTier === 'GROWTH' || isEnterprise;
 
   return (
     <WorkspaceContext.Provider value={{
       workspaces,
       activeWorkspaceId,
+      activeWorkspace,
+      activeWorkspaceTier,
+      isFree,
+      isPro,
+      isEnterprise,
       setActiveWorkspaceId,
       refreshWorkspaces: fetchWorkspaces,
       createWorkspace,

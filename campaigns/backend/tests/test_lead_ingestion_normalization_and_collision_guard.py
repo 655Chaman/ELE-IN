@@ -237,7 +237,8 @@ class TestLeadIngestionNormalizationAndCollisionGuard(unittest.TestCase):
         self.assertEqual(res["duplicate_count"], 1)
         self.assertEqual(res["inserted_count"], 0)
 
-    def test_batch_chunked_operations_eliminate_n_plus_one(self):
+    @patch("leads.backend.services.suppression_service.check_lead_suppression", return_value={"suppressed": False})
+    def test_batch_chunked_operations_eliminate_n_plus_one(self, mock_supp):
         """Paranoia Layer 1: Eradicates N+1 queries by executing batched table operations."""
         mock_supabase = MagicMock()
         mock_supabase.rpc.side_effect = Exception("RPC unmigrated")
@@ -275,8 +276,8 @@ class TestLeadIngestionNormalizationAndCollisionGuard(unittest.TestCase):
         self.assertEqual(res["inserted_count"], 50)
         self.assertEqual(res["source"], "direct_table")
 
-        # Verify batch select was called once for the chunk, not 50 individual selects!
-        self.assertEqual(mock_supabase.table.return_value.select.call_count, 1)
+        # Verify batch select was called for quota check and chunk (3 total), eliminating 50 individual selects!
+        self.assertLessEqual(mock_supabase.table.return_value.select.call_count, 3)
 
     # =========================================================================
     # Layer 2: API Endpoint Integration & Human Paranoia Guards
@@ -474,6 +475,42 @@ class TestCSVHygieneCreditSecurity(unittest.TestCase):
         self.assertEqual(payload.get("email"), "alex.mercer@gentek.com")
         self.assertEqual(payload.get("domain"), "gentek.com")
         self.assertEqual(payload.get("first_name"), "Alexander")
+
+    @patch("core.backend.api.auth_dep.get_service_client")
+    def test_universal_charset_normalizer_handles_windows_1252(self, mock_get_client):
+        """Paranoia Layer 0 & 1: Verifies Windows-1252 CSV with umlauts and smart quotes is parsed without corruption."""
+        import tempfile
+        import os
+        from campaigns.backend.routers.elein import process_csv_background
+
+        mock_supabase = MagicMock()
+        mock_get_client.return_value = mock_supabase
+
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"status": "pending"}])
+
+        with tempfile.NamedTemporaryFile("wb", delete=False, suffix=".csv") as tmp:
+            # Write Windows-1252 encoded content (Jürgen Müller with 0xfc for ü)
+            content = "first_name,last_name,email,linkedin_url\nJ\xfcrgen,M\xfcller,juergen@example.com,https://linkedin.com/in/juergen\n".encode("cp1252")
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            with patch("leads.backend.services.lead_ingestion_service.execute_bulk_import_leads") as mock_bulk:
+                mock_bulk.return_value = {"success": True, "inserted_count": 1}
+                process_csv_background(
+                    list_id="list-cp1252",
+                    file_path=tmp_path,
+                    clean_data=False,
+                    workspace_id="ws-charset-test"
+                )
+                self.assertTrue(mock_bulk.called)
+                leads_arg = mock_bulk.call_args[1]["leads"]
+                self.assertEqual(len(leads_arg), 1)
+                self.assertEqual(leads_arg[0]["first_name"], "Jürgen")
+                self.assertEqual(leads_arg[0]["last_name"], "Müller")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Any, Dict
 
 class EleInNode(BaseModel):
@@ -92,9 +92,16 @@ class AccountResponse(BaseModel):
     warmup_start_date: Optional[str] = None
     is_active: bool
     status: Optional[str] = "ACTIVE"
+    session_death_reason: Optional[str] = None
+    auto_heal_status: Optional[str] = None
+    health_score: Optional[int] = None
+    cookie_expires_at: Optional[str] = None
+    quarantined_until: Optional[str] = None
+    quarantine_reason: Optional[str] = None
     manual_send_suspected: Optional[bool] = False
     last_health_check_at: Optional[str] = None
     tags: Optional[List[str]] = Field(default_factory=list)
+    model_config = ConfigDict(extra="ignore")
 
 
 class WorkspaceBlueprintCreate(BaseModel):
@@ -108,6 +115,18 @@ class WorkspaceBlueprintCreate(BaseModel):
     tags: Optional[List[str]] = Field(default_factory=list, max_length=50)
     is_public: Optional[bool] = False
     model_config = ConfigDict(extra="ignore")
+
+    @field_validator("sequence_data")
+    @classmethod
+    def validate_sequence_data_payload_size(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        import json
+        try:
+            dumped = json.dumps(v)
+            if len(dumped) > 2_000_000:  # 2MB maximum payload limit
+                raise ValueError("Blueprint sequence payload exceeds the maximum 2MB size limit.")
+        except (TypeError, OverflowError) as e:
+            raise ValueError(f"Sequence data is not JSON-serializable: {e}")
+        return v
 
 
 class WorkspaceBlueprintResponse(BaseModel):

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { 
   X, CheckCircle2, AlertTriangle, AlertCircle, Shield, Rocket, 
   Users, RefreshCw, Compass, ShieldCheck, Play, Sparkles, Clock,
-  Globe, ArrowRight, Check, Wrench, ShieldAlert
+  Globe, ArrowRight, Check, Wrench, ShieldAlert, Workflow, Cpu, Layers
 } from "lucide-react"
 import { Linkedin } from "@/components/icons/Linkedin"
 import { cn } from "@/lib/utils"
@@ -83,6 +83,7 @@ export function CampaignPreflightModal({
 }: CampaignPreflightModalProps) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<PreflightAuditResult | null>(null)
+  const [dagSimulation, setDagSimulation] = useState<any | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"checklist" | "simulator" | "warmup" | "shield">("checklist")
   const [showShieldModal, setShowShieldModal] = useState(false)
@@ -139,6 +140,28 @@ export function CampaignPreflightModal({
 
       const result: PreflightAuditResult = await res.json()
       setData(result)
+
+      // Phase S: Multi-Channel Sequence DAG Simulation & Dry-Run Sandbox
+      if (inFlightPayload && inFlightPayload.nodes && inFlightPayload.nodes.length > 0) {
+        try {
+          const simRes = await fetchWithAuth("/api/elein/campaigns/simulate-dag", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              dag: {
+                nodes: inFlightPayload.nodes,
+                edges: inFlightPayload.edges || []
+              }
+            })
+          })
+          if (simRes.ok) {
+            const simData = await simRes.json()
+            setDagSimulation(simData)
+          }
+        } catch (simErr) {
+          console.debug("DAG Simulation optional fetch error:", simErr)
+        }
+      }
     } catch (err: any) {
       console.error("Preflight audit failed:", err)
       setError(err.message || "Failed to run preflight check")
@@ -568,6 +591,48 @@ export function CampaignPreflightModal({
               {/* TAB 2: LIVE PROSPECT POV & INTERPOLATED OUTREACH */}
               {activeTab === "simulator" && (
                 <div className="space-y-4">
+                  {dagSimulation && (
+                    <div className="p-4 rounded-xl bg-card border border-border space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-border">
+                        <div className="flex items-center gap-2">
+                          <Workflow size={16} className="text-primary" />
+                          <h6 className="font-bold text-xs text-foreground">Multi-Channel DAG Sandbox Simulation Trace</h6>
+                        </div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                          Phase S Engine
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                        <div className="p-2.5 rounded-lg bg-background border border-border">
+                          <span className="text-[10px] text-muted-foreground block">Simulated Dispatches</span>
+                          <span className="font-bold font-mono text-sm">{dagSimulation.summary?.total_dispatches ?? 0}</span>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-background border border-border">
+                          <span className="text-[10px] text-muted-foreground block">Timeline Runway</span>
+                          <span className="font-bold font-mono text-sm">{dagSimulation.summary?.timeline_span_days ?? 0}d</span>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-background border border-border">
+                          <span className="text-[10px] text-muted-foreground block">Pacing Collisions</span>
+                          <span className={cn("font-bold font-mono text-sm", (dagSimulation.summary?.collisions_detected ?? 0) > 0 ? "text-amber-500" : "text-emerald-500")}>
+                            {dagSimulation.summary?.collisions_detected ?? 0}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-background border border-border">
+                          <span className="text-[10px] text-muted-foreground block">Token Coverage</span>
+                          <span className="font-bold font-mono text-sm text-primary">
+                            {dagSimulation.token_resolution_coverage?.resolution_percentage ?? 100}%
+                          </span>
+                        </div>
+                      </div>
+                      {dagSimulation.pacing_collisions && dagSimulation.pacing_collisions.length > 0 && (
+                        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                          <span>Pacing collision detected: Multiple steps scheduled &lt;15 min apart across channels.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="p-3.5 rounded-xl bg-background border border-border text-xs text-muted-foreground leading-relaxed flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Sparkles size={15} className="text-primary shrink-0" />

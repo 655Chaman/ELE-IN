@@ -43,6 +43,9 @@ export interface LeadImportState {
   cleanData: boolean;
   setCleanData: (c: boolean) => void;
   
+  collisionPolicy: "merge" | "skip_existing" | "skip_active_campaign";
+  setCollisionPolicy: (p: "merge" | "skip_existing" | "skip_active_campaign") => void;
+  
   targetTimezone: string;
   setTargetTimezone: (t: string) => void;
   
@@ -115,6 +118,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
   const budget = budgetData || { used: 0, limit: 150, remaining: 150 }
 
   const [cleanData, setCleanData] = useState(false)
+  const [collisionPolicy, setCollisionPolicy] = useState<"merge" | "skip_existing" | "skip_active_campaign">("merge")
   
   const { data: hubspotStatus, mutate: mutateHubspotStatus } = useSWR('/api/elein/hubspot/status', fetcher)
   const isHubspotConnected = hubspotStatus?.connected || false
@@ -249,6 +253,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     targetTimezone, setTargetTimezone,
     file, setFile,
     cleanData, setCleanData,
+    collisionPolicy, setCollisionPolicy,
     isSubmitting, setIsSubmitting,
     step, setStep,
     headers, setHeaders,
@@ -264,7 +269,7 @@ export function LeadImportProvider({ children }: { children: ReactNode }) {
     fileInputRef, liveUrl
   }), [
     method, name, urlList, salesNavUrl, salesNavMaxResults, targetTimezone,
-    file, cleanData, isSubmitting, step, headers, sampleRows, detectedRowCount,
+    file, cleanData, collisionPolicy, isSubmitting, step, headers, sampleRows, detectedRowCount,
     mappings, searchParams, hubspotToken, hubspotConnecting, selectedHubspotList,
     billing, accounts, activeAccount, budget, isHubspotConnected, hubspotLists,
     mutateHubspotStatus, liveUrl

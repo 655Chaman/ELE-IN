@@ -1,4 +1,6 @@
 import logging
+import time
+import threading
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -78,6 +80,10 @@ def enrich_single_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_batch_rate_limit_lock = threading.Lock()
+_workspace_last_batch_times: Dict[str, List[float]] = {}
+MAX_BATCHES_PER_MINUTE = 10
+
 @router.post("/enrich-batch")
 def enrich_batch_endpoint(
     payload: EnrichBatchPayload,
@@ -86,6 +92,7 @@ def enrich_batch_endpoint(
 ):
     """
     Batch multi-vendor waterfall enrichment across multiple target prospects.
+    Paranoia Layer 0 & 1: Strict credit escrow and Token Bucket rate limiting.
     """
     # Paranoia Layer 2: Empty payload handling
     if not payload.leads:
@@ -104,13 +111,25 @@ def enrich_batch_endpoint(
             detail="Waterfall enrichment requires a Pro or Enterprise plan. Please upgrade your subscription."
         )
 
-    # Paranoia Layer 0 & 1: Credit Preflight Check
+    # Paranoia Layer 1 & 2: Token Bucket Rate Limiting (10 batches/min per workspace)
+    now_t = time.time()
+    with _batch_rate_limit_lock:
+        timestamps = _workspace_last_batch_times.setdefault(workspace_id, [])
+        _workspace_last_batch_times[workspace_id] = [t for t in timestamps if now_t - t < 60.0]
+        if len(_workspace_last_batch_times[workspace_id]) >= MAX_BATCHES_PER_MINUTE:
+            raise HTTPException(
+                status_code=429,
+                detail="Waterfall enrichment batch rate limit exceeded (max 10 batches/minute per workspace). Please stagger requests."
+            )
+        _workspace_last_batch_times[workspace_id].append(now_t)
+
+    # Paranoia Layer 0 & 1: Strict Pre-Execution Credit Escrow
     balance = get_credit_balance(workspace_id, supabase_client=supabase)
-    allowed, _, _ = check_overdraft_allowance(workspace_id, cost=5, supabase_client=supabase)
-    if not allowed or balance < -495:
+    min_cost_to_start = 5
+    if balance < min_cost_to_start:
         raise HTTPException(
             status_code=402,
-            detail="Insufficient credit balance for waterfall enrichment batch. Please top up your credits in Billing."
+            detail=f"Insufficient credit balance ({balance} credits). Waterfall enrichment requires at least {min_cost_to_start} positive credits to start. Please top up in Billing."
         )
 
     try:
@@ -121,9 +140,8 @@ def enrich_batch_endpoint(
         for l in leads_to_process:
             # Paranoia Layer 1 & 2: Check balance mid-batch to halt before overdraft limit breach
             curr_balance = get_credit_balance(workspace_id, supabase_client=supabase)
-            can_proceed, _, _ = check_overdraft_allowance(workspace_id, cost=5, supabase_client=supabase)
-            if not can_proceed or curr_balance < -495:
-                logger.warning(f"Batch enrichment halted mid-run for workspace {workspace_id} due to credit depletion.")
+            if curr_balance < min_cost_to_start:
+                logger.warning(f"Batch enrichment halted mid-run for workspace {workspace_id} due to credit depletion (balance={curr_balance}).")
                 stopped_early = True
                 break
 

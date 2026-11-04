@@ -25,12 +25,19 @@ export interface SeqTreeNode {
   branchEnded?: boolean
 }
 
+export interface CanvasSnapshotRecord {
+  rootNodes: SeqTreeNode[]
+  stickyNotes: StickyNote[]
+}
+
+export type HistoryItem = SeqTreeNode[] | CanvasSnapshotRecord
+
 export interface EITreeStore {
   rootNodes: SeqTreeNode[]
   stickyNotes: StickyNote[]
   selectedNodeId: string | null
-  history: SeqTreeNode[][]
-  future: SeqTreeNode[][]
+  history: HistoryItem[]
+  future: HistoryItem[]
   formState: Record<string, any>
   campaignStep: number
   setFormState: (state: Record<string, any>) => void
@@ -119,19 +126,45 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
 
   addStickyNote: (x, y, color = "amber", category = "note") => {
     const id = uuidv4()
+    let initialTitle = ""
+    let initialText = ""
+    let resolvedColor = color
+
+    if (category === "todo") {
+      initialTitle = "Launch Checklist"
+      resolvedColor = color === "amber" ? "emerald" : color
+      initialText = `- [ ] Connect 3+ sender accounts\n- [ ] Set daily limit to 25/day per sender\n- [ ] Verify recipient curfew (9 AM - 5 PM)\n- [ ] Test spintax variation in message copy`
+    } else if (category === "strategy") {
+      initialTitle = "A/B Copy Hypothesis"
+      resolvedColor = color === "amber" ? "violet" : color
+      initialText = `**Hypothesis:** Pain-point opener will outperform compliment lead.\n\n- **Variant A:** Mutual connection intro\n- **Variant B:** Specific workflow bottleneck question\n- **Target Goal:** > 28% reply rate`
+    } else if (category === "warning") {
+      initialTitle = "Account Safety Rule"
+      resolvedColor = color === "amber" ? "rose" : color
+      initialText = `**Compliance Gate:**\n- Max 20 connection requests/day\n- Auto-withdraw pending requests after 14 days\n- Never send messages on weekends`
+    } else if (category === "handover") {
+      initialTitle = "Lead Triage Rule"
+      resolvedColor = color === "amber" ? "sky" : color
+      initialText = `**When lead replies:**\n- If Positive -> Assign to AE in CRM\n- If Question -> Respond within 15 mins\n- If Objection -> Apply price-anchor battlecard`
+    }
+
     const newNote: StickyNote = {
       id,
       x: Math.round(x),
       y: Math.round(y),
-      text: "",
-      title: "",
-      color,
+      text: initialText,
+      title: initialTitle,
+      color: resolvedColor,
       category: category as any,
       isPinned: false,
       isCollapsed: false,
       updatedAt: new Date().toISOString()
     }
-    set(state => ({ stickyNotes: [...state.stickyNotes, newNote] }))
+    set(state => ({
+      history: [...state.history.slice(-29), { rootNodes: state.rootNodes, stickyNotes: state.stickyNotes }],
+      future: [],
+      stickyNotes: [...state.stickyNotes, newNote]
+    }))
     return id
   },
   
@@ -144,6 +177,8 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
   })),
   
   removeStickyNote: (id) => set(state => ({
+    history: [...state.history.slice(-29), { rootNodes: state.rootNodes, stickyNotes: state.stickyNotes }],
+    future: [],
     stickyNotes: state.stickyNotes.filter(sn => sn.id !== id)
   })),
   
@@ -325,12 +360,12 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
   
   // Paranoia Layer 0 & 2 (FLAW-FE-19): Preserve existing canvas in history when importing/loading a tree
   loadTree: (rootNodes, stickyNotes, options) => set(s => {
-    const shouldPreserve = options?.preserveHistory ?? (s.rootNodes && s.rootNodes.length > 0);
+    const shouldPreserve = options?.preserveHistory ?? ((s.rootNodes && s.rootNodes.length > 0) || (s.stickyNotes && s.stickyNotes.length > 0));
     return {
       rootNodes,
       stickyNotes: stickyNotes || [],
       selectedNodeId: null,
-      history: shouldPreserve ? [...s.history.slice(-19), s.rootNodes] : [],
+      history: shouldPreserve ? [...s.history.slice(-19), { rootNodes: s.rootNodes, stickyNotes: s.stickyNotes }] : [],
       future: [],
     };
   }),
@@ -339,10 +374,13 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
     if (s.history.length === 0) return {}
     const previous = s.history[s.history.length - 1]
     const newHistory = s.history.slice(0, -1)
+    const prevNodes = Array.isArray(previous) ? previous : previous.rootNodes
+    const prevNotes = Array.isArray(previous) ? s.stickyNotes : previous.stickyNotes
     return {
       history: newHistory,
-      future: [s.rootNodes, ...s.future],
-      rootNodes: previous
+      future: [{ rootNodes: s.rootNodes, stickyNotes: s.stickyNotes }, ...s.future],
+      rootNodes: prevNodes,
+      stickyNotes: prevNotes
     }
   }),
 
@@ -350,10 +388,13 @@ export const useHRTreeStore = create<EITreeStore>()((set) => ({
     if (s.future.length === 0) return {}
     const next = s.future[0]
     const newFuture = s.future.slice(1)
+    const nextNodes = Array.isArray(next) ? next : next.rootNodes
+    const nextNotes = Array.isArray(next) ? s.stickyNotes : next.stickyNotes
     return {
-      history: [...s.history, s.rootNodes],
+      history: [...s.history, { rootNodes: s.rootNodes, stickyNotes: s.stickyNotes }],
       future: newFuture,
-      rootNodes: next
+      rootNodes: nextNodes,
+      stickyNotes: nextNotes
     }
   })
 }))
@@ -365,26 +406,50 @@ export interface DagToTreeOptions {
 }
 
 export function hasDagCycles(nodes: any[], edges: any[]): boolean {
-  if (!nodes || nodes.length === 0) return false
+  if (!Array.isArray(nodes) || nodes.length === 0) return false
+  const safeNodes = nodes.filter(n => n && typeof n === "object" && n.id !== undefined && n.id !== null)
+  const nodeSet = new Set(safeNodes.map(n => String(n.id)))
+  if (nodeSet.size === 0) return false
+
   const inDegree = new Map<string, number>()
-  nodes.forEach(n => inDegree.set(n.id, 0))
-  edges.forEach(e => {
-    inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
-  })
+  safeNodes.forEach(n => inDegree.set(String(n.id), 0))
+
+  const adj = new Map<string, string[]>()
+  const safeEdges = Array.isArray(edges) ? edges : []
+  const seenEdges = new Set<string>()
+
+  for (const e of safeEdges) {
+    if (!e || typeof e !== "object") continue
+    const rawSrc = e.source !== undefined && e.source !== null ? e.source : e.source_node_id
+    const rawTgt = e.target !== undefined && e.target !== null ? e.target : e.target_node_id
+    if (rawSrc === undefined || rawSrc === null || rawTgt === undefined || rawTgt === null) continue
+    const src = String(rawSrc).trim()
+    const tgt = String(rawTgt).trim()
+    if (!src || !tgt) continue
+
+    // Layer 2: Immediate self-loop detection
+    if (src === tgt && nodeSet.has(src)) return true
+
+    // Layer 1: Ignore dangling edges referencing non-existent nodes
+    if (!nodeSet.has(src) || !nodeSet.has(tgt)) continue
+
+    const edgeKey = `${src}->${tgt}`
+    if (seenEdges.has(edgeKey)) continue
+    seenEdges.add(edgeKey)
+
+    inDegree.set(tgt, (inDegree.get(tgt) || 0) + 1)
+    const list = adj.get(src) || []
+    list.push(tgt)
+    adj.set(src, list)
+  }
 
   const queue: string[] = []
-  nodes.forEach(n => {
-    if ((inDegree.get(n.id) || 0) === 0) queue.push(n.id)
+  safeNodes.forEach(n => {
+    const id = String(n.id)
+    if ((inDegree.get(id) || 0) === 0) queue.push(id)
   })
 
   let count = 0
-  const adj = new Map<string, string[]>()
-  edges.forEach(e => {
-    const list = adj.get(e.source) || []
-    list.push(e.target)
-    adj.set(e.source, list)
-  })
-
   while (queue.length > 0) {
     const u = queue.shift()!
     count++
@@ -395,15 +460,25 @@ export function hasDagCycles(nodes: any[], edges: any[]): boolean {
     }
   }
 
-  return count !== nodes.length
+  return count !== nodeSet.size
 }
 
 export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions): SeqTreeNode[] {
-  const safeNodes = Array.isArray(nodes) ? nodes.filter(n => n && typeof n === "object" && n.id) : []
-  const safeEdges = Array.isArray(edges) ? edges.filter(e => e && typeof e === "object" && e.source && e.target) : []
+  const safeNodes = Array.isArray(nodes) ? nodes.filter(n => n && typeof n === "object" && n.id !== undefined && n.id !== null) : []
+  const safeEdges = Array.isArray(edges)
+    ? edges
+        .filter(e => e && typeof e === "object")
+        .map(e => ({
+          ...e,
+          source: String(e.source !== undefined && e.source !== null ? e.source : (e.source_node_id ?? "")).trim(),
+          target: String(e.target !== undefined && e.target !== null ? e.target : (e.target_node_id ?? "")).trim(),
+          sourceHandle: e.sourceHandle || e.source_handle || e.handle || "output"
+        }))
+        .filter(e => e.source && e.target)
+    : []
 
   const nodeMap = new Map<string, any>()
-  safeNodes.forEach(n => nodeMap.set(n.id, n))
+  safeNodes.forEach(n => nodeMap.set(String(n.id), n))
 
   const childrenMap = new Map<string, Array<{target: string, handle: string}>>()
   safeEdges.forEach(e => {
@@ -413,9 +488,11 @@ export function dagToTree(nodes: any[], edges: any[], options?: DagToTreeOptions
   })
 
   const inDegree = new Map<string, number>()
-  safeNodes.forEach(n => inDegree.set(n.id, 0))
+  safeNodes.forEach(n => inDegree.set(String(n.id), 0))
   safeEdges.forEach(e => {
-    inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
+    if (inDegree.has(e.target)) {
+      inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
+    }
   })
 
   let detectedCycles = false
@@ -622,7 +699,11 @@ export function saveDraftToLocalStorage(state: EITreeStore) {
   try {
     const { nodes, edges } = treeToDag(state.rootNodes)
     // Paranoia Layer 2: Guard against saving an empty skeleton over an existing meaningful draft
-    if (nodes.length === 0 && (!state.formState?.campaignName || state.formState?.campaignName === 'New Campaign') && !state.formState?.leadListId) {
+    const hasMeaningfulContent = nodes.length > 0 || (state.stickyNotes && state.stickyNotes.length > 0)
+    const hasCustomName = Boolean(state.formState?.campaignName && state.formState?.campaignName !== 'New Campaign')
+    const hasAudience = Boolean(state.formState?.leadListId)
+
+    if (!hasMeaningfulContent && !hasCustomName && !hasAudience) {
       return
     }
     draftPayload = {

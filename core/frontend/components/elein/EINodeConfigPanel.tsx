@@ -9,7 +9,7 @@ import {
   Share2, Building2, Briefcase, MapPin, Award, Target,
   UserMinus, Split, GitFork, Gauge, Ban, Flag,
   Languages, Brain, ThumbsUp, ThumbsDown, Bot, Shield, BookOpen, Lock, ArrowUpRight, Cpu, Smile,
-  Activity, DollarSign, Layers, TrendingUp
+  Activity, DollarSign, Layers, TrendingUp, Sliders, RefreshCw
 } from "lucide-react"
 
 import useSWR from "swr"
@@ -135,17 +135,59 @@ export const WORST_CASE_PERSONA = {
   mutual_connections: "14 mutual colleagues",
 }
 
-export function resolveVariables(template: string, persona: typeof PREVIEW_PERSONAS[0] | typeof WORST_CASE_PERSONA): string {
-  if (!template) return ""
-  return template.replace(/\{\{([a-zA-Z0-9_]+)(\s*\|\s*fallback:\s*([^}]+))?\}\}/g, (_, key, __, fallback) => {
-    const trimmedKey = key.trim()
-    const fallbackVal = fallback ? fallback.trim() : ""
-    const val = (persona as any)[trimmedKey]
+export function calculateSpintaxCombinations(template: string): number {
+  if (!template) return 1;
+  let totalCombos = 1;
+  const spintaxRegex = /\{([^{}]+?\|[^{}]+?)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = spintaxRegex.exec(template)) !== null) {
+    const options = match[1].split("|").filter(Boolean);
+    totalCombos *= Math.max(1, options.length);
+  }
+  return totalCombos;
+}
+
+export function resolveSpintaxAndVariables(
+  template: string,
+  persona: typeof PREVIEW_PERSONAS[0] | typeof WORST_CASE_PERSONA,
+  seed: number = 0
+): { resolved: string; totalCombos: number } {
+  if (!template) return { resolved: "", totalCombos: 1 };
+  const totalCombos = calculateSpintaxCombinations(template);
+
+  // Resolve spintax variations using deterministic seed
+  let working = template;
+  let pass = 0;
+  const prng = (s: number) => {
+    const x = Math.sin(s++) * 10000;
+    return x - Math.floor(x);
+  };
+  let localSeed = seed;
+  while (pass < 5 && /\{([^{}]+?\|[^{}]+?)\}/.test(working)) {
+    working = working.replace(/\{([^{}]+?\|[^{}]+?)\}/g, (_, group) => {
+      const opts = group.split("|");
+      const idx = Math.floor(prng(localSeed++) * opts.length);
+      return opts[idx] || "";
+    });
+    pass++;
+  }
+
+  // Resolve {{variable | fallback}} tokens
+  const resolved = working.replace(/\{\{\s*([a-zA-Z0-9_\.]+)(?:\s*\|\s*(?:fallback:\s*)?([^}]+?))?\s*\}\}/g, (_, key, fallback) => {
+    const trimmedKey = key.trim();
+    const fallbackVal = fallback ? fallback.trim() : "";
+    const val = (persona as any)[trimmedKey];
     if (val && String(val).trim().length > 0) {
-      return String(val)
+      return String(val);
     }
-    return fallbackVal || `[${trimmedKey}]`
-  })
+    return fallbackVal || `[${trimmedKey}]`;
+  });
+
+  return { resolved, totalCombos };
+}
+
+export function resolveVariables(template: string, persona: typeof PREVIEW_PERSONAS[0] | typeof WORST_CASE_PERSONA): string {
+  return resolveSpintaxAndVariables(template, persona, 0).resolved;
 }
 
 export const CONNECTION_STARTERS = [
@@ -402,8 +444,9 @@ function MessageEditor({
     setShowVars(false)
   }
 
+  const [spintaxSeed, setSpintaxSeed] = useState(0)
   const activePersona = PREVIEW_PERSONAS.find(p => p.id === previewPersonaId) || PREVIEW_PERSONAS[0]
-  const previewText = resolveVariables(value || "", activePersona)
+  const { resolved: previewText, totalCombos } = resolveSpintaxAndVariables(value || "", activePersona, spintaxSeed)
 
   const charsLeft = maxChars - (value?.length || 0)
 
@@ -521,6 +564,31 @@ function MessageEditor({
               </button>
             ))}
           </div>
+
+          {/* Spintax Variations Ribbon */}
+          {totalCombos > 1 && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-[11px]">
+              <div className="flex items-center gap-2">
+                <Sliders size={12} className="text-primary shrink-0" />
+                <span className="font-semibold text-foreground font-mono">{totalCombos.toLocaleString()} Variations</span>
+                <span className={cn(
+                  "text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase",
+                  totalCombos >= 20 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" :
+                  "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                )}>
+                  {totalCombos >= 20 ? "High Entropy Shield" : "Moderate Variety"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSpintaxSeed(s => s + 1)}
+                className="inline-flex items-center gap-1 text-[10px] text-primary font-bold hover:underline cursor-pointer"
+                title="Generate another permutation"
+              >
+                <RefreshCw size={10} /> Re-Spin Variant
+              </button>
+            </div>
+          )}
 
           <div className="w-full rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-500/30 px-3.5 py-3 text-xs text-foreground leading-relaxed whitespace-pre-wrap min-h-[120px] relative group">
             {previewText || <span className="text-muted-foreground italic">No message written yet</span>}
@@ -8798,14 +8866,19 @@ export function EITreeNodeConfigPanel() {
   const nodeType: string = (selectedNode.type || d.type || "") as string
   
   const def = HR_NODE_DEFS[nodeType as keyof typeof HR_NODE_DEFS]
-  if (!def) return null
+  const safeDef = def || {
+    label: d.label || nodeType || "Custom Step",
+    color: "#6366f1",
+    description: "Custom sequence step imported from workflow blueprint.",
+    category: "actions" as const
+  }
 
   const config = NODE_CONFIG[nodeType] || {
-    title: def.label,
+    title: safeDef.label,
     icon: Info,
-    color: def.color || "#52525b",
+    color: safeDef.color || "#52525b",
     render: (data: any, onChange: (k: string, v: any) => void) => (
-      <DynamicNodeConfig data={data} onChange={onChange} def={def} />
+      <DynamicNodeConfig data={data} onChange={onChange} def={safeDef} />
     )
   }
 
@@ -8878,7 +8951,7 @@ export function EITreeNodeConfigPanel() {
                 )}
                 <div className="flex-1">
                   <p className="text-xs text-foreground leading-relaxed font-medium mb-0.5">
-                    {def.description || "Configure this step."}
+                    {safeDef.description || "Configure this step."}
                   </p>
                   {isElesiumNode && (
                     <p className="text-[10px] text-primary mt-1 font-semibold">

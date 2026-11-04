@@ -2,7 +2,7 @@ import { Routes, Route, useNavigate, Navigate } from "react-router-dom"
 import { Toaster } from "sonner"
 import { useEffect, lazy, Suspense } from "react"
 import { AppLayout } from "./components/AppLayout"
-import { ThemeProvider } from "./components/ThemeProvider"
+import { ThemeProvider, useTheme } from "./components/ThemeProvider"
 import { AuthProvider, useAuth } from "./lib/AuthContext"
 import { WorkspaceProvider } from "./contexts/WorkspaceContext"
 import { PaywallProvider } from "./contexts/PaywallContext"
@@ -69,6 +69,11 @@ function NotFound() {
   );
 }
 
+function ThemedToaster() {
+  const { resolvedTheme } = useTheme()
+  return <Toaster theme={resolvedTheme} position="bottom-right" richColors closeButton />
+}
+
 export default function App() {
   const navigate = useNavigate()
 
@@ -89,10 +94,10 @@ export default function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="elein-ui-theme">
+      <ThemedToaster />
       <AuthProvider>
         <WorkspaceProvider>
           <PaywallProvider>
-            <Toaster theme="dark" position="bottom-right" />
             <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
                 <Route path="/login" element={<Login />} />

@@ -96,9 +96,13 @@ class TestInMailOpenProfileArbitrage(unittest.TestCase):
         data = {"_lead_id": "lead_db_cached_99"}
         mock_table = MagicMock()
         self.supabase.table.return_value = mock_table
-        mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        query_mock = MagicMock()
+        query_mock.eq.return_value = query_mock
+        query_mock.execute.return_value = MagicMock(
             data=[{"id": "lead_db_cached_99", "is_open_profile": True}]
         )
+        mock_table.select.return_value.eq.return_value = query_mock
+        mock_table.select.return_value.execute.return_value = query_mock.execute.return_value
 
         res = self.executor.handle_open_profile_check(data, self.test_lead_url)
         self.assertEqual(res.get("status"), "success")

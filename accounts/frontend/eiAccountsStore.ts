@@ -18,11 +18,15 @@ export interface LinkedInAccount {
   warmupMaxMessages?: number
   proxyId?: string
   lastHealthCheckAt?: string
+  createdAt?: string
   updatedAt?: string
   manualSendSuspected?: boolean
   cookieExpiresAt?: string
   healthScore?: number
   autoHealStatus?: string
+  sessionDeathReason?: string
+  quarantinedUntil?: string
+  quarantineReason?: string
   tags?: string[]
 }
 
@@ -40,7 +44,8 @@ interface EIAccountsState {
   toggleManualMode: (id: string, currentStatus: string) => Promise<void>
   bulkToggleManualMode: (ids: string[], targetStatus: "ACTIVE" | "MANUAL_MODE") => Promise<{ succeeded: string[]; failed: string[] }>
   clearManualSendWarning: (id: string) => Promise<void>
-  autoHealAccount: (id: string) => Promise<any>
+  autoHealAccount: (id: string, force?: boolean) => Promise<any>
+  sessionDeathCheck: (id: string, forceProbe?: boolean) => Promise<any>
   fleetHeal: () => Promise<any>
   renewSession: (id: string, cookieJson: string) => Promise<any>
 }
@@ -364,9 +369,9 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           throw e
         }
       },
-      autoHealAccount: async (id: string) => {
+      autoHealAccount: async (id: string, force: boolean = false) => {
         try {
-          const res = await fetchWithAuth(`/api/elein/accounts/${id}/auto-heal`, {
+          const res = await fetchWithAuth(`/api/elein/accounts/${id}/auto-heal${force ? '?force=true' : ''}`, {
             method: "POST"
           })
           if (res.ok) {
@@ -379,6 +384,24 @@ export const useHRAccountsStore = create<EIAccountsState>()(
           }
         } catch (e: any) {
           console.error("Auto-heal error:", e)
+          throw e
+        }
+      },
+      sessionDeathCheck: async (id: string, forceProbe: boolean = false) => {
+        try {
+          const res = await fetchWithAuth(`/api/elein/accounts/${id}/session-death-check${forceProbe ? '?force_probe=true' : ''}`, {
+            method: "POST"
+          })
+          if (res.ok) {
+            const data = await res.json()
+            get().fetchAccounts()
+            return data
+          } else {
+            const err = await res.json().catch(() => null)
+            throw new Error(err?.detail || "Session death check failed")
+          }
+        } catch (e: any) {
+          console.error("Session death check error:", e)
           throw e
         }
       },

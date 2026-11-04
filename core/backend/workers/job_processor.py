@@ -21,11 +21,10 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from supabase import create_client, create_async_client
 
-# PARANOIA LAYER 2: ZOMBIE TIMEOUT
-# NEVER set this below 60 minutes. If a long-running AI task (like Voyager search) legitimately 
-# takes 45 minutes, a short timeout will cause the reaper to reset the job while it is still running, 
-# resulting in two workers executing the same expensive AI task simultaneously.
-ZOMBIE_TIMEOUT_MINUTES = 120
+# PARANOIA LAYER 0, 1 & 2: HEARTBEAT-BACKED ZOMBIE TIMEOUT
+# Active jobs touch updated_at every 30 seconds via an async heartbeat worker.
+# Therefore, 5 minutes of silence guarantees the worker process crashed or was OOM-killed.
+ZOMBIE_TIMEOUT_MINUTES = max(2, min(15, int(os.environ.get("JOB_ZOMBIE_TIMEOUT_MINUTES", "5"))))
 
 # Load environment variables
 import os
@@ -117,11 +116,23 @@ async def process_single_job(job, sync_supabase):
                         messages = payload['messages']
                         sync_inbox_messages(sync_supabase, ws_id, account_id, messages)
                     else:
-                        acc_res = sync_supabase.table("accounts").select("session_cookies_encrypted, proxies(protocol, host, port, username)").eq("id", account_id).execute()
+                        acc_res = sync_supabase.table("accounts").select("id, workspace_id, proxy_id, execution_channel, last_extension_active_at, session_cookies_encrypted, proxies(id, protocol, host, port, username, country_code, workspace_id)").eq("id", account_id).execute()
                         if not acc_res.data:
                             raise ValueError(f"Account {account_id} not found.")
                         
                         acc = acc_res.data[0]
+
+                        # Paranoia Layer 1: Channel Mutex & Dual-IP Flapping Guard (Eradicates FLAW-03)
+                        from core.backend.services.impossible_travel_guard import should_mute_cloud_execution
+                        should_mute, mute_reason = should_mute_cloud_execution(acc)
+                        if should_mute:
+                            logger.info(f"[JobProcessor] Skipping cloud {job_type} for account {account_id}: {mute_reason}")
+                            sync_supabase.table("processing_jobs").update({
+                                "status": "done",
+                                "metadata": {"muted": True, "reason": mute_reason}
+                            }).eq("id", job_id).execute()
+                            return
+
                         encrypted_cookies = acc.get("session_cookies_encrypted")
                         if not encrypted_cookies:
                             raise ValueError("Session cookies are null or empty. Account must be reconnected.")
@@ -143,30 +154,13 @@ async def process_single_job(job, sync_supabase):
                         except Exception as e:
                             raise ValueError("Cookie decryption failed. Account must be reconnected via the Chrome Extension.")
                         
-                        # Parse Proxy
-                        proxy_url = None
-                        p = acc.get("proxies")
-                        if p:
-                            if p.get("username"):
-                                password_plain = ""
-                                try:
-                                    rpc_res = sync_supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": acc["proxy_id"]}).execute()
-                                    if rpc_res.data and rpc_res.data.get("password_encrypted"):
-                                        import base64
-                                        raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
-                                        dek_bytes = None
-                                        if rpc_res.data.get("dek"):
-                                            dek_bytes = base64.b64decode(rpc_res.data["dek"])
-                                        password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
-                                except Exception as e:
-                                        logger.error(f"Failed to decrypt proxy password for {acc.get('proxy_id')}: {e}")
-                                
-                                proxy_url = f"{p['protocol']}://{p['username']}:{password_plain}@{p['host']}:{p['port']}"
-                            else:
-                                proxy_url = f"{p['protocol']}://{p['host']}:{p['port']}"
+                        # Parse Proxy with Canonical Paranoia Builder
+                        from core.backend.services.proxy_routing import build_authenticated_proxy_url
+                        proxy_url = build_authenticated_proxy_url(acc, sync_supabase)
+                        proxy_country = acc.get("proxies", {}).get("country_code") if isinstance(acc.get("proxies"), dict) else None
 
                         try:
-                            worker = LinkedInWorker(cookie_json, proxy_url=proxy_url, account_id=account_id)
+                            worker = LinkedInWorker(cookie_json, proxy_url=proxy_url, account_id=account_id, country_code=proxy_country)
                             
                             if job_type == 'inbox_sync':
                                 messages = worker.sync_inbox()
@@ -266,7 +260,32 @@ async def process_single_job(job, sync_supabase):
                 except Exception as loop_e:
                     print(f"Error closing thread loop: {loop_e}")
                 
-        await asyncio.to_thread(_run_sync_job)
+        heartbeat_stop = asyncio.Event()
+        async def _heartbeat_loop():
+            while not heartbeat_stop.is_set():
+                try:
+                    await asyncio.sleep(30)
+                    if heartbeat_stop.is_set():
+                        break
+                    await asyncio.to_thread(
+                        lambda: sync_supabase.table("processing_jobs").update({
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", job_id).eq("status", "running").execute()
+                    )
+                except Exception as hb_err:
+                    logger.debug(f"[Heartbeat] Error updating job {job_id}: {hb_err}")
+
+        hb_task = asyncio.create_task(_heartbeat_loop())
+        try:
+            await asyncio.to_thread(_run_sync_job)
+        finally:
+            heartbeat_stop.set()
+            hb_task.cancel()
+            try:
+                await hb_task
+            except asyncio.CancelledError:
+                pass
+
         print(f"Job {job_id} completed successfully")
         
     except Exception as e:
@@ -309,7 +328,7 @@ async def reap_zombie_jobs(async_supabase):
         # PARANOIA LAYER 1: try/except so network blips don't crash the reaper
         threshold_time = datetime.now(timezone.utc) - timedelta(minutes=ZOMBIE_TIMEOUT_MINUTES)
         
-        response = await async_supabase.table("processing_jobs").select("id").eq("status", "running").lt("updated_at", threshold_time.isoformat()).execute()
+        response = await async_supabase.table("processing_jobs").select("id, job_type, workspace_id, asset_id, payload").eq("status", "running").lt("updated_at", threshold_time.isoformat()).execute()
         
         zombie_jobs = response.data
         if zombie_jobs:
@@ -319,8 +338,55 @@ async def reap_zombie_jobs(async_supabase):
                 "error_msg": "Job timed out (zombie reaper)",
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }).in_("id", zombie_ids).execute()
+
+            # Layer 1 & 2 Paranoia (FLAW 1.2 & FLAW-08): Cascade status to child entities & release reserved quotas
+            for zj in zombie_jobs:
+                try:
+                    aid = zj.get("asset_id")
+                    jtype = zj.get("job_type")
+                    zpayload = zj.get("payload")
+                    if isinstance(zpayload, str):
+                        try:
+                            zpayload = json.loads(zpayload)
+                        except Exception:
+                            zpayload = {}
+                    elif not isinstance(zpayload, dict):
+                        zpayload = {}
+
+                    if aid and jtype in ('url', 'text', 'pdf'):
+                        await async_supabase.table("knowledge_assets").update({
+                            "status": "failed",
+                            "error_msg": "Worker timed out (zombie reaper)",
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", aid).execute()
+
+                    lid = zpayload.get("list_id")
+                    if lid and jtype in ("voyager_search", "csv", "hubspot_import"):
+                        await async_supabase.table("lead_lists").update({
+                            "status": "error",
+                            "row_count": -2,
+                            "error_message": "Worker timed out (zombie reaper)",
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", lid).execute()
+
+                    if jtype == "inbox_action":
+                        acc_id = zpayload.get("account_id") or aid
+                        if acc_id:
+                            action_type = "inmail" if zpayload.get("action") == "send_inmail" else "message"
+                            tz_str = zpayload.get("tz_str")
+                            eff_date = get_effective_usage_date(tz_str)
+                            try:
+                                await async_supabase.rpc("release_consumed_daily_action", {
+                                    "p_account_id": acc_id,
+                                    "p_action_type": action_type,
+                                    "p_usage_date": eff_date
+                                }).execute()
+                            except Exception as rel_err:
+                                logger.debug(f"[ZombieReaper] Quota release notice: {rel_err}")
+                except Exception as cascade_err:
+                    print(f"[Zombie Reaper] Cascade failed for job {zj.get('id')}: {cascade_err}")
             
-            print(f"[Zombie Reaper] Resurrected {len(zombie_ids)} marooned jobs.")
+            print(f"[Zombie Reaper] Resurrected {len(zombie_ids)} marooned jobs with cascade.")
     except Exception as e:
         print(f"[Zombie Reaper] Failed to reap zombie jobs: {e}")
 
@@ -390,7 +456,19 @@ async def main_loop():
 import signal
 async def shutdown(sig, loop):
     print(f"Received exit signal {sig.name}. Initiating graceful shutdown...")
-    
+
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if tasks:
+        print(f"Waiting up to 10 seconds for {len(tasks)} active jobs to complete cleanly...")
+        # Give active jobs 10 seconds to finish their current HTTP/DB calls
+        done, pending = await asyncio.wait(tasks, timeout=10.0)
+        if pending:
+            print(f"Force cancelling {len(pending)} tasks that did not finish in time...")
+            for t in pending:
+                t.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    # Layer 0 & 1 Paranoia: Only teardown browser pool AFTER active tasks have finished
     try:
         from integrations.backend.services.linkedin_pool import global_browser_pool
         global_browser_pool.teardown()
@@ -398,23 +476,6 @@ async def shutdown(sig, loop):
     except Exception as e:
         print(f"Error tearing down browser pool: {e}")
 
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    if not tasks:
-        loop.stop()
-        return
-        
-    print(f"Waiting up to 10 seconds for {len(tasks)} active jobs to complete cleanly...")
-    
-    # Give active jobs 10 seconds to finish their current HTTP/DB calls
-    done, pending = await asyncio.wait(tasks, timeout=10.0)
-    
-    if pending:
-        print(f"Force cancelling {len(pending)} tasks that did not finish in time...")
-        for t in pending:
-            t.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
-        # Note: Zombie reaper will pick up the interrupted jobs in the next lifecycle
-        
     print("All tasks cleared. Stopping event loop.")
     loop.stop()
 

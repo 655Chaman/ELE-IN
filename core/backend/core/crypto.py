@@ -86,16 +86,20 @@ def decrypt_bytes(ciphertext: bytes, dek: bytes = None) -> bytes:
     try:
         enc_key_len = int.from_bytes(ciphertext[:2], 'big')
         
-        if dek:
+        # Paranoia Layer 1: Format-aware key resolution (Eradicates FLAW-11)
+        if enc_key_len == 0:
+            # Payload was encrypted with a symmetric DEK
+            if not dek:
+                raise VaultDecryptionError("Ciphertext was encrypted with a DEK, but no DEK was provided.")
             aes_key = dek
-            nonce = ciphertext[2+enc_key_len : 2+enc_key_len+12]
-            ct = ciphertext[2+enc_key_len+12:]
+            nonce = ciphertext[2 : 14]
+            ct = ciphertext[14:]
         else:
+            # Payload was encrypted with asymmetric RSA keypair
             private_key = _get_private_key()
-            
-            enc_key = ciphertext[2:2+enc_key_len]
-            nonce = ciphertext[2+enc_key_len : 2+enc_key_len+12]
-            ct = ciphertext[2+enc_key_len+12:]
+            enc_key = ciphertext[2 : 2 + enc_key_len]
+            nonce = ciphertext[2 + enc_key_len : 2 + enc_key_len + 12]
+            ct = ciphertext[2 + enc_key_len + 12:]
             
             aes_key = private_key.decrypt(
                 enc_key,
@@ -118,3 +122,17 @@ def pg_hex_to_bytes(hex_str: str) -> bytes:
 
 def bytes_to_pg_hex(b: bytes) -> str:
     return "\\x" + b.hex()
+
+
+# =============================================================================
+# PILLAR 7: ENVELOPE ENCRYPTION WITH WORKSPACE DEK EXPORTS
+# =============================================================================
+from core.backend.services.envelope_encryption import (
+    encrypt_envelope,
+    decrypt_envelope,
+    get_or_provision_workspace_dek,
+    clear_dek_cache_for_workspace,
+    mask_secret,
+    log_encryption_audit,
+)
+

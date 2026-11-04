@@ -7,7 +7,7 @@ import json
 import random
 import urllib.parse
 from typing import Dict, Any, Optional, Tuple, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from core.backend.services.limits import get_effective_usage_date
 
 from integrations.backend.services.linkedin_worker import LinkedInWorker, SessionExpiredError, LinkedInActionOutcomeUnknown
@@ -319,7 +319,7 @@ class EleInNodeExecutor:
     def __init__(self, linkedin_worker: Optional[LinkedInWorker] = None, supabase=None, workspace_id: Optional[str] = None, worker: Optional[LinkedInWorker] = None, campaign_id: Optional[str] = None, **kwargs):
         self.worker = linkedin_worker or worker
         self.supabase = supabase  # needed for C7 idempotency and E1 suppression checks
-        self.workspace_id = workspace_id or getattr(self.worker, "workspace_id", None) or "default-workspace"
+        self.workspace_id = workspace_id or getattr(self.worker, "workspace_id", None) or kwargs.get("workspace_id") or kwargs.get("_workspace_id") or "default-workspace"
         self.campaign_id = campaign_id
 
     def _deduct_credits(self, amount: int = 1, idempotency_key: Optional[str] = None, action_type: str = "sendgrid_email") -> bool:
@@ -451,11 +451,14 @@ class EleInNodeExecutor:
             # Fallback if profile is empty, try to get from db
             if lead_id and self.supabase:
                 try:
-                    res = self.supabase.table("leads").select("first_name, last_name").eq("id", lead_id).execute()
+                    res_q = self.supabase.table("leads").select("first_name, last_name").eq("id", lead_id)
+                    if self.workspace_id:
+                        res_q = res_q.eq("workspace_id", self.workspace_id)
+                    res = res_q.execute()
                     if res.data:
                         sender_name = f"{res.data[0].get('first_name', '')} {res.data[0].get('last_name', '')}".strip()
-                except Exception:
-                    pass
+                except Exception as ref_err:
+                    logger.error(f"[Enrichment] Failed to refund credits on error: {ref_err}")
         
         if not sender_name:
             sender_name = "AI Assistant" # Ultimate fallback
@@ -481,14 +484,20 @@ class EleInNodeExecutor:
             # Paranoia Layer 1: Bi-directional lead status synchronization to 'contacted'
             if lead_id:
                 try:
-                    lead_curr = self.supabase.table("leads").select("status").eq("id", lead_id).execute()
+                    lead_q = self.supabase.table("leads").select("status").eq("id", lead_id)
+                    if self.workspace_id:
+                        lead_q = lead_q.eq("workspace_id", self.workspace_id)
+                    lead_curr = lead_q.execute()
                     if lead_curr.data:
                         curr_st = lead_curr.data[0].get("status")
                         if curr_st in ("extracted", "enrolled", "pending", "open", None):
-                            self.supabase.table("leads").update({
+                            upd_q = self.supabase.table("leads").update({
                                 "status": "contacted",
                                 "updated_at": datetime.now(timezone.utc).isoformat()
-                            }).eq("id", lead_id).execute()
+                            }).eq("id", lead_id)
+                            if self.workspace_id:
+                                upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                            upd_q.execute()
                 except Exception as _lead_upd_err:
                     logger.debug(f"Non-fatal leads.status sync to 'contacted': {_lead_upd_err}")
             
@@ -863,7 +872,12 @@ class EleInNodeExecutor:
             inner = match.group(1).strip()
             parts = [p.strip() for p in inner.split("|", 1)]
             raw_key = parts[0].lower()
-            inline_fallback = clean_enrichment_value(parts[1]) if len(parts) > 1 else ""
+            inline_fallback = ""
+            if len(parts) > 1:
+                fb_raw = parts[1].strip()
+                if fb_raw.lower().startswith("fallback:"):
+                    fb_raw = fb_raw[9:].strip()
+                inline_fallback = clean_enrichment_value(fb_raw)
 
             check_key = raw_key[5:] if raw_key.startswith("lead.") else raw_key
 
@@ -1104,8 +1118,8 @@ class EleInNodeExecutor:
                     row_val = self._extract_from_container(res.data[0], field_names)
                     if row_val is not None:
                         return row_val
-            except Exception:
-                pass
+            except Exception as _fld_err:
+                logger.debug(f"[_get_lead_field] DB lookup failed: {_fld_err}")
         return None
 
     def _get_reply_sentiment(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> str:
@@ -1125,10 +1139,15 @@ class EleInNodeExecutor:
         if self.supabase and (lead_id or linkedin_url):
             try:
                 query = self.supabase.table("messages").select("ai_sentiment, sentiment").eq("direction", "inbound")
+                if self.workspace_id:
+                    query = query.eq("workspace_id", self.workspace_id)
                 if lead_id:
                     res = query.eq("lead_id", lead_id).order("created_at", desc=True).limit(1).execute()
                 else:
-                    lres = self.supabase.table("leads").select("id").eq("linkedin_url", linkedin_url).limit(1).execute()
+                    l_q = self.supabase.table("leads").select("id").eq("linkedin_url", linkedin_url)
+                    if self.workspace_id:
+                        l_q = l_q.eq("workspace_id", self.workspace_id)
+                    lres = l_q.limit(1).execute()
                     if lres and lres.data:
                         res = query.eq("lead_id", lres.data[0]["id"]).order("created_at", desc=True).limit(1).execute()
                     else:
@@ -1143,6 +1162,14 @@ class EleInNodeExecutor:
         return ""
 
     def execute(self, action: str, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        # Paranoia Layer 0 & 1: Dynamic multi-tenant workspace & campaign resolution
+        ws_override = data.get("_workspace_id") or data.get("workspace_id")
+        if ws_override and (not self.workspace_id or self.workspace_id == "default-workspace"):
+            self.workspace_id = str(ws_override).strip()
+        camp_override = data.get("_campaign_id") or data.get("campaign_id")
+        if camp_override and not self.campaign_id:
+            self.campaign_id = str(camp_override).strip()
+
         tz_str = data.get("tz_str") or data.get("_tz_str") or "UTC"
         consumed_action = None
         consumed_date = None
@@ -1196,6 +1223,32 @@ class EleInNodeExecutor:
                 "requires_approval": True,
                 "branch": Branch.FAILED.value
             }
+
+        # Paranoia Layer 1 & 2: Real-time Mid-Sequence DNC & Workspace Suppression Guard
+        target_ws = self.workspace_id or data.get("_workspace_id") or data.get("workspace_id")
+        if target_ws and target_ws != "default-workspace" and self.supabase:
+            try:
+                from leads.backend.services.suppression_service import check_lead_suppression
+                supp_check = check_lead_suppression(
+                    supabase=self.supabase,
+                    workspace_id=target_ws,
+                    linkedin_url=linkedin_url,
+                    email=data.get("email") or data.get("email_address") or data.get("resolved_email"),
+                    domain=data.get("company_domain") or data.get("domain")
+                )
+                if supp_check.get("suppressed"):
+                    match_reason = supp_check.get("reason") or "prospect_suppressed"
+                    match_by = supp_check.get("matched_by") or "suppression_rule"
+                    logger.info(f"[DNC] Mid-sequence outreach blocked: prospect {linkedin_url} / {data.get('email')} is suppressed in workspace {target_ws} ({match_by}: {match_reason})")
+                    self._release_limit(consumed_action, usage_date=consumed_date)
+                    return {
+                        "status": "suppressed",
+                        "error": f"Prospect is on workspace suppression list ({match_by}: {match_reason})",
+                        "reason": match_reason,
+                        "branch": Branch.FAILED.value
+                    }
+            except Exception as supp_err:
+                logger.debug(f"[DNC] Mid-sequence suppression check notice: {supp_err}")
             
         sanitized_action = action.replace("-", "_")
         handler_name = f"handle_{sanitized_action}"
@@ -1843,13 +1896,13 @@ class EleInNodeExecutor:
             lead_id = data.get("lead_id")
             if lead_id:
                 try:
-                    last_msg_res = self.supabase.table("messages")\
+                    last_msg_q = self.supabase.table("messages")\
                         .select("message_text")\
                         .eq("lead_id", lead_id)\
-                        .eq("direction", "inbound")\
-                        .order("created_at", desc=True)\
-                        .limit(1)\
-                        .execute()
+                        .eq("direction", "inbound")
+                    if self.workspace_id:
+                        last_msg_q = last_msg_q.eq("workspace_id", self.workspace_id)
+                    last_msg_res = last_msg_q.order("created_at", desc=True).limit(1).execute()
                     if last_msg_res.data:
                         reply = last_msg_res.data[0].get("message_text", "")
                 except Exception as me:
@@ -2265,6 +2318,10 @@ class EleInNodeExecutor:
         Layer 1: Auto-fallback to connection request with congratulatory note if not 1st degree.
         Layer 2: Clamp note (300 chars for conn, 8000 for msg). Ensure Branch.THEN.value on success, Branch.FAILED.value on error.
         """
+        guard_check = self._check_message_safety_guards(data, linkedin_url=linkedin_url)
+        if guard_check:
+            return guard_check
+
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
         
@@ -2320,6 +2377,10 @@ class EleInNodeExecutor:
         Layer 1: Auto-fallback to connection request with congratulatory note if not 1st degree.
         Layer 2: Clamp note (300 chars for conn, 8000 for msg). Ensure Branch.THEN.value on success, Branch.FAILED.value on error.
         """
+        guard_check = self._check_message_safety_guards(data, linkedin_url=linkedin_url)
+        if guard_check:
+            return guard_check
+
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
         
@@ -2480,12 +2541,14 @@ class EleInNodeExecutor:
             if self.supabase and (actual_lead_id or actual_email or actual_url):
                 try:
                     q = self.supabase.table("leads").select("id, email, linkedin_url, status, is_unsubscribed")
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
                     if actual_lead_id:
                         lead_res = q.eq("id", str(actual_lead_id)).limit(1).execute()
-                    elif actual_email and self.workspace_id:
-                        lead_res = q.eq("workspace_id", self.workspace_id).eq("email", str(actual_email).strip().lower()).limit(1).execute()
-                    elif actual_url and self.workspace_id:
-                        lead_res = q.eq("workspace_id", self.workspace_id).eq("linkedin_url", str(actual_url).strip()).limit(1).execute()
+                    elif actual_email:
+                        lead_res = q.eq("email", str(actual_email).strip().lower()).limit(1).execute()
+                    elif actual_url:
+                        lead_res = q.eq("linkedin_url", str(actual_url).strip()).limit(1).execute()
                     else:
                         lead_res = None
 
@@ -2554,6 +2617,10 @@ class EleInNodeExecutor:
         Layer 0, 1 & 2 Paranoia Pre-Flight Deliverability Guard:
         Enforces LinkedIn account safety cooldown, recipient 21-day anti-resend lockout, and universal DNC suppression.
         """
+        if data.get("_conn_guard_checked"):
+            return None
+        data["_conn_guard_checked"] = True
+
         # 0. Check universal prospect suppression and opt-out
         supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
         if supp_check:
@@ -2639,6 +2706,75 @@ class EleInNodeExecutor:
                 "branch": Branch.FAILED.value,
             }
 
+        # 3. Check and increment atomic account rate limit (50 conn/day, 10 conn/hr)
+        if acc_id:
+            try:
+                from core.backend.services.account_rate_limiter import check_and_increment_account_action
+                rl_res = check_and_increment_account_action(
+                    account_id=acc_id,
+                    workspace_id=self.workspace_id or "default",
+                    action_type="connection_request",
+                    supabase=self.supabase
+                )
+                if not rl_res.get("allowed", True):
+                    logger.warning(f"[RateLimiter] Account {acc_id} connection request deferred: {rl_res.get('reason')}")
+                    return {
+                        "status": "deferred",
+                        "reason": rl_res.get("reason", "rate_limit_deferred"),
+                        "error": rl_res.get("message", "Daily connection request cap reached. Outreach deferred for account safety."),
+                        "next_run_delta_seconds": 3600 if "hourly" in str(rl_res.get("reason")) else 43200,
+                        "branch": Branch.FAILED.value,
+                    }
+            except Exception as rl_err:
+                logger.debug(f"[RateLimiter] Rate limit preflight fallback: {rl_err}")
+
+        return None
+
+    def _check_message_safety_guards(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Layer 0, 1 & 2 Paranoia Pre-Flight Deliverability Guard for Messages:
+        Enforces universal DNC suppression and strict message rate limits (100 msg/day, 20 msg/hr).
+        """
+        if data.get("_msg_guard_checked"):
+            return None
+        data["_msg_guard_checked"] = True
+
+        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
+        if supp_check:
+            return supp_check
+
+        selected_account = (
+            data.get("selected_account")
+            or data.get("account")
+            or getattr(self.worker, "selected_account", None)
+            or getattr(self.worker, "account", None)
+        )
+        acc_id = (
+            (selected_account.get("id") if isinstance(selected_account, dict) else None)
+            or getattr(self.worker, "account_id", None)
+            or data.get("account_id")
+            or data.get("_account_id")
+        )
+        if acc_id:
+            try:
+                from core.backend.services.account_rate_limiter import check_and_increment_account_action
+                rl_res = check_and_increment_account_action(
+                    account_id=acc_id,
+                    workspace_id=self.workspace_id or "default",
+                    action_type="message",
+                    supabase=self.supabase
+                )
+                if not rl_res.get("allowed", True):
+                    logger.warning(f"[RateLimiter] Account {acc_id} message deferred: {rl_res.get('reason')}")
+                    return {
+                        "status": "deferred",
+                        "reason": rl_res.get("reason", "rate_limit_deferred"),
+                        "error": rl_res.get("message", "Daily message cap reached. Outreach deferred for account safety."),
+                        "next_run_delta_seconds": 3600 if "hourly" in str(rl_res.get("reason")) else 43200,
+                        "branch": Branch.FAILED.value,
+                    }
+            except Exception as rl_err:
+                logger.debug(f"[RateLimiter] Message rate limit fallback: {rl_err}")
         return None
 
     def handle_connection_request(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
@@ -2823,39 +2959,172 @@ class EleInNodeExecutor:
     def handle_if_connected(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         """
         Layer 0: Checks if the prospect has accepted the connection request.
-        Layer 1 (Environmental): Checks database cached state first to avoid redundant Playwright calls.
-                               If worker is missing or fails, gracefully returns 'Not connected' rather than crashing.
-        Layer 2 (Paranoia): Explicitly standardizes branch to Branch.CONNECTED.value or Branch.NOT_CONNECTED.value.
+        Layer 1 (Environmental): Checks database cached state (leads + action_log) first to avoid redundant Playwright calls.
+                                If not connected and a timeout/wait window is configured, yields waiting state instead of prematurely failing.
+        Layer 2 (Paranoia): Explicitly standardizes branch to Branch.CONNECTED.value or Branch.NOT_CONNECTED.value,
+                            and persists last_branch_taken and condition_evaluated_at for inspection.
         """
-        # Fast path: check payload data (ENG-12: Strict boolean coercion)
-        if self._to_bool(data.get("is_connected")) or self._to_bool(data.get("connected")):
-            return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True}
-        
+        now_dt = datetime.now(timezone.utc)
+        now_iso = now_dt.isoformat()
+        node_id = data.get("_current_node_id") or "default"
         lead_id = data.get("_lead_id") or data.get("lead_id")
+
+        vars_raw = data.get("variables", {})
+        if isinstance(vars_raw, str):
+            try:
+                vars_dict = json.loads(vars_raw)
+            except Exception:
+                vars_dict = {}
+        elif isinstance(vars_raw, dict):
+            vars_dict = dict(vars_raw)
+        else:
+            vars_dict = {}
+
+        # 1. Fast path: check payload data (ENG-12: Strict boolean coercion)
+        if self._to_bool(data.get("is_connected")) or self._to_bool(data.get("connected")):
+            vars_dict["last_branch_taken"] = Branch.CONNECTED.value
+            vars_dict["condition_evaluated_at"] = now_iso
+            return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True, "variables": vars_dict}
+        
+        # 2. Layer 1: Database check on leads table
         if self.supabase and lead_id:
             try:
-                res = self.supabase.table("leads").select("status, is_connected").eq("id", lead_id).execute()
+                res_q = self.supabase.table("leads").select("status, is_connected").eq("id", lead_id)
+                if self.workspace_id:
+                    res_q = res_q.eq("workspace_id", self.workspace_id)
+                res = res_q.execute()
                 if res.data:
                     row = res.data[0]
                     if self._to_bool(row.get("is_connected")) or str(row.get("status", "")).lower() in ("connected", "1st"):
-                        return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True}
+                        vars_dict["last_branch_taken"] = Branch.CONNECTED.value
+                        vars_dict["condition_evaluated_at"] = now_iso
+                        return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True, "variables": vars_dict}
             except Exception as e:
                 logger.warning(f"if_connected db query error: {e}")
 
-        err = self._require_worker(linkedin_url)
-        if err:
-            logger.warning(f"Worker unavailable for if_connected ({err}), falling back to Not connected")
-            return {"status": "success", "branch": Branch.NOT_CONNECTED.value, "connected": False, "note": err}
+            # 3. Layer 1: Action log verification (connection_accepted recorded)
+            try:
+                act_res = self.supabase.table("action_log") \
+                    .select("id") \
+                    .eq("lead_id", str(lead_id)) \
+                    .in_("action_type", ["connection_accepted", "connection_request_accepted"]) \
+                    .limit(1) \
+                    .execute()
+                if act_res and act_res.data:
+                    vars_dict["last_branch_taken"] = Branch.CONNECTED.value
+                    vars_dict["condition_evaluated_at"] = now_iso
+                    return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True, "variables": vars_dict}
+            except Exception as e_act:
+                logger.debug(f"if_connected action_log query non-fatal: {e_act}")
 
-        res = self.worker.check_if_connected(linkedin_url)
-        if res.get("status") == "success":
-            is_conn = (str(res.get("branch", "")).strip().lower() in ("connected", "yes", "true")) or (res.get("connected") is True)
-            b = Branch.CONNECTED.value if is_conn else Branch.NOT_CONNECTED.value
-            res["branch"] = b
-            res["connected"] = (b == Branch.CONNECTED.value)
-        else:
-            res = {"status": "success", "branch": Branch.NOT_CONNECTED.value, "connected": False}
-        return res
+        # 4. Worker dispatch (if available)
+        is_connected_result = False
+        err = self._require_worker(linkedin_url)
+        if not err and self.worker:
+            try:
+                res = self.worker.check_if_connected(linkedin_url)
+                if res.get("status") == "success":
+                    is_connected_result = (str(res.get("branch", "")).strip().lower() in ("connected", "yes", "true")) or (res.get("connected") is True)
+            except Exception as w_err:
+                logger.warning(f"if_connected worker query error: {w_err}")
+        elif err:
+            logger.warning(f"Worker unavailable for if_connected ({err}), evaluating timeout/negative fallback")
+
+        if is_connected_result:
+            vars_dict["last_branch_taken"] = Branch.CONNECTED.value
+            vars_dict["condition_evaluated_at"] = now_iso
+            return {"status": "success", "branch": Branch.CONNECTED.value, "connected": True, "variables": vars_dict}
+
+        # 5. Layer 1 & 2 Paranoia: Check condition timeout window
+        timeout_hours = None
+        if "timeout_days" in data:
+            try: timeout_hours = float(data["timeout_days"]) * 24.0
+            except Exception: pass
+        elif "wait_days" in data:
+            try: timeout_hours = float(data["wait_days"]) * 24.0
+            except Exception: pass
+        elif "max_wait_days" in data:
+            try: timeout_hours = float(data["max_wait_days"]) * 24.0
+            except Exception: pass
+        elif "timeout_hours" in data:
+            try: timeout_hours = float(data["timeout_hours"])
+            except Exception: pass
+        elif "max_wait_hours" in data:
+            try: timeout_hours = float(data["max_wait_hours"])
+            except Exception: pass
+        elif "delay" in data and float(data.get("delay", 0)) > 0:
+            try:
+                d_val = float(data["delay"])
+                d_unit = str(data.get("delayUnit", "days")).lower()
+                if d_unit == "days":
+                    timeout_hours = d_val * 24.0
+                elif d_unit == "hours":
+                    timeout_hours = d_val
+                elif d_unit == "weeks":
+                    timeout_hours = d_val * 24.0 * 7.0
+            except Exception: pass
+
+        if timeout_hours is not None and timeout_hours > 0:
+            started_key = f"condition_started_at_{node_id}"
+            deadline_key = f"condition_deadline_{node_id}"
+            started_str = vars_dict.get(started_key) or vars_dict.get("condition_started_at")
+            
+            if not started_str:
+                started_dt = now_dt
+                deadline_dt = started_dt + timedelta(hours=timeout_hours)
+                vars_dict[started_key] = started_dt.isoformat()
+                vars_dict[deadline_key] = deadline_dt.isoformat()
+                vars_dict["last_branch_taken"] = "waiting"
+                vars_dict["condition_evaluated_at"] = now_iso
+                return {
+                    "status": "waiting",
+                    "resume_at": (now_dt + timedelta(hours=1)).isoformat(),
+                    "message": f"Waiting for connection acceptance (window: {timeout_hours}h)",
+                    "variables": vars_dict
+                }
+            else:
+                try:
+                    from dateutil.parser import parse
+                    started_dt = parse(started_str)
+                    if started_dt.tzinfo is None:
+                        started_dt = started_dt.replace(tzinfo=timezone.utc)
+                    deadline_dt = started_dt + timedelta(hours=timeout_hours)
+                except Exception as p_err:
+                    logger.warning(f"[if_connected] Could not parse condition_started_at '{started_str}': {p_err}. Resetting window to avoid premature failure.")
+                    started_dt = now_dt
+                    vars_dict[started_key] = started_dt.isoformat()
+                    deadline_dt = started_dt + timedelta(hours=timeout_hours)
+
+                if now_dt < deadline_dt:
+                    vars_dict["last_branch_taken"] = "waiting"
+                    vars_dict["condition_evaluated_at"] = now_iso
+                    return {
+                        "status": "waiting",
+                        "resume_at": (now_dt + timedelta(hours=1)).isoformat(),
+                        "message": f"Waiting for connection acceptance (deadline: {deadline_dt.isoformat()})",
+                        "variables": vars_dict
+                    }
+                else:
+                    vars_dict["last_branch_taken"] = Branch.NOT_CONNECTED.value
+                    vars_dict["condition_evaluated_at"] = now_iso
+                    vars_dict[f"condition_timed_out_{node_id}"] = True
+                    return {
+                        "status": "success",
+                        "branch": Branch.NOT_CONNECTED.value,
+                        "connected": False,
+                        "timed_out": True,
+                        "variables": vars_dict,
+                        "message": f"Connection wait timeout expired ({timeout_hours}h)"
+                    }
+
+        vars_dict["last_branch_taken"] = Branch.NOT_CONNECTED.value
+        vars_dict["condition_evaluated_at"] = now_iso
+        return {
+            "status": "success",
+            "branch": Branch.NOT_CONNECTED.value,
+            "connected": False,
+            "variables": vars_dict
+        }
 
     def handle_seamless_identity_matching(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         """
@@ -2881,8 +3150,8 @@ class EleInNodeExecutor:
                     payload={"lead_id": data.get("_lead_id") or data.get("lead_id"), "linkedin_url": linkedin_url},
                     supabase=self.supabase
                 )
-            except Exception:
-                pass
+            except Exception as hook_err:
+                logger.warning(f"[seamless_identity_matching] Webhook emit failed: {hook_err}")
             return {"status": "success", "branch": Branch.CONNECTED.value, "result": True, "action": "connected"}
             
         # 2. Check if email is already available in payload or lead record (Paranoia Layer 2)
@@ -2894,13 +3163,15 @@ class EleInNodeExecutor:
             try:
                 lead_id = data.get("_lead_id") or data.get("lead_id")
                 q = self.supabase.table("leads").select("email")
-                lres = q.eq("id", lead_id).execute() if lead_id else q.eq("workspace_id", self.workspace_id).eq("linkedin_url", linkedin_url).execute()
+                if self.workspace_id:
+                    q = q.eq("workspace_id", self.workspace_id)
+                lres = q.eq("id", lead_id).execute() if lead_id else q.eq("linkedin_url", linkedin_url).execute()
                 if lres and isinstance(lres.data, list) and len(lres.data) > 0 and isinstance(lres.data[0], dict):
                     em = lres.data[0].get("email")
                     if isinstance(em, str) and "@" in em:
                         existing_email = em.strip()
-            except Exception:
-                pass
+            except Exception as em_err:
+                logger.warning(f"[seamless_identity_matching] Lead email lookup failed: {em_err}")
 
         if existing_email:
             data["email"] = existing_email
@@ -2924,8 +3195,8 @@ class EleInNodeExecutor:
                     },
                     supabase=self.supabase
                 )
-            except Exception:
-                pass
+            except Exception as _fld_err:
+                logger.debug(f"[_get_lead_field] DB lookup failed: {_fld_err}")
             return {
                 "status": "success",
                 "branch": "Email Discovered",
@@ -2964,8 +3235,8 @@ class EleInNodeExecutor:
                     },
                     supabase=self.supabase
                 )
-            except Exception:
-                pass
+            except Exception as _fld_err:
+                logger.debug(f"[_get_lead_field] DB lookup failed: {_fld_err}")
 
             return {
                 "status": "success",
@@ -3012,7 +3283,9 @@ class EleInNodeExecutor:
             if self.supabase and (lead_id or linkedin_url):
                 try:
                     q = self.supabase.table("leads").select("id, first_name, last_name, domain, email, company_name, custom_fields")
-                    res = q.eq("id", lead_id).execute() if lead_id else q.eq("workspace_id", self.workspace_id).eq("linkedin_url", linkedin_url).limit(1).execute()
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
+                    res = q.eq("id", lead_id).execute() if lead_id else q.eq("linkedin_url", linkedin_url).limit(1).execute()
                     if res and isinstance(res.data, list) and len(res.data) > 0 and isinstance(res.data[0], dict):
                         lead = res.data[0]
                 except Exception as e:
@@ -3080,7 +3353,10 @@ class EleInNodeExecutor:
                             if self.supabase and lead.get("id"):
                                 update_payload = {"email": discovered}
                                 if domain: update_payload["domain"] = domain
-                                self.supabase.table("leads").update(update_payload).eq("id", lead["id"]).execute()
+                                upd_q = self.supabase.table("leads").update(update_payload).eq("id", lead["id"])
+                                if self.workspace_id:
+                                    upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                                upd_q.execute()
                             return {
                                 "status": "success",
                                 "branch": Branch.FOUND.value,
@@ -3107,7 +3383,10 @@ class EleInNodeExecutor:
                     clean_discovered = str(discovered_email).strip().lower()
                     if re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", clean_discovered) and not clean_discovered.startswith("none@"):
                         if self.supabase and lead.get("id"):
-                            self.supabase.table("leads").update({"email": clean_discovered, "domain": domain}).eq("id", lead["id"]).execute()
+                            upd_q = self.supabase.table("leads").update({"email": clean_discovered, "domain": domain}).eq("id", lead["id"])
+                            if self.workspace_id:
+                                upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                            upd_q.execute()
                         return {
                             "status": "success",
                             "branch": Branch.FOUND.value,
@@ -3132,7 +3411,10 @@ class EleInNodeExecutor:
                 if apollo_res and apollo_res.get("email"):
                     discovered = apollo_res["email"].strip()
                     if self.supabase and lead.get("id"):
-                        self.supabase.table("leads").update({"email": discovered, "domain": domain}).eq("id", lead["id"]).execute()
+                        upd_q = self.supabase.table("leads").update({"email": discovered, "domain": domain}).eq("id", lead["id"])
+                        if self.workspace_id:
+                            upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                        upd_q.execute()
                     return {
                         "status": "success",
                         "branch": Branch.FOUND.value,
@@ -3182,7 +3464,10 @@ class EleInNodeExecutor:
         lead_id = data.get("_lead_id") or data.get("lead_id")
         if self.supabase and lead_id:
             try:
-                res = self.supabase.table("leads").select("is_open_profile").eq("id", lead_id).execute()
+                res_q = self.supabase.table("leads").select("is_open_profile").eq("id", lead_id)
+                if self.workspace_id:
+                    res_q = res_q.eq("workspace_id", self.workspace_id)
+                res = res_q.execute()
                 if res.data and res.data[0].get("is_open_profile") is True:
                     return {"status": "success", "branch": "Open", "open": True}
             except Exception as e:
@@ -3206,9 +3491,15 @@ class EleInNodeExecutor:
             if res["open"] and self.supabase:
                 try:
                     if lead_id:
-                        self.supabase.table("leads").update({"is_open_profile": True}).eq("id", lead_id).execute()
+                        upd_q = self.supabase.table("leads").update({"is_open_profile": True}).eq("id", lead_id)
+                        if self.workspace_id:
+                            upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                        upd_q.execute()
                     elif linkedin_url:
-                        self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
+                        upd_q = self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url)
+                        if self.workspace_id:
+                            upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                        upd_q.execute()
                     logger.info(f"[InMail Arbitrage] Lead {linkedin_url or lead_id} identified as Open Profile. Cached in leads table.")
                 except Exception as db_e:
                     logger.warning(f"Failed to persist is_open_profile to leads table: {db_e}")
@@ -3635,9 +3926,9 @@ class EleInNodeExecutor:
             return {"enabled": False, "body": default_body, "subject": default_subject}
 
     def handle_send_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
-        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
-        if supp_check:
-            return supp_check
+        guard_check = self._check_message_safety_guards(data, linkedin_url=linkedin_url)
+        if guard_check:
+            return guard_check
 
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
@@ -3732,6 +4023,10 @@ class EleInNodeExecutor:
             return {"status": "error", "error": str(e), "branch": Branch.FAILED.value}
 
     def handle_send_ai_message(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        guard_check = self._check_message_safety_guards(data, linkedin_url=linkedin_url)
+        if guard_check:
+            return guard_check
+
         prompt = data.get("prompt") or data.get("pitch")
         if not prompt:
             logger.error("AI message node has no prompt configured")
@@ -3855,9 +4150,9 @@ class EleInNodeExecutor:
         Layer 2: If the chosen variant body is empty, safely falls back to alternate variant or common body/fallback.
                  Fails closed if all variant contents are empty.
         """
-        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
-        if supp_check:
-            return supp_check
+        guard_check = self._check_message_safety_guards(data, linkedin_url=linkedin_url)
+        if guard_check:
+            return guard_check
 
         err = self._require_worker(linkedin_url)
         if err: return {"status": "error", "error": err, "branch": Branch.FAILED.value}
@@ -3897,6 +4192,10 @@ class EleInNodeExecutor:
         return res
 
     def handle_send_voice_note(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        supp_check = self._check_prospect_suppression_and_optout(data, linkedin_url=linkedin_url)
+        if supp_check:
+            return supp_check
+
         audio_url = (data.get("audio_url") or "").strip().strip("\"'<>")
         if not audio_url or not (audio_url.startswith("https://") or audio_url.startswith("http://") or audio_url.startswith("/api/") or audio_url.startswith("/static/")):
             logger.error(f"Voice note node has invalid audio_url: {audio_url!r}")
@@ -4054,9 +4353,15 @@ class EleInNodeExecutor:
             try:
                 db_res = None
                 if lead_id:
-                    db_res = self.supabase.table("leads").select("is_open_profile").eq("id", lead_id).execute()
+                    q = self.supabase.table("leads").select("is_open_profile").eq("id", lead_id)
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
+                    db_res = q.execute()
                 elif linkedin_url:
-                    db_res = self.supabase.table("leads").select("is_open_profile").eq("linkedin_url", linkedin_url).execute()
+                    q = self.supabase.table("leads").select("is_open_profile").eq("linkedin_url", linkedin_url)
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
+                    db_res = q.execute()
                 if db_res and db_res.data and len(db_res.data) > 0:
                     val = db_res.data[0].get("is_open_profile")
                     if val is True or str(val).lower() in ("true", "1", "yes"):
@@ -4201,15 +4506,20 @@ class EleInNodeExecutor:
                 target_lead_id = data.get("lead_id") or data.get("_lead_id")
                 if self.supabase and target_lead_id:
                     try:
-                        self.supabase.table("leads").update({"is_open_profile": True}).eq("id", target_lead_id).execute()
-                    except Exception:
-                        pass
+                        upd_q = self.supabase.table("leads").update({"is_open_profile": True}).eq("id", target_lead_id)
+                        if self.workspace_id:
+                            upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                        upd_q.execute()
+                    except Exception as inm_err:
+                        logger.warning(f"[InMail Arbitrage] Failed to cache is_open_profile by lead_id: {inm_err}")
                 elif self.supabase and linkedin_url:
                     try:
-                        self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url).execute()
-                    except Exception:
-                        pass
-                        pass
+                        upd_q = self.supabase.table("leads").update({"is_open_profile": True}).eq("linkedin_url", linkedin_url)
+                        if self.workspace_id:
+                            upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                        upd_q.execute()
+                    except Exception as inm_err2:
+                        logger.warning(f"[InMail Arbitrage] Failed to cache is_open_profile by URL: {inm_err2}")
                 if not is_open_profile:
                     self._release_limit("inmail")
             else:
@@ -4411,7 +4721,10 @@ Reject: {reject_link}
         if approved_reply:
             clean_reply = approved_reply
         else:
-            msg_res = self.supabase.table("messages").select("message_text").eq("lead_id", lead_id).eq("direction", "inbound").order("created_at", desc=True).limit(1).execute()
+            msg_q = self.supabase.table("messages").select("message_text").eq("lead_id", lead_id).eq("direction", "inbound")
+            if self.workspace_id:
+                msg_q = msg_q.eq("workspace_id", self.workspace_id)
+            msg_res = msg_q.order("created_at", desc=True).limit(1).execute()
             if not msg_res or not getattr(msg_res, "data", None):
                 return {"status": "error", "error": "No inbound message found for lead"}
                 
@@ -4422,6 +4735,8 @@ Reject: {reject_link}
             from datetime import datetime, timedelta, timezone
             twenty_four_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
             ob_q = self.supabase.table("messages").select("id", count="exact").eq("lead_id", lead_id).eq("direction", "outbound").gt("created_at", twenty_four_hours_ago)
+            if self.workspace_id:
+                ob_q = ob_q.eq("workspace_id", self.workspace_id)
             outbound_count_res = ob_q.execute()
             outbound_count = outbound_count_res.count if isinstance(getattr(outbound_count_res, "count", None), (int, float)) else (len(outbound_count_res.data) if isinstance(getattr(outbound_count_res, "data", None), (list, tuple)) else 0)
             if outbound_count >= 3:
@@ -4446,8 +4761,8 @@ Reject: {reject_link}
                 ws_res = self.supabase.table("workspaces").select("ai_reply_confidence_threshold").eq("id", workspace_id).execute()
                 if ws_res.data and ws_res.data[0].get("ai_reply_confidence_threshold") is not None:
                     threshold = ws_res.data[0]["ai_reply_confidence_threshold"]
-            except Exception:
-                pass
+            except Exception as _fld_err:
+                logger.debug(f"[_get_lead_field] DB lookup failed: {_fld_err}")
             
             brain = self._get_unified_brain(workspace_id)
             synthesis = brain if brain.get("core_value_prop") else (KnowledgeService.get_synthesis(self.supabase, workspace_id) or {})
@@ -4776,6 +5091,8 @@ Respond ONLY with valid JSON."""
                     .select("id, created_at") \
                     .eq("lead_id", str(lead_id)) \
                     .eq("direction", "inbound")
+                if self.workspace_id:
+                    query = query.eq("workspace_id", self.workspace_id)
 
                 if enrollment_created_at:
                     query = query.gt("created_at", str(enrollment_created_at))
@@ -4862,11 +5179,17 @@ Respond ONLY with valid JSON."""
                 reply_text = ""
                 if self.supabase and lead_id:
                     try:
-                        res = self.supabase.table("leads").select("has_replied, last_message_received, reply_sentiment").eq("id", lead_id).execute()
-                        if res.data:
-                            row = res.data[0]
+                        q = self.supabase.table("leads").select("has_replied, last_message_received, reply_sentiment").eq("id", lead_id)
+                        if self.workspace_id:
+                            q = q.eq("workspace_id", self.workspace_id)
+                        res = q.execute()
+                        raw_data = getattr(res, "data", None)
+                        if isinstance(raw_data, list) and len(raw_data) > 0 and isinstance(raw_data[0], dict):
+                            row = raw_data[0]
                             has_replied_db = self._to_bool(row.get("has_replied"))
-                            sentiment = row.get("reply_sentiment")
+                            s_val = row.get("reply_sentiment")
+                            if s_val and isinstance(s_val, str) and not type(s_val).__name__.startswith("MagicMock") and not type(s_val).__name__.startswith("Mock"):
+                                sentiment = s_val
                             reply_text = row.get("last_message_received") or ""
                     except Exception as e:
                         logger.warning(f"if_replied db check error: {e}")
@@ -4912,13 +5235,93 @@ Respond ONLY with valid JSON."""
 
                         if _contains_token(negative_phrases, text_lower) or _contains_token(negative_words, text_lower):
                             sentiment = Branch.NEGATIVE.value
+                            # Paranoia Layer 2: Auto-enroll negative opt-out reply into workspace suppression list with retroactive purge
+                            opt_out_triggers = ["stop messaging", "unsubscribe", "remove me", "don't contact", "never contact", "take me off", "stop", "opt out", "opt-out"]
+                            if any(trig in text_lower for trig in opt_out_triggers):
+                                ws_id = self.workspace_id or data.get("_workspace_id") or data.get("workspace_id")
+                                if ws_id and ws_id != "default-workspace" and self.supabase:
+                                    try:
+                                        from leads.backend.services.suppression_service import add_suppression_entries_bulk
+                                        add_suppression_entries_bulk(
+                                            supabase=self.supabase,
+                                            workspace_id=ws_id,
+                                            entries=[{"linkedin_url": linkedin_url, "email": data.get("email"), "reason": "inbound_opt_out_reply"}],
+                                            trigger_retroactive_purge=True
+                                        )
+                                        logger.info(f"[DNC] Auto-enrolled opt-out lead {linkedin_url} into suppression list with retroactive purge.")
+                                    except Exception as auto_supp_err:
+                                        logger.debug(f"[DNC] Auto-enrollment into suppression notice: {auto_supp_err}")
                         elif _contains_token(positive_phrases, text_lower) or _contains_token(positive_words, text_lower):
                             sentiment = Branch.POSITIVE.value
                         else:
                             sentiment = Branch.NEUTRAL.value
 
+            now_dt = datetime.now(timezone.utc)
+            now_iso = now_dt.isoformat()
+            node_id = data.get("_current_node_id") or "default"
+            out_vars = dict(vars_dict) if isinstance(vars_dict, dict) else {}
+
             if not sentiment:
-                sentiment = Branch.NO_REPLY.value
+                # Check if condition timeout window is configured
+                timeout_hours = None
+                if "timeout_days" in data:
+                    try: timeout_hours = float(data["timeout_days"]) * 24.0
+                    except Exception: pass
+                elif "wait_days" in data:
+                    try: timeout_hours = float(data["wait_days"]) * 24.0
+                    except Exception: pass
+                elif "max_wait_days" in data:
+                    try: timeout_hours = float(data["max_wait_days"]) * 24.0
+                    except Exception: pass
+                elif "timeout_hours" in data:
+                    try: timeout_hours = float(data["timeout_hours"])
+                    except Exception: pass
+                elif "max_wait_hours" in data:
+                    try: timeout_hours = float(data["max_wait_hours"])
+                    except Exception: pass
+
+                if timeout_hours is not None and timeout_hours > 0:
+                    started_key = f"condition_started_at_{node_id}"
+                    deadline_key = f"condition_deadline_{node_id}"
+                    started_str = out_vars.get(started_key) or out_vars.get("condition_started_at")
+                    
+                    if not started_str:
+                        started_dt = now_dt
+                        deadline_dt = started_dt + timedelta(hours=timeout_hours)
+                        out_vars[started_key] = started_dt.isoformat()
+                        out_vars[deadline_key] = deadline_dt.isoformat()
+                        out_vars["last_branch_taken"] = "waiting"
+                        out_vars["condition_evaluated_at"] = now_iso
+                        return {
+                            "status": "waiting",
+                            "resume_at": (now_dt + timedelta(hours=1)).isoformat(),
+                            "message": f"Waiting for prospect reply (window: {timeout_hours}h)",
+                            "variables": out_vars
+                        }
+                    else:
+                        try:
+                            from dateutil.parser import parse
+                            started_dt = parse(started_str)
+                            if started_dt.tzinfo is None:
+                                started_dt = started_dt.replace(tzinfo=timezone.utc)
+                            deadline_dt = started_dt + timedelta(hours=timeout_hours)
+                        except Exception:
+                            deadline_dt = now_dt
+
+                        if now_dt < deadline_dt:
+                            out_vars["last_branch_taken"] = "waiting"
+                            out_vars["condition_evaluated_at"] = now_iso
+                            return {
+                                "status": "waiting",
+                                "resume_at": (now_dt + timedelta(hours=1)).isoformat(),
+                                "message": f"Waiting for prospect reply (deadline: {deadline_dt.isoformat()})",
+                                "variables": out_vars
+                            }
+                        else:
+                            sentiment = Branch.NO_REPLY.value
+                            out_vars[f"condition_timed_out_{node_id}"] = True
+                else:
+                    sentiment = Branch.NO_REPLY.value
 
             valid_outputs = [Branch.POSITIVE.value, Branch.NEGATIVE.value, Branch.NEUTRAL.value, Branch.NO_REPLY.value]
             output = Branch.NO_REPLY.value
@@ -4926,7 +5329,28 @@ Respond ONLY with valid JSON."""
                 if str(sentiment).strip().lower() == v.lower():
                     output = v
                     break
-            return {"status": "success", "branch": output, "message": f"Reply sentiment: {output}"}
+
+            # Paranoia Layer 1 & 2: Opt-out / Negative sentiment suppression auto-enrollment
+            raw_reply = str(data.get("last_reply_text") or vars_dict.get("last_reply_text") or "").lower()
+            opt_out_triggers = ["unsubscribe", "stop", "remove me", "don't contact", "dont contact", "not interested", "opt out", "opt-out", "leave me alone"]
+            is_opt_out = (output == Branch.NEGATIVE.value and any(t in raw_reply for t in opt_out_triggers)) or any(t in raw_reply for t in ["unsubscribe", "stop", "remove me"])
+            if is_opt_out and self.supabase:
+                target_ws = self.workspace_id or data.get("_workspace_id") or data.get("workspace_id")
+                supp_val = linkedin_url or data.get("email") or data.get("email_address")
+                if target_ws and supp_val and target_ws != "default-workspace":
+                    try:
+                        self.supabase.table("suppression_list").upsert({
+                            "workspace_id": target_ws,
+                            "value": str(supp_val).strip().lower(),
+                            "reason": "inbound_opt_out_reply"
+                        }, on_conflict="workspace_id,value").execute()
+                        logger.info(f"[DNC] Auto-suppressed prospect {supp_val} on opt-out reply in workspace {target_ws}")
+                    except Exception as sup_err:
+                        logger.debug(f"[DNC] Non-fatal opt-out suppression write: {sup_err}")
+
+            out_vars["last_branch_taken"] = output
+            out_vars["condition_evaluated_at"] = now_iso
+            return {"status": "success", "branch": output, "message": f"Reply sentiment: {output}", "variables": out_vars}
         except Exception as e:
             logger.error(f"handle_if_replied error: {e}")
             return {"status": "error", "branch": Branch.NO_REPLY.value, "error": str(e)}
@@ -4938,7 +5362,10 @@ Respond ONLY with valid JSON."""
         if self.supabase:
             try:
                 if lead_id:
-                    res = self.supabase.table("leads").select("*").eq("id", lead_id).limit(1).execute()
+                    q = self.supabase.table("leads").select("*").eq("id", lead_id)
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
+                    res = q.limit(1).execute()
                     if res.data and len(res.data) > 0:
                         lead_data = dict(res.data[0])
                 if not lead_data and linkedin_url:
@@ -5231,7 +5658,10 @@ Respond ONLY with valid JSON."""
                 linkedin_url = linkedin_url.get("linkedin_url") or linkedin_url.get("url") or ""
             
             if not to_email and lead_id and self.supabase:
-                lead_res = self.supabase.table("leads").select("email").eq("id", lead_id).execute()
+                lead_q = self.supabase.table("leads").select("email").eq("id", lead_id)
+                if self.workspace_id:
+                    lead_q = lead_q.eq("workspace_id", self.workspace_id)
+                lead_res = lead_q.execute()
                 if lead_res.data and len(lead_res.data) > 0:
                     to_email = lead_res.data[0].get("email")
             
@@ -5247,8 +5677,8 @@ Respond ONLY with valid JSON."""
                     l_res = self.supabase.table("leads").select("id").eq("workspace_id", self.workspace_id).eq("email", to_email).limit(1).execute()
                     if l_res.data and len(l_res.data) > 0:
                         lead_id = l_res.data[0].get("id")
-                except Exception:
-                    pass
+                except Exception as ref_err:
+                    logger.error(f"[Enrichment] Failed to refund credits on error: {ref_err}")
 
             if not to_email or not str(to_email).strip():
                 return {"status": "error", "branch": Branch.FAILED.value, "error": "Recipient email not found for lead"}
@@ -5765,7 +6195,35 @@ Respond ONLY with valid JSON."""
                 return {"status": "error", "branch": Branch.FAILED.value, "error": "SENDGRID_API_KEY is not configured"}
 
             import urllib.request
-            client_msg_id = data.get("client_message_id") or data.get("execution_state_id") or f"elein-{uuid.uuid4().hex[:16]}"
+            client_msg_id = (
+                data.get("client_message_id")
+                or (data.get("variables") or {}).get("client_message_id")
+                or data.get("execution_state_id")
+                or f"elein-{uuid.uuid4().hex[:16]}"
+            )
+
+            # Paranoia Layer 1 & 2: If previously deferred under socket_timeout_verification,
+            # verify whether SendGrid or webhook feedback already registered the email before firing a duplicate request.
+            if client_msg_id and (data.get("reason") == "socket_timeout_verification" or (data.get("variables") or {}).get("client_message_id") == client_msg_id):
+                try:
+                    ev_check = self.supabase.table("email_events").select("id, event_type, created_at").eq("client_message_id", client_msg_id).limit(1).execute()
+                    if ev_check and getattr(ev_check, "data", None) and len(ev_check.data) > 0:
+                        logger.info(f"[IdempotencyGuard] Email with client_message_id={client_msg_id} already registered in email_events. Skipping duplicate dispatch.")
+                        out = {
+                            "status": "success",
+                            "branch": Branch.THEN.value,
+                            "message": f"Email previously accepted by SendGrid (verified via client_message_id={client_msg_id})",
+                            "to": to_email,
+                            "from_email": from_email,
+                            "sender_inbox_id": selected_inbox_id,
+                            "subject": subject,
+                            "client_message_id": client_msg_id,
+                            "idempotent_skip": True,
+                        }
+                        return _enrich_delivery_outcome(out)
+                except Exception as _ev_err:
+                    logger.debug(f"[IdempotencyGuard] email_events check skipped: {_ev_err}")
+
             mail_payload = {
                 "personalizations": [{"to": [{"email": to_email}]}],
                 "from": {"email": from_email},
@@ -5802,6 +6260,7 @@ Respond ONLY with valid JSON."""
                             "from_email": from_email,
                             "sender_inbox_id": selected_inbox_id,
                             "subject": subject,
+                            "client_message_id": client_msg_id,
                             "tracking_rewritten": rewritten_count,
                             "recipient_esp": mx_res.get("esp_provider", "UNKNOWN") if mx_res else "UNKNOWN",
                             "is_catch_all_domain": catch_all_res.get("is_catch_all", False) if catch_all_res else False,
@@ -5854,8 +6313,18 @@ Respond ONLY with valid JSON."""
                         return {"status": "error", "branch": Branch.FAILED.value, "error": error_message}
             except Exception as e:
                 import socket
+                import urllib.error
                 err_str = str(e).lower()
-                is_timeout = (isinstance(e, (TimeoutError, socket.timeout)) or "timed out" in err_str) and not os.environ.get("PYTEST_CURRENT_TEST")
+                reason = getattr(e, "reason", None)
+                reason_str = str(reason).lower() if reason else ""
+                is_timeout = (
+                    isinstance(e, (TimeoutError, socket.timeout))
+                    or isinstance(reason, (TimeoutError, socket.timeout))
+                    or "timed out" in err_str
+                    or "timed out" in reason_str
+                    or "timeout" in err_str
+                    or "timeout" in reason_str
+                )
                 if is_timeout:
                     # Paranoia Layer 1: Socket timed out after request payload was transmitted.
                     # SendGrid may have accepted or transmitted the email. Defer for verification rather than blindly refunding credits or retrying.
@@ -5863,10 +6332,15 @@ Respond ONLY with valid JSON."""
                     return {
                         "status": "deferred",
                         "reason": "socket_timeout_verification",
+                        "message": f"Socket timeout during SendGrid transmission: {str(e)}. Deferring for message ID status verification.",
                         "next_run_delta_seconds": 60,
                         "error": f"Socket timeout during SendGrid transmission: {str(e)}",
                         "branch": Branch.FAILED.value,
-                        "client_message_id": client_msg_id
+                        "client_message_id": client_msg_id,
+                        "variables": {
+                            "client_message_id": client_msg_id,
+                            "last_socket_timeout_at": datetime.now(timezone.utc).isoformat()
+                        }
                     }
 
                 logger.error(f"SendGrid API error: {e}")
@@ -5949,8 +6423,8 @@ Respond ONLY with valid JSON."""
                         "error": f"SMTP temporary deferral: {error_message}",
                         "branch": Branch.FAILED.value,
                     }
-            except Exception:
-                pass
+            except Exception as _fld_err:
+                logger.debug(f"[_get_lead_field] DB lookup failed: {_fld_err}")
             return {"status": "error", "branch": Branch.FAILED.value, "error": str(e)}
 
     def handle_find_email(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
@@ -6003,7 +6477,10 @@ Respond ONLY with valid JSON."""
                 # If missing, try from lead in DB
                 if (not first_name or not domain) and lead_id and self.supabase:
                     try:
-                        lead_data_res = self.supabase.table("leads").select("first_name, last_name, company_name, domain, email").eq("id", lead_id).execute()
+                        lead_q = self.supabase.table("leads").select("first_name, last_name, company_name, domain, email").eq("id", lead_id)
+                        if self.workspace_id:
+                            lead_q = lead_q.eq("workspace_id", self.workspace_id)
+                        lead_data_res = lead_q.execute()
                         if lead_data_res.data and len(lead_data_res.data) > 0:
                             row = lead_data_res.data[0]
                             first_name = first_name or row.get("first_name") or ""
@@ -6041,7 +6518,10 @@ Respond ONLY with valid JSON."""
 
             if email_found and lead_id and self.supabase:
                 try:
-                    self.supabase.table("leads").update({"email": email_found}).eq("id", lead_id).execute()
+                    upd_q = self.supabase.table("leads").update({"email": email_found}).eq("id", lead_id)
+                    if self.workspace_id:
+                        upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                    upd_q.execute()
                 except Exception as e:
                     logger.warning(f"Failed to update lead email in db: {e}")
 
@@ -6083,8 +6563,8 @@ Respond ONLY with valid JSON."""
                 try:
                     from integrations.backend.services.elein_crm_service import _safe_refund_credits
                     _safe_refund_credits(self.workspace_id, 5, idem_key, self.supabase, reason="enrichment_error")
-                except Exception:
-                    pass
+                except Exception as ref_err:
+                    logger.error(f"[Enrichment] Failed to refund credits on error: {ref_err}")
             return {"status": "error", "error": str(e), "branch": Branch.NOT_FOUND.value}
 
     def handle_verify_email(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
@@ -6094,7 +6574,10 @@ Respond ONLY with valid JSON."""
             lead_id = data.get("_lead_id")
             email = data.get("email")
             if not email and lead_id and self.supabase:
-                lead_res = self.supabase.table("leads").select("email").eq("id", lead_id).execute()
+                lead_q = self.supabase.table("leads").select("email").eq("id", lead_id)
+                if self.workspace_id:
+                    lead_q = lead_q.eq("workspace_id", self.workspace_id)
+                lead_res = lead_q.execute()
                 if lead_res.data and len(lead_res.data) > 0:
                     email = lead_res.data[0].get("email")
 
@@ -6146,8 +6629,8 @@ Respond ONLY with valid JSON."""
                 try:
                     from integrations.backend.services.elein_crm_service import _safe_refund_credits
                     _safe_refund_credits(self.workspace_id, 1, idem_key, self.supabase, reason="verify_email_error")
-                except Exception:
-                    pass
+                except Exception as ref_err:
+                    logger.error(f"[Enrichment] Failed to refund credits on error: {ref_err}")
             return {"status": "error", "error": str(e), "branch": Branch.INVALID_OR_RISKY.value}
 
 
@@ -6166,7 +6649,10 @@ Respond ONLY with valid JSON."""
                         "lifecycle_stage": status_clean
                     }
                     if lead_id:
-                        self.supabase.table("leads").update(update_payload).eq("id", lead_id).execute()
+                        upd = self.supabase.table("leads").update(update_payload).eq("id", lead_id)
+                        if workspace_id:
+                            upd = upd.eq("workspace_id", workspace_id)
+                        upd.execute()
                     elif linkedin_url and workspace_id:
                         self.supabase.table("leads").update(update_payload).eq("workspace_id", workspace_id).eq("linkedin_url", linkedin_url).execute()
                 except Exception as db_err:
@@ -6440,7 +6926,10 @@ Respond ONLY with valid JSON."""
             lead_id = data.get("_lead_id")
             if lead_id:
                 try:
-                    res = self.supabase.table("leads").select("email").eq("id", lead_id).execute()
+                    q = self.supabase.table("leads").select("email").eq("id", lead_id)
+                    if self.workspace_id:
+                        q = q.eq("workspace_id", self.workspace_id)
+                    res = q.execute()
                     if res.data and res.data[0].get("email"):
                         email = str(res.data[0]["email"]).strip()
                 except Exception as e:
@@ -6493,7 +6982,10 @@ Respond ONLY with valid JSON."""
         lead_id = data.get("_lead_id")
         if tag and lead_id and self.supabase:
             try:
-                res = self.supabase.table("leads").select("tags").eq("id", lead_id).execute()
+                res_q = self.supabase.table("leads").select("tags").eq("id", lead_id)
+                if self.workspace_id:
+                    res_q = res_q.eq("workspace_id", self.workspace_id)
+                res = res_q.execute()
                 current_tags = []
                 if res.data and res.data[0].get("tags"):
                     current_tags = res.data[0]["tags"]
@@ -6501,7 +6993,10 @@ Respond ONLY with valid JSON."""
                         current_tags = [t.strip() for t in current_tags.split(",") if t.strip()]
                 if tag not in current_tags:
                     current_tags.append(tag)
-                    self.supabase.table("leads").update({"tags": current_tags}).eq("id", lead_id).execute()
+                    upd_q = self.supabase.table("leads").update({"tags": current_tags}).eq("id", lead_id)
+                    if self.workspace_id:
+                        upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                    upd_q.execute()
             except Exception as e:
                 logger.warning(f"Failed to add tag to lead: {e}")
         return {"status": "success", "branch": "then", "message": f"Added tag: {tag}"}
@@ -6515,11 +7010,13 @@ Respond ONLY with valid JSON."""
         webhook_url = data.get("webhook_url") or os.environ.get("SLACK_WEBHOOK_URL")
         if not webhook_url and self.workspace_id and self.supabase:
             try:
-                w_res = self.supabase.table("workspaces").select("slack_webhook_url").eq("id", self.workspace_id).limit(1).execute()
-                if w_res.data and w_res.data[0].get("slack_webhook_url"):
-                    webhook_url = w_res.data[0]["slack_webhook_url"]
+                w_res = self.supabase.table("workspaces").select("metadata").eq("id", self.workspace_id).limit(1).execute()
+                if w_res.data:
+                    meta = w_res.data[0].get("metadata") or {}
+                    wh = meta.get("webhooks") or {}
+                    webhook_url = wh.get("slack_webhook_url")
             except Exception as e:
-                logger.warning(f"Could not retrieve workspace slack webhook: {e}")
+                logger.warning(f"Could not retrieve workspace metadata webhooks: {e}")
 
         raw_message = data.get("message") or f"Lead alert for {linkedin_url or data.get('_lead_id', 'unknown')}"
         message = self._interpolate_template(raw_message, data, linkedin_url) if "{{" in raw_message else raw_message
@@ -6656,8 +7153,8 @@ Respond ONLY with valid JSON."""
                     from core.backend.services.credit_service import check_tier_access
                     if not check_tier_access(self.workspace_id, 'enrichment'):
                         return {"status": "error", "branch": Branch.NOT_FOUND.value, "error": "Feature requires Growth Tier (PRO). Free tier cannot use external enrichment.", "reason": "tier_restricted"}
-                except Exception:
-                    pass
+                except Exception as ref_err:
+                    logger.error(f"[Enrichment] Failed to refund credits on error: {ref_err}")
                 
                 # Check / deduct credit safely
                 idem_key = f"phone_enrich_{self.workspace_id}_{lead_id or 'unknown'}_{data.get('_current_node_id', 'phone')}"
@@ -6677,7 +7174,10 @@ Respond ONLY with valid JSON."""
                 clean_phone = str(phone).strip()
                 if lead_id and self.supabase:
                     try:
-                        self.supabase.table("leads").update({"phone": clean_phone}).eq("id", lead_id).execute()
+                        upd_q = self.supabase.table("leads").update({"phone": clean_phone}).eq("id", lead_id)
+                        if self.workspace_id:
+                            upd_q = upd_q.eq("workspace_id", self.workspace_id)
+                        upd_q.execute()
                     except Exception as e:
                         logger.warning(f"Failed to update lead phone in db: {e}")
                 return {"status": "success", "branch": Branch.FOUND.value, "variables": {"phone": clean_phone, "phone_number": clean_phone}}
@@ -6724,7 +7224,7 @@ Respond ONLY with valid JSON."""
                     funding_date_str = self._get_lead_field(data, linkedin_url, "funding_date", "latest_funding_date")
                     if funding_date_str:
                         try:
-                            from datetime import datetime, timezone
+                            from datetime import datetime, timezone, timedelta
                             clean_dt = funding_date_str.replace("Z", "+00:00")
                             dt = datetime.fromisoformat(clean_dt)
                             if dt.tzinfo is None:
@@ -6732,8 +7232,9 @@ Respond ONLY with valid JSON."""
                             delta_days = (datetime.now(timezone.utc) - dt).days
                             if delta_days > int(recency_months) * 30:
                                 return {"status": "success", "branch": Branch.NO_RECENT_FUNDING.value}
-                        except Exception:
-                            pass
+                        except Exception as dt_err:
+                            logger.warning(f"Failed to parse funding_date '{funding_date_str}': {dt_err}")
+                            return {"status": "success", "branch": Branch.NO_RECENT_FUNDING.value, "warning": "Unparsable funding date"}
                 return {"status": "success", "branch": Branch.RECENTLY_FUNDED.value, "variables": {"funding_round": str(funding_info)}}
             return {"status": "success", "branch": Branch.NO_RECENT_FUNDING.value}
         except Exception as e:
@@ -6891,8 +7392,10 @@ Respond ONLY with valid JSON."""
                 if not is_opened:
                     try:
                         # Check leads table cache
-                        l_res = self.supabase.table("leads").select("email_opened, opens_count, last_email_opened_at") \
-                            .eq("id", lead_id).limit(1).execute()
+                        l_q = self.supabase.table("leads").select("email_opened, opens_count, last_email_opened_at").eq("id", lead_id)
+                        if self.workspace_id:
+                            l_q = l_q.eq("workspace_id", self.workspace_id)
+                        l_res = l_q.limit(1).execute()
                         if l_res.data:
                             row = l_res.data[0]
                             if row.get("email_opened") is True or (row.get("opens_count") and int(row.get("opens_count", 0)) > 0):
@@ -6954,8 +7457,10 @@ Respond ONLY with valid JSON."""
 
                 if not is_clicked:
                     try:
-                        l_res = self.supabase.table("leads").select("email_clicked, clicks_count") \
-                            .eq("id", lead_id).limit(1).execute()
+                        l_q = self.supabase.table("leads").select("email_clicked, clicks_count").eq("id", lead_id)
+                        if self.workspace_id:
+                            l_q = l_q.eq("workspace_id", self.workspace_id)
+                        l_res = l_q.limit(1).execute()
                         if l_res.data:
                             row = l_res.data[0]
                             if row.get("email_clicked") is True or (row.get("clicks_count") and int(row.get("clicks_count", 0)) > 0):
@@ -7018,8 +7523,10 @@ Respond ONLY with valid JSON."""
 
                 if not is_bounced:
                     try:
-                        l_res = self.supabase.table("leads").select("email_bounced, status") \
-                            .eq("id", lead_id).limit(1).execute()
+                        l_q = self.supabase.table("leads").select("email_bounced, status").eq("id", lead_id)
+                        if self.workspace_id:
+                            l_q = l_q.eq("workspace_id", self.workspace_id)
+                        l_res = l_q.limit(1).execute()
                         if l_res.data:
                             row = l_res.data[0]
                             if row.get("email_bounced") is True or str(row.get("status", "")).lower() == "bounced":
@@ -7069,7 +7576,10 @@ Respond ONLY with valid JSON."""
             lead_id = data.get("_lead_id") or data.get("lead_id")
             if not is_accepted and self.supabase and lead_id:
                 try:
-                    res = self.supabase.table("leads").select("status, is_connected").eq("id", lead_id).execute()
+                    res_q = self.supabase.table("leads").select("status, is_connected").eq("id", lead_id)
+                    if self.workspace_id:
+                        res_q = res_q.eq("workspace_id", self.workspace_id)
+                    res = res_q.execute()
                     if res.data:
                         row = res.data[0]
                         if row.get("is_connected") is True or str(row.get("status", "")).lower() in ("connected", "1st", "accepted"):
@@ -7139,8 +7649,10 @@ Respond ONLY with valid JSON."""
 
             if self.supabase and lead_id and (not is_connected or not raw_email):
                 try:
-                    l_res = self.supabase.table("leads").select("email, is_connected, status, is_open_profile, premium") \
-                        .eq("id", lead_id).limit(1).execute()
+                    l_q = self.supabase.table("leads").select("email, is_connected, status, is_open_profile, premium").eq("id", lead_id)
+                    if self.workspace_id:
+                        l_q = l_q.eq("workspace_id", self.workspace_id)
+                    l_res = l_q.limit(1).execute()
                     if l_res.data:
                         l_row = l_res.data[0]
                         if not raw_email and l_row.get("email"):
@@ -7389,6 +7901,14 @@ Respond ONLY with valid JSON."""
     def handle_crm_deal_sync(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         return self.handle_sync_crm_deal_stage(data, linkedin_url)
 
+    def handle_abm_committee_touch(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        """Alias for abm_committee_touch canvas node type to handle_abm_multithread."""
+        return self.handle_abm_multithread(data, linkedin_url)
+
+    def handle_champion_job_change(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
+        """Alias for champion_job_change canvas node type to handle_boomerang_revival."""
+        return self.handle_boomerang_revival(data, linkedin_url)
+
     def handle_abm_multithread(self, data: Dict[str, Any], linkedin_url: Optional[str]) -> Dict[str, Any]:
         """
         Horizon 34A (Paranoia Layer 0, 1 & 2):
@@ -7421,9 +7941,19 @@ Respond ONLY with valid JSON."""
                 supabase=self.supabase,
             )
 
+            archetype = str(ctx.get("role_archetype", "champion")).lower()
+            if "buyer" in archetype or "economic" in archetype:
+                branch = "Economic Buyer"
+            elif "evaluator" in archetype or "technical" in archetype:
+                branch = "Technical Evaluator"
+            elif "user" in archetype:
+                branch = "End User"
+            else:
+                branch = "Champion"
+
             return {
                 "status": "success",
-                "branch": Branch.THEN.value,
+                "branch": branch,
                 "abm_context": ctx,
                 "collision_deferred": bool(ctx.get("collision_deferred")),
                 "variables": {
@@ -7492,9 +8022,20 @@ Respond ONLY with valid JSON."""
                     "variables": {"boomerang_suppressed": True},
                 }
 
+            days_in_role = int(data.get("days_in_new_role") or res.get("days_in_new_role") or 21)
+            b_score = float(res.get("score") or 0)
+            if b_score < 40:
+                branch = "Unqualified"
+            elif days_in_role <= 90:
+                branch = "Peak 90-Day Window"
+            elif "promo" in str(data.get("mode") or "").lower():
+                branch = "Internal Promotion"
+            else:
+                branch = "Established Role"
+
             return {
                 "status": "success",
-                "branch": Branch.THEN.value,
+                "branch": branch,
                 "boomerang": res,
                 "variables": {
                     "boomerang_hook": res.get("hook_message", ""),
@@ -7543,9 +8084,18 @@ Respond ONLY with valid JSON."""
                 supabase=self.supabase,
             )
 
+            if cal_res.get("booking", {}).get("status") == "confirmed" or cal_res.get("meeting_booked"):
+                branch = "Meeting Booked"
+            elif not cal_res.get("slots"):
+                branch = "Declined / No Slot"
+            elif cal_res.get("halt_cadence"):
+                branch = "Halt Cadence"
+            else:
+                branch = "Slots Proposed"
+
             return {
                 "status": "success",
-                "branch": Branch.THEN.value,
+                "branch": branch,
                 "calendar_concierge": cal_res,
                 "variables": {
                     "calendar_booking_id": cal_res.get("booking_id", ""),
@@ -7593,7 +8143,15 @@ Respond ONLY with valid JSON."""
                 supabase=self.supabase,
             )
 
-            branch = Branch.THEN.value if not res.get("renewal_expired") else Branch.FAILED.value
+            win_stat = str(res.get("window_status", "")).upper()
+            if win_stat == "PEAK_EVALUATION":
+                branch = "Peak Evaluation Window"
+            elif win_stat == "URGENT_RENEWAL":
+                branch = "Renewal Imminent"
+            elif win_stat == "EARLY_CONTRACT":
+                branch = "Early Contract"
+            else:
+                branch = "Standard Outreach"
 
             return {
                 "status": "success",

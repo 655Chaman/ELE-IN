@@ -550,6 +550,14 @@ def enroll_lead_from_trigger(
 
     if supabase:
         try:
+            # Paranoia Layer 1: Validate campaign belongs to the workspace prior to enrollment (FLAW-SEC-06)
+            if norm_camp:
+                camp_res = supabase.table("campaigns").select("id, workspace_id").eq("id", norm_camp).limit(1).execute()
+                if camp_res.data and len(camp_res.data) > 0:
+                    camp_ws = camp_res.data[0].get("workspace_id")
+                    if camp_ws and camp_ws not in (workspace_id, norm_ws):
+                        raise PermissionError(f"Cross-workspace access denied: campaign {norm_camp} does not belong to workspace {workspace_id}")
+
             res = supabase.table("trigger_events").select("*").eq("id", norm_trig).eq("workspace_id", norm_ws).limit(1).execute()
             if not res.data:
                 res = supabase.table("trigger_events").select("*").eq("id", trigger_event_id).limit(1).execute()

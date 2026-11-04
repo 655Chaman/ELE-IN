@@ -28,6 +28,7 @@ import { EventMultimodalStudioModal } from "@/components/campaigns/EventMultimod
 import { AbmMultithreadStudioModal } from "@/components/campaigns/AbmMultithreadStudioModal"
 import { OmnichannelRetargetingStudioModal } from "@/components/campaigns/OmnichannelRetargetingStudioModal"
 import { BoomerangRevivalStudioModal } from "@/components/campaigns/BoomerangRevivalStudioModal"
+import { StatusPill } from "@/components/StatusPill"
 
 export function EleInCampaignDetail() {
   const { id } = useParams()
@@ -396,15 +397,11 @@ export function EleInCampaignDetail() {
           </Link>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{campaign.name}</h1>
-            <span className={cn(
-              "px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full border flex items-center gap-1.5",
-              campaign.status === 'ACTIVE' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-              campaign.status === 'PAUSED' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-              "bg-muted text-muted-foreground border-border"
-            )}>
-              {campaign.status === 'ACTIVE' && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
-              {campaign.status}
-            </span>
+            <StatusPill 
+              status={campaign.status.toLowerCase()} 
+              size="sm" 
+              pulse={campaign.status === 'ACTIVE'} 
+            />
           </div>
           <p className="text-xs text-muted-foreground">
             {leads.length} total prospects enrolled • {campaign.accounts?.length || 0} active sender accounts
@@ -1071,19 +1068,12 @@ export function EleInCampaignDetail() {
                       </td>
 
                       <td className="px-5 py-3.5">
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border",
-                          status === 'completed' || status === 'exited'
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : status === 'error' || status === 'failed'
-                            ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                            : status === 'running'
-                            ? "bg-primary/10 text-primary border-primary/20"
-                            : "bg-muted text-muted-foreground border-border/40"
-                        )}>
-                          {status === 'running' && <Clock size={11} className="animate-spin" />}
-                          {lead.status || 'Pending'}
-                        </span>
+                        <StatusPill 
+                          status={status === 'completed' || status === 'exited' ? 'completed' : status === 'error' || status === 'failed' ? 'failed' : status === 'running' ? 'running' : 'pending'} 
+                          size="xs" 
+                          label={lead.status || 'Pending'} 
+                          pulse={status === 'running'} 
+                        />
                       </td>
 
                       <td className="px-5 py-3.5 text-muted-foreground text-[11px] font-mono">

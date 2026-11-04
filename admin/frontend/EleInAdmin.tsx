@@ -4,6 +4,7 @@ import useSWR from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
 import { friendlyToast } from "../../core/frontend/components/FriendlyError"
+import { StatusPill } from "@/components/StatusPill"
 import { 
   LayoutTemplate, CheckCircle, CheckCircle2, XCircle, Clock, Key, Plus, 
   Trash2, RefreshCw, AlertCircle, AlertTriangle, Activity, Cpu, 
@@ -335,53 +336,38 @@ export function EleInAdmin() {
 
       {/* ─── TABS NAVIGATION ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 border-b border-border/60 pb-3 mb-6 overflow-x-auto">
-        <button 
-          onClick={() => setActiveTab("infrastructure")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === "infrastructure" 
-              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-        >
-          <Cpu size={14} />
-          <span>Worker Heartbeats & Infrastructure</span>
-        </button>
-
-        <button 
-          onClick={() => setActiveTab("keys")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === "keys" 
-              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-        >
-          <Key size={14} />
-          <span>AI Key Pool ({safeKeys.length})</span>
-        </button>
-
-        <button 
-          onClick={() => setActiveTab("proxies")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === "proxies" 
-              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-        >
-          <ShieldCheck size={14} />
-          <span>Proxy Health ({safeProxies.length})</span>
-        </button>
-
-        <button 
-          onClick={() => setActiveTab("templates")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === "templates" 
-              ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-        >
-          <LayoutTemplate size={14} />
-          <span>Community Playbooks ({safeTemplates.length})</span>
-        </button>
+        {[
+          { id: "infrastructure", label: "Worker Heartbeats & Infrastructure", icon: Cpu },
+          { id: "keys", label: `AI Key Pool (${safeKeys.length})`, icon: Key },
+          { id: "proxies", label: `Proxy Health (${safeProxies.length})`, icon: ShieldCheck },
+          { id: "templates", label: `Community Playbooks (${safeTemplates.length})`, icon: LayoutTemplate },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`relative flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${
+                isActive
+                  ? "text-primary-foreground font-bold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="admin-tab-pill"
+                  className="absolute inset-0 bg-primary rounded-xl shadow-sm shadow-primary/20"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Icon size={14} />
+                <span>{tab.label}</span>
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ─── TAB 1: INFRASTRUCTURE & WORKERS (Layer 0 & 1) ───────────────────── */}
@@ -417,15 +403,15 @@ export function EleInAdmin() {
                   return (
                     <div key={w.worker_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${isAlive ? 'bg-success animate-pulse shadow-[0_0_8px_var(--success)]' : 'bg-destructive'}`} />
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="text-sm font-bold text-foreground font-mono">{w.worker_id}</h4>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                              isAlive ? 'bg-success/10 text-success border border-success/20' : 'bg-destructive/10 text-destructive border border-destructive/20'
-                            }`}>
-                              {w.status}
-                            </span>
+                            <StatusPill 
+                              status={isAlive ? "active" : "failed"} 
+                              label={w.status} 
+                              size="xs" 
+                              pulse={isAlive} 
+                            />
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             Last beat: <span className="font-semibold text-foreground">{beatDate}</span>

@@ -325,6 +325,7 @@ def extract_referral_contact(
         "confidence": confidence,
         "raw_snippet": raw_snippet,
         "rejection_reason": rejection_reason,
+        "reason": rejection_reason,
         "shield_audit": audit,
     }
 

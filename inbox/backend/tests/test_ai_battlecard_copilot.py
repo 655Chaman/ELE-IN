@@ -218,6 +218,7 @@ class TestInboxRouterEndpoints(unittest.TestCase):
         from inbox.backend.routers.inbox import get_suggested_meeting_slots_endpoint
         mock_supabase = MagicMock()
         mock_supabase.rpc.return_value.execute.return_value.data = {"tier": "PRO"}
+        mock_supabase.table().select().eq().eq().limit().execute.return_value.data = [{"timezone": "America/Chicago"}]
         mock_supabase.table().select().eq().limit().execute.return_value.data = [{"timezone": "America/Chicago"}]
         res = get_suggested_meeting_slots_endpoint(
             lead_id="lead-abc",

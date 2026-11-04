@@ -1,18 +1,84 @@
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Papa from "papaparse"
 import { motion } from "motion/react"
 import { toast } from "sonner"
-import { Download, LayoutTemplate, Sparkles, Upload, Rocket, ArrowRight, ShieldCheck, CheckCircle2, AlertTriangle, Table, Eye } from "lucide-react"
+import { Download, LayoutTemplate, Sparkles, Upload, Rocket, ArrowRight, ShieldCheck, CheckCircle2, AlertTriangle, Table, Eye, ArrowUpDown, Loader2 } from "lucide-react"
 import { useLeadImport } from "../LeadImportContext"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { CustomSelect } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
+import { fetchWithAuth } from "@/lib/apiClient"
+
+export interface DecodedCsvResult {
+  text: string;
+  encoding: string;
+  normalized: boolean;
+  cleanFile: File;
+}
+
+export async function detectAndDecodeCsv(file: File): Promise<DecodedCsvResult> {
+  const sampleSize = Math.min(file.size, 64 * 1024);
+  const sampleBuffer = await file.slice(0, sampleSize).arrayBuffer();
+  const bytes = new Uint8Array(sampleBuffer);
+
+  // 1. UTF-8 with BOM: 0xEF, 0xBB, 0xBF
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    const fullBuffer = await file.arrayBuffer();
+    const text = new TextDecoder("utf-8").decode(fullBuffer.slice(3));
+    const cleanFile = new File([text], file.name, { type: "text/csv;charset=utf-8" });
+    return { text, encoding: "UTF-8 (BOM)", normalized: true, cleanFile };
+  }
+
+  // 2. UTF-16LE: 0xFF, 0xFE
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    const fullBuffer = await file.arrayBuffer();
+    const text = new TextDecoder("utf-16le").decode(fullBuffer.slice(2));
+    const cleanFile = new File([text], file.name, { type: "text/csv;charset=utf-8" });
+    return { text, encoding: "UTF-16LE", normalized: true, cleanFile };
+  }
+
+  // 3. UTF-16BE: 0xFE, 0xFF
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    const fullBuffer = await file.arrayBuffer();
+    const text = new TextDecoder("utf-16be").decode(fullBuffer.slice(2));
+    const cleanFile = new File([text], file.name, { type: "text/csv;charset=utf-8" });
+    return { text, encoding: "UTF-16BE", normalized: true, cleanFile };
+  }
+
+  // 4. Strict UTF-8 Check on sample
+  try {
+    const strictDecoder = new TextDecoder("utf-8", { fatal: true });
+    strictDecoder.decode(bytes);
+    if (file.size <= 10 * 1024 * 1024) {
+      const fullBuffer = await file.arrayBuffer();
+      const text = new TextDecoder("utf-8").decode(fullBuffer);
+      return { text, encoding: "UTF-8", normalized: false, cleanFile: file };
+    } else {
+      const slice = file.slice(0, 256 * 1024);
+      const text = await slice.text();
+      return { text, encoding: "UTF-8", normalized: false, cleanFile: file };
+    }
+  } catch {
+    // 5. UTF-8 failed -> Fallback to Windows-1252 (CP-1252 / ANSI)
+    try {
+      const fullBuffer = await file.arrayBuffer();
+      const text = new TextDecoder("windows-1252").decode(fullBuffer);
+      const cleanFile = new File([text], file.name, { type: "text/csv;charset=utf-8" });
+      return { text, encoding: "Windows-1252", normalized: true, cleanFile };
+    } catch {
+      const text = await file.text();
+      return { text, encoding: "Standard", normalized: false, cleanFile: file };
+    }
+  }
+}
 
 export function CSVImport() {
   const { 
     step, 
     file, setFile, 
     cleanData, setCleanData, 
+    collisionPolicy, setCollisionPolicy,
     headers, setHeaders, 
     sampleRows, setSampleRows,
     mappings, setMappings, 
@@ -25,6 +91,108 @@ export function CSVImport() {
   const { openPaywall } = usePaywall();
   const isPro = billing?.tier === 'PRO' || billing?.tier === 'ENTERPRISE';
   const [isDragging, setIsDragging] = useState(false);
+  const [detectedEncoding, setDetectedEncoding] = useState<string>("UTF-8");
+  const [isEncodingNormalized, setIsEncodingNormalized] = useState(false);
+  const [intraBatchDuplicates, setIntraBatchDuplicates] = useState(0);
+  const [isCheckingCollisions, setIsCheckingCollisions] = useState(false);
+  const [collisionData, setCollisionData] = useState<{
+    total_checked: number;
+    workspace_matches_count: number;
+    colliding_active_count: number;
+    active_campaign_names: string[];
+    colliding_samples: Array<{
+      lead_id: string;
+      name: string;
+      identifier: string;
+      campaign_name: string;
+      company_name?: string;
+    }>;
+  } | null>(null);
+
+  // Layer 2 Paranoia: 1-Click Name Swap & Inversion Detector
+  const handleSwapFirstLast = () => {
+    const currentFirst = mappings.first_name || ""
+    const currentLast = mappings.last_name || ""
+    setMappings({
+      ...mappings,
+      first_name: currentLast,
+      last_name: currentFirst,
+    })
+    toast.info("Swapped First Name and Last Name column mappings")
+  }
+
+  const hasPossibleNameInversion = useMemo(() => {
+    const firstCol = (mappings.first_name || "").toLowerCase().trim()
+    const lastCol = (mappings.last_name || "").toLowerCase().trim()
+
+    // 1. Column header names indicate an obvious swap
+    if (firstCol && (firstCol.includes("last") || firstCol.includes("surname") || firstCol === "lname")) {
+      return true
+    }
+    if (lastCol && (lastCol.includes("first") || lastCol.includes("given") || lastCol === "fname")) {
+      return true
+    }
+
+    // 2. Sample data in first_name contains comma format ("Smith, John")
+    if (mappings.first_name && sampleRows.length > 0) {
+      const firstSamples = sampleRows.map(r => String(r[mappings.first_name] || ""))
+      if (firstSamples.some(s => s.includes(",") && !s.includes("@"))) {
+        return true
+      }
+    }
+
+    return false
+  }, [mappings.first_name, mappings.last_name, sampleRows])
+
+  // Preflight Cross-Campaign Collision Guard
+  useEffect(() => {
+    const linkedinCol = mappings.linkedin_url;
+    const emailCol = mappings.email;
+    if (!linkedinCol && !emailCol) {
+      setCollisionData(null);
+      return;
+    }
+    if (!sampleRows || sampleRows.length === 0) return;
+
+    const candidateUrls = linkedinCol ? sampleRows.map(r => r[linkedinCol]).filter(Boolean) : [];
+    const candidateEmails = emailCol ? sampleRows.map(r => r[emailCol]).filter(Boolean) : [];
+
+    if (candidateUrls.length === 0 && candidateEmails.length === 0) {
+      setCollisionData(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsCheckingCollisions(true);
+
+    fetchWithAuth("/api/elein/leads/preflight_collision_check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        linkedin_urls: candidateUrls.slice(0, 50),
+        emails: candidateEmails.slice(0, 50),
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setCollisionData(data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Preflight collision check warning:", err);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsCheckingCollisions(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mappings.linkedin_url, mappings.email, sampleRows]);
 
   const processSelectedFile = async (selected: File) => {
     if (!selected.name.toLowerCase().endsWith(".csv")) {
@@ -36,34 +204,68 @@ export function CSVImport() {
       toast.error("File size exceeds 25MB limit. Please upload a smaller CSV or split the file.");
       return;
     }
-    setFile(selected);
 
-    // Fast non-blocking row count calculation
+    let decodedText = "";
+    let cleanFile = selected;
+    let encName = "UTF-8";
+    let isNorm = false;
+
     try {
-      if (selected.size < 5 * 1024 * 1024) {
+      const decoded = await detectAndDecodeCsv(selected);
+      decodedText = decoded.text;
+      cleanFile = decoded.cleanFile;
+      encName = decoded.encoding;
+      isNorm = decoded.normalized;
+      setDetectedEncoding(encName);
+      setIsEncodingNormalized(isNorm);
+      setFile(cleanFile);
+    } catch {
+      setFile(selected);
+    }
+
+    // Fast non-blocking row count calculation without giant string array allocations
+    try {
+      if (decodedText) {
+        let count = 0;
+        for (let i = 0; i < decodedText.length; i++) {
+          if (decodedText.charCodeAt(i) === 10) count++;
+        }
+        if (decodedText.length > 0 && decodedText.charCodeAt(decodedText.length - 1) !== 10) count++;
+        setDetectedRowCount(Math.max(0, count - 1));
+      } else if (selected.size < 5 * 1024 * 1024) {
         const text = await selected.text();
-        const lines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
-        setDetectedRowCount(Math.max(0, lines.length - 1));
+        let count = 0;
+        for (let i = 0; i < text.length; i++) {
+          if (text.charCodeAt(i) === 10) count++;
+        }
+        if (text.length > 0 && text.charCodeAt(text.length - 1) !== 10) count++;
+        setDetectedRowCount(Math.max(0, count - 1));
       } else {
         const slice = selected.slice(0, 256 * 1024);
         const text = await slice.text();
-        const sampleLines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
-        const avgBytesPerLine = (256 * 1024) / Math.max(1, sampleLines.length);
+        let sampleCount = 0;
+        for (let i = 0; i < text.length; i++) {
+          if (text.charCodeAt(i) === 10) sampleCount++;
+        }
+        const avgBytesPerLine = (256 * 1024) / Math.max(1, sampleCount);
         setDetectedRowCount(Math.round(selected.size / avgBytesPerLine));
       }
     } catch (err) {
       setDetectedRowCount(0);
     }
 
-    Papa.parse(selected, {
+    // Parse up to 100 sample rows from decodedText or cleanFile for statistical accuracy
+    Papa.parse(decodedText || cleanFile, {
       header: true,
-      preview: 5,
+      preview: 100,
+      skipEmptyLines: "greedy",
+      transformHeader: (h: string) => h.replace(/^\ufeff/, "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim(),
       complete: (results: any) => {
         if (results.meta.fields) {
           const fields: string[] = results.meta.fields;
           setHeaders(fields);
           if (results.data && Array.isArray(results.data)) {
-            setSampleRows(results.data.slice(0, 5));
+            setSampleRows(results.data);
           }
           const guess = (keywords: string[]) => fields.find((f: string) => {
             const lower = f.toLowerCase().trim();
@@ -88,6 +290,25 @@ export function CSVImport() {
             job_title: guessedTitle,
             location: guessedLocation,
           });
+
+          // Detect intra-batch duplicate rows across parsed sample
+          if (results.data && Array.isArray(results.data)) {
+            const seen = new Set<string>();
+            let dupes = 0;
+            for (const r of results.data) {
+              const u = guessedLinkedin && r[guessedLinkedin] ? String(r[guessedLinkedin]).trim().toLowerCase() : "";
+              const e = guessedEmail && r[guessedEmail] ? String(r[guessedEmail]).trim().toLowerCase() : "";
+              const id = u || e;
+              if (id) {
+                if (seen.has(id)) {
+                  dupes++;
+                } else {
+                  seen.add(id);
+                }
+              }
+            }
+            setIntraBatchDuplicates(dupes);
+          }
         }
       }
     });
@@ -154,8 +375,25 @@ export function CSVImport() {
               <div className="p-5 rounded-lg bg-background border border-border/60 shadow-xs"><Upload size={24} className="text-foreground" /></div>
               <div className="text-center">
                 <p className="text-sm font-semibold">{file ? <span className="text-primary">{file.name}</span> : (isDragging ? "Drop your CSV file here" : "Click to browse or drag CSV here")}</p>
+                {file && (
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-muted/60 border border-border/60 text-foreground">
+                      Encoding: {detectedEncoding}
+                    </span>
+                    {isEncodingNormalized && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                        Universal UTF-8 Normalized
+                      </span>
+                    )}
+                    {intraBatchDuplicates > 0 && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-300">
+                        {intraBatchDuplicates} Intra-Batch Duplicates Detected
+                      </span>
+                    )}
+                  </div>
+                )}
                 <p className="text-xs font-medium text-muted-foreground mt-1">Max 25MB · CSV only</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Supports: First Name, Last Name, LinkedIn, Company</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Supports: First Name, Last Name, LinkedIn, Company, Email</p>
               </div>
             </div>
           </div>
@@ -287,9 +525,22 @@ export function CSVImport() {
                 <LayoutTemplate size={14} className="text-primary" />
                 <span className="text-xs font-bold text-foreground">Map CSV Columns</span>
               </div>
-              <span className="text-[11px] text-muted-foreground">
-                Auto-matched with fuzzy detection
-              </span>
+              <div className="flex items-center gap-2.5">
+                {(mappings.first_name || mappings.last_name) && (
+                  <button
+                    type="button"
+                    onClick={handleSwapFirstLast}
+                    className="px-2 py-0.5 rounded text-[11px] font-medium text-primary hover:bg-primary/10 border border-primary/25 flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Swap First Name and Last Name column mappings"
+                  >
+                    <ArrowUpDown size={11} />
+                    <span>Swap Names</span>
+                  </button>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  Auto-matched with fuzzy detection
+                </span>
+              </div>
             </div>
 
             {Object.entries({
@@ -341,6 +592,172 @@ export function CSVImport() {
                 </div>
               )
             })}
+          </div>
+
+          {/* Layer 2 Paranoia: Inversion Alert Banner */}
+          {hasPossibleNameInversion && (
+            <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-200 animate-in fade-in duration-150">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-amber-300 block">
+                    Possible Name Inversion Detected
+                  </span>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    The column mapped to First Name may contain surnames or inverted &quot;Last, First&quot; formatting. Verify mapping to prevent sending greetings like &quot;Hey Smith&quot;.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSwapFirstLast}
+                className="px-3 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-500/40 shrink-0 flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+              >
+                <ArrowUpDown size={12} />
+                <span>Swap First & Last</span>
+              </button>
+            </div>
+          )}
+
+          {/* Proactive Cross-Campaign Collision Alert */}
+          {collisionData && collisionData.colliding_active_count > 0 && (
+            <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs space-y-2.5 animate-in fade-in duration-150">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle size={18} className="text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-amber-800 dark:text-amber-300 text-sm block">
+                      Cross-Campaign Collision Warning ({collisionData.colliding_active_count} prospect{collisionData.colliding_active_count > 1 ? "s" : ""})
+                    </span>
+                    <p className="text-[11px] text-amber-700/90 dark:text-amber-200/90 mt-1 leading-relaxed">
+                      {collisionData.colliding_active_count} prospect{collisionData.colliding_active_count > 1 ? "s" : ""} in this file are already enrolled in active campaigns{collisionData.active_campaign_names.length > 0 ? `: "${collisionData.active_campaign_names.join('", "')}"` : ""}.
+                    </p>
+                    {collisionData.colliding_samples && collisionData.colliding_samples.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-amber-500/20 text-[11px]">
+                        <span className="text-muted-foreground uppercase text-[10px] tracking-wider font-semibold block mb-1">
+                          Detected in-flight prospects:
+                        </span>
+                        <ul className="space-y-0.5 text-amber-700 dark:text-amber-300 font-mono text-[11px]">
+                          {collisionData.colliding_samples.slice(0, 3).map((s, idx) => (
+                            <li key={idx} className="truncate">
+                              • <strong>{s.name}</strong> ({s.identifier}) in <em>{s.campaign_name}</em>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {collisionPolicy !== "skip_active_campaign" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCollisionPolicy("skip_active_campaign");
+                      toast.success("Applied 'Skip Active Outreach' policy");
+                    }}
+                    className="px-3 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs border border-amber-500/40 shrink-0 flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs whitespace-nowrap self-start"
+                  >
+                    <ShieldCheck size={13} />
+                    <span>Apply "Skip Active Outreach"</span>
+                  </button>
+                ) : (
+                  <span className="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shrink-0 flex items-center gap-1 self-start">
+                    <CheckCircle2 size={12} /> Protection Active
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Layer 2 Paranoia: Lead Deduplication & Collision Guard */}
+          <div className="border border-border/60 rounded-lg p-4 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={15} className="text-primary" />
+                <span className="text-xs font-bold text-foreground">Workspace Deduplication & Collision Policy</span>
+              </div>
+              <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
+                Safety Guard
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <label
+                className={cn(
+                  "p-3 rounded-lg border text-left cursor-pointer transition-colors flex flex-col gap-1",
+                  collisionPolicy === "merge"
+                    ? "border-primary bg-primary/10"
+                    : "border-border/60 bg-background hover:bg-muted/30"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="collisionPolicy"
+                    checked={collisionPolicy === "merge"}
+                    onChange={() => setCollisionPolicy("merge")}
+                    className="text-primary focus:ring-primary"
+                  />
+                  <span className="text-xs font-bold text-foreground">Smart Merge</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed pl-5">
+                  Updates existing leads with new data and attaches them to this list.
+                </p>
+              </label>
+
+              <label
+                className={cn(
+                  "p-3 rounded-lg border text-left cursor-pointer transition-colors flex flex-col gap-1",
+                  collisionPolicy === "skip_active_campaign"
+                    ? "border-primary bg-primary/10"
+                    : "border-border/60 bg-background hover:bg-muted/30"
+                )}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="collisionPolicy"
+                      checked={collisionPolicy === "skip_active_campaign"}
+                      onChange={() => setCollisionPolicy("skip_active_campaign")}
+                      className="text-primary focus:ring-primary"
+                    />
+                    <span className="text-xs font-bold text-foreground">Skip Active Outreach</span>
+                  </div>
+                  {collisionData && collisionData.colliding_active_count > 0 && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                      Recommended
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed pl-5">
+                  Protects against double-messaging by skipping leads in running campaigns.
+                </p>
+              </label>
+
+              <label
+                className={cn(
+                  "p-3 rounded-lg border text-left cursor-pointer transition-colors flex flex-col gap-1",
+                  collisionPolicy === "skip_existing"
+                    ? "border-primary bg-primary/10"
+                    : "border-border/60 bg-background hover:bg-muted/30"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="collisionPolicy"
+                    checked={collisionPolicy === "skip_existing"}
+                    onChange={() => setCollisionPolicy("skip_existing")}
+                    className="text-primary focus:ring-primary"
+                  />
+                  <span className="text-xs font-bold text-foreground">Skip All Duplicates</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed pl-5">
+                  Only imports fresh leads; ignores anyone already in this workspace.
+                </p>
+              </label>
+            </div>
           </div>
 
           {/* Validation Status Radar */}

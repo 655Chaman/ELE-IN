@@ -7,8 +7,21 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetcher, fetchWithAuth } from '@/lib/apiClient'
+import { usePaywall } from '@/contexts/PaywallContext'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+export type ProxyStatus =
+  | 'healthy'
+  | 'active'
+  | 'degraded'
+  | 'quarantined'
+  | 'auth_failed'
+  | 'quota_exceeded'
+  | 'rotating_flapping'
+  | 'banned'
+  | 'failed'
+  | string
 
 interface ProxyItem {
   id: string
@@ -17,13 +30,15 @@ interface ProxyItem {
   port: number
   protocol: string
   username?: string
-  status: string
+  status: ProxyStatus
   country_code?: string
   latency_ms?: number
   exit_ip?: string
   last_checked_at?: string
   quarantined_until?: string
   quarantine_reason?: string
+  is_system?: boolean
+  assigned_accounts_count?: number
 }
 
 interface ProxyPoolStudioModalProps {
@@ -32,6 +47,11 @@ interface ProxyPoolStudioModalProps {
 
 export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
   const { data: proxies, mutate, isLoading } = useSWR<ProxyItem[]>('/api/proxies', fetcher)
+  const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher)
+  const { openPaywall } = usePaywall()
+  const tier = (billingData?.tier || 'FREE').toUpperCase()
+  const isFreeTier = tier === 'FREE'
+
   const [testingId, setTestingId] = useState<string | null>(null)
   const [isTestingAll, setIsTestingAll] = useState(false)
   const [isSyncingWebshare, setIsSyncingWebshare] = useState(false)
@@ -224,7 +244,7 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
   }
 
   const safeProxies = Array.isArray(proxies) ? proxies : []
-  const healthyCount = safeProxies.filter(p => p.status === 'healthy').length
+  const healthyCount = safeProxies.filter(p => p.status === 'healthy' || p.status === 'active').length
   const latencies = safeProxies.map(p => p.latency_ms).filter((l): l is number => typeof l === 'number' && l > 0)
   const avgLatency = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null
 
@@ -314,7 +334,14 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Configured Proxies</span>
               <button
                 type="button"
-                onClick={() => setShowAddForm(true)}
+                onClick={() => {
+                  if (isFreeTier) {
+                    openPaywall({ featureName: "Custom Residential Proxies", minTier: "AGENCY" });
+                    toast.info("Custom residential proxies are an Agency and Enterprise tier feature. Upgrade your plan to add dedicated proxies.");
+                    return;
+                  }
+                  setShowAddForm(true);
+                }}
                 className="px-3 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Plus size={13} />
@@ -447,7 +474,7 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting || !host.trim()}
+                    disabled={isSubmitting || !host.trim() || (preflightResult !== null && !preflightResult.ok)}
                     className="px-4 py-2 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
                     <span>Save Proxy</span>
@@ -469,9 +496,13 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
             <div className="space-y-2">
               {safeProxies.map(p => {
                 const isTesting = testingId === p.id
-                const isHealthy = p.status === 'healthy'
+                const isHealthy = p.status === 'healthy' || p.status === 'active'
                 const isDegraded = p.status === 'degraded'
                 const isQuarantined = p.status === 'quarantined'
+                const isRotatingFlapping = p.status === 'rotating_flapping'
+                const isAuthFailed = p.status === 'auth_failed'
+                const isQuotaExceeded = p.status === 'quota_exceeded'
+                const isBanned = p.status === 'banned'
 
                 return (
                   <div
@@ -481,7 +512,13 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={cn(
                         "w-2.5 h-2.5 rounded-full shrink-0",
-                        isHealthy ? "bg-emerald-500 dark:bg-emerald-400 shadow-xs shadow-emerald-500/50" : isDegraded ? "bg-amber-400" : isQuarantined ? "bg-sky-500 shadow-xs shadow-sky-500/50" : "bg-destructive"
+                        isHealthy ? "bg-emerald-500 dark:bg-emerald-400 shadow-xs shadow-emerald-500/50" :
+                        isDegraded ? "bg-amber-400" :
+                        isQuarantined ? "bg-sky-500 shadow-xs shadow-sky-500/50" :
+                        isRotatingFlapping ? "bg-purple-500 shadow-xs shadow-purple-500/50" :
+                        isQuotaExceeded ? "bg-orange-500 shadow-xs shadow-orange-500/50" :
+                        isAuthFailed ? "bg-rose-500 shadow-xs shadow-rose-500/50" :
+                        "bg-destructive shadow-xs shadow-destructive/50"
                       )} />
 
                       <div className="min-w-0">
@@ -501,16 +538,51 @@ export function ProxyPoolStudioModal({ onClose }: ProxyPoolStudioModalProps) {
                               Quarantined
                             </span>
                           )}
+                          {isRotatingFlapping && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/30 text-purple-600 dark:text-purple-300 flex items-center gap-1" title="Exit IP changes between pings. Static/sticky IP required.">
+                              <AlertTriangle size={10} className="text-purple-500 dark:text-purple-400" />
+                              IP Flapping (Rotating)
+                            </span>
+                          )}
+                          {isAuthFailed && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-300 flex items-center gap-1" title="HTTP 407 Proxy Authentication Required. Check credentials.">
+                              <AlertTriangle size={10} className="text-rose-500 dark:text-rose-400" />
+                              Auth Failed (407)
+                            </span>
+                          )}
+                          {isQuotaExceeded && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/20 border border-orange-500/30 text-orange-600 dark:text-orange-300 flex items-center gap-1" title="HTTP 402/429 Bandwidth or connection quota exceeded.">
+                              <AlertTriangle size={10} className="text-orange-500 dark:text-orange-400" />
+                              Quota Exceeded
+                            </span>
+                          )}
+                          {isBanned && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-destructive/20 border border-destructive/30 text-destructive flex items-center gap-1" title="IP blocked by LinkedIn anti-bot.">
+                              <AlertTriangle size={10} className="text-destructive" />
+                              Banned
+                            </span>
+                          )}
+                          {p.is_system && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                              System Pool
+                            </span>
+                          )}
                           <span className="text-[10px] text-muted-foreground truncate">({p.provider})</span>
                         </div>
 
-                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
                           <span>Exit IP: <strong className="text-foreground font-mono">{p.exit_ip || p.host}</strong></span>
                           <span>·</span>
                           <span>Latency: <strong className={cn(
                             "font-mono font-bold",
                             (p.latency_ms || 999) < 300 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500 dark:text-amber-400"
                           )}>{p.latency_ms ? `${p.latency_ms}ms` : 'Untested'}</strong></span>
+                          {p.assigned_accounts_count !== undefined && p.assigned_accounts_count > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="text-foreground/80 font-medium">{p.assigned_accounts_count} {p.assigned_accounts_count === 1 ? 'account' : 'accounts'} bound</span>
+                            </>
+                          )}
                           {isQuarantined && p.quarantine_reason && (
                             <>
                               <span>·</span>

@@ -537,7 +537,7 @@ def export_event_attendees_csv(
             c_name,
             title,
             a.get("seniority", "director"),
-            a.get("linkedin_url", ""),
+            sanitize_text(sanitize_url(a.get("linkedin_url", ""))),
             a.get("status", "pending"),
             ice,
             a.get("enrolled_campaign_id") or ""

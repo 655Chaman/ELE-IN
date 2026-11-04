@@ -23,6 +23,13 @@ from datetime import date, datetime, timezone
 from typing import List, Dict, Any, Optional
 
 import httpx
+try:
+    from curl_cffi import requests as curl_requests
+    HAS_CURL_CFFI = True
+except ImportError:
+    HAS_CURL_CFFI = False
+
+from core.backend.services.proxy_routing import ProxyRequiredError
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +62,28 @@ class VoyagerScraper:
     No headless browser required — pure httpx JSON requests.
     """
 
-    def __init__(self, cookies_json: str, account_id: str, supabase):
+    def __init__(
+        self,
+        cookies_json: str,
+        account_id: str,
+        supabase,
+        proxy_url: Optional[str] = None,
+        timezone_name: Optional[str] = None,
+        timezone_offset: Optional[float] = None
+    ):
         """
         :param cookies_json: JSON string of cookies from the accounts table
         :param account_id: UUID of the LinkedIn account in Supabase
         :param supabase: Supabase service-role client
+        :param proxy_url: Optional authenticated proxy URL (required for live execution)
+        :param timezone_name: Dynamic timezone string aligned with proxy geo (e.g. "America/New_York")
+        :param timezone_offset: Dynamic UTC offset in hours (e.g. -5.0)
         """
         self.account_id = account_id
         self.supabase = supabase
+        self.proxy_url = proxy_url
+        self.timezone_name = timezone_name or "America/New_York"
+        self.timezone_offset = timezone_offset if timezone_offset is not None else -5.0
         try:
             self.cookies_raw: List[Dict] = json.loads(cookies_json or "[]") if isinstance(cookies_json, str) else (cookies_json or [])
         except Exception:
@@ -135,6 +156,7 @@ class VoyagerScraper:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_headers(self) -> Dict[str, str]:
+        # Paranoia Layer 1 & 2: Dynamic timezone & locale matching account/proxy geo (Eradicates FLAW-14)
         return {
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -149,8 +171,8 @@ class VoyagerScraper:
                 "clientVersion": "1.13.5625",
                 "mpVersion": "1.13.5625",
                 "osName": "web",
-                "timezoneOffset": 5.5,
-                "timezone": "Asia/Kolkata",
+                "timezoneOffset": self.timezone_offset,
+                "timezone": self.timezone_name,
                 "deviceFormFactor": "DESKTOP",
                 "mpName": "voyager-web",
             }),
@@ -160,10 +182,16 @@ class VoyagerScraper:
         }
 
     def _build_cookies(self) -> Dict[str, str]:
-        return {
+        # Paranoia Layer 1: Preserve full browser cookie jar alongside auth session tokens
+        cookies = {
             "li_at": self.li_at,
             "JSESSIONID": f'"{self.jsessionid}"',
         }
+        for c in self.cookies_raw:
+            if isinstance(c, dict) and c.get("name") and c.get("value"):
+                if c["name"] not in cookies:
+                    cookies[c["name"]] = str(c["value"])
+        return cookies
 
     def _fetch_page(self, search_params: Dict, start: int) -> Optional[Dict]:
         """
@@ -171,6 +199,13 @@ class VoyagerScraper:
         Returns parsed JSON or None on soft failure.
         Raises VoyagerThrottled on 429/999.
         """
+        # Paranoia Layer 0 & 1: Hard Fail-Closed Proxy Requirement (Eradicates FLAW-01)
+        if not self.proxy_url and not os.environ.get("ALLOW_DIRECT_SCRAPE_FOR_TESTS"):
+            raise ProxyRequiredError(
+                f"[VoyagerScraper] Direct execution prohibited for account {self.account_id}. "
+                "An authenticated residential proxy is strictly required to prevent datacenter IP bans."
+            )
+
         variables = {
             "start": start,
             "count": PAGE_SIZE,
@@ -203,9 +238,6 @@ class VoyagerScraper:
             url += f"&network={urllib.parse.quote(search_params['network'])}"
         if search_params.get("pastCompany"):
             url += f"&pastCompany={urllib.parse.quote(search_params['pastCompany'])}"
-        # LinkedIn's real geoUrn/industry facets may require numeric LinkedIn URN IDs rather than
-        # free text for full accuracy — this passes the raw selected value through as-is;
-        # needs live-account verification before assuming exact-match filtering works perfectly.
         if search_params.get("geoUrn"):
             url += f"&geoUrn={urllib.parse.quote(search_params['geoUrn'])}"
         if search_params.get("industry"):
@@ -220,13 +252,26 @@ class VoyagerScraper:
         logger.info(f"[VoyagerScraper] Fetching page start={start}: {url[:120]}...")
 
         try:
-            with httpx.Client(
-                headers=self._build_headers(),
-                cookies=self._build_cookies(),
-                timeout=15.0,
-                follow_redirects=True,
-            ) as client:
-                resp = client.get(url)
+            # Paranoia Layer 0 & 1: curl_cffi exact Chrome 124 TLS JA4 & HTTP/2 impersonation (Eradicates FLAW-02)
+            if HAS_CURL_CFFI:
+                proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
+                s = curl_requests.Session(impersonate="chrome124")
+                resp = s.get(
+                    url,
+                    headers=self._build_headers(),
+                    cookies=self._build_cookies(),
+                    proxies=proxies,
+                    timeout=15.0,
+                )
+            else:
+                with httpx.Client(
+                    headers=self._build_headers(),
+                    cookies=self._build_cookies(),
+                    proxies=self.proxy_url if self.proxy_url else None,
+                    timeout=15.0,
+                    follow_redirects=True,
+                ) as client:
+                    resp = client.get(url)
 
             if resp.status_code in (429, 999):
                 raise VoyagerThrottled(

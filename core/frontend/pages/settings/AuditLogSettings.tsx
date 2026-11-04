@@ -1,5 +1,8 @@
 import { useState, useMemo } from "react";
-import { Activity, Clock, ShieldAlert, Users, User, Megaphone, AlertTriangle, ChevronDown, ChevronUp, Lock, Search, ServerCrash, Zap, Download } from "lucide-react";
+import { 
+  Activity, Clock, ShieldAlert, Users, User, Megaphone, AlertTriangle, 
+  ChevronDown, ChevronUp, Lock, Search, ServerCrash, Zap, Download, FileJson, Calendar, X 
+} from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/apiClient";
 import { formatDistanceToNow } from "date-fns";
@@ -43,7 +46,7 @@ const getCategoryStyles = (category: Category) => {
     case 'Deletion':
       return { icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/20', border: 'border-destructive/50 animate-pulse' };
     default:
-      return { icon: Activity, color: 'text-gray-500', bg: 'bg-gray-100/10', border: 'border-gray-200/50' };
+      return { icon: Activity, color: 'text-muted-foreground', bg: 'bg-muted/20', border: 'border-border/60' };
   }
 };
 
@@ -171,26 +174,45 @@ function LogEntryRow({ entry, isLatest }: { entry: any; isLatest: boolean }) {
 export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }) {
   const [filter, setFilter] = useState<Category | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState("");
-  const [displayCount, setDisplayCount] = useState(20);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [actorFilter, setActorFilter] = useState("");
+  const [offset, setOffset] = useState(0);
+  const pageSize = 50;
+  
+  const categoryParam = filter !== 'All' ? `&category=${encodeURIComponent(filter)}` : '';
+  const queryParam = searchQuery.trim() ? `&q=${encodeURIComponent(searchQuery.trim())}` : '';
   
   const { data, isLoading, error } = useSWR(
-    workspaceId ? `/api/workspaces/${workspaceId}/audit-log` : null,
+    workspaceId ? `/api/workspaces/${workspaceId}/audit-log?limit=${pageSize}&offset=${offset}${categoryParam}${queryParam}` : null,
     fetcher
   );
 
   const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_view_audit_logs?: boolean } }>(
-    '/api/elein/workspaces/billing',
+    workspaceId ? `/api/elein/workspaces/billing?workspace_id=${workspaceId}` : null,
     fetcher
   );
   const { openPaywall } = usePaywall();
   const isAuditLocked = Boolean(billing && !billing.tier_limits?.can_view_audit_logs) || Boolean(error && (error.status === 403 || String(error).includes('403')));
 
-  const entries = data?.entries || [];
+  const rawEntries = data?.entries || data?.audit_logs || [];
+  const total = data?.total !== undefined ? data.total : rawEntries.length;
+  const entries = useMemo(() => {
+    return rawEntries.map((e: any) => ({
+      ...e,
+      target_type: e.resource_type || e.target_type,
+      target_id: e.resource_id || e.target_id,
+      after_state: e.details || e.after_state,
+    }));
+  }, [rawEntries]);
 
   const filteredEntries = useMemo(() => {
     return entries.filter((e: any) => {
       const matchesCategory = filter === 'All' || getCategory(e.action) === filter;
       if (!matchesCategory) return false;
+      if (startDate && new Date(e.created_at) < new Date(startDate)) return false;
+      if (endDate && new Date(e.created_at) > new Date(endDate + "T23:59:59")) return false;
+      if (actorFilter && !(e.actor_id || "system").toLowerCase().includes(actorFilter.toLowerCase())) return false;
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
       const actionText = parseAction(e).toLowerCase();
@@ -199,13 +221,25 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
       const targetText = String(e.target_id || "").toLowerCase();
       return actionText.includes(q) || rawAction.includes(q) || actorText.includes(q) || targetText.includes(q);
     });
-  }, [entries, filter, searchQuery]);
-  
-  const displayedEntries = useMemo(() => {
-    return filteredEntries.slice(0, displayCount);
-  }, [filteredEntries, displayCount]);
+  }, [entries, filter, searchQuery, startDate, endDate, actorFilter]);
 
-  const hasMore = displayedEntries.length < filteredEntries.length;
+  const handleExportJson = () => {
+    if (filteredEntries.length === 0) {
+      toast.info("No audit logs to export");
+      return;
+    }
+    const jsonStr = JSON.stringify(filteredEntries, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `elein-audit-log-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success("Audit log exported to JSON");
+  };
 
   const handleExportCsv = () => {
     if (filteredEntries.length === 0) {
@@ -258,17 +292,69 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleExportCsv}
               disabled={isAuditLocked || filteredEntries.length === 0}
-              className="px-3.5 py-2 rounded-xl border border-border bg-background hover:bg-muted/60 text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+              className="px-3 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
               title="Export displayed audit events to spreadsheet CSV"
             >
               <Download size={13} />
-              <span>Export CSV</span>
+              <span>CSV</span>
             </button>
+            <button
+              type="button"
+              onClick={handleExportJson}
+              disabled={isAuditLocked || filteredEntries.length === 0}
+              className="px-3 py-1.5 rounded-xl border border-border bg-background hover:bg-muted text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
+              title="Export complete structured audit events to JSON"
+            >
+              <FileJson size={13} />
+              <span>JSON</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Date and Actor Filters */}
+        <div className="flex flex-wrap items-center gap-3 mb-6 p-3 rounded-xl bg-muted/20 border border-border text-xs">
+          <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
+            <Calendar size={13} />
+            <span>Date Range:</span>
+          </div>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="px-2.5 py-1 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-hidden"
+          />
+          <span className="text-muted-foreground">to</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="px-2.5 py-1 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-hidden"
+          />
+          {(startDate || endDate) && (
+            <button
+              type="button"
+              onClick={() => { setStartDate(""); setEndDate(""); }}
+              className="p-1 hover:bg-muted text-muted-foreground rounded cursor-pointer"
+              title="Clear date filter"
+            >
+              <X size={13} />
+            </button>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-muted-foreground font-medium">Actor:</span>
+            <input
+              type="text"
+              placeholder="Filter actor ID..."
+              value={actorFilter}
+              onChange={(e) => setActorFilter(e.target.value)}
+              className="px-2.5 py-1 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-hidden w-32"
+            />
           </div>
         </div>
 
@@ -282,7 +368,7 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setDisplayCount(20);
+                setOffset(0);
               }}
               disabled={isAuditLocked}
               className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all disabled:opacity-50"
@@ -297,7 +383,7 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
                 disabled={isAuditLocked}
                 onClick={() => {
                   setFilter(f);
-                  setDisplayCount(20);
+                  setOffset(0);
                 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
                   filter === f 
@@ -330,14 +416,14 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  <h3 className="text-sm font-bold text-foreground">
                     Growth Pro Feature: Real-time Compliance Audit Trail
                   </h3>
                   <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full border border-amber-500/30">
                     Pro Gated
                   </span>
                 </div>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-xl leading-relaxed">
+                <p className="text-xs text-muted-foreground mt-1 max-w-xl leading-relaxed">
                   Free tier workspaces do not record or display historical compliance audit trails. Upgrade to Growth Pro to access immutable actor logs, security event history, role changes, and member access tracking.
                 </p>
               </div>
@@ -398,28 +484,41 @@ export function AuditLogSettings({ workspaceId }: { workspaceId: string | null }
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {displayedEntries.map((entry: any, i: number) => (
+                  {filteredEntries.map((entry: any, i: number) => (
                     <LogEntryRow 
                       key={entry.id || i} 
                       entry={entry} 
-                      isLatest={i === 0 && filter === 'All' && !searchQuery} 
+                      isLatest={i === 0 && filter === 'All' && !searchQuery && offset === 0} 
                     />
                   ))}
                 </tbody>
               </table>
             </div>
             
-            {hasMore && (
-              <div className="flex justify-center mt-2">
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-muted-foreground">
+                Showing {entries.length > 0 ? offset + 1 : 0}-{Math.min(offset + entries.length, total)} of {total} {total === 1 ? 'event' : 'events'} (Page {Math.floor(offset / pageSize) + 1})
+              </span>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setDisplayCount(prev => prev + 20)}
-                  className="px-6 py-2.5 rounded-xl border border-border bg-background hover:bg-muted/40 text-sm font-medium text-foreground transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
+                  disabled={offset === 0}
+                  onClick={() => setOffset(prev => Math.max(0, prev - pageSize))}
+                  className="px-4 py-2 rounded-xl border border-border bg-background hover:bg-muted/40 text-xs font-medium text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-xs cursor-pointer"
                 >
-                  Load More Activity
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={offset + entries.length >= total || entries.length < pageSize}
+                  onClick={() => setOffset(prev => prev + pageSize)}
+                  className="px-4 py-2 rounded-xl border border-border bg-background hover:bg-muted/40 text-xs font-medium text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-xs cursor-pointer"
+                >
+                  Next
                 </button>
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>

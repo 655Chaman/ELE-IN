@@ -221,7 +221,7 @@ class TestStage20AsyncLeadsOperations(unittest.IsolatedAsyncioTestCase):
         # execute mock dispatch
         mock_table.execute = AsyncMock(side_effect=[
             MagicMock(data=[{"id": self.list_id, "name": "Async Active List"}]),
-            MagicMock(data=[{"id": "camp_2", "name": "Live Outreach Beta"}])
+            MagicMock(data=[{"id": "camp_2", "name": "Live Outreach Beta", "lead_list_id": self.list_id, "status": "ACTIVE"}])
         ])
 
         with self.assertRaises(HTTPException) as ctx:
@@ -247,9 +247,12 @@ class TestStage20AsyncLeadsOperations(unittest.IsolatedAsyncioTestCase):
         mock_table.in_.return_value = mock_table
         mock_table.delete.return_value = mock_table
 
-        # 1. list verification, 2. list_members deletion
+        # 1. list verification, 2. list_members deletion, 3. linked campaigns, 4. list_members count, 5. lead_lists update
         mock_table.execute = AsyncMock(side_effect=[
             MagicMock(data=[{"id": self.list_id}]),
+            MagicMock(data=[]),
+            MagicMock(data=[{"id": "camp_linked_1"}]),
+            MagicMock(count=0),
             MagicMock(data=[])
         ])
 

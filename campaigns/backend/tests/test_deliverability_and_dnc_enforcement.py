@@ -230,7 +230,9 @@ class TestDeliverabilityAndDNCEnforcement(unittest.TestCase):
             "status": "UNSUBSCRIBED",
             "is_unsubscribed": True,
         }
-        self.mock_supabase.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+        b = self.mock_supabase.table.return_value.select.return_value
+        b.eq.return_value = b
+        b.limit.return_value.execute.return_value = MagicMock(
             data=[mock_lead_row]
         )
 
@@ -272,7 +274,9 @@ class TestDeliverabilityAndDNCEnforcement(unittest.TestCase):
             "email": "angry_prospect@corp.com",
             "linkedin_url": "https://www.linkedin.com/in/angry-prospect",
         }
-        self.mock_supabase.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+        b = self.mock_supabase.table.return_value.select.return_value
+        b.eq.return_value = b
+        b.limit.return_value.execute.return_value = MagicMock(
             data=[mock_lead_row]
         )
 

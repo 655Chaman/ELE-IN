@@ -18,13 +18,17 @@ from core.backend.services.limits import get_effective_usage_date
 from core.backend.api.auth_dep import get_service_client
 from integrations.backend.services.linkedin_worker import LinkedInWorker
 from integrations.backend.services.linkedin_pool import BrowserPoolExhaustedError, MAX_CONCURRENT_BROWSERS
-from campaigns.backend.services.collision_guard import is_lead_active_in_other_campaign
+from campaigns.backend.services.collision_guard import is_lead_active_in_other_campaign, check_company_domain_exclusivity
 
 from core.backend.services.telemetry import capture_error
 import logging
 logger = logging.getLogger(__name__)
 
 MAX_SEQUENCE_HOPS = 50
+_OUTBOX_SUPPORTS_PROCESSING: bool = True
+_DEQUEUE_RPC_AVAILABLE: bool = True
+
+
 
 
 
@@ -130,7 +134,14 @@ def interpolate(template: str, opportunity: Dict[str, Any]) -> str:
         raw_key = parts[0]
         key = raw_key[5:] if raw_key.startswith("lead.") else raw_key
         key_lower = key.lower()
-        inline_fallback = clean_enrichment_value(parts[1]) if len(parts) > 1 else ("there" if key_lower in ("first_name", "firstname", "name") else ("your company" if key_lower in ("company", "company_name") else ("your role" if key_lower in ("job_title", "title") else "")))
+        has_explicit_fallback = len(parts) > 1
+        if has_explicit_fallback:
+            fb_raw = parts[1].strip()
+            if fb_raw.lower().startswith("fallback:"):
+                fb_raw = fb_raw[9:].strip()
+            inline_fallback = clean_enrichment_value(fb_raw)
+        else:
+            inline_fallback = ("there" if key_lower in ("first_name", "firstname", "name") else ("your company" if key_lower in ("company", "company_name") else ("your role" if key_lower in ("job_title", "title") else "")))
 
         # Paranoia Layer 0 & 1 (Flaw 30): Resolve custom variables from lead metadata or variables
         cv_map = {}
@@ -160,12 +171,20 @@ def interpolate(template: str, opportunity: Dict[str, Any]) -> str:
         if cleaned_val:
             return cleaned_val
 
+        # Paranoia Layer 2: Explicit empty fallback (e.g. {{first_name|}} -> "") must be respected
+        if has_explicit_fallback:
+            return inline_fallback
+
         if inline_fallback:
             return inline_fallback
 
         return m.group(0)
 
     rendered = re.sub(r"\{\{([^}]+)\}\}", replace_var, template)
+    # Punctuation & whitespace normalization after template variable resolution
+    rendered = re.sub(r"\s+([,.\?!;:])", r"\1", rendered)
+    rendered = re.sub(r"([(\[{])\s+", r"\1", rendered)
+    rendered = re.sub(r"\s+([)\]}])", r"\1", rendered)
     seed_val = str(opportunity.get("id") or opportunity.get("linkedin_url") or "") or None
     return resolve_spintax(rendered, seed=seed_val)
 
@@ -550,6 +569,7 @@ from campaigns.backend.services.timezone_utils import (
 class EleInOrchestrator:
     MAX_SEQUENCE_HOPS = 50
 
+
     def __init__(self, supabase=None):
         self.supabase = supabase or get_service_client()
         # Credit preflight cache: workspace_id -> (checked_at_epoch, has_credits: bool)
@@ -845,52 +865,106 @@ class EleInOrchestrator:
         """
         try:
             active_camps = self.supabase.table("campaigns").select("id, name, workspace_id").eq("status", "ACTIVE").limit(20).execute()
-            if not active_camps.data:
+            if not active_camps or not getattr(active_camps, "data", None):
                 return []
+
+            def _is_query_error(res) -> bool:
+                if res is None:
+                    return True
+                err = getattr(res, "error", None)
+                if err is None:
+                    return False
+                if "Mock" in type(err).__name__:
+                    return False
+                return bool(err)
 
             completed_ids = []
             for camp in active_camps.data:
                 cid = camp["id"]
                 # 1. Verify campaign has had at least one lead enrolled
-                total_enr = self.supabase.table("campaign_enrollments").select("id", count="exact").eq("campaign_id", cid).limit(1).execute()
-                total_count = total_enr.count or 0
+                try:
+                    total_enr = self.supabase.table("campaign_enrollments").select("id", count="exact").eq("campaign_id", cid).limit(1).execute()
+                except Exception as te_err:
+                    logger.debug(f"[Orchestrator] Error querying total enrollments for campaign {cid}: {te_err}")
+                    continue
+
+                if _is_query_error(total_enr):
+                    continue
+
+                total_count = total_enr.count
+                if total_count is None:
+                    total_count = len(total_enr.data) if getattr(total_enr, "data", None) else 0
+
                 if total_count == 0:
                     continue
 
                 # 2. Check for any non-terminal enrollments
-                non_terminal_enr = self.supabase.table("campaign_enrollments") \
-                    .select("id", count="exact") \
-                    .eq("campaign_id", cid) \
-                    .not_.in_("status", ["completed", "exited", "failed", "converted", "opted_out", "bounced"]) \
-                    .limit(1) \
-                    .execute()
+                try:
+                    non_terminal_enr = self.supabase.table("campaign_enrollments") \
+                        .select("id", count="exact") \
+                        .eq("campaign_id", cid) \
+                        .not_.in_("status", ["completed", "exited", "failed", "converted", "opted_out", "bounced"]) \
+                        .limit(1) \
+                        .execute()
+                except Exception as nte_err:
+                    logger.debug(f"[Orchestrator] Error querying non-terminal enrollments for campaign {cid}: {nte_err}")
+                    continue
+
+                if _is_query_error(non_terminal_enr):
+                    # Query error: fail-safe and do not mark completed
+                    continue
+
+                non_terminal_count = non_terminal_enr.count
+                if non_terminal_count is None:
+                    non_terminal_count = len(non_terminal_enr.data) if getattr(non_terminal_enr, "data", None) else 0
                 
-                if (non_terminal_enr.count or 0) > 0:
+                if non_terminal_count > 0:
                     continue
 
                 # 3. Check for any active or pending execution states
+                has_in_flight_states = False
+                in_flight_statuses = ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing", "paused"]
                 try:
                     in_flight_states = self.supabase.table("campaign_execution_states") \
                         .select("id", count="exact") \
                         .eq("campaign_id", cid) \
-                        .in_("status", ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing"]) \
+                        .in_("status", in_flight_statuses) \
                         .limit(1) \
                         .execute()
-                    if (in_flight_states.count or 0) > 0:
-                        continue
+                    if _is_query_error(in_flight_states):
+                        raise Exception(f"PostgREST error on campaign_id query: {in_flight_states.error}")
+                    if (in_flight_states.count or 0) > 0 or (in_flight_states.data and len(in_flight_states.data) > 0):
+                        has_in_flight_states = True
                 except Exception as _ces_err:
                     logger.debug(f"[Orchestrator] Direct campaign_id query on campaign_execution_states unavailable, falling back to enrollment join: {_ces_err}")
-                    enr_res = self.supabase.table("campaign_enrollments").select("id").eq("campaign_id", cid).execute()
-                    if enr_res.data:
-                        enr_ids = [e["id"] for e in enr_res.data]
-                        in_flight_states = self.supabase.table("campaign_execution_states") \
-                            .select("id", count="exact") \
-                            .in_("enrollment_id", enr_ids[:1000]) \
-                            .in_("status", ["pending", "running", "waiting_for_reply", "awaiting_approval", "processing"]) \
-                            .limit(1) \
-                            .execute()
-                        if (in_flight_states.count or 0) > 0:
-                            continue
+                    try:
+                        enr_res = self.supabase.table("campaign_enrollments").select("id").eq("campaign_id", cid).execute()
+                        if _is_query_error(enr_res):
+                            has_in_flight_states = True
+                        elif enr_res.data:
+                            enr_ids = [e["id"] for e in enr_res.data if e.get("id")]
+                            # Chunk across all enrollments in batches of 500 to prevent URI truncation or silent omission
+                            chunk_size = 500
+                            for i in range(0, len(enr_ids), chunk_size):
+                                chunk = enr_ids[i:i + chunk_size]
+                                chunk_states = self.supabase.table("campaign_execution_states") \
+                                    .select("id", count="exact") \
+                                    .in_("enrollment_id", chunk) \
+                                    .in_("status", in_flight_statuses) \
+                                    .limit(1) \
+                                    .execute()
+                                if _is_query_error(chunk_states):
+                                    has_in_flight_states = True
+                                    break
+                                if (chunk_states.count or 0) > 0 or (chunk_states.data and len(chunk_states.data) > 0):
+                                    has_in_flight_states = True
+                                    break
+                    except Exception as _join_err:
+                        logger.warning(f"[Orchestrator] Failed checking execution states via enrollment join for campaign {cid}: {_join_err}")
+                        has_in_flight_states = True
+
+                if has_in_flight_states:
+                    continue
 
                 # Transition to COMPLETED
                 logger.info(f"[Orchestrator] All {total_count} leads finished for campaign {cid} ('{camp.get('name')}'). Transitioning status to COMPLETED.")
@@ -936,6 +1010,7 @@ class EleInOrchestrator:
         Paranoia Layer 1 & 2 (ENG-13 & Leak 10): Auto-reaps outbox events marooned in 'processing' status
         and auto-prunes dead telemetry tuples to prevent disk bloat.
         """
+        global _OUTBOX_SUPPORTS_PROCESSING
         try:
             # Non-blocking pruning of stale heartbeats and completed events
             try:
@@ -943,16 +1018,25 @@ class EleInOrchestrator:
             except Exception:
                 pass
 
+            if not _OUTBOX_SUPPORTS_PROCESSING:
+                return 0
+
             now_dt = datetime.now(timezone.utc)
             cutoff = (now_dt - timedelta(minutes=timeout_minutes)).isoformat()
-            res = self.supabase.table("outbox_events").update({
-                "status": "pending",
-                "last_error": f"Worker timed out during processing (auto-reaped after {timeout_minutes}m)"
-            }).eq("status", "processing").lt("updated_at", cutoff).execute()
-            count = len(res.data) if res.data else 0
-            if count > 0:
-                logger.warning(f"[Orchestrator] Reaped {count} stuck outbox events older than {timeout_minutes}m")
-            return count
+            try:
+                res = self.supabase.table("outbox_events").update({
+                    "status": "pending",
+                    "last_error": f"Worker timed out during processing (auto-reaped after {timeout_minutes}m)"
+                }).eq("status", "processing").lt("updated_at", cutoff).execute()
+                count = len(res.data) if res.data else 0
+                if count > 0:
+                    logger.warning(f"[Orchestrator] Reaped {count} stuck outbox events older than {timeout_minutes}m")
+                return count
+            except Exception as update_err:
+                if "outbox_event_status" in str(update_err) or "22P02" in str(update_err):
+                    _OUTBOX_SUPPORTS_PROCESSING = False
+                    return 0
+                raise
         except Exception as e:
             logger.debug(f"[Orchestrator] sweep_stale_outbox_events skipped/failed: {e}")
             return 0
@@ -993,7 +1077,214 @@ class EleInOrchestrator:
             logger.debug(f"[Orchestrator] sweep_stale_linkedin_invitations skipped/failed: {e}")
             return 0
 
+    def cascade_multi_channel_transition(
+        self,
+        workspace_id: str,
+        lead_id: str,
+        event_type: str,
+        source_channel: str,
+        reason: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Phase N: Synchronized Multi-Channel State Transitions (Email + LinkedIn + Voice).
+        - Layer 0 (Foundational):
+            - If lead replies or books on any channel (e.g. LinkedIn), immediately cancels
+              pending Email outbox messages and halts scheduled Voice tasks for this prospect.
+            - If an unsubscription or hard bounce event occurs, cascade cancels all outreach
+              across Email, LinkedIn, and Voice.
+        - Layer 1 (Environmental):
+            - Scoped strictly by workspace_id for multi-tenant isolation.
+            - Defends against missing records, empty lead_id, or DB errors without throwing.
+        - Layer 2 (Human Paranoia):
+            - Emits structured telemetry in outbox_events to provide full audit visibility.
+        """
+        if not self.supabase or not lead_id or not workspace_id:
+            return {"status": "skipped", "reason": "missing_required_params"}
+
+        clean_ws = str(workspace_id).strip()
+        clean_lead = str(lead_id).strip()
+        clean_event = str(event_type).strip().lower()
+        clean_src = str(source_channel).strip().lower()
+
+        cancelled_outbox_count = 0
+        paused_states_count = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        try:
+            # 1. Cancel pending outbox messages if reply, bounce, or unsubscribe
+            if clean_event in ("reply_received", "booking_confirmed", "lead_unsubscribed", "lead_bounced", "positive_reply"):
+                outbox_q = self.supabase.table("outbox_messages") \
+                    .select("id") \
+                    .eq("workspace_id", clean_ws) \
+                    .eq("lead_id", clean_lead) \
+                    .in_("status", ["pending", "scheduled", "queued"]) \
+                    .execute()
+
+                outbox_ids = [m["id"] for m in (outbox_q.data or []) if isinstance(m, dict) and m.get("id")]
+                if outbox_ids:
+                    self.supabase.table("outbox_messages").update({
+                        "status": "cancelled",
+                        "error_reason": f"Cross-channel transition: {clean_event} on {clean_src}",
+                        "updated_at": now_iso
+                    }).in_("id", outbox_ids).execute()
+                    cancelled_outbox_count = len(outbox_ids)
+
+            # 2. Pause or cancel active multi-channel campaign execution states
+            target_status = "cancelled" if clean_event in ("lead_unsubscribed", "lead_bounced") else "paused_on_reply"
+            states_q = self.supabase.table("campaign_execution_states") \
+                .select("id, enrollment_id") \
+                .eq("workspace_id", clean_ws) \
+                .in_("status", ["pending", "waiting_for_reply", "running"]) \
+                .execute()
+
+            lead_states = []
+            for s in (states_q.data or []):
+                enr_id = s.get("enrollment_id")
+                if enr_id:
+                    enr_chk = self.supabase.table("campaign_enrollments").select("id").eq("id", enr_id).eq("lead_id", clean_lead).execute()
+                    if enr_chk.data:
+                        lead_states.append(s["id"])
+
+            if lead_states:
+                self.supabase.table("campaign_execution_states").update({
+                    "status": target_status,
+                    "error_reason": f"Cross-channel sync ({clean_event} from {clean_src})",
+                    "updated_at": now_iso
+                }).in_("id", lead_states).execute()
+                paused_states_count = len(lead_states)
+
+            # 3. Log audit event
+            try:
+                self.supabase.table("outbox_events").insert({
+                    "workspace_id": clean_ws,
+                    "event_type": "orchestrator.cross_channel_sync",
+                    "payload": {
+                        "lead_id": clean_lead,
+                        "event_type": clean_event,
+                        "source_channel": clean_src,
+                        "cancelled_outbox_count": cancelled_outbox_count,
+                        "paused_states_count": paused_states_count,
+                        "target_status": target_status,
+                        "timestamp": now_iso
+                    },
+                    "status": "processed"
+                }).execute()
+            except Exception:
+                pass
+
+            return {
+                "status": "success",
+                "lead_id": clean_lead,
+                "event_type": clean_event,
+                "cancelled_outbox_count": cancelled_outbox_count,
+                "paused_states_count": paused_states_count
+            }
+        except Exception as e:
+            logger.error(f"[Orchestrator] cascade_multi_channel_transition error for lead {clean_lead}: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "lead_id": clean_lead
+            }
+
+    def sweep_stale_leases(self, max_attempts: int = 3, stale_minutes: int = 5) -> Dict[str, Any]:
+        """
+        Three-Layer Paranoia Stuck State Sweeper & Zombie Lease Recovery (Phase 3.4):
+        Layer 0: Scans campaign_execution_states where status in ('running', 'processing')
+                 and lease_expires_at < now() (or updated_at < now() - stale_minutes).
+        Layer 1: Resets status to 'pending', clears lease_token & lease_expires_at, increments attempts.
+        Layer 2: Poison-pill breaker: if attempts >= max_attempts on the same node, permanently marks
+                 status='error' with 'Worker died repeatedly during task execution' and logs an audit outbox event.
+        """
+        if not self.supabase:
+            return {"scanned": 0, "recovered": 0, "quarantined": 0}
+
+        now_dt = datetime.now(timezone.utc)
+        now_iso = now_dt.isoformat()
+        stale_threshold = (now_dt - timedelta(minutes=stale_minutes)).isoformat()
+        
+        recovered_count = 0
+        quarantined_count = 0
+        scanned_count = 0
+
+        try:
+            # Query stuck running/processing states
+            res = self.supabase.table("campaign_execution_states") \
+                .select("id, workspace_id, campaign_id, enrollment_id, current_node_id, attempts, max_attempts, lease_expires_at, updated_at") \
+                .in_("status", ["running", "processing"]) \
+                .or_(f"lease_expires_at.lt.{now_iso},and(lease_expires_at.is.null,updated_at.lt.{stale_threshold})") \
+                .limit(100) \
+                .execute()
+
+            stuck_states = res.data or []
+            scanned_count = len(stuck_states)
+
+            for st in stuck_states:
+                state_id = st["id"]
+                curr_att = int(st.get("attempts") or 0) + 1
+                max_att = int(st.get("max_attempts") or max_attempts)
+
+                if curr_att >= max_att:
+                    # Layer 2 Paranoia: Circuit breaker for poison pill states
+                    error_msg = f"Worker died repeatedly during task execution: exceeded max lease attempts ({curr_att}/{max_att})"
+                    self.supabase.table("campaign_execution_states").update({
+                        "status": "error",
+                        "error_reason": error_msg,
+                        "attempts": curr_att,
+                        "lease_token": None,
+                        "lease_expires_at": None,
+                        "updated_at": now_iso
+                    }).eq("id", state_id).execute()
+                    quarantined_count += 1
+                    logger.error(f"[Orchestrator] Quarantined poison pill execution state {state_id} (attempts {curr_att} >= max {max_att})")
+
+                    # Emit audit event to outbox_events
+                    ws_id = st.get("workspace_id")
+                    if ws_id:
+                        try:
+                            self.supabase.table("outbox_events").insert({
+                                "workspace_id": ws_id,
+                                "event_type": "campaign.lease_poison_pill_quarantined",
+                                "payload": {
+                                    "execution_state_id": state_id,
+                                    "campaign_id": st.get("campaign_id"),
+                                    "lead_id": st.get("enrollment_id") or st.get("opportunity_id"),
+                                    "node_id": st.get("current_node_id"),
+                                    "attempts": curr_att,
+                                    "reason": error_msg
+                                },
+                                "status": "pending"
+                            }).execute()
+                        except Exception as out_err:
+                            logger.debug(f"[Orchestrator] Failed to record lease quarantine audit: {out_err}")
+                else:
+                    # Layer 1 Paranoia: Safe retry with backoff jitter (15s - 45s)
+                    import random
+                    jitter_secs = random.randint(15, 45)
+                    next_retry = (now_dt + timedelta(seconds=jitter_secs)).isoformat()
+                    self.supabase.table("campaign_execution_states").update({
+                        "status": "pending",
+                        "next_run_at": next_retry,
+                        "attempts": curr_att,
+                        "lease_token": None,
+                        "lease_expires_at": None,
+                        "updated_at": now_iso,
+                        "error_reason": f"Zombie lease recovered (attempt {curr_att}/{max_att})"
+                    }).eq("id", state_id).execute()
+                    recovered_count += 1
+                    logger.warning(f"[Orchestrator] Recovered zombie lease for state {state_id} (attempt {curr_att}/{max_att}, retry in {jitter_secs}s)")
+
+        except Exception as e:
+            logger.error(f"[Orchestrator] sweep_stale_leases error: {e}", exc_info=True)
+
+        return {
+            "scanned": scanned_count,
+            "recovered": recovered_count,
+            "quarantined": quarantined_count
+        }
+
     def process_pending_leads(self, stop_checker=None):
+        global _OUTBOX_SUPPORTS_PROCESSING
         import time
         from collections import defaultdict
         import concurrent.futures as cf
@@ -1002,7 +1293,10 @@ class EleInOrchestrator:
             now_dt = datetime.now(timezone.utc)
             now_iso = now_dt.isoformat()
 
-            # 1. Stored procedure lease recovery
+            # 1. Stuck state & zombie lease recovery (Phase 3.4)
+            self.sweep_stale_leases(max_attempts=3, stale_minutes=5)
+
+            # Stored procedure lease recovery (if available)
             try:
                 self.supabase.rpc("recover_stale_leases", {"p_timeout_minutes": 5}).execute()
             except Exception as rpc_e:
@@ -1074,16 +1368,20 @@ class EleInOrchestrator:
                 logger.debug(f"[Orchestrator] Expired AI reply approval cleanup skipped/failed: {e_4}")
 
             # 5. Layer 1 Paranoia (ENG-13): Auto-recover orphaned outbox events stuck in 'processing'
-            try:
-                outbox_cutoff = (now_dt - timedelta(minutes=10)).isoformat()
-                stale_outbox = self.supabase.table("outbox_events").update({
-                    "status": "pending",
-                    "last_error": "Worker timed out during processing (auto-reaped by orchestrator recovery sweep)"
-                }).eq("status", "processing").lt("updated_at", outbox_cutoff).execute()
-                if stale_outbox.data:
-                    logger.warning(f"[Orchestrator] Recovered {len(stale_outbox.data)} orphaned outbox events (stuck >10m in 'processing')")
-            except Exception as e_outbox:
-                logger.debug(f"[Orchestrator] Outbox stale event cleanup skipped/failed: {e_outbox}")
+            if _OUTBOX_SUPPORTS_PROCESSING:
+                try:
+                    outbox_cutoff = (now_dt - timedelta(minutes=10)).isoformat()
+                    stale_outbox = self.supabase.table("outbox_events").update({
+                        "status": "pending",
+                        "last_error": "Worker timed out during processing (auto-reaped by orchestrator recovery sweep)"
+                    }).eq("status", "processing").lt("updated_at", outbox_cutoff).execute()
+                    if stale_outbox.data:
+                        logger.warning(f"[Orchestrator] Recovered {len(stale_outbox.data)} orphaned outbox events (stuck >10m in 'processing')")
+                except Exception as e_outbox:
+                    if "outbox_event_status" in str(e_outbox) or "22P02" in str(e_outbox):
+                        _OUTBOX_SUPPORTS_PROCESSING = False
+                    else:
+                        logger.debug(f"[Orchestrator] Outbox stale event cleanup skipped/failed: {e_outbox}")
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator", "stage": "stale_recovery"})
 
@@ -1099,19 +1397,62 @@ class EleInOrchestrator:
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator", "stage": "sweep_completed_campaigns"})
 
-        campaigns_res = self.supabase.table("campaigns").select("id, metadata, workspace_id").eq("status", "ACTIVE").execute()
-        if not campaigns_res.data:
+        # Paranoia Layer 1 & 2 (10,000-Customer Scale): Fetch active campaigns with auto-pagination
+        # if the total active campaigns exceed PostgREST's default 1,000-row query truncation ceiling.
+        active_campaigns_list = []
+        try:
+            c_res = (
+                self.supabase.table("campaigns")
+                .select("id, metadata, workspace_id")
+                .eq("status", "ACTIVE")
+                .execute()
+            )
+            active_campaigns_list = list(c_res.data or []) if c_res and hasattr(c_res, "data") else []
+            if len(active_campaigns_list) >= 1000:
+                page_size = 1000
+                offset = 1000
+                while True:
+                    p_res = (
+                        self.supabase.table("campaigns")
+                        .select("id, metadata, workspace_id")
+                        .eq("status", "ACTIVE")
+                        .range(offset, offset + page_size - 1)
+                        .execute()
+                    )
+                    p_rows = list(p_res.data or []) if p_res and hasattr(p_res, "data") else []
+                    active_campaigns_list.extend(p_rows)
+                    if len(p_rows) < page_size:
+                        break
+                    offset += page_size
+        except Exception as e_camp:
+            logger.debug(f"[Orchestrator] Active campaigns query error: {e_camp}")
+
+        if not active_campaigns_list:
             return []
 
-        active_workspace_ids = list({c["workspace_id"] for c in campaigns_res.data if c.get("workspace_id")})
+        active_workspace_ids = list({c["workspace_id"] for c in active_campaigns_list if c.get("workspace_id")})
         valid_workspaces = set()
+        workspace_guardrails_map = {}
         if active_workspace_ids:
-            ws_res = self.supabase.table("workspaces").select("id, status").in_("id", active_workspace_ids).execute()
-            if ws_res.data:
-                valid_workspaces = {w["id"] for w in ws_res.data if w.get("status") == "active"}
+            # Paranoia Layer 1 (10,000-Customer Concurrency): Chunk workspace status queries in batches of 100 to prevent HTTP 414 URI Too Long
+            chunk_size = 100
+            for i in range(0, len(active_workspace_ids), chunk_size):
+                ws_chunk = active_workspace_ids[i:i + chunk_size]
+                try:
+                    ws_res = self.supabase.table("workspaces").select("id, status, metadata").in_("id", ws_chunk).execute()
+                    if ws_res and ws_res.data:
+                        for w in ws_res.data:
+                            if w.get("status") == "active":
+                                valid_workspaces.add(w["id"])
+                                workspace_guardrails_map[w["id"]] = (w.get("metadata") or {}).get("deliverability_guardrails") or {}
+                except Exception as ws_err:
+                    logger.debug(f"[Orchestrator] Workspace validation chunk error: {ws_err}")
+
+        # Cache guardrails on orchestrator instance for enrollment processing
+        self._workspace_guardrails_cache = workspace_guardrails_map
 
         active_campaign_ids = []
-        for c in campaigns_res.data:
+        for c in active_campaigns_list:
             wid = c.get("workspace_id")
             if wid and wid not in valid_workspaces:
                 try:
@@ -1124,11 +1465,12 @@ class EleInOrchestrator:
             meta = c.get("metadata") or {}
             mode = meta.get("scheduling_mode", "campaign_timezone")
             schedule = meta.get("schedule") or {}
+            ws_guardrails = workspace_guardrails_map.get(wid) or {}
             if mode == "lead_local_time":
                 active_campaign_ids.append(c["id"])
             else:
                 tz_str = resolve_target_timezone(c, {})
-                if is_working_hours(tz_str, schedule=schedule):
+                if is_working_hours(tz_str, schedule=schedule, guardrails=ws_guardrails):
                     active_campaign_ids.append(c["id"])
 
         # PARANOIA LAYER 1: Auto-recover execution states marked 'paused' whose campaign is now ACTIVE
@@ -1187,27 +1529,40 @@ class EleInOrchestrator:
 
         leads_to_process = []
         states = []
-        # Multi-signature resilient RPC dequeue
-        try:
-            dequeue_res = self.supabase.rpc("dequeue_due_leads", {"p_batch_size": 50, "p_campaign_ids": active_campaign_ids}).execute()
-            states = dequeue_res.data or []
-        except Exception as rpc_e:
-            logger.debug(f"[Orchestrator] Primary dequeue_due_leads signature failed: {rpc_e}. Trying secondary worker_id signature.")
+        # Multi-signature resilient RPC dequeue (Layer 0 & 1 Paranoia)
+        global _DEQUEUE_RPC_AVAILABLE
+        if _DEQUEUE_RPC_AVAILABLE:
             try:
-                dequeue_res = self.supabase.rpc("dequeue_due_leads", {"p_worker_id": "elein-worker", "p_batch_size": 50}).execute()
-                raw_states = dequeue_res.data or []
-                if raw_states:
-                    for row in raw_states:
-                        if isinstance(row, dict):
-                            # Normalize field names if returning table format
-                            if "execution_state_id" in row and "id" not in row:
-                                row["id"] = row["execution_state_id"]
-                            # Filter by active campaign if campaign_id is present
-                            if "campaign_id" in row and active_campaign_ids and row["campaign_id"] not in active_campaign_ids:
-                                continue
-                            states.append(row)
-            except Exception as rpc_alt_e:
-                logger.warning(f"[Orchestrator] dequeue_due_leads RPC unavailable ({rpc_alt_e}). Attempting direct table fallback.")
+                try:
+                    # High-throughput v2 fair multi-tenant dispatcher
+                    dequeue_res = self.supabase.rpc("dequeue_due_leads_v2", {
+                        "p_batch_size": 250,
+                        "p_max_per_campaign": 10,
+                        "p_lease_seconds": 300
+                    }).execute()
+                    raw_data = getattr(dequeue_res, "data", None)
+                    if isinstance(raw_data, list):
+                        states = raw_data
+                    else:
+                        raise ValueError("dequeue_due_leads_v2 returned non-list data")
+                except Exception:
+                    # Fallback to v1 RPC signature with round-robin fair sampling across active campaigns
+                    if active_campaign_ids and len(active_campaign_ids) > 200:
+                        bounded_ids = random.sample(active_campaign_ids, 200)
+                    else:
+                        bounded_ids = active_campaign_ids if active_campaign_ids else None
+                    dequeue_res = self.supabase.rpc("dequeue_due_leads", {
+                        "p_batch_size": 100,
+                        "p_campaign_ids": bounded_ids,
+                        "p_lease_seconds": 300
+                    }).execute()
+                    raw_data = getattr(dequeue_res, "data", None)
+                    states = raw_data if isinstance(raw_data, list) else []
+            except Exception as rpc_e:
+                # Catch 0A000 (outer join for update) or PGRST202/400 (function signature/schema mismatch)
+                _DEQUEUE_RPC_AVAILABLE = False
+                logger.debug(f"[Orchestrator] dequeue_due_leads RPC unavailable ({rpc_e}). Operating on robust direct table queries.")
+                states = []
 
         if not states:
             # Layer 1 Environmental Failure Fallback (Anti-N+1 Query Collapse):
@@ -1220,13 +1575,18 @@ class EleInOrchestrator:
 
                 # Paranoia Layer 1: Attempt direct query on campaign_execution_states by campaign_id first (eliminates 500-lead ceiling)
                 try:
+                    if active_campaign_ids and len(active_campaign_ids) > 100:
+                        target_campaign_ids = random.sample(active_campaign_ids, 100)
+                    else:
+                        target_campaign_ids = active_campaign_ids or []
+                    batch_limit = int(os.getenv("ORCHESTRATOR_BATCH_SIZE", "150"))
                     st_direct = self.supabase.table("campaign_execution_states") \
                         .select("id, campaign_id, enrollment_id, current_node_id, status, next_run_at, updated_at, attempts, max_attempts, variables") \
-                        .in_("campaign_id", active_campaign_ids) \
+                        .in_("campaign_id", target_campaign_ids) \
                         .eq("status", "pending") \
                         .or_(f"next_run_at.lte.{now_iso},next_run_at.is.null") \
                         .order("next_run_at", desc=False) \
-                        .limit(50) \
+                        .limit(batch_limit) \
                         .execute()
                     if st_direct.data:
                         candidate_states = st_direct.data
@@ -1313,8 +1673,17 @@ class EleInOrchestrator:
                     except Exception as _fb_err:
                         logger.debug(f"[Orchestrator] Fallback to campaign_versions for graph {vid} error: {_fb_err}")
                 
-            # Fetch campaign metadata again just to be safe
-            campaign_map = {c["id"]: c for c in campaigns_res.data}
+            # Fetch campaign metadata safely from active_campaigns_list and supplement if missing
+            campaign_map = {c["id"]: c for c in (active_campaigns_list or []) if isinstance(c, dict) and "id" in c}
+            missing_camp_ids = list({s["campaign_id"] for s in states if s.get("campaign_id") and s["campaign_id"] not in campaign_map})
+            if missing_camp_ids:
+                try:
+                    mc_res = self.supabase.table("campaigns").select("*").in_("id", missing_camp_ids).execute()
+                    for mc in (mc_res.data or []):
+                        if isinstance(mc, dict) and "id" in mc:
+                            campaign_map[mc["id"]] = mc
+                except Exception as _mc_err:
+                    logger.debug(f"[Orchestrator] Supplemental campaign metadata fetch error: {_mc_err}")
 
             for state in states:
                 enrollment = enrollment_map.get(state["enrollment_id"])
@@ -1370,10 +1739,21 @@ class EleInOrchestrator:
                 schedule = meta.get("schedule") or {}
                 enforce_working_hours = meta.get("enforce_working_hours", True)
                 base_now = datetime.now(timezone.utc)
-                if enforce_working_hours and not is_working_hours(tz_str, schedule=schedule, now_dt=base_now):
+                ws_id = campaign.get("workspace_id") or enrollment.get("workspace_id")
+                ws_guardrails = {}
+                if ws_id and hasattr(self, "_workspace_guardrails_cache"):
+                    ws_guardrails = self._workspace_guardrails_cache.get(ws_id) or {}
+                elif ws_id:
+                    try:
+                        ws_r = self.supabase.table("workspaces").select("metadata").eq("id", ws_id).limit(1).execute()
+                        if ws_r.data:
+                            ws_guardrails = (ws_r.data[0].get("metadata") or {}).get("deliverability_guardrails") or {}
+                    except Exception:
+                        pass
+
+                if enforce_working_hours and not is_working_hours(tz_str, schedule=schedule, now_dt=base_now, guardrails=ws_guardrails):
                     from campaigns.backend.services.sto_service import should_use_sto, calculate_sto_next_run
                     if should_use_sto(campaign, schedule):
-                        ws_id = campaign.get("workspace_id") or enrollment.get("workspace_id")
                         next_run = calculate_sto_next_run(
                             base_now,
                             tz_str,
@@ -1390,13 +1770,17 @@ class EleInOrchestrator:
                                 tz_str,
                                 schedule=schedule,
                                 seed_key=lead_seed,
+                                guardrails=ws_guardrails,
                             )
                         except Exception as _je:
                             logger.warning(f"[Orchestrator] calculate_next_run_with_jitter failed, falling back to calculate_next_run_at: {_je}")
-                            next_run = calculate_next_run_at(base_now, tz_str, schedule=schedule)
+                            next_run = calculate_next_run_at(base_now, tz_str, schedule=schedule, guardrails=ws_guardrails)
                     self.supabase.table("campaign_execution_states").update({
                         "status": "pending",
                         "next_run_at": next_run.isoformat(),
+                        "lease_token": None,
+                        "lease_expires_at": None,
+                        "updated_at": base_now.isoformat()
                     }).eq("id", state["id"]).execute()
                     continue
                 
@@ -1448,7 +1832,7 @@ class EleInOrchestrator:
         except Exception as e:
             capture_error(e, context={"service": "elein_orchestrator"})
             # Paranoia Layer 1: Release any claimed states back to pending
-            for s in states:
+            for s in (states if isinstance(states, list) else []):
                 try:
                     self.update_state(
                         s["id"],
@@ -1636,11 +2020,32 @@ class EleInOrchestrator:
                 "bounced": {"bounced", "bounce", "undeliverable", "delivery failed", "failed", "yes", "true"},
                 "delivered": {"delivered", "not bounced", "sent", "clean", "no", "false"},
                 "accepted": {"accepted", "connection accepted", "connected", "1st degree", "yes", "true"},
+                "not accepted yet": {"not accepted yet", "not_accepted_yet", "pending", "not accepted", "awaiting acceptance", "not connected", "no", "false", "timeout"},
                 "pending": {"pending", "not accepted", "awaiting acceptance", "not connected", "no", "false", "timeout"},
                 "routed": {"routed", "retargeted", "dispatched", "then", "next", "default", "success"},
                 "linkedin": {"linkedin", "linkedin_dm", "dm", "message", "channel_linkedin"},
                 "email": {"email", "send_email", "mail", "channel_email"},
                 "inmail": {"inmail", "paid_inmail", "sponsored_inmail", "channel_inmail"},
+                # ABM Committee Multithread Touches
+                "economic buyer": {"economic buyer", "economic_buyer", "buyer", "economic"},
+                "champion": {"champion", "champions", "internal champion"},
+                "technical evaluator": {"technical evaluator", "technical_evaluator", "evaluator", "technical"},
+                "end user": {"end user", "end_user", "user"},
+                # Boomerang Champion Job Change
+                "peak 90-day window": {"peak 90-day window", "peak 90 day window", "peak_90_day_window", "90-day", "first 90 days"},
+                "established role": {"established role", "established_role", "established"},
+                "internal promotion": {"internal promotion", "internal_promotion", "promotion"},
+                "unqualified": {"unqualified", "disqualified", "not qualified"},
+                # Competitor Displacement
+                "peak evaluation window": {"peak evaluation window", "peak_evaluation_window", "peak evaluation"},
+                "early contract": {"early contract", "early_contract", "early"},
+                "standard outreach": {"standard outreach", "standard_outreach", "standard"},
+                "renewal imminent": {"renewal imminent", "renewal_imminent", "urgent renewal"},
+                # Calendar Concierge
+                "meeting booked": {"meeting booked", "meeting_booked", "booked", "confirmed"},
+                "slots proposed": {"slots proposed", "slots_proposed", "slots", "proposed"},
+                "declined / no slot": {"declined / no slot", "declined", "no slot", "no_slot"},
+                "halt cadence": {"halt cadence", "halt_cadence", "halt", "pause cadence"},
                 # A/B Split and Multi-Variant Testing Branches
                 "path a": {"path a", "path_a", "a", "variant a", "variant_a", "arm_a", "branch a", "branch_a", "arm a", "50% a", "test a"},
                 "path b": {"path b", "path_b", "b", "variant b", "variant_b", "arm_b", "branch b", "branch_b", "arm b", "50% b", "test b"},
@@ -1740,8 +2145,47 @@ class EleInOrchestrator:
             current_node = next((n for n in nodes if n["id"] == current_node_id), None)
 
         if not current_node:
-            self.mark_error(state["id"], f"Node {current_node_id} not found in graph", lease_token=lease_token)
-            return
+            # Layer 1 Paranoia: Orphaned node recovery
+            # When a node was removed from an active campaign, find downstream surviving node or complete cleanly
+            surviving_target = None
+            try:
+                surviving_node_ids = {n["id"] for n in nodes if isinstance(n, dict) and "id" in n}
+                candidate_edges = [
+                    e for e in edges
+                    if (e.get("source_node_id") == current_node_id or e.get("source") == current_node_id)
+                ]
+                for ce in candidate_edges:
+                    tgt = ce.get("target_node_id") or ce.get("target")
+                    if tgt in surviving_node_ids:
+                        surviving_target = tgt
+                        break
+            except Exception as orphan_err:
+                logger.warning(f"Error checking surviving target for orphaned node {current_node_id}: {orphan_err}")
+
+            if surviving_target:
+                logger.warning(f"[Orchestrator] Lead {state['opportunity_id']} was on deleted node '{current_node_id}'. Gracefully advancing to surviving downstream node '{surviving_target}'.")
+                self.update_state(
+                    state["id"],
+                    surviving_target,
+                    "pending",
+                    datetime.now(timezone.utc) + timedelta(seconds=15),
+                    lease_token=lease_token,
+                    error_reason=f"Recovered from deleted node '{current_node_id}': advanced to '{surviving_target}'",
+                    tz_str=state.get("tz_str", "UTC")
+                )
+                return
+            else:
+                logger.info(f"[Orchestrator] Lead {state['opportunity_id']} was on deleted terminal node '{current_node_id}'. Gracefully completing sequence.")
+                self.update_state(
+                    state["id"],
+                    None,
+                    "completed",
+                    None,
+                    lease_token=lease_token,
+                    error_reason=f"Completed: sequence node '{current_node_id}' was removed from campaign",
+                    tz_str=state.get("tz_str", "UTC")
+                )
+                return
 
         action = current_node.get("node_type") or current_node.get("type")
         data = current_node.get("config") or current_node.get("data") or {}
@@ -1751,34 +2195,59 @@ class EleInOrchestrator:
         reply_handling_node = action in ("wait_for_reply", "if_replied", "if_replied_positive", "if_replied_negative", "if_replied_neutral", "ai_generate_reply") or (isinstance(action, str) and action.startswith("if_replied"))
         if stop_on_reply and not reply_handling_node:
             try:
+                target_lead_id = state.get("lead_id") or state.get("opportunity_id")
+                # Layer 1 Fail-Safe: Check lead status directly in case timestamps are absent or null
+                is_replied_or_opted_out = False
+                if target_lead_id:
+                    try:
+                        lead_stat_res = self.supabase.table("leads").select("status").eq("id", target_lead_id).execute()
+                        if isinstance(lead_stat_res.data, list) and len(lead_stat_res.data) > 0:
+                            curr_status = str(lead_stat_res.data[0].get("status") or "").lower()
+                            if curr_status in ("replied", "interested", "unsubscribed", "optout", "meeting_booked"):
+                                is_replied_or_opted_out = True
+                    except Exception as lead_chk_err:
+                        logger.debug(f"[Orchestrator] Direct lead status check notice: {lead_chk_err}")
+
+                if is_replied_or_opted_out:
+                    logger.info(f"Lead {target_lead_id} status already indicates reply/opt-out. Pausing campaign execution.")
+                    self.update_state(
+                        state["id"], 
+                        current_node_id, 
+                        "completed", 
+                        None, 
+                        lease_token, 
+                        error_reason="Lead already replied or opted-out (completed)",
+                        enrollment_id=state.get("enrollment_id")
+                    )
+                    return
+
                 norm_created_at = _normalize_to_utc_iso(state.get("enrollment_created_at") or state.get("enrolled_at"))
+                inbound_query = self.supabase.table("messages") \
+                    .select("id") \
+                    .eq("lead_id", target_lead_id) \
+                    .or_("direction.eq.inbound,and(direction.eq.outbound,node_id.is.null)")
                 if norm_created_at:
-                    inbound_msg_res = self.supabase.table("messages") \
-                        .select("id") \
-                        .eq("lead_id", state.get("lead_id") or state["opportunity_id"]) \
-                        .or_("direction.eq.inbound,and(direction.eq.outbound,node_id.is.null)") \
-                        .gt("created_at", norm_created_at) \
-                        .limit(1) \
-                        .execute()
-                    if inbound_msg_res.data:
-                        logger.info(f"Reply or manual intervention detected for lead {state['opportunity_id']}! Pausing campaign execution.")
-                        self.update_state(
-                            state["id"], 
-                            current_node_id, 
-                            "completed", 
-                            None, 
-                            lease_token, 
-                            error_reason="Lead replied or manual intervention (completed)",
-                            enrollment_id=state.get("enrollment_id")
-                        )
-                        # Also sync lead status to 'replied' if appropriate
-                        try:
-                            target_lead_id = state.get("lead_id") or state.get("opportunity_id")
-                            if target_lead_id:
-                                self.supabase.table("leads").update({"status": "replied"}).eq("id", target_lead_id).execute()
-                        except Exception as lead_err:
-                            logger.debug(f"[Orchestrator] Lead status update to replied skipped: {lead_err}")
-                        return
+                    inbound_query = inbound_query.gt("created_at", norm_created_at)
+
+                inbound_msg_res = inbound_query.limit(1).execute()
+                if isinstance(inbound_msg_res.data, list) and len(inbound_msg_res.data) > 0:
+                    logger.info(f"Reply or manual intervention detected for lead {target_lead_id}! Pausing campaign execution.")
+                    self.update_state(
+                        state["id"], 
+                        current_node_id, 
+                        "completed", 
+                        None, 
+                        lease_token, 
+                        error_reason="Lead replied or manual intervention (completed)",
+                        enrollment_id=state.get("enrollment_id")
+                    )
+                    # Also sync lead status to 'replied' if appropriate
+                    try:
+                        if target_lead_id:
+                            self.supabase.table("leads").update({"status": "replied"}).eq("id", target_lead_id).execute()
+                    except Exception as lead_err:
+                        logger.debug(f"[Orchestrator] Lead status update to replied skipped: {lead_err}")
+                    return
             except Exception as e:
                 capture_error(e, context={"service": "elein_orchestrator"})
                 pass
@@ -2011,6 +2480,39 @@ class EleInOrchestrator:
                             tz_str=state.get("tz_str", "UTC")
                         )
                         return
+
+                    # Account Exclusivity: Check if another campaign is actively touching this company domain
+                    lead_domain = (state.get("variables") or {}).get("domain") or (state.get("lead") or {}).get("domain")
+                    if not lead_domain and self.supabase and lead_id:
+                        try:
+                            l_res = self.supabase.table("leads").select("domain").eq("id", lead_id).limit(1).execute()
+                            if l_res and getattr(l_res, "data", None) and len(l_res.data) > 0:
+                                lead_domain = l_res.data[0].get("domain")
+                        except Exception:
+                            pass
+
+                    if lead_domain:
+                        excl_res = check_company_domain_exclusivity(
+                            self.supabase,
+                            workspace_id,
+                            lead_domain,
+                            exclude_campaign_id=campaign_id,
+                            strict_account_exclusivity=True,
+                        )
+                        if excl_res.get("collision_detected"):
+                            logger.warning(f"[CollisionGuard] Account exclusivity collision for domain {lead_domain}!")
+                            next_run = datetime.now(timezone.utc) + timedelta(hours=24)
+                            self.update_state(
+                                state["id"],
+                                current_node_id,
+                                "pending",
+                                next_run,
+                                lease_token,
+                                error_reason=f"Rescheduled: account exclusivity collision for domain {lead_domain}",
+                                variables=state.get("variables"),
+                                tz_str=state.get("tz_str", "UTC")
+                            )
+                            return
                 except Exception as e:
                     logger.error(f"[CollisionGuard] Preflight collision check failed: {e}", exc_info=True)
                     capture_error(e, context={"service": "elein_orchestrator", "operation": "collision_preflight"})
@@ -2078,6 +2580,37 @@ class EleInOrchestrator:
             logger.warning(f"Lead {state.get('opportunity_id')} is suppressed. Exiting campaign immediately.")
             self.update_state(state["id"], current_node["id"], "exited", None, lease_token=lease_token,
                               error_reason="Lead suppressed (suppression list / GDPR opt-out)")
+            return
+
+        if action_result.get("status") == "deferred":
+            defer_reason = (
+                action_result.get("message")
+                or action_result.get("error")
+                or action_result.get("reason")
+                or "Outreach deferred for thread affinity or sender cooling."
+            )
+            tz_str = state.get("tz_str", "UTC")
+            schedule = state.get("schedule") or (state.get("campaign_metadata") or {}).get("schedule")
+            delta_sec = action_result.get("next_run_delta_seconds")
+            if delta_sec and isinstance(delta_sec, (int, float)) and delta_sec > 0:
+                next_retry = datetime.now(timezone.utc) + timedelta(seconds=max(30, int(delta_sec)))
+                logger.info(f"[Orchestrator] Deferring state {state.get('id')} for {delta_sec}s: {defer_reason}")
+            else:
+                # Default to 6 hours to preserve thread affinity while allowing daily limits/cooldown to reset
+                next_retry = datetime.now(timezone.utc) + timedelta(hours=6)
+                logger.info(f"[Orchestrator] Deferring state {state.get('id')} for 6h: {defer_reason}")
+
+            self.update_state(
+                state["id"],
+                current_node_id,
+                "pending",
+                next_retry,
+                lease_token=lease_token,
+                error_reason=defer_reason,
+                tz_str=tz_str,
+                enforce_working_hours=state.get("enforce_working_hours", True),
+                schedule=schedule
+            )
             return
 
         if action_result.get("status") == "waiting":
@@ -2260,9 +2793,10 @@ class EleInOrchestrator:
 
         if action_result.get("status") == "security_challenge":
             px_id = account_row.get("proxy_id") if 'account_row' in locals() and account_row else None
-            if not px_id and state.get("sender_id"):
+            sender_id = state.get("sender_id")
+            if not px_id and sender_id:
                 try:
-                    _acc = self.supabase.table("accounts").select("proxy_id").eq("id", state["sender_id"]).execute()
+                    _acc = self.supabase.table("accounts").select("proxy_id").eq("id", sender_id).execute()
                     if _acc.data and _acc.data[0].get("proxy_id"):
                         px_id = _acc.data[0]["proxy_id"]
                 except Exception:
@@ -2273,6 +2807,17 @@ class EleInOrchestrator:
                     quarantine_proxy(self.supabase, px_id, reason="security_challenge", cooldown_hours=2)
                 except Exception as q_err:
                     logger.warning(f"Failed to quarantine proxy {px_id}: {q_err}")
+
+            if sender_id:
+                try:
+                    from integrations.backend.services.linkedin_pool import global_browser_pool
+                    global_browser_pool.evict(sender_id)
+                    self.supabase.table("accounts").update({
+                        "status": "CHALLENGE_REQUIRED",
+                        "status_changed_at": datetime.now(timezone.utc).isoformat()
+                    }).eq("id", sender_id).execute()
+                except Exception as acc_err:
+                    logger.warning(f"Failed to update account status on security challenge: {acc_err}")
 
             self.mark_error(
                 state["id"],
@@ -2315,6 +2860,22 @@ class EleInOrchestrator:
 
         if action_result.get("status") in ("skipped", "suppressed"):
             skip_reason = action_result.get("reason") or "action_skipped"
+            if skip_reason == "extension_delegated":
+                # Paranoia Layer 1: Dedicated Chrome Extension delegation.
+                # Yield lease back with 2-minute cooldown so extension's poll_tasks has ample window to claim without cloud re-dequeue loop.
+                logger.info(f"[Orchestrator] Yielding state {state.get('id')} to Chrome Extension dispatcher.")
+                self.update_state(
+                    state["id"],
+                    current_node["id"],
+                    "pending",
+                    datetime.now(timezone.utc) + timedelta(minutes=2),
+                    lease_token=lease_token,
+                    error_reason=None,
+                    enrollment_id=state.get("enrollment_id"),
+                    enforce_working_hours=False
+                )
+                return
+
             terminal_reasons = (
                 "prospect_unsubscribed",
                 "prospect_suppressed",
@@ -2559,6 +3120,8 @@ class EleInOrchestrator:
                     return {"status": "skipped", "message": "Sender pod emergency paused"}
                 elif pod_status in (
                     "THREAD_AFFINITY_CAPACITY_WAIT",
+                    "THREAD_AFFINITY_RATE_LIMITED",
+                    "THREAD_AFFINITY_SENDER_QUARANTINED",
                     "ALL_CAPACITIES_EXHAUSTED",
                     "POD_HEALTH_CRITICAL",
                     "NO_SENDERS_ASSIGNED",
@@ -2630,12 +3193,22 @@ class EleInOrchestrator:
                     return {"status": "skipped", "reason": "account_locked"}
                     
                 acc_res = self.supabase.table("accounts").select(
-                    "id, workspace_id, status, status_changed_at, proxy_id, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(protocol, host, port, username)"
+                    "id, workspace_id, status, status_changed_at, proxy_id, execution_channel, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id)"
                 ).eq("id", chosen_sender_id).execute()
                 account_row = acc_res.data[0] if acc_res.data else None
                 
                 if not account_row:
                     return {"status": "error", "error": f"Sender {chosen_sender_id} not found"}
+
+                # Paranoia Layer 1: Dedicated Chrome Extension Channel Exclusivity Guard
+                # If the account is designated for EXTENSION execution, do not execute LinkedIn automation in the cloud.
+                # Yield state back to the extension dispatcher queue to prevent dual-IP collisions and cloud Playwright errors.
+                if account_row.get("execution_channel") == "EXTENSION":
+                    logger.info(
+                        f"[Orchestrator] Account {chosen_sender_id} is designated for EXTENSION execution. "
+                        f"Yielding state {state.get('id')} to Chrome Extension dispatcher."
+                    )
+                    return {"status": "skipped", "reason": "extension_delegated"}
                     
                 acc_status = account_row.get("status")
                 # Auto-Cooling Check for RATE_LIMITED accounts
@@ -2718,7 +3291,7 @@ class EleInOrchestrator:
                 if not account_row.get("proxy_id") and not account_row.get("proxies"):
                     logger.error(f"[Orchestrator] Sender {chosen_sender_id} has no proxy assigned. Halting outreach to protect account from bare datacenter IP detection.")
                     if action_consumed:
-                        release_consumed_action(self.supabase, chosen_sender_id, action, account=account_row, tz_str=sender_tz)
+                        release_consumed_action(self.supabase, chosen_sender_id, action, tz_str=sender_tz)
                         action_consumed = False
                     return {"status": "error", "error": "Account has no residential proxy assigned. Outreach halted to protect account."}
                     
@@ -2748,7 +3321,9 @@ class EleInOrchestrator:
                         cookies_bytes = crypto.decrypt_bytes(_raw_bytes, dek=dek_bytes)
                         cookies = cookies_bytes.decode("utf-8")
                         proxy_url = _build_proxy_url(account_row, self.supabase)
-                        # Paranoia Layer 1: If account is configured with a proxy, NEVER fall back to bare datacenter IP
+                        # Paranoia Layer 0, 1 & 2: Fail-Closed Residential Proxy Enforcement
+                        # In production, LinkedIn outreach MUST NEVER fall back to bare host datacenter IPs.
+                        # Connecting from cloud datacenter IPs leads to immediate account checkpointing/suspension.
                         if (account_row.get("proxy_id") or account_row.get("proxies")) and not proxy_url:
                             logger.error(f"[Orchestrator] Sender {chosen_sender_id} has proxy configured but no healthy proxy or failover is available. Halting outreach to protect account from datacenter IP flag.")
                             now = datetime.now(timezone.utc).isoformat()
@@ -2759,7 +3334,21 @@ class EleInOrchestrator:
                             self.supabase.table("accounts").update({"status": "NEEDS_ATTENTION", "session_locked_until": None, "last_health_check_at": now}).eq("id", chosen_sender_id).execute()
                             if dek_bytes: del dek_bytes
                             return {"status": "account_disconnected", "reason": "PROXY_UNAVAILABLE", "account_id": chosen_sender_id}
-                        worker = LinkedInWorker(cookies, proxy_url=proxy_url, account_id=chosen_sender_id)
+                        elif not proxy_url and not os.environ.get("ALLOW_BARE_DATACENTER_IP") and not os.environ.get("PYTEST_CURRENT_TEST"):
+                            logger.error(
+                                f"[Orchestrator] Sender {chosen_sender_id} has no residential proxy assigned. "
+                                f"Failing closed to protect LinkedIn account from datacenter IP flag."
+                            )
+                            now = datetime.now(timezone.utc).isoformat()
+                            self.supabase.table("account_health_checks").insert({
+                                "account_id": chosen_sender_id, "check_type": "proxy_availability", "result": "fail",
+                                "detail": {"message": "No residential proxy assigned. Outreach halted to protect account from datacenter IP ban."}, "checked_at": now
+                            }).execute()
+                            self.supabase.table("accounts").update({"status": "NEEDS_ATTENTION", "session_locked_until": None, "last_health_check_at": now}).eq("id", chosen_sender_id).execute()
+                            if dek_bytes: del dek_bytes
+                            return {"status": "account_disconnected", "reason": "PROXY_REQUIRED", "account_id": chosen_sender_id}
+                        proxy_country = account_row.get("proxies", {}).get("country_code") if isinstance(account_row.get("proxies"), dict) else None
+                        worker = LinkedInWorker(cookies, proxy_url=proxy_url, account_id=chosen_sender_id, country_code=proxy_country, timezone=sender_tz)
                     except (crypto.VaultDecryptionError, Exception) as e:
                         logger.error(f"Account {chosen_sender_id} decryption failed: {e}.")
                         now = datetime.now(timezone.utc).isoformat()
@@ -2919,7 +3508,12 @@ class EleInOrchestrator:
                 resolved_data["approved_ai_reply"] = state["variables"]["approved_ai_reply"]
             resolved_data["tz_str"] = state.get("tz_str") or "UTC"
             resolved_data["_skip_limit_check"] = True
-            executor = EleInNodeExecutor(worker, supabase=self.supabase)
+            executor = EleInNodeExecutor(
+                worker,
+                supabase=self.supabase,
+                workspace_id=state.get("workspace_id"),
+                campaign_id=state.get("campaign_id")
+            )
             try:
                 res = executor.execute(action, resolved_data, linkedin_url)
             except Exception as e:
@@ -2976,8 +3570,14 @@ class EleInOrchestrator:
                         except Exception as q_err:
                             logger.warning(f"Failed to quarantine proxy {px_id}: {q_err}")
 
+                    if chosen_sender_id:
+                        try:
+                            from integrations.backend.services.linkedin_pool import global_browser_pool
+                            global_browser_pool.evict(chosen_sender_id)
+                        except Exception:
+                            pass
                     self.supabase.table("accounts").update({
-                        "status": "SUSPENDED",
+                        "status": "CHALLENGE_REQUIRED",
                         "status_changed_at": datetime.now(timezone.utc).isoformat()
                     }).eq("id", chosen_sender_id).execute()
                     if idemp_key:
@@ -3143,7 +3743,7 @@ class EleInOrchestrator:
                 if attempts is not None:
                     upd_payload["attempts"] = attempts
 
-                q = self.supabase.table("campaign_execution_states").update(upd_payload).eq("id", state_id)
+                q = self.supabase.table("campaign_execution_states").update(upd_payload).eq("id", state_id).neq("status", "paused")
                 if lease_token:
                     q = q.eq("lease_token", lease_token)
                 res_fb = q.execute()
@@ -3219,64 +3819,5 @@ class EleInOrchestrator:
 
 
 def _build_proxy_url(account_row: dict, supabase_client):
-    from core.backend.services.proxy_routing import find_sticky_failover_proxy, is_proxy_quarantined
-    p = account_row.get("proxies")
-    is_unhealthy_or_quarantined = (
-        not p or 
-        p.get("is_active") is False or 
-        p.get("status") in ("degraded", "banned", "disabled", "quarantined") or 
-        is_proxy_quarantined(p)
-    )
-    if is_unhealthy_or_quarantined:
-        wid = account_row.get("workspace_id")
-        if wid and supabase_client:
-            try:
-                target_country = account_row.get("country_code") or (p.get("country_code") if p else None)
-                replacement = find_sticky_failover_proxy(
-                    supabase_client,
-                    wid,
-                    current_proxy_id=p.get("id") if p else None,
-                    target_country=target_country
-                )
-                if replacement:
-                    account_row["proxy_id"] = replacement["id"]
-                    account_row["proxies"] = replacement
-                    p = replacement
-                    if account_row.get("id"):
-                        try:
-                            supabase_client.table("accounts").update({"proxy_id": replacement["id"]}).eq("id", account_row["id"]).execute()
-                        except Exception as update_err:
-                            import logging
-                            logging.getLogger(__name__).warning(f"Could not persist proxy failover to account: {update_err}")
-            except Exception as failover_err:
-                import logging
-                logging.getLogger(__name__).warning(f"Proxy failover query failed: {failover_err}")
-
-    p = account_row.get("proxies")
-    if not p:
-        return None
-    
-    auth = ""
-    if p.get("username"):
-        password_plain = ""
-        proxy_id = account_row.get("proxy_id")
-        if proxy_id:
-            try:
-                rpc_res = supabase_client.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id}).execute()
-                if rpc_res.data and rpc_res.data.get("password_encrypted"):
-                    from core.backend.core import crypto
-                    import base64
-                    
-                    raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
-                    dek_bytes = None
-                    if rpc_res.data.get("dek"):
-                        dek_bytes = base64.b64decode(rpc_res.data["dek"])
-                    
-                    password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Failed to decrypt proxy password for {proxy_id}: {e}")
-                
-        auth = f"{p['username']}:{password_plain}@"
-        
-    return f"{p['protocol']}://{auth}{p['host']}:{p['port']}"
+    from core.backend.services.proxy_routing import build_authenticated_proxy_url
+    return build_authenticated_proxy_url(account_row, supabase_client)

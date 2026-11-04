@@ -17,6 +17,7 @@ import ShinyText from "@/components/ShinyText";
 import SpotlightCard from "@/components/SpotlightCard";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { CustomSelect } from "@/components/ui/select";
+import { StatusPill } from "@/components/StatusPill";
 
 interface AgencyMember {
   id: string;
@@ -106,7 +107,7 @@ interface AgencyStatement {
 
 export function EleInAgencySettings() {
   const navigate = useNavigate();
-  const { openPaywall } = usePaywall();
+  const { openPaywall, isPro, tier } = usePaywall();
   const { myAgencies, refreshWorkspaces, setActiveWorkspaceId } = useWorkspace();
   
   const [activeAgencyId, setActiveAgencyId] = useState<string | null>(null);
@@ -345,6 +346,7 @@ export function EleInAgencySettings() {
         body: JSON.stringify({
           client_workspace_id: allocationModal.clientWorkspaceId,
           amount: allocationAmount,
+          idempotency_key: crypto.randomUUID(),
           note: allocationNote || (allocationModal.type === 'allocate' ? 'Manual credit delegation' : 'Reclaimed credits to master pool')
         })
       });
@@ -402,9 +404,13 @@ export function EleInAgencySettings() {
     }
   };
 
-  // Create new Agency from Zero-State (Layer 0)
+  // Create new Agency from Zero-State (Layer 0, 1 & 2 Paranoia)
   const handleCreateAgency = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPro) {
+      openPaywall({ featureName: 'Agency Management Hub' });
+      return;
+    }
     const cleanName = newAgencyName.trim();
     if (!cleanName) return;
 
@@ -631,27 +637,47 @@ export function EleInAgencySettings() {
               Manage dozens of client LinkedIn outreach campaigns from one unified roof. Strict workspace isolation guarantees client leads and sender accounts never collide.
             </p>
 
-            <form onSubmit={handleCreateAgency} className="w-full max-w-md space-y-4">
-              <div className="text-left">
-                <label className="text-xs font-bold text-foreground block mb-1.5">Agency Organization Name</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. Apex Outbound & Growth Partners"
-                  value={newAgencyName}
-                  onChange={e => setNewAgencyName(e.target.value)}
-                  className="w-full bg-background border border-border/80 rounded-xl px-4 py-3 text-xs font-semibold text-foreground focus:outline-none focus:border-primary focus:ring-1 ring-primary shadow-xs"
-                />
+            {!isPro ? (
+              <div className="w-full max-w-md p-6 rounded-xl border border-primary/30 bg-primary/[0.03] space-y-4">
+                <div className="flex items-center justify-center gap-2 text-primary font-bold text-sm">
+                  <ShieldCheck size={18} />
+                  <span>Growth Pro or Agency Plan Required</span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Your current workspace is on the <span className="font-semibold text-foreground uppercase">{tier}</span> tier. Creating unified multi-client agency hubs, sub-workspace client portfolios, and pooled credit redistribution require a Growth Pro, Agency, or Enterprise subscription.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openPaywall({ featureName: 'Agency Management Hub' })}
+                  className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Sparkles size={15} />
+                  <span>Upgrade to Unlock Agency Hub</span>
+                </button>
               </div>
+            ) : (
+              <form onSubmit={handleCreateAgency} className="w-full max-w-md space-y-4">
+                <div className="text-left">
+                  <label className="text-xs font-bold text-foreground block mb-1.5">Agency Organization Name</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Apex Outbound & Growth Partners"
+                    value={newAgencyName}
+                    onChange={e => setNewAgencyName(e.target.value)}
+                    className="w-full bg-background border border-border/80 rounded-xl px-4 py-3 text-xs font-semibold text-foreground focus:outline-none focus:border-primary focus:ring-1 ring-primary shadow-xs"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                disabled={isCreatingAgency || !newAgencyName.trim()}
-                className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 transition-colors shadow-xs disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isCreatingAgency ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                <span>Create Agency & Initialize Clients</span>
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={isCreatingAgency || !newAgencyName.trim()}
+                  className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs rounded-xl hover:bg-primary/90 transition-colors shadow-xs disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isCreatingAgency ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                  <span>Create Agency & Initialize Clients</span>
+                </button>
+              </form>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full mt-10 pt-8 border-t border-border/60 text-left">
               <div className="p-3 bg-muted/30 rounded-xl border border-border/40">
@@ -789,65 +815,39 @@ export function EleInAgencySettings() {
 
         {/* ─── TABS NAVIGATION ──────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 border-b border-border/60 pb-3 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('clients')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'clients' 
-                ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            <Briefcase size={14} />
-            <span>Client Workspaces ({clients.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('team')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'team' 
-                ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            <UserPlus size={14} />
-            <span>Agency Team & RBAC ({members.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('whitelabel')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'whitelabel' 
-                ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            <Palette size={14} />
-            <span>White-Label Portal & Branding</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('credits')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'credits' 
-                ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            <Coins size={14} />
-            <span>Credit Delegations & Quotas</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('statements')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'statements' 
-                ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            <Receipt size={14} />
-            <span>Invoicing & Statements ({statements.length})</span>
-          </button>
+          {[
+            { id: 'clients', label: `Client Workspaces (${clients.length})`, icon: Briefcase },
+            { id: 'team', label: `Agency Team & RBAC (${members.length})`, icon: UserPlus },
+            { id: 'whitelabel', label: 'White-Label Portal & Branding', icon: Palette },
+            { id: 'credits', label: 'Credit Delegations & Quotas', icon: Coins },
+            { id: 'statements', label: `Invoicing & Statements (${statements.length})`, icon: Receipt },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`relative flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? 'text-primary-foreground font-bold'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="agency-settings-tab"
+                    className="absolute inset-0 bg-primary rounded-xl shadow-sm shadow-primary/20"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  <Icon size={14} />
+                  <span>{tab.label}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* ─── TAB 1: CLIENT WORKSPACES MATRIX ───────────────────────────────── */}
@@ -927,9 +927,7 @@ export function EleInAgencySettings() {
                               </div>
                             </div>
 
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                              Active
-                            </span>
+                            <StatusPill status="active" size="xs" />
                           </div>
 
                           {/* Client Telemetry Ribbon */}
@@ -1176,7 +1174,7 @@ export function EleInAgencySettings() {
                       onChange={e => setWhitelabelDomain(e.target.value)}
                       className="w-full bg-background border border-border/60 rounded-xl px-3.5 py-2 text-xs font-mono text-foreground focus:outline-none focus:border-primary"
                     />
-                    <p className="text-[11px] text-muted-foreground mt-1">Point your DNS CNAME record to cname.elein.ai</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Point your DNS CNAME record to cname.ele-in.com</p>
                   </div>
 
                   <div>

@@ -215,7 +215,9 @@ class TestStage9OrchestratorLifecycleHardening(unittest.TestCase):
 
         mock_upd_query = MagicMock()
         mock_upd_query.execute.return_value = MagicMock(data=[])  # 0 rows updated
-        self.mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value = mock_upd_query
+        mock_upd_query.eq.return_value = mock_upd_query
+        mock_upd_query.neq.return_value = mock_upd_query
+        self.mock_supabase.table.return_value.update.return_value = mock_upd_query
 
         res = self.orchestrator.update_state(
             state_id=self.state_id,

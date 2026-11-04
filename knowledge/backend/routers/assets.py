@@ -62,6 +62,8 @@ def _mark_asset_failed_safe(supabase: Client, asset_id: str, error_text: str):
             except Exception:
                 pass
 
+@router.get("", response_model=List[Dict])
+@router.get("/", response_model=List[Dict])
 @router.get("/knowledge/assets", response_model=List[Dict])
 def get_knowledge_base(
     supabase: Client = Depends(get_supabase_client),
@@ -460,21 +462,35 @@ def clone_community_template(
     return clone_res.data[0]
 
 # ── Admin (Templates Curation) ────────────────────────────────────────────────
-from core.backend.api.auth_dep import get_service_client
+from core.backend.api.auth_dep import get_service_client, require_superadmin
 
 @router.get("/templates/admin/pending", response_model=List[Dict])
-def get_pending_templates(service_client: Client = Depends(get_service_client)):
-    """Fetch all pending templates for review (Requires admin/service role in real app)."""
+def get_pending_templates(
+    admin_user_id: str = Depends(require_superadmin),
+    service_client: Client = Depends(get_service_client)
+):
+    """Fetch all pending templates for review (Requires superadmin authorization)."""
     res = service_client.table("templates").select("*").eq("status", "pending").order("created_at", desc=False).execute()
-    return res.data
+    return res.data or []
 
 @router.post("/templates/admin/{template_id}/approve", response_model=Optional[Dict])
 def approve_template(
     template_id: str,
+    admin_user_id: str = Depends(require_superadmin),
     service_client: Client = Depends(get_service_client)
 ):
-    """Approve a template (set status to 'public')."""
-    res = service_client.table("templates").update({"status": "public"}).eq("id", template_id).execute()
+    """Approve a template (set status to 'public' with state machine validation)."""
+    # Layer 1 Paranoia: Check current template exists and is in 'pending' status
+    chk = service_client.table("templates").select("id, status, workspace_id").eq("id", template_id).execute()
+    if not chk.data:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if chk.data[0].get("status") not in ("pending", "draft"):
+        raise HTTPException(status_code=400, detail=f"Cannot approve template with status '{chk.data[0].get('status')}'. Must be 'pending'.")
+
+    res = service_client.table("templates").update({
+        "status": "public",
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", template_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Template not found")
     return res.data[0]
@@ -482,10 +498,21 @@ def approve_template(
 @router.post("/templates/admin/{template_id}/reject", response_model=Optional[Dict])
 def reject_template(
     template_id: str,
+    admin_user_id: str = Depends(require_superadmin),
     service_client: Client = Depends(get_service_client)
 ):
-    """Reject a template (set status to 'rejected')."""
-    res = service_client.table("templates").update({"status": "rejected"}).eq("id", template_id).execute()
+    """Reject a template (set status to 'rejected' with state machine validation)."""
+    # Layer 1 Paranoia: Check current template exists and is in 'pending' status
+    chk = service_client.table("templates").select("id, status, workspace_id").eq("id", template_id).execute()
+    if not chk.data:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if chk.data[0].get("status") not in ("pending", "draft"):
+        raise HTTPException(status_code=400, detail=f"Cannot reject template with status '{chk.data[0].get('status')}'. Must be 'pending'.")
+
+    res = service_client.table("templates").update({
+        "status": "rejected",
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", template_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Template not found")
     return res.data[0]

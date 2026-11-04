@@ -9,6 +9,9 @@ class AISuggestRequest(BaseModel):
     campaign_context: Optional[str] = Field("", max_length=5000)
     is_simulation: Optional[bool] = Field(False)
     idempotency_key: Optional[str] = Field(None, max_length=200)
+    objection_type: Optional[str] = Field(None, max_length=100)
+    objection_playbook: Optional[str] = Field(None, max_length=2000)
+    detected_competitor: Optional[str] = Field(None, max_length=100)
 
 class IntentRequest(BaseModel):
     message_text: str = Field(..., max_length=2000)

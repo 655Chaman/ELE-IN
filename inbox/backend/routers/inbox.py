@@ -13,7 +13,7 @@ from integrations.backend.services.voyager_scraper import VoyagerScraper, DailyL
 from pydantic import BaseModel
 from supabase import Client, AsyncClient
 
-from core.backend.api.auth_dep import get_supabase_client, verify_token_and_get_user_id, get_async_supabase_client
+from core.backend.api.auth_dep import get_supabase_client, verify_token_and_get_user_id, get_async_supabase_client, get_service_client
 from core.backend.services.job_queue import enqueue_job
 from campaigns.backend.schemas.elein import CampaignCreate, CampaignResponse, AccountCreate, AccountResponse
 from inbox.backend.services.inbox_service import bulk_upsert_messages
@@ -96,6 +96,8 @@ class SendReplyPayload(BaseModel):
     account_id: Optional[str] = None
     ai_generated: Optional[bool] = False
     lead_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    client_draft_id: Optional[str] = None
 
 @router.post("/inbox/reply", response_model=dict)
 def send_inbox_reply(
@@ -105,6 +107,7 @@ def send_inbox_reply(
 ):
     from datetime import datetime, timezone, timedelta
     from leads.backend.services.data_hygiene import DataHygieneService
+    from inbox.backend.services.inbox_lock_service import acquire_thread_reply_lease, release_thread_reply_lease
     
     sender = payload.sender_name.strip()
     msg = payload.message_text.strip()
@@ -116,12 +119,27 @@ def send_inbox_reply(
         
     if len(msg) > 4000:
         raise HTTPException(status_code=400, detail="Message exceeds maximum length of 4000 characters")
-        
+
+    # Layer 0 & 2: Optimistic Reply Concurrency & Lock Leases
+    thread_key = str(payload.lead_id or sender).strip()
+    operator_token = str(payload.client_draft_id or payload.idempotency_key or f"op_{uuid.uuid4().hex[:8]}").strip()
+    lease_acquired, lease_owner, remaining_sec = acquire_thread_reply_lease(
+        workspace_id=workspace_id,
+        thread_key=thread_key,
+        operator_id=operator_token,
+        ttl_seconds=15
+    )
+    if not lease_acquired:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Another reply is currently being dispatched for this thread (lock held by {lease_owner}, {remaining_sec}s remaining). Please wait."
+        )
+
     try:
-        # Layer 2: Idempotency Guard
-        five_secs_ago = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
+        # Layer 2: Idempotency Guard (extended 60s deduplication window against network retries)
+        dedupe_window = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
         
-        recent_check = supabase.table("messages").select("id").eq("workspace_id", workspace_id).eq("sender_name", sender).eq("message_text", msg).gte("created_at", five_secs_ago).execute()
+        recent_check = supabase.table("messages").select("id").eq("workspace_id", workspace_id).eq("sender_name", sender).eq("message_text", msg).gte("created_at", dedupe_window).execute()
         if recent_check.data:
             return {"status": "success", "message_id": recent_check.data[0]["id"], "deduplicated": True}
             
@@ -249,6 +267,11 @@ def send_inbox_reply(
     except Exception as e:
         logger.error(f"Failed to send inbox reply: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to insert reply into database")
+    finally:
+        try:
+            release_thread_reply_lease(workspace_id=workspace_id, thread_key=thread_key, operator_id=operator_token)
+        except Exception as _rel_err:
+            logger.debug(f"[InboxLock] Non-fatal release error: {_rel_err}")
 
 # ── Phase 10: AI Objection Battlecards & Deal Pipeline Endpoints ───────────────
 
@@ -333,7 +356,7 @@ def generate_battlecard_endpoint(
     context = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     if payload.lead_id:
         try:
-            lead_res = supabase.table("leads").select("first_name, last_name, company, timezone").eq("id", payload.lead_id).limit(1).execute()
+            lead_res = supabase.table("leads").select("first_name, last_name, company, timezone").eq("id", payload.lead_id).eq("workspace_id", workspace_id).limit(1).execute()
             if lead_res.data:
                 lead = lead_res.data[0]
                 if not context.get("lead_name"):
@@ -365,7 +388,7 @@ def get_suggested_meeting_slots_endpoint(
     target_tz = lead_tz
     if not target_tz and lead_id:
         try:
-            lead_res = supabase.table("leads").select("timezone").eq("id", lead_id).limit(1).execute()
+            lead_res = supabase.table("leads").select("timezone").eq("id", lead_id).eq("workspace_id", workspace_id).limit(1).execute()
             if lead_res.data and lead_res.data[0].get("timezone"):
                 target_tz = lead_res.data[0]["timezone"]
         except Exception as e:
@@ -498,6 +521,7 @@ class BulkStatusRequest(BaseModel):
 
 
 
+@router.post("/inbox/sync")
 def sync_inbox_api(payload: dict, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     account_id = payload.get("account_id")
     if not account_id:
@@ -551,17 +575,22 @@ def get_inbox_threads(
         
         threads_dict = {}
         lead_ids_to_fetch = set()
+        account_ids_to_fetch = set()
         for r in (res.data or []):
             sn = r["sender_name"]
             lid = r.get("lead_id") or "unknown"
+            aid = r.get("account_id")
             if r.get("lead_id"):
                 lead_ids_to_fetch.add(r.get("lead_id"))
+            if aid:
+                account_ids_to_fetch.add(aid)
             key = f"{sn}_{lid}"
             if key not in threads_dict:
                 threads_dict[key] = {
                     "sender_name": sn,
                     "lead_id": r.get("lead_id"),
-                    "account_id": r.get("account_id"),
+                    "account_id": aid,
+                    "account_ids": [aid] if aid else [],
                     "last_message": r["message_text"],
                     "direction": r["direction"],
                     "created_at": r["created_at"],
@@ -574,8 +603,11 @@ def get_inbox_threads(
                     "_has_replied": False,
                     "_seen_inbound": False
                 }
-            elif not threads_dict[key].get("account_id") and r.get("account_id"):
-                threads_dict[key]["account_id"] = r.get("account_id")
+            else:
+                if aid and aid not in threads_dict[key]["account_ids"]:
+                    threads_dict[key]["account_ids"].append(aid)
+                if not threads_dict[key].get("account_id") and aid:
+                    threads_dict[key]["account_id"] = aid
             
             # Track unread count (inbound messages before first outbound reply)
             t = threads_dict[key]
@@ -596,10 +628,23 @@ def get_inbox_threads(
                 except Exception:
                     pass
 
+        # Batch-enrich sender account names for transparent fleet attribution
+        acc_map = {}
+        if account_ids_to_fetch:
+            try:
+                acc_res = supabase.table("accounts").select("id, name").eq("workspace_id", workspace_id).in_("id", list(account_ids_to_fetch)).execute()
+                acc_map = {a["id"]: a["name"] for a in (acc_res.data or []) if a.get("id")}
+            except Exception as ex_acc:
+                logger.debug(f"Defensive fallback: accounts query skipped ({ex_acc})")
+
+        for t in threads_dict.values():
+            t["all_account_names"] = [acc_map[aid] for aid in t.get("account_ids", []) if aid in acc_map]
+            t.pop("account_ids", None)
+
         # Defensive enrichment of deal_stage & timezone from leads table
         if lead_ids_to_fetch:
             try:
-                leads_res = supabase.table("leads").select("id, deal_stage, timezone").in_("id", list(lead_ids_to_fetch)).execute()
+                leads_res = supabase.table("leads").select("id, deal_stage, timezone").eq("workspace_id", workspace_id).in_("id", list(lead_ids_to_fetch)).execute()
                 lead_map = {l["id"]: l for l in (leads_res.data or [])}
                 for t in threads_dict.values():
                     if t.get("lead_id") and t["lead_id"] in lead_map:
@@ -675,16 +720,30 @@ def get_inbox_threads(
 @router.get("/inbox/threads/{sender_name}", response_model=List[dict])
 def get_thread_messages(sender_name: str, lead_id: Optional[str] = None, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
-        query = supabase.table("messages").select("id, message_text, direction, created_at, lead_id, account_id").eq("workspace_id", workspace_id).eq("sender_name", sender_name)
+        # Multi-Sender Unified Prospect History:
+        # If lead_id is provided, match by workspace and lead_id across all sender accounts.
+        # Otherwise, match by workspace and sender_name where lead_id is null/unknown.
         if lead_id and lead_id != "unknown":
-            query = query.eq("lead_id", lead_id)
-        elif lead_id == "unknown":
-            query = query.is_("lead_id", "null")
+            query = supabase.table("messages").select("id, message_text, direction, created_at, lead_id, account_id, sender_name").eq("workspace_id", workspace_id).eq("lead_id", lead_id)
+        else:
+            query = supabase.table("messages").select("id, message_text, direction, created_at, lead_id, account_id, sender_name").eq("workspace_id", workspace_id).eq("sender_name", sender_name).is_("lead_id", "null")
             
         res = query.order("created_at").execute()
         messages = res.data or []
+        
+        # Batch-fetch sender account names for transparent team attribution
+        acc_ids = list({m.get("account_id") for m in messages if m.get("account_id")})
+        acc_map = {}
+        if acc_ids:
+            try:
+                acc_res = supabase.table("accounts").select("id, name").eq("workspace_id", workspace_id).in_("id", acc_ids).execute()
+                acc_map = {a["id"]: a["name"] for a in (acc_res.data or []) if a.get("id")}
+            except Exception as ex_acc:
+                logger.debug(f"Defensive fallback: account names fetch in thread skipped ({ex_acc})")
+                
         for m in messages:
             m["type"] = "message"
+            m["sender_account_name"] = acc_map.get(m.get("account_id"))
             
         try:
             action_res = supabase.table("action_log") \
@@ -762,12 +821,16 @@ def get_threads_with_intent(
         
         threads_dict = {}
         lead_ids_to_fetch = set()
+        account_ids_to_fetch = set()
 
         for r in (res.data or []):
             sn = r["sender_name"]
             lid = r.get("lead_id")
+            aid = r.get("account_id")
             if lid:
                 lead_ids_to_fetch.add(lid)
+            if aid:
+                account_ids_to_fetch.add(aid)
 
             key = f"{sn}_{lid or 'unknown'}"
             if key not in threads_dict:
@@ -781,14 +844,18 @@ def get_threads_with_intent(
                     "thread_key": key,
                     "intent": "unknown",
                     "lead_id": lid,
-                    "account_id": r.get("account_id"),
+                    "account_id": aid,
+                    "account_ids": [aid] if aid else [],
                     "deal_stage": "NEW_REPLY",
                     "objection_data": None,
                     "unread_count": 0,
                     "_seen_inbound": False
                 }
-            elif not threads_dict[key].get("account_id") and r.get("account_id"):
-                threads_dict[key]["account_id"] = r.get("account_id")
+            else:
+                if aid and aid not in threads_dict[key].get("account_ids", []):
+                    threads_dict[key].setdefault("account_ids", []).append(aid)
+                if not threads_dict[key].get("account_id") and aid:
+                    threads_dict[key]["account_id"] = aid
                 
             # Grab intent and objection info of latest inbound
             if r.get("direction") == "inbound" and not threads_dict[key]["_seen_inbound"]:
@@ -819,7 +886,18 @@ def get_threads_with_intent(
             except Exception as ex:
                 logger.debug(f"Defensive fallback: leads table deal_stage query skipped ({ex})")
 
+        # Batch-enrich sender account names for transparent fleet attribution
+        acc_map = {}
+        if account_ids_to_fetch:
+            try:
+                acc_res = supabase.table("accounts").select("id, name").in_("id", list(account_ids_to_fetch)).execute()
+                acc_map = {a["id"]: a["name"] for a in (acc_res.data or []) if a.get("id")}
+            except Exception as ex_acc:
+                logger.debug(f"Defensive fallback: accounts query in threads-with-intent skipped ({ex_acc})")
+
         for t in threads_dict.values():
+            t["all_account_names"] = [acc_map[aid] for aid in t.get("account_ids", []) if aid in acc_map]
+            t.pop("account_ids", None)
             t.pop("_seen_inbound", None)
             
         threads = list(threads_dict.values())
@@ -895,10 +973,10 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
                     matched_lead = None
                     target_lead_id = None
                     lead_tz = "UTC"
-                    msg_res = supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("sender_name", m.get("sender_name")).not_.is_("lead_id", "null").limit(1).execute()
+                    msg_res = supabase.table("messages").select("lead_id").eq("account_id", account_id).eq("workspace_id", workspace_id).eq("sender_name", m.get("sender_name")).not_.is_("lead_id", "null").limit(1).execute()
                     if msg_res.data and msg_res.data[0].get("lead_id"):
                         target_lead_id = msg_res.data[0]["lead_id"]
-                        lead_res = supabase.table("leads").select("id, email, first_name, last_name, timezone").eq("id", target_lead_id).execute()
+                        lead_res = supabase.table("leads").select("id, email, first_name, last_name, timezone").eq("id", target_lead_id).eq("workspace_id", workspace_id).execute()
                         if lead_res.data:
                             matched_lead = lead_res.data[0]
                             lead_tz = matched_lead.get("timezone") or "UTC"
@@ -911,7 +989,7 @@ async def sync_inbox_with_classification(payload: dict, supabase: Client = Depen
                     if m["intent"] == "booking_confirmation" and intent_data.get("confirmed_time") and matched_lead:
                         try:
                             # 1. Intermediate Race Lock (Booking Pending)
-                            enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).execute()
+                            enroll_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", matched_lead["id"]).eq("workspace_id", workspace_id).execute()
                             if enroll_res.data:
                                 enroll_ids = [e["id"] for e in enroll_res.data]
                                 
@@ -1036,3 +1114,43 @@ def validate_campaign_variables(nodes_raw: list):
                         status_code=400, 
                         detail=f"Invalid template variable '{{{{{clean_var}}}}}' found. Allowed: {', '.join(allowed_vars)}"
                     )
+
+
+class InboundWebhookIngestPayload(BaseModel):
+    platform: str
+    platform_message_id: Optional[str] = None
+    payload: dict
+    thread_id: Optional[str] = None
+    lead_id: Optional[str] = None
+    sender_name: Optional[str] = None
+    account_id: Optional[str] = None
+
+
+@router.post("/inbox/webhooks/inbound", response_model=dict)
+def ingest_inbound_webhook_endpoint(
+    data: InboundWebhookIngestPayload,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase=Depends(get_service_client),
+):
+    """
+    Pillar 6.1: Real-Time Inbound Sync & Webhook Buffer endpoint.
+    Stages incoming webhooks, deduplicates against replay, and collapses into thread history.
+    """
+    from inbox.backend.services.inbox_service import stage_inbound_webhook_message
+    try:
+        res = stage_inbound_webhook_message(
+            supabase=supabase,
+            workspace_id=workspace_id,
+            platform=data.platform,
+            platform_message_id=data.platform_message_id,
+            payload=data.payload,
+            thread_id=data.thread_id,
+            lead_id=data.lead_id,
+            sender_name=data.sender_name,
+            account_id=data.account_id,
+        )
+        return res
+    except Exception as e:
+        logger.exception("Error staging inbound webhook message: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -149,10 +149,78 @@ def safe_localize(tz: Any, dt_naive: datetime) -> datetime:
         except Exception:
             return dt_naive.replace(tzinfo=pytz.UTC)
 
-def is_working_hours(tz_str: str, schedule: Optional[dict] = None, now_dt: Optional[datetime] = None) -> bool:
+WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+def is_national_holiday(dt: datetime, country_code: str = "US") -> bool:
     """
-    Evaluates whether current time in tz_str is on an active day and between start_hour <= now.hour < end_hour.
-    Falls back safely to UTC if tz_str is invalid.
+    Checks if a given date is a national public holiday in the specified country.
+    Three-layer paranoia:
+      - Gracefully falls back to False if holidays library fails or country code is invalid.
+      - Normalizes UK -> GB.
+    """
+    try:
+        import holidays
+        cc = (country_code or "US").strip().upper()
+        if cc == "UK":
+            cc = "GB"
+        year = dt.year
+        country_holidays = holidays.country_holidays(cc, years=[year, year + 1])
+        return dt.date() in country_holidays
+    except Exception:
+        return False
+
+def get_day_override_window(
+    dt_local: datetime,
+    day_overrides: Optional[dict]
+) -> Optional[Tuple[bool, int, int, int, int]]:
+    """
+    Parses day-specific operational window from day_schedule_overrides.
+    Returns (enabled, start_hour, start_minute, end_hour, end_minute) or None if no override.
+    """
+    if not isinstance(day_overrides, dict) or not day_overrides:
+        return None
+    
+    day_idx = dt_local.weekday()
+    day_name = WEEKDAY_NAMES[day_idx]
+    
+    day_config = day_overrides.get(day_name)
+    if day_config is None:
+        day_config = day_overrides.get(str(day_idx))
+    if not isinstance(day_config, dict):
+        return None
+    
+    enabled = bool(day_config.get("enabled", True))
+    raw_start = str(day_config.get("start", "08:00"))
+    raw_end = str(day_config.get("end", "18:00"))
+    
+    try:
+        s_parts = raw_start.split(":")
+        s_h = max(0, min(23, int(s_parts[0])))
+        s_m = max(0, min(59, int(s_parts[1]))) if len(s_parts) > 1 else 0
+    except Exception:
+        s_h, s_m = 8, 0
+
+    try:
+        e_parts = raw_end.split(":")
+        e_h = max(0, min(24, int(e_parts[0])))
+        e_m = max(0, min(59, int(e_parts[1]))) if len(e_parts) > 1 else 0
+    except Exception:
+        e_h, e_m = 18, 0
+
+    return (enabled, s_h, s_m, e_h, e_m)
+
+def is_working_hours(
+    tz_str: str,
+    schedule: Optional[dict] = None,
+    now_dt: Optional[datetime] = None,
+    guardrails: Optional[dict] = None
+) -> bool:
+    """
+    Evaluates whether current time in tz_str is within active working hours.
+    Three-Layer Paranoia:
+      - Layer 0: Checks active days and start_hour <= hour < end_hour.
+      - Layer 1: Evaluates day_schedule_overrides (day-specific enabled flag and start/end minutes).
+      - Layer 2: Evaluates pause_on_national_holidays using official country holiday calendars.
     """
     try:
         if not tz_str or not isinstance(tz_str, str):
@@ -170,6 +238,50 @@ def is_working_hours(tz_str: str, schedule: Optional[dict] = None, now_dt: Optio
     else:
         now = datetime.now(tz)
 
+    effective_guardrails = guardrails if isinstance(guardrails, dict) else {}
+    if not effective_guardrails and isinstance(schedule, dict):
+        effective_guardrails = (
+            schedule.get("deliverability_guardrails")
+            or schedule.get("guardrails")
+            or schedule
+        )
+
+    # 1. National Holiday Auto-Pause check
+    pause_holidays = bool(
+        effective_guardrails.get("pause_on_national_holidays")
+        or (isinstance(schedule, dict) and schedule.get("pause_on_national_holidays"))
+    )
+    if pause_holidays:
+        country = (
+            effective_guardrails.get("national_holiday_country")
+            or (isinstance(schedule, dict) and schedule.get("national_holiday_country"))
+            or "US"
+        )
+        if is_national_holiday(now, country):
+            return False
+
+    # 2. Granular Day Matrix (day_schedule_overrides) check
+    day_overrides = (
+        effective_guardrails.get("day_schedule_overrides")
+        or (isinstance(schedule, dict) and schedule.get("day_schedule_overrides"))
+    )
+    override = get_day_override_window(now, day_overrides)
+    if override is not None:
+        enabled, s_h, s_m, e_h, e_m = override
+        if not enabled:
+            return False
+        
+        start_minute = s_h * 60 + s_m
+        end_minute = e_h * 60 + e_m
+        current_minute = now.hour * 60 + now.minute
+        
+        if start_minute < end_minute:
+            return start_minute <= current_minute < end_minute
+        else:
+            # Cross-midnight window
+            return current_minute >= start_minute or current_minute < end_minute
+
+    # 3. Standard schedule fallback
     start_hour, end_hour, active_days = parse_schedule_config(schedule)
 
     if now.weekday() not in active_days:
@@ -183,11 +295,16 @@ def is_working_hours(tz_str: str, schedule: Optional[dict] = None, now_dt: Optio
             return False
     return True
 
-def calculate_next_run_at(base_time: datetime, target_tz: str, schedule: Optional[dict] = None) -> datetime:
+def calculate_next_run_at(
+    base_time: datetime,
+    target_tz: str,
+    schedule: Optional[dict] = None,
+    guardrails: Optional[dict] = None
+) -> datetime:
     """
     Calculates the next working run time for a given base_time and target timezone.
     If base_time is already in the working window, returns base_time (UTC-aware).
-    Otherwise, finds the next active slot at start_hour:00:00 local time,
+    Otherwise, finds the next active slot taking into account day-by-day overrides and national holidays,
     using safe_localize to avoid DST crashes, returning UTC-aware datetime.
     """
     try:
@@ -208,38 +325,86 @@ def calculate_next_run_at(base_time: datetime, target_tz: str, schedule: Optiona
 
     # Convert to local time
     local_dt = base_time.astimezone(tz)
-    weekday = local_dt.weekday()
-    hour = local_dt.hour
 
-    start_hour, end_hour, active_days = parse_schedule_config(schedule)
+    effective_guardrails = guardrails if isinstance(guardrails, dict) else {}
+    if not effective_guardrails and isinstance(schedule, dict):
+        effective_guardrails = (
+            schedule.get("deliverability_guardrails")
+            or schedule.get("guardrails")
+            or schedule
+        )
 
-    # In working window (Leak 7 Fix: supports cross-midnight schedules)
-    in_window = False
-    if weekday in active_days:
-        if start_hour < end_hour:
-            in_window = (start_hour <= hour < end_hour)
-        else:
-            in_window = (hour >= start_hour or hour < end_hour)
+    pause_holidays = bool(
+        effective_guardrails.get("pause_on_national_holidays")
+        or (isinstance(schedule, dict) and schedule.get("pause_on_national_holidays"))
+    )
+    country = (
+        effective_guardrails.get("national_holiday_country")
+        or (isinstance(schedule, dict) and schedule.get("national_holiday_country"))
+        or "US"
+    )
+    day_overrides = (
+        effective_guardrails.get("day_schedule_overrides")
+        or (isinstance(schedule, dict) and schedule.get("day_schedule_overrides"))
+    )
 
-    if in_window:
+    # In working window check
+    if is_working_hours(target_tz, schedule=schedule, now_dt=base_time, guardrails=guardrails):
         return base_time
 
     naive_local = local_dt.replace(tzinfo=None)
 
-    if weekday in active_days and hour < start_hour:
-        # Move to start_hour local same day
-        naive_target = naive_local.replace(hour=start_hour, minute=0, second=0, microsecond=0)
+    # Check if today still has an upcoming window
+    today_override = get_day_override_window(local_dt, day_overrides)
+    today_is_holiday = pause_holidays and is_national_holiday(local_dt, country)
+    start_hour, end_hour, active_days = parse_schedule_config(schedule)
+
+    can_run_today = False
+    today_start_h = start_hour
+    today_start_m = 0
+
+    if not today_is_holiday:
+        if today_override is not None:
+            t_enabled, t_sh, t_sm, t_eh, t_em = today_override
+            if t_enabled:
+                curr_min = local_dt.hour * 60 + local_dt.minute
+                start_min = t_sh * 60 + t_sm
+                if curr_min < start_min:
+                    can_run_today = True
+                    today_start_h = t_sh
+                    today_start_m = t_sm
+        elif local_dt.weekday() in active_days and local_dt.hour < start_hour:
+            can_run_today = True
+            today_start_h = start_hour
+            today_start_m = 0
+
+    if can_run_today:
+        naive_target = naive_local.replace(hour=today_start_h, minute=today_start_m, second=0, microsecond=0)
     else:
         # Search next active day starting from tomorrow (bounded loop max 14 days)
         naive_target = None
         for days_ahead in range(1, 15):
             candidate_date = (naive_local + timedelta(days=days_ahead)).date()
-            if candidate_date.weekday() in active_days:
+            candidate_dummy_dt = datetime.combine(candidate_date, dt_time(12, 0))
+            if pause_holidays and is_national_holiday(candidate_dummy_dt, country):
+                continue
+            
+            cand_override = get_day_override_window(candidate_dummy_dt, day_overrides)
+            if cand_override is not None:
+                c_enabled, c_sh, c_sm, _, _ = cand_override
+                if c_enabled:
+                    naive_target = datetime.combine(
+                        candidate_date,
+                        dt_time(hour=c_sh, minute=c_sm, second=0, microsecond=0)
+                    )
+                    break
+            elif candidate_date.weekday() in active_days:
                 naive_target = datetime.combine(
                     candidate_date,
                     dt_time(hour=start_hour, minute=0, second=0, microsecond=0)
                 )
                 break
+
         if naive_target is None:
             candidate_date = (naive_local + timedelta(days=1)).date()
             naive_target = datetime.combine(
@@ -250,12 +415,12 @@ def calculate_next_run_at(base_time: datetime, target_tz: str, schedule: Optiona
     target_local = safe_localize(tz, naive_target)
     return target_local.astimezone(pytz.UTC)
 
-def adjust_to_working_hours(dt_utc: datetime, tz_str: str, schedule: Optional[dict] = None) -> datetime:
+def adjust_to_working_hours(dt_utc: datetime, tz_str: str, schedule: Optional[dict] = None, guardrails: Optional[dict] = None) -> datetime:
     """
     Calls calculate_next_run_at and returns naive UTC datetime
     (preserving backward compatibility with callers that expect naive UTC).
     """
-    next_run = calculate_next_run_at(dt_utc, tz_str, schedule=schedule)
+    next_run = calculate_next_run_at(dt_utc, tz_str, schedule=schedule, guardrails=guardrails)
     return next_run.astimezone(pytz.UTC).replace(tzinfo=None)
 
 def next_working_day_9am(tz_str: str = "UTC", schedule: Optional[dict] = None, now_dt: Optional[datetime] = None) -> datetime:
@@ -303,6 +468,7 @@ def calculate_next_run_with_jitter(
     seed_key: Optional[str] = None,
     lead_id: Optional[str] = None,
     campaign_id: Optional[str] = None,
+    guardrails: Optional[dict] = None,
     **kwargs: Any
 ) -> datetime:
     """
@@ -319,10 +485,10 @@ def calculate_next_run_with_jitter(
     else:
         base_time = base_time.astimezone(pytz.UTC)
 
-    next_run = calculate_next_run_at(base_time, target_tz, schedule=schedule)
+    next_run = calculate_next_run_at(base_time, target_tz, schedule=schedule, guardrails=guardrails)
 
     # If base_time is already within working hours, it was not moved to a future start window
-    if is_working_hours(target_tz, schedule=schedule, now_dt=base_time):
+    if is_working_hours(target_tz, schedule=schedule, now_dt=base_time, guardrails=guardrails):
         return next_run
 
     try:

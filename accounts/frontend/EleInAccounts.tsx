@@ -6,11 +6,13 @@ import {
   Clock, Trash2, Shield, TrendingUp, Ban, AlertTriangle, RefreshCw, PauseCircle,
   UserPlus, MessageSquare, PlayCircle, ExternalLink, Search, ShieldCheck, Check,
   Lock, Zap, ArrowRight, Server, Layers, MoreVertical, Radio, Activity, Sliders, Tag,
-  ShieldAlert
+  ShieldAlert, Copy
 } from "lucide-react"
+import { StatusPill } from "@/components/StatusPill"
 import { Linkedin } from "@/components/icons/Linkedin"
 import useSWR from "swr"
 import { usePaywall } from "@/contexts/PaywallContext"
+import { useWorkspace } from "@/contexts/WorkspaceContext"
 import { useAccountUsage, useAccountLimits } from "@/hooks/useAccounts"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -70,13 +72,16 @@ export function EleInAccounts() {
   } = useHRAccountsStore()
   
   const { openPaywall } = usePaywall()
+  const { activeWorkspaceId } = useWorkspace()
   const { data: billingData } = useSWR<{ tier?: string }>(
     '/api/elein/workspaces/billing',
     fetcher
   )
-  const tier = billingData?.tier || 'FREE'
-  const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
-  const maxAccounts = isPro ? (tier === 'ENTERPRISE' ? 25 : 5) : 1
+  const tier = (billingData?.tier || 'FREE').toUpperCase()
+  const isEnterprise = tier === 'ENTERPRISE'
+  const isAgency = tier === 'AGENCY'
+  const isPro = tier === 'PRO' || tier === 'GROWTH' || isAgency || isEnterprise
+  const maxAccounts = isEnterprise ? 25 : isAgency ? 15 : isPro ? 5 : 1
   const isAccountCapped = accounts.length >= maxAccounts
 
   // Modal & Drawer States
@@ -104,6 +109,26 @@ export function EleInAccounts() {
   const [shieldModalAccount, setShieldModalAccount] = useState<{id: string; name: string} | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "warmup" | "paused" | "action_required">("all")
+  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null)
+  
+  const handleCopyUrl = (id: string, url: string) => {
+    if (!url) return
+    navigator.clipboard.writeText(url)
+    setCopiedUrlId(id)
+    toast.success("Profile URL copied to clipboard")
+    setTimeout(() => setCopiedUrlId(null), 2000)
+  }
+
+  // Escape key to clear batch selection (Layer 2 Human Paranoia)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedAccounts.size > 0) {
+        setSelectedAccounts(new Set())
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedAccounts.size])
   
   const rowMenuRef = useRef<HTMLDivElement | null>(null)
 
@@ -124,12 +149,22 @@ export function EleInAccounts() {
 
   useEffect(() => {
     fetchAccounts()
-  }, [fetchAccounts])
+  }, [activeWorkspaceId])
 
   const handleConnectClick = (tab: "token" | "extension" = "token") => {
-    if (!isPro && isAccountCapped) {
-      openPaywall({ featureName: "Multi-Account Sender Pool" })
-      toast.info("Free plan is limited to 1 LinkedIn sender. Upgrade to Growth Pro to connect up to 5 accounts.")
+    if (isAccountCapped) {
+      if (!isPro) {
+        openPaywall({ featureName: "Multi-Account Sender Pool", minTier: "PRO" })
+        toast.info("Free plan is limited to 1 LinkedIn sender. Upgrade to Growth Pro to connect up to 5 accounts.")
+      } else if (tier === 'PRO' || tier === 'GROWTH') {
+        openPaywall({ featureName: "Agency Multi-Sender Pool", minTier: "AGENCY" })
+        toast.info("Growth Pro is limited to 5 LinkedIn senders. Upgrade to Agency Tier to connect up to 15 accounts.")
+      } else if (isAgency) {
+        openPaywall({ featureName: "Enterprise Multi-Sender Pool", minTier: "ENTERPRISE" })
+        toast.info("Agency plan is limited to 15 LinkedIn senders. Upgrade to Enterprise for up to 50 accounts.")
+      } else {
+        toast.error("Account limit reached for your enterprise plan. Contact support for custom sender quota expansions.")
+      }
       return
     }
     setConnectTab(tab)
@@ -162,6 +197,30 @@ export function EleInAccounts() {
       mutateFleetSummary()
     } catch (e: any) {
       toast.error(e.message || 'Auto-heal diagnostic failed')
+    } finally {
+      setHealingAccountId(null)
+    }
+  }
+
+  // Phase R: Active Session Death and Challenge Verification Probe
+  const handleVerifySession = async (id: string) => {
+    setHealingAccountId(id)
+    try {
+      const res = await useHRAccountsStore.getState().sessionDeathCheck(id, true)
+      if (res.session_valid) {
+        toast.success("Session Verified: Account is active and healthy.")
+      } else if (res.status === "CHALLENGE_REQUIRED") {
+        toast.warning("Security Challenge Detected", {
+          description: "LinkedIn requires browser verification or PIN. Please complete the prompt on LinkedIn, then click Verify again."
+        })
+      } else {
+        toast.error("Session Inactive", {
+          description: res.reason || "Cookies expired or revoked. Please renew session."
+        })
+      }
+      mutateFleetSummary()
+    } catch (e: any) {
+      toast.error(e?.message || "Verification check failed.")
     } finally {
       setHealingAccountId(null)
     }
@@ -315,6 +374,21 @@ export function EleInAccounts() {
     if (next.has(id)) next.delete(id)
     else next.add(id)
     setSelectedAccounts(next)
+  }
+
+  const isAllFilteredSelected = filteredAccounts.length > 0 && filteredAccounts.every(a => selectedAccounts.has(a.id))
+  const isSomeFilteredSelected = filteredAccounts.some(a => selectedAccounts.has(a.id)) && !isAllFilteredSelected
+
+  const handleToggleSelectAll = () => {
+    if (isAllFilteredSelected) {
+      const next = new Set(selectedAccounts)
+      filteredAccounts.forEach(a => next.delete(a.id))
+      setSelectedAccounts(next)
+    } else {
+      const next = new Set(selectedAccounts)
+      filteredAccounts.forEach(a => next.add(a.id))
+      setSelectedAccounts(next)
+    }
   }
 
   const toggleExpand = (id: string) => {
@@ -554,7 +628,7 @@ export function EleInAccounts() {
               type="button"
               onClick={() => {
                 const challenged = accounts.find(a => a.accountStatus === 'CHALLENGE_REQUIRED')
-                if (challenged) handleAutoHealAccount(challenged.id)
+                if (challenged) handleVerifySession(challenged.id)
               }}
               disabled={healingAccountId !== null}
               className="px-3 py-1.5 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/15 text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
@@ -729,6 +803,25 @@ export function EleInAccounts() {
         </div>
       ) : (
         <div className="space-y-3">
+          <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
+            <label className="flex items-center gap-2 cursor-pointer font-medium select-none">
+              <input
+                type="checkbox"
+                checked={isAllFilteredSelected}
+                ref={(input) => {
+                  if (input) input.indeterminate = isSomeFilteredSelected
+                }}
+                onChange={handleToggleSelectAll}
+                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/50 bg-background cursor-pointer"
+              />
+              <span>Select all visible ({filteredAccounts.length})</span>
+            </label>
+            {selectedAccounts.size > 0 && (
+              <span className="font-semibold text-primary">
+                {selectedAccounts.size} of {filteredAccounts.length} selected
+              </span>
+            )}
+          </div>
           {filteredAccounts.map((acc) => {
             const isSelected = selectedAccounts.has(acc.id)
             const isExpanded = expandedAccounts.has(acc.id)
@@ -794,13 +887,32 @@ export function EleInAccounts() {
                   {/* Account Identity & Tags */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-foreground">
-                        {acc.name}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-foreground">
+                          {acc.name}
+                        </span>
+                        {acc.profileUrl && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyUrl(acc.id, acc.profileUrl)}
+                            className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded cursor-pointer"
+                            title="Copy LinkedIn profile URL"
+                            aria-label="Copy LinkedIn profile URL"
+                          >
+                            {copiedUrlId === acc.id ? (
+                              <Check size={12} className="text-emerald-500" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        )}
+                      </div>
                       
-                      <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", statusCfg.badge)}>
-                        {statusCfg.label}
-                      </span>
+                      <StatusPill 
+                        status={acc.accountStatus.toLowerCase()} 
+                        size="xs" 
+                        pulse={acc.accountStatus === 'ACTIVE'} 
+                      />
 
                       <SafetyIndicator accountId={acc.id} status={acc.accountStatus} />
 
@@ -821,6 +933,30 @@ export function EleInAccounts() {
                         <span>{acc.isWarmup ? "Warmup Active" : "Warmup Off"}</span>
                       </button>
 
+                      {/* Inline Warmup Pace Monitor */}
+                      {(() => {
+                        if (!acc.isWarmup) return null;
+                        const startDate = acc.warmupStartDate ? new Date(acc.warmupStartDate).getTime() : (acc.createdAt ? new Date(acc.createdAt).getTime() : Date.now());
+                        const elapsedDays = Math.max(1, Math.floor((Date.now() - startDate) / (1000 * 60 * 60 * 24)) + 1);
+                        const targetDays = acc.warmupTargetDays || 30;
+                        const percent = Math.min(100, Math.round((elapsedDays / targetDays) * 100));
+                        const maxDaily = Math.min(acc.warmupMaxConnections || 20, Math.max(5, Math.round(5 + (elapsedDays / targetDays) * 15)));
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRadarAccountId(acc.id);
+                              setShowRadarDrawer(true);
+                            }}
+                            className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all flex items-center gap-1 cursor-pointer"
+                            title="Click to view detailed warmup roadmap & pace telemetry"
+                          >
+                            <TrendingUp size={11} className="text-primary" />
+                            <span>Day {elapsedDays}/{targetDays} ({percent}%) · Max {maxDaily} invites/d</span>
+                          </button>
+                        );
+                      })()}
+
                       {isManual && (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/20">
                           Paused (Manual Mode)
@@ -832,9 +968,17 @@ export function EleInAccounts() {
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                       <AccountUsageDisplay accountId={acc.id} usageData={usageData} />
                       <span>·</span>
-                      <span className="text-xs">
-                        {acc.proxyId ? 'Dedicated Proxy' : 'Direct Connection (No Proxy)'}
-                      </span>
+                      {acc.proxyId ? (
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                          <ShieldCheck size={12} className="text-emerald-500" />
+                          <span>Dedicated Residential Proxy</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                          <AlertTriangle size={12} className="text-amber-500" />
+                          <span>No Proxy (Proxy Required for Safe Outreach)</span>
+                        </span>
+                      )}
                       {acc.cookieExpiresAt && (
                         <>
                           <span>·</span>
@@ -1168,10 +1312,11 @@ export function EleInAccounts() {
       <AnimatePresence>
         {selectedAccounts.size > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-2.5 rounded-xl bg-card border border-border shadow-2xl backdrop-blur-md"
+            initial={{ opacity: 0, y: 35, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 35, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-card/90 border border-border/80 shadow-2xl backdrop-blur-xl"
           >
             <span className="text-xs font-semibold text-foreground whitespace-nowrap">
               {selectedAccounts.size} account{selectedAccounts.size !== 1 ? 's' : ''} selected
@@ -1311,9 +1456,10 @@ export function EleInAccounts() {
             <button
               type="button"
               onClick={() => setSelectedAccounts(new Set())}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors ml-2 cursor-pointer"
+              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors ml-2 cursor-pointer flex items-center gap-1.5"
             >
-              Clear
+              <span>Clear</span>
+              <kbd className="font-mono text-[10px] px-1 py-0.2 bg-muted rounded border border-border text-muted-foreground">Esc</kbd>
             </button>
           </motion.div>
         )}

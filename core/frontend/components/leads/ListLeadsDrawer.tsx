@@ -154,8 +154,9 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
     }
 
     try {
-      const selectedQuery = selectedIds.size > 0 ? `?selected_ids=${Array.from(selectedIds).join(",")}` : ""
-      const res = await fetchWithAuth(`/api/leads/lists/${list.id}/export${selectedQuery}`)
+      const selectedQuery = selectedIds.size > 0 ? `&selected_ids=${Array.from(selectedIds).join(",")}` : ""
+      // Phase T Scoped Lead Export with RBAC Exfiltration Shield
+      const res = await fetchWithAuth(`/api/elein/leads/export?list_id=${list.id}${selectedQuery}`)
       if (res.ok) {
         const json = await res.json()
         const exportedData = json.data || []
@@ -164,8 +165,8 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
         const rows = exportedData.map((l: any) => [
           cleanCsvCell(l.first_name),
           cleanCsvCell(l.last_name),
-          cleanCsvCell(l.job_title),
-          cleanCsvCell(l.company_name),
+          cleanCsvCell(l.job_title || l.title),
+          cleanCsvCell(l.company_name || l.company),
           cleanCsvCell(l.linkedin_url),
           cleanCsvCell(l.email)
         ])
@@ -186,35 +187,15 @@ export function ListLeadsDrawer({ list, onClose, mutateLists }: { list: any; onC
           toast.success(`Exported ${exportedData.length} leads to CSV`)
         }
       } else {
-        // Fallback to client-side masked export if backend endpoint has temporary glitch
-        const sliceData = !isPro ? toExport.slice(0, 25) : toExport
-        const headers = ["First Name", "Last Name", "Job Title", "Company", "LinkedIn URL", "Email"]
-        const rows = sliceData.map((l: any) => {
-          let email = l.email || ''
-          if (!isPro && email.includes('@')) {
-            const parts = email.split('@')
-            email = `${parts[0].slice(0, 2)}***@${parts[1]}`
-          }
-          return [
-            cleanCsvCell(l.first_name),
-            cleanCsvCell(l.last_name),
-            cleanCsvCell(l.job_title),
-            cleanCsvCell(l.company_name),
-            cleanCsvCell(l.linkedin_url),
-            cleanCsvCell(email)
-          ]
-        })
-        const csvContent = [headers.join(','), ...rows.map((r: string[]) => r.join(','))].join('\n')
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.setAttribute('href', url)
-        link.setAttribute('download', `${list.name || 'leads'}_export.csv`)
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        setTimeout(() => URL.revokeObjectURL(url), 1000)
-        toast.success(`Exported ${sliceData.length} leads to CSV`)
+        // Paranoia Layer 1 & 2: Fail-closed security. Never export client-side when unauthorized or errored.
+        if (res.status === 403) {
+          toast.error("Access denied: Your workspace role lacks permission to export leads.")
+        } else if (res.status === 401) {
+          toast.error("Session expired. Please sign in again to export leads.")
+        } else {
+          const errJson = await res.json().catch(() => ({}))
+          toast.error(errJson.detail || "Failed to export leads from server. Action aborted.")
+        }
       }
     } catch (e: any) {
       toast.error("Failed to export leads. Please try again.")

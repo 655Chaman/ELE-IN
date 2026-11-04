@@ -769,13 +769,16 @@ def detect_smtp_deferral_or_greylist(
         code = 0
 
     msg = str(smtp_message or "").strip()
-    is_deferred = code in (421, 450, 451, 452)
+    is_deferred = code in (421, 429, 450, 451, 452) or any(
+        phrase in msg.lower() for phrase in ("too many requests", "rate limit", "temporarily deferred", "try again later")
+    )
 
     is_greylisted = False
+    is_rate_limited = code == 429 or bool(re.search(r"\b(?:rate\s+limit|too\s+many\s+requests|too\s+many\s+connections)\b", msg, re.IGNORECASE))
     if is_deferred:
         p1 = bool(re.search(r"\b(?:greylist|greylisted|greylisting)\b", msg, re.IGNORECASE))
         p2 = bool(re.search(r"\b(?:try\s+again\s+later|temporarily\s+deferred|service\s+unavailable|too\s+busy)\b", msg, re.IGNORECASE))
-        p3 = bool(re.search(r"\b(?:rate\s+limit\s+exceeded|too\s+many\s+connections)\b", msg, re.IGNORECASE))
+        p3 = is_rate_limited
         is_greylisted = p1 or p2 or p3
 
     if is_deferred:
@@ -784,6 +787,7 @@ def detect_smtp_deferral_or_greylist(
         return {
             "is_deferred": True,
             "is_greylisted": is_greylisted,
+            "is_rate_limited": is_rate_limited,
             "retry_recommended": True,
             "retry_delay_seconds": delay,
             "action": "defer_and_retry",

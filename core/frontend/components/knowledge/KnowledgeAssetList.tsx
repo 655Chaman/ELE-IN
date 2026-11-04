@@ -8,6 +8,7 @@ import { SYNTHESIS_STARTER_PRESETS } from "./SynthesisEditor"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { StatusPill } from "@/components/StatusPill"
 
 interface KnowledgeAssetListProps {
   assets: KnowledgeAsset[]
@@ -148,33 +149,19 @@ ${preset.objectionPlaybook}
                 <span>{asset.type === 'url' ? 'Website' : asset.type === 'pdf' ? 'PDF' : 'Notes'}</span>
                 <span>·</span>
                 {asset.status === 'processing' ? (
-                  <span className="text-foreground font-medium flex items-center gap-1">
-                    <RefreshCw size={10} className="animate-spin text-muted-foreground" /> 
-                    Indexing...
-                  </span>
+                  <StatusPill status="verifying" label="Indexing..." size="xs" pulse />
                 ) : asset.status === 'queued' ? (
-                  <span className="text-amber-500 font-medium flex items-center gap-1">
-                    <RefreshCw size={10} /> 
-                    Queued
-                  </span>
+                  <StatusPill status="pending" label="Queued" size="xs" />
                 ) : asset.status === 'failed' || asset.status === 'error' ? (
-                  <span 
-                    className="text-destructive font-medium inline-flex items-center gap-1 cursor-help"
-                    title={asset.error_msg || "Processing failed. Click retry to re-scrape."}
-                  >
-                    <AlertTriangle size={11} />
-                    <span>Failed to process</span>
+                  <span title={asset.error_msg || "Processing failed. Click retry to re-scrape."}>
+                    <StatusPill status="failed" label="Failed to process" size="xs" />
                   </span>
                 ) : (
-                  <span className="text-muted-foreground flex items-center gap-1">
-                    <CheckCircle2 size={11} className="text-foreground/70" />
-                    <span>Indexed</span>
-                    {asset.chunk_count ? (
-                      <span className="text-muted-foreground/60 text-[10px]">
-                        ({asset.chunk_count} chunks)
-                      </span>
-                    ) : null}
-                  </span>
+                  <StatusPill 
+                    status="ready" 
+                    label={asset.chunk_count ? `Indexed (${asset.chunk_count} chunks)` : "Indexed"} 
+                    size="xs" 
+                  />
                 )}
               </div>
             </div>

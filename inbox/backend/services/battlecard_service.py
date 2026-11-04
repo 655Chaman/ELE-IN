@@ -279,11 +279,25 @@ def generate_battlecard_responses(
             )
         }
 
+    # Sanitize all generated responses against prompt leakage & code blocks (Layer 2 Paranoia)
+    from inbox.backend.services.inbox_service import sanitize_ai_draft
+    sanitized_responses = {
+        tone: sanitize_ai_draft(text, lead_name=first_name)
+        for tone, text in responses.items()
+    }
+
+    # Generate suggested meeting slots for quick 1-click scheduling
+    lead_tz = context.get("timezone") or context.get("lead_tz")
+    suggested_slots = generate_suggested_meeting_slots(lead_tz=lead_tz)
+
     return {
         "objection_type": objection_type,
         "competitor_intel": comp_intel,
+        "kill_points": comp_intel.get("kill_points", []),
+        "pivot_angle": comp_intel.get("pivot_angle", ""),
         "strategy_summary": strategy,
-        "responses": responses
+        "responses": sanitized_responses,
+        "suggested_slots": suggested_slots,
     }
 
 

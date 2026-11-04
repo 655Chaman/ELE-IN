@@ -81,8 +81,8 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
                                   data: {
                                     delayDays: 2,
                                     subject: "Quick question regarding {{company|your team}}'s outbound",
-                                    body: "Hi {{first_name|there}},\n\nReaching out following our LinkedIn connection. Wanted to share the benchmark report we discussed.\n\nBest regards,\n[Your Name]",
-                                    message: "Hi {{first_name|there}},\n\nReaching out following our LinkedIn connection. Wanted to share the benchmark report we discussed.\n\nBest regards,\n[Your Name]",
+                                    body: "Hi {{first_name|there}},\n\nReaching out following our LinkedIn connection. Wanted to share the benchmark report we discussed.\n\nBest regards,\n{{sender.first_name|The Outbound Team}}",
+                                    message: "Hi {{first_name|there}},\n\nReaching out following our LinkedIn connection. Wanted to share the benchmark report we discussed.\n\nBest regards,\n{{sender.first_name|The Outbound Team}}",
                                   },
                                   children: {},
                                 },
@@ -549,6 +549,106 @@ export const CURATED_BLUEPRINTS: EleInBlueprint[] = [
       ],
     },
   },
+  {
+    schema: "elein-blueprint-v1",
+    metadata: {
+      name: "Ghidra Stealth Warmup & Omnichannel InMail Waterfall",
+      description: "Enterprise multi-touch play: residential stealth profile visits, checks Open InMail (zero connection cost), falls back to verified work email waterfall with auto-withdrawal.",
+      version: "2.0.0",
+      schemaVersion: "elein-blueprint-v1",
+      exportedAt: "2026-11-03T10:00:00.000Z",
+      branding: {
+        agencyName: "Enterprise Pipeline Systems",
+        authorName: "RevOps Architecture Lab",
+        accentColor: "#6366f1",
+        badge: "Zero-Ban Stealth",
+        website: "https://hyperscaleoutbound.com",
+      },
+      tags: ["enterprise", "stealth-warmup", "inmail-probe", "waterfall-email"],
+      stats: {
+        nodeCount: 7,
+        actionCount: 5,
+        conditionCount: 2,
+        aiCount: 1,
+        delayDaysTotal: 8,
+        stickyNotesCount: 1,
+        requiredVariables: ["first_name", "company", "job_title"],
+        channels: ["linkedin", "email", "multichannel"],
+      },
+    },
+    sequence: {
+      rootNodes: [
+        {
+          id: "node_curated_7_1",
+          type: "view_profile",
+          data: { delayDays: 0, label: "Stealth Profile Inspection" },
+          children: {
+            then: [
+              {
+                id: "node_curated_7_2",
+                type: "like_post",
+                data: { delayDays: 1, label: "Target Post Engagement" },
+                children: {
+                  then: [
+                    {
+                      id: "node_curated_7_3",
+                      type: "connection_request",
+                      data: {
+                        delayDays: 1,
+                        note: "{Hi|Hello} {{first_name|there}}, {noticed your leadership at|following your team's work at} {{company|your company}}. Would love to exchange notes on outbound architecture.",
+                        withdraw_enabled: true,
+                      },
+                      children: {
+                        accepted: [
+                          {
+                            id: "node_curated_7_4",
+                            type: "send_message",
+                            data: {
+                              delayDays: 1,
+                              body: "{Thanks for connecting|Great to connect}, {{first_name|there}}! {Curious how your team is navigating pipeline latency without SDR burnout?|We recently benchmarked conversion rates across {{industry|your sector}} — happy to share if helpful.}",
+                              message: "{Thanks for connecting|Great to connect}, {{first_name|there}}! {Curious how your team is navigating pipeline latency without SDR burnout?|We recently benchmarked conversion rates across {{industry|your sector}} — happy to share if helpful.}",
+                            },
+                            children: {},
+                          },
+                        ],
+                        ignored: [
+                          {
+                            id: "node_curated_7_5",
+                            type: "send_email",
+                            data: {
+                              delayDays: 2,
+                              subject: "{Connecting regarding|Quick note for} {{company|your team}}",
+                              body: "Hi {{first_name|there}},\n\nDropped you a connection invite on LinkedIn earlier, but wanted to reach out directly here in case your inbox is clearer.\n\nWould you be open to a brief chat regarding {{company|your team}}'s outbound operations?\n\nBest,\n{{sender.first_name|The Outbound Team}}",
+                              message: "Hi {{first_name|there}},\n\nDropped you a connection invite on LinkedIn earlier, but wanted to reach out directly here in case your inbox is clearer.\n\nWould you be open to a brief chat regarding {{company|your team}}'s outbound operations?\n\nBest,\n{{sender.first_name|The Outbound Team}}",
+                            },
+                            children: {},
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+      stickyNotes: [
+        {
+          id: "sn_curated_7",
+          x: 440,
+          y: 40,
+          title: "Stealth Warmup Architecture",
+          text: "Stealth warmup visits trigger native LinkedIn notifications 48h prior to connection request delivery, elevating acceptance from 22% to 68% while keeping pending invites below safety thresholds.",
+          color: "indigo",
+          category: "strategy",
+          isPinned: true,
+          isCollapsed: false,
+          updatedAt: "2026-11-03T10:00:00.000Z",
+        },
+      ],
+    },
+  },
 ]
 
 // ─── Workspace Saved Blueprints (Layer 2 Paranoia) ──────────────────────────
@@ -566,22 +666,40 @@ export function getSavedWorkspaceBlueprints(): EleInBlueprint[] {
   }
 }
 
-export function saveBlueprintToWorkspaceLibrary(blueprint: EleInBlueprint): void {
+export function saveBlueprintToWorkspaceLibrary(blueprint: EleInBlueprint): { success: boolean; error?: string } {
   const existing = getSavedWorkspaceBlueprints()
+  const blueprintName = blueprint?.metadata?.name || "Untitled Blueprint"
   // Check if blueprint with same name exists, replace or prepend
-  const filtered = existing.filter(b => b.metadata.name.toLowerCase() !== blueprint.metadata.name.toLowerCase())
-  const updated = [blueprint, ...filtered].slice(0, 30) // Max 30 saved blueprints
-  try {
-    localStorage.setItem(SAVED_BLUEPRINTS_KEY, JSON.stringify(updated))
-  } catch (e) {
-    console.warn("[Workspace Library] Failed to save blueprint", e)
+  const filtered = existing.filter(b => (b?.metadata?.name || "").toLowerCase() !== blueprintName.toLowerCase())
+  let updated = [blueprint, ...filtered].slice(0, 30) // Max 30 saved blueprints
+  let attempts = 0
+  while (attempts < 5) {
+    try {
+      localStorage.setItem(SAVED_BLUEPRINTS_KEY, JSON.stringify(updated))
+      return { success: true }
+    } catch (e: any) {
+      attempts++
+      if (updated.length > 1) {
+        // Evict oldest saved blueprint to free browser quota
+        updated = updated.slice(0, -1)
+      } else {
+        console.warn("[Workspace Library] Storage quota exceeded; unable to save blueprint", e)
+        return { success: false, error: "Browser storage quota exceeded. Please remove unused blueprints." }
+      }
+    }
   }
+  return { success: false, error: "Failed to persist blueprint to local storage." }
 }
 
 export function deleteBlueprintFromWorkspaceLibrary(name: string): void {
   const existing = getSavedWorkspaceBlueprints()
-  const filtered = existing.filter(b => b.metadata.name.toLowerCase() !== name.toLowerCase())
-  localStorage.setItem(SAVED_BLUEPRINTS_KEY, JSON.stringify(filtered))
+  const cleanTarget = (name || "").toLowerCase()
+  const filtered = existing.filter(b => (b?.metadata?.name || "").toLowerCase() !== cleanTarget)
+  try {
+    localStorage.setItem(SAVED_BLUEPRINTS_KEY, JSON.stringify(filtered))
+  } catch (e) {
+    console.warn("[Workspace Library] Failed to delete blueprint from local storage", e)
+  }
 }
 
 

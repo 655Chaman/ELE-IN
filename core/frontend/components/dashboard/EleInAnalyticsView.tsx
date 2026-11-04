@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { FilterDropdown } from './FilterDropdown'
 import { ElesiumLogo } from '@/components/ElesiumLogo'
+import { cn } from '@/lib/utils'
 
 const formatXAxisDate = (dateStr: string) => {
   if (!dateStr) return '';
@@ -72,33 +73,80 @@ function AnimatedNumber({ value }: { value: string | number; duration?: number }
 
 // --- Components ---
 
-// Static 5-node pipeline visualizer connecting conversion stages
-export function FunnelPipelineFlow() {
+// Interactive dynamic pipeline visualizer connecting conversion stages with live conversion rates
+export function FunnelPipelineFlow({
+  steps = [],
+  selectedStep,
+  onSelectStep
+}: {
+  steps?: any[];
+  selectedStep?: string | null;
+  onSelectStep?: (step: string) => void;
+}) {
   const stages = [
-    { name: "Audience" },
-    { name: "Enrolled" },
-    { name: "Connected" },
-    { name: "Replied" },
-    { name: "Booked" },
+    { name: "Extracted", fallback: "Audience" },
+    { name: "Enrolled", fallback: "Enrolled" },
+    { name: "Connected", fallback: "Connected" },
+    { name: "Replied", fallback: "Replied" },
+    { name: "Booked", fallback: "Booked" },
   ]
 
   return (
-    <div className="flex items-center justify-between px-3 py-2.5 mb-3 rounded-lg bg-background/50 border border-border/60">
-      {stages.map((stage, idx) => (
-        <div key={stage.name} className="flex items-center gap-2 flex-1 last:flex-initial">
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-5 h-5 rounded-full border border-primary/40 bg-card flex items-center justify-center text-[9px] font-mono font-bold text-primary shadow-xs">
-              {idx + 1}
-            </div>
-            <span className="text-[10px] font-medium text-muted-foreground select-none">
-              {stage.name}
-            </span>
+    <div className="flex items-center justify-between px-3.5 py-2.5 mb-3 rounded-xl bg-background/50 border border-border/60 shadow-2xs">
+      {stages.map((stage, idx) => {
+        const matchingStep = steps.find(s => s.label?.toLowerCase() === stage.name.toLowerCase())
+        const count = matchingStep?.value ?? matchingStep?.count ?? 0
+        const isSelected = selectedStep?.toLowerCase() === stage.name.toLowerCase()
+        const prevStep = idx > 0 ? steps.find(s => s.label?.toLowerCase() === stages[idx - 1].name.toLowerCase()) : null
+        const prevCount = prevStep?.value ?? prevStep?.count ?? 0
+        const convRate = prevCount > 0 && count > 0 ? Math.round((count / prevCount) * 100) : null
+
+        return (
+          <div key={stage.name} className="flex items-center gap-1.5 flex-1 last:flex-initial">
+            <button
+              type="button"
+              onClick={() => onSelectStep?.(stage.name)}
+              className={cn(
+                "flex flex-col items-center gap-1 group cursor-pointer transition-all",
+                isSelected ? "scale-105" : "hover:scale-102"
+              )}
+              title={`Inspect ${stage.name} stage leads`}
+            >
+              <div className={cn(
+                "size-6 rounded-full border flex items-center justify-center text-[10px] font-mono font-bold transition-all shadow-xs",
+                isSelected 
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/25" 
+                  : "border-primary/40 bg-card text-primary group-hover:border-primary group-hover:bg-primary/10"
+              )}>
+                {idx + 1}
+              </div>
+              <div className="flex flex-col items-center">
+                <span className={cn(
+                  "text-[10px] font-semibold transition-colors select-none",
+                  isSelected ? "text-primary font-bold" : "text-muted-foreground group-hover:text-foreground"
+                )}>
+                  {stage.name}
+                </span>
+                {count > 0 && (
+                  <span className="text-[9px] font-mono text-muted-foreground/80 font-medium">
+                    {count.toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </button>
+            {idx < stages.length - 1 && (
+              <div className="flex-1 flex flex-col items-center mx-1 mb-3">
+                {convRate !== null && (
+                  <span className="text-[8px] font-mono text-primary font-bold mb-0.5" title="Step conversion rate">
+                    {convRate}%
+                  </span>
+                )}
+                <div className="w-full h-px bg-border/60" />
+              </div>
+            )}
           </div>
-          {idx < stages.length - 1 && (
-            <div className="flex-1 h-px bg-border/60 mx-1.5 self-center mb-3" />
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -770,7 +818,11 @@ export function EleInAnalyticsView({
             </div>
 
             {/* Pipeline Visualizer */}
-            <FunnelPipelineFlow />
+            <FunnelPipelineFlow 
+              steps={activeFunnelSteps} 
+              selectedStep={selectedFunnelStep} 
+              onSelectStep={(stage) => setSelectedFunnelStep(stage)} 
+            />
 
             <div className="space-y-2.5 my-auto">
               {!activeFunnelSteps || activeFunnelSteps.length === 0 ? (

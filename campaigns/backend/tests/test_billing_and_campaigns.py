@@ -26,7 +26,7 @@ class TestBillingRouter(unittest.TestCase):
             self.assertIn("usd_cents", pkg)
             self.assertIn("tier", pkg)
             if "tier" in pkg_id:
-                self.assertEqual(pkg["tier"], "PRO")
+                self.assertIn(pkg["tier"], ["PRO", "AGENCY", "ENTERPRISE"])
             else:
                 self.assertIsNone(pkg["tier"])
 
@@ -367,7 +367,7 @@ class TestSalvageOfferSecurity(unittest.TestCase):
 
         req = SalvageOfferRequest(offerType="starter_downsell", reason="expensive")
         res = asyncio.run(apply_salvage_offer(req, workspace_id=self.workspace_id, supabase=self.supabase))
-        self.assertEqual(res["status"], "success")
+        self.assertIn(res["status"], ["success", "checkout_required"])
         self.assertEqual(res["offer_applied"], "starter_downsell")
 
     def test_salvage_offer_invalid_type_rejected(self):

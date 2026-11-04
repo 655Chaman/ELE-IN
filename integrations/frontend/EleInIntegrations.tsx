@@ -16,6 +16,7 @@ import { LeadImportProvider } from "@/components/leads/LeadImportContext"
 import { HubSpotImport } from "@/components/leads/methods/HubSpotImport"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { CustomSelect } from "@/components/ui/select"
+import { StatusPill } from "@/components/StatusPill"
 
 const fetcher = (url: string) => fetchWithAuth(url).then(r => r.json());
 
@@ -990,19 +991,29 @@ export function EleInIntegrations() {
             { id: "calendar", label: "Meeting Protection" },
             { id: "crm", label: "CRM & Data" },
             { id: "security", label: "Security & Keys" },
-          ].map(f => (
-            <button
-              key={f.id}
-              onClick={() => setSelectedFilter(f.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
-                selectedFilter === f.id
-                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                  : "bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-border/30"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+          ].map(f => {
+            const isSelected = selectedFilter === f.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setSelectedFilter(f.id)}
+                className={`relative px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                  isSelected
+                    ? "text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-border/30"
+                }`}
+              >
+                {isSelected && (
+                  <motion.div
+                    layoutId="integrations-filter-pill"
+                    className="absolute inset-0 bg-primary rounded-lg shadow-xs"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10">{f.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1043,21 +1054,26 @@ export function EleInIntegrations() {
                    <Zap size={20} />}
                 </div>
                 {app.status === "connected" ? (
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-success/10 text-success text-[10px] font-bold">
-                    <CheckCircle2 size={12} /> {app.badge || "Connected"}
-                  </span>
+                  <StatusPill 
+                    status="connected" 
+                    label={app.badge || "Connected"} 
+                    size="xs" 
+                    pulse 
+                  />
                 ) : (app.id === "hubspot") && !isPro ? (
-                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20">
+                  <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 text-[10px] font-bold border border-amber-500/20">
                     <Lock size={10} /> Pro Plan
                   </span>
                 ) : app.status === "coming_soon" ? (
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 text-muted-foreground text-[10px] font-bold">
+                  <span className="px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium border border-border">
                     Coming Soon
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-muted-foreground text-[10px] font-bold">
-                    {app.badge || "Available"}
-                  </span>
+                  <StatusPill 
+                    status="ready" 
+                    label={app.badge || "Available"} 
+                    size="xs" 
+                  />
                 )}
               </div>
               

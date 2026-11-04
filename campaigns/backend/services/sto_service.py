@@ -199,7 +199,9 @@ def calculate_sto_next_run(
 
     # 3. Determine target date (today if still in the future, otherwise next active day)
     naive_local = local_dt.replace(tzinfo=None)
-    slot_time_naive = dt_time(hour=best_hour, minute=target_minute, second=0)
+    clamped_hour = min(23, max(0, int(best_hour)))
+    clamped_minute = min(59, max(0, int(target_minute)))
+    slot_time_naive = dt_time(hour=clamped_hour, minute=clamped_minute, second=0)
 
     target_date = None
     if naive_local.weekday() in active_days:
@@ -262,3 +264,64 @@ def should_use_sto(campaign: Optional[dict] = None, schedule: Optional[dict] = N
         return True
 
     return False
+
+
+# =============================================================================
+# PHASE N: ACCOUNT WARMING SCHEDULE BACKPRESSURE & INTER-MESSAGE PACING
+# =============================================================================
+
+def calculate_warming_backpressure_delay(
+    account_created_at: Any,
+    actions_today: int,
+    daily_target: int = 15,
+    min_delay_seconds: int = 120,
+    max_delay_seconds: int = 420
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Account Warming Schedule Backpressure & Inter-Message Pacing.
+    - Layer 0: Computes pacing delays scaled to mailbox age (warmup phase) and volume sent today.
+    - Layer 1: Defends against divide-by-zero, negative counts, and invalid ISO timestamps.
+    - Layer 2: Applies progressive backpressure when account approaches daily capacity limit,
+              preventing reputation burnout and spam flag spikes.
+    """
+    safe_actions = max(0, int(actions_today or 0))
+    safe_target = max(1, int(daily_target or 15))
+
+    is_warmup = True
+    account_age_days = 0
+    if account_created_at:
+        try:
+            clean_ts = str(account_created_at).replace("Z", "+00:00")
+            created_dt = datetime.fromisoformat(clean_ts)
+            if created_dt.tzinfo is None:
+                created_dt = timezone.utc.localize(created_dt)
+            now_dt = datetime.now(timezone.utc)
+            account_age_days = max(0, (now_dt - created_dt).days)
+            if account_age_days >= 30:
+                is_warmup = False
+        except Exception:
+            is_warmup = True
+
+    # Utilization ratio clamped between [0.0, 1.0]
+    utilization_pct = min(1.0, safe_actions / safe_target)
+    if is_warmup:
+        # Younger accounts have higher base delay and progressive backpressure
+        base_delay = 180
+        ramp_multiplier = max(1.0, 1.5 - (account_age_days / 60.0))
+        computed_delay = int(base_delay * ramp_multiplier * (1.0 + (utilization_pct * 0.8)))
+    else:
+        base_delay = 90
+        computed_delay = int(base_delay * (1.0 + (utilization_pct * 0.5)))
+
+    # Clamp bounds
+    clamped_delay = max(min_delay_seconds, min(max_delay_seconds, computed_delay))
+
+    return {
+        "is_warmup": is_warmup,
+        "account_age_days": account_age_days,
+        "actions_today": safe_actions,
+        "daily_target": safe_target,
+        "utilization_pct": round(utilization_pct * 100.0, 1),
+        "backpressure_delay_seconds": clamped_delay,
+        "cap_exceeded": safe_actions >= safe_target
+    }

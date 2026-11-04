@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/AuthContext"
-import { Eye, EyeOff, Loader2, Sparkles, CheckCircle2, Shield, Zap } from "lucide-react"
+import { Eye, EyeOff, Loader2, Sparkles, CheckCircle2, Shield, Zap, AlertCircle, Check } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 
 export function Login() {
@@ -15,13 +15,22 @@ export function Login() {
   const [errorMessage, setErrorMessage] = useState("")
   const [isResetting, setIsResetting] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false)
   const navigate = useNavigate()
   const { session } = useAuth()
 
   useEffect(() => {
     if (session) {
-      const hasCompleted = localStorage.getItem("elein_has_completed_onboarding") === "true" || localStorage.getItem("onboarding_dismissed") === "true"
-      navigate(hasCompleted ? '/elein' : '/onboarding', { replace: true })
+      // Paranoia Layer 1 & 2: Loop breaker prevents infinite bouncing between /login and /elein
+      const lastRedirect = sessionStorage.getItem("elein_last_login_redirect");
+      const now = Date.now();
+      if (lastRedirect && now - parseInt(lastRedirect, 10) < 3000) {
+        console.warn("[Login] Redirect loop detected; pausing auto-redirect to avoid flashing");
+        return;
+      }
+      sessionStorage.setItem("elein_last_login_redirect", String(now));
+      const hasCompleted = localStorage.getItem("elein_has_completed_onboarding") === "true" || localStorage.getItem("onboarding_dismissed") === "true";
+      navigate(hasCompleted ? '/elein' : '/onboarding', { replace: true });
     }
   }, [session, navigate])
 
@@ -32,6 +41,19 @@ export function Login() {
     if (/[0-9]/.test(pass)) score++;
     if (/[^A-Za-z0-9]/.test(pass)) score++;
     return score;
+  }
+
+  const passwordCriteria = [
+    { label: "8+ characters", met: password.length >= 8 },
+    { label: "Uppercase letter", met: /[A-Z]/.test(password) },
+    { label: "Number", met: /[0-9]/.test(password) },
+    { label: "Special symbol", met: /[^A-Za-z0-9]/.test(password) },
+  ]
+
+  const handlePasswordKeyEvents = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.getModifierState) {
+      setIsCapsLockOn(e.getModifierState("CapsLock"))
+    }
   }
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -221,9 +243,39 @@ export function Login() {
             <p className="text-sm text-white/50">{isSignUp ? "Start your 14-day free trial. No credit card required." : "Enter your credentials to access your pipeline."}</p>
           </div>
 
-          <div className="flex bg-white/5 p-1 rounded-xl mb-8 border border-white/10">
-            <button onClick={() => {setIsSignUp(false); setErrorMessage("");}} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isSignUp ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white"}`}>Sign In</button>
-            <button onClick={() => {setIsSignUp(true); setErrorMessage("");}} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${isSignUp ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white"}`}>Create Account</button>
+          <div className="flex bg-white/5 p-1 rounded-xl mb-8 border border-white/10 relative">
+            <button 
+              type="button"
+              onClick={() => { setIsSignUp(false); setErrorMessage(""); }} 
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all relative cursor-pointer z-10 ${
+                !isSignUp ? "text-white" : "text-white/40 hover:text-white"
+              }`}
+            >
+              {!isSignUp && (
+                <motion.div
+                  layoutId="auth-tab-pill"
+                  className="absolute inset-0 bg-white/15 rounded-lg shadow-sm border border-white/10"
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
+                />
+              )}
+              <span className="relative z-10">Sign In</span>
+            </button>
+            <button 
+              type="button"
+              onClick={() => { setIsSignUp(true); setErrorMessage(""); }} 
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all relative cursor-pointer z-10 ${
+                isSignUp ? "text-white" : "text-white/40 hover:text-white"
+              }`}
+            >
+              {isSignUp && (
+                <motion.div
+                  layoutId="auth-tab-pill"
+                  className="absolute inset-0 bg-white/15 rounded-lg shadow-sm border border-white/10"
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.35 }}
+                />
+              )}
+              <span className="relative z-10">Create Account</span>
+            </button>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
@@ -262,27 +314,67 @@ export function Login() {
                   autoComplete={isSignUp ? "new-password" : "current-password"}
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handlePasswordKeyEvents}
+                  onKeyUp={handlePasswordKeyEvents}
                   className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all pr-10"
                   placeholder="••••••••"
                   required
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors cursor-pointer">
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+
+              {isCapsLockOn && (
+                <div className="flex items-center gap-1.5 text-[11px] text-amber-400 mt-1.5 font-medium animate-pulse">
+                  <AlertCircle size={13} className="shrink-0" />
+                  <span>Caps Lock is ON — check your keystrokes</span>
+                </div>
+              )}
+
               {isSignUp && password.length > 0 && (
-                <div className="mt-3 flex gap-1">
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} className={`h-1 flex-1 rounded-full ${calculateStrength(password) >= i ? (calculateStrength(password) > 2 ? 'bg-emerald-500' : 'bg-warning') : 'bg-white/10'}`} />
-                  ))}
+                <div className="mt-3 space-y-2.5">
+                  <div className="flex gap-1.5">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                        calculateStrength(password) >= i 
+                          ? (calculateStrength(password) > 2 ? 'bg-emerald-500' : 'bg-amber-500') 
+                          : 'bg-white/10'
+                      }`} />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {passwordCriteria.map((crit, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-[11px]">
+                        <span className={`size-3.5 rounded-full flex items-center justify-center transition-colors shrink-0 ${
+                          crit.met ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-white/5 text-white/30 border border-white/10"
+                        }`}>
+                          <Check size={9} strokeWidth={3} />
+                        </span>
+                        <span className={crit.met ? "text-white/80 font-medium" : "text-white/30"}>
+                          {crit.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
             <AnimatePresence>
               {errorMessage && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                  <div className={`p-3 rounded-xl text-sm font-medium mt-2 flex items-center gap-2 ${errorMessage.includes('confirmation') ? 'bg-success/10 text-success border border-success/20' : 'bg-destructive/10 text-destructive border border-destructive/20'}`}>
+                <motion.div 
+                  initial={{ opacity: 0, height: 0, y: -4 }} 
+                  animate={{ opacity: 1, height: 'auto', y: 0, x: [-3, 3, -2, 2, 0] }} 
+                  exit={{ opacity: 0, height: 0 }} 
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className={`p-3 rounded-xl text-sm font-medium mt-2 flex items-center gap-2 ${
+                    errorMessage.includes('confirmation') 
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                      : 'bg-destructive/10 text-destructive border border-destructive/20'
+                  }`}>
                     {errorMessage.includes('confirmation') ? <CheckCircle2 size={16} /> : <Shield size={16} />}
                     {errorMessage}
                   </div>
@@ -290,7 +382,7 @@ export function Login() {
               )}
             </AnimatePresence>
 
-            <button disabled={isLoading} className="w-full py-3.5 mt-4 bg-primary text-primary-foreground font-black rounded-xl hover:bg-primary/90 transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50">
+            <button disabled={isLoading} className="w-full py-3.5 mt-4 bg-primary text-primary-foreground font-black rounded-xl hover:bg-primary/90 transition-all shadow-xs flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
               {isLoading ? <Loader2 size={18} className="animate-spin" /> : (isSignUp ? "Create Workspace" : "Sign In to Pipeline")}
             </button>
           </form>

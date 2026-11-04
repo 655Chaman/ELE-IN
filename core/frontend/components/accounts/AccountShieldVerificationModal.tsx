@@ -44,6 +44,9 @@ export function AccountShieldVerificationModal({
   const [scanStep, setScanStep] = useState(0);
   const [verificationData, setVerificationData] = useState<ShieldVerificationResult | null>(null);
   const [copiedCert, setCopiedCert] = useState(false);
+  const isMountedRef = useRef(true);
+  const stepIntervalRef = useRef<any>(null);
+  const scanTimeoutRef = useRef<any>(null);
 
   // ── Keystroke Simulator State (Interactive Proof) ──
   const [simText, setSimText] = useState("");
@@ -59,10 +62,12 @@ export function AccountShieldVerificationModal({
     setScanStep(0);
 
     // Progressive step animation (Focus Flight Pattern)
-    const stepInterval = setInterval(() => {
+    if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
+    stepIntervalRef.current = setInterval(() => {
+      if (!isMountedRef.current) return;
       setScanStep(prev => {
         if (prev >= 4) {
-          clearInterval(stepInterval);
+          if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
           return 4;
         }
         return prev + 1;
@@ -148,7 +153,9 @@ export function AccountShieldVerificationModal({
         };
       }
 
-      setTimeout(() => {
+      if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+      scanTimeoutRef.current = setTimeout(() => {
+        if (!isMountedRef.current) return;
         setVerificationData(result);
         setIsScanning(false);
         playNotificationChime();
@@ -159,19 +166,29 @@ export function AccountShieldVerificationModal({
       }, 2000);
     } catch (err) {
       console.error(err);
-      setIsScanning(false);
-      toast.error("Safety scan completed with standard residential curve.");
+      if (isMountedRef.current) {
+        setIsScanning(false);
+        toast.error("Safety scan completed with standard residential curve.");
+      }
     }
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     if (isOpen) {
       runSecurityScan();
     } else {
       setSimText("");
       setIsTypingSim(false);
       typingAbortRef.current = true;
+      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
+      if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
     }
+    return () => {
+      isMountedRef.current = false;
+      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
+      if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+    };
   }, [isOpen, accountId]);
 
   // Layer 2 Paranoia: Close on Escape key
@@ -347,7 +364,7 @@ Signed: Ele-in Autonomous Shield Core v2.4`;
               <span>5-Pillar Vault Shield Inspection</span>
             </h4>
 
-            {verificationData?.checks.map((check, index) => {
+            {(verificationData?.checks || []).map((check, index) => {
               const isChecked = !isScanning || scanStep >= index;
               return (
                 <div

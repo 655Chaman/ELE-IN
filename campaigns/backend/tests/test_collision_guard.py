@@ -116,5 +116,68 @@ class TestCollisionGuard(unittest.TestCase):
             self.assertTrue(is_lead_active_in_other_campaign(self.mock_supabase, "ws_123", "lead_1", "camp_1"))
             self.assertFalse(is_lead_active_in_other_campaign(self.mock_supabase, "ws_123", "lead_2", "camp_1"))
 
+    def test_preflight_collision_check_endpoint_empty_inputs(self):
+        from campaigns.backend.routers.elein import preflight_collision_check, PreflightCollisionCheckRequest
+        req = PreflightCollisionCheckRequest(linkedin_urls=[], emails=[])
+        res = preflight_collision_check(req, supabase=self.mock_supabase, workspace_id="ws_123", user_id="u_1")
+        self.assertEqual(res["total_checked"], 0)
+        self.assertEqual(res["colliding_active_count"], 0)
+
+    def test_preflight_collision_check_detects_active_collisions(self):
+        from campaigns.backend.routers.elein import preflight_collision_check, PreflightCollisionCheckRequest
+
+        mock_leads_query = MagicMock()
+        mock_leads_query.eq.return_value = mock_leads_query
+        mock_leads_query.in_.return_value = mock_leads_query
+        mock_leads_query.execute.return_value = MagicMock(data=[
+            {
+                "id": "lead_1",
+                "linkedin_url": "https://linkedin.com/in/alex",
+                "email": "alex@example.com",
+                "first_name": "Alex",
+                "last_name": "Smith",
+                "company_name": "Acme Corp"
+            }
+        ])
+
+        mock_enrollments = MagicMock()
+        mock_enrollments.eq.return_value = mock_enrollments
+        mock_enrollments.in_.return_value = mock_enrollments
+        mock_enrollments.execute.return_value = MagicMock(data=[
+            {"id": "enr_1", "campaign_id": "camp_active", "lead_id": "lead_1"}
+        ])
+
+        mock_camp = MagicMock()
+        mock_camp.in_.return_value = mock_camp
+        mock_camp.execute.return_value = MagicMock(data=[
+            {"id": "camp_active", "name": "Q4 Outreach", "status": "ACTIVE"}
+        ])
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "leads":
+                m.select.return_value = mock_leads_query
+            elif name == "campaign_enrollments":
+                m.select.return_value = mock_enrollments
+            elif name == "campaigns":
+                m.select.return_value = mock_camp
+            return m
+
+        self.mock_supabase.table.side_effect = table_side_effect
+
+        with patch("campaigns.backend.services.collision_guard.get_conflicting_active_leads", return_value={"lead_1"}):
+            req = PreflightCollisionCheckRequest(
+                linkedin_urls=["https://www.linkedin.com/in/alex/"],
+                emails=["alex@example.com"]
+            )
+            res = preflight_collision_check(req, supabase=self.mock_supabase, workspace_id="ws_123", user_id="u_1")
+            self.assertEqual(res["total_checked"], 2)
+            self.assertEqual(res["workspace_matches_count"], 1)
+            self.assertEqual(res["colliding_active_count"], 1)
+            self.assertIn("Q4 Outreach", res["active_campaign_names"])
+            self.assertEqual(len(res["colliding_samples"]), 1)
+            self.assertEqual(res["colliding_samples"][0]["name"], "Alex Smith")
+            self.assertEqual(res["colliding_samples"][0]["campaign_name"], "Q4 Outreach")
+
 if __name__ == "__main__":
     unittest.main()

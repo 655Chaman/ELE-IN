@@ -441,16 +441,23 @@ export function EleInBilling() {
   };
 
   const credits = billingData?.balance ?? 0;
-  const tier = billingData?.tier ?? "FREE";
-  const plan = tier === "PRO" ? "Growth Tier" : tier === "ENTERPRISE" ? "Enterprise Tier" : "Free Tier";
+  const rawTier = (billingData?.tier ?? "FREE").toUpperCase();
+  const tier = rawTier;
+  const isEnterprise = tier === "ENTERPRISE";
+  const isAgency = tier === "AGENCY";
+  const isGrowth = tier === "PRO" || tier === "GROWTH";
+  const isPaid = isGrowth || isAgency || isEnterprise;
+  const isPro = isPaid;
+
+  const plan = isEnterprise ? "Enterprise Tier" : isAgency ? "Agency Tier" : isGrowth ? "Growth Tier" : "Free Tier";
   const activeCampaigns = billingData?.active_campaigns ?? 0;
   
-  const isPro = tier === "PRO" || tier === "ENTERPRISE";
-  const campaignLimit = isPro ? 'Unlimited' : 2;
-  const campaignPercentage = isPro ? 0 : Math.min((activeCampaigns / 2) * 100, 100);
+  const maxActiveAllowed = isEnterprise ? 100 : isAgency ? 50 : isGrowth ? 20 : 1;
+  const campaignLimit = maxActiveAllowed;
+  const campaignPercentage = Math.min((activeCampaigns / maxActiveAllowed) * 100, 100);
 
   const features = [
-    "Unlimited Active Campaigns",
+    isEnterprise ? "100 Active Campaigns" : isAgency ? "50 Active Campaigns" : isGrowth ? "20 Active Campaigns" : "1 Active Campaign",
     "Priority AI Sequencing",
     "Dedicated IP Routing",
     "Advanced Webhooks",
@@ -604,9 +611,17 @@ export function EleInBilling() {
                       <h2 className="text-xl font-bold mb-1">Workspace Limits</h2>
                       <p className="text-sm text-muted-foreground">Your current usage based on the {plan}.</p>
                     </div>
-                    {isPro ? (
+                    {isEnterprise ? (
+                      <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                        <CheckCircle2 size={14} /> ENTERPRISE
+                      </span>
+                    ) : isAgency ? (
+                      <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                        <CheckCircle2 size={14} /> AGENCY
+                      </span>
+                    ) : isGrowth ? (
                       <span className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                        <CheckCircle2 size={14} /> PRO
+                        <CheckCircle2 size={14} /> GROWTH PRO
                       </span>
                     ) : (
                       <span className="bg-muted/50 text-muted-foreground border border-border/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
@@ -629,15 +644,11 @@ export function EleInBilling() {
                         <p className="text-sm font-bold font-mono">{activeCampaigns} <span className="text-muted-foreground">/ {campaignLimit}</span></p>
                       </div>
                       <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden border border-border/30 relative">
-                        {isPro ? (
-                           <div className="absolute inset-0 bg-gradient-to-r from-primary/40 to-primary/20" />
-                        ) : (
-                          <motion.div 
-                            initial={{ width: 0 }} 
-                            animate={{ width: `${campaignPercentage}%` }} 
-                            className={`h-full rounded-full ${campaignPercentage >= 100 ? 'bg-destructive' : 'bg-primary'}`}
-                          />
-                        )}
+                        <motion.div 
+                          initial={{ width: 0 }} 
+                          animate={{ width: `${campaignPercentage}%` }} 
+                          className={`h-full rounded-full transition-all duration-500 ${campaignPercentage >= 100 ? 'bg-destructive' : 'bg-primary'}`}
+                        />
                       </div>
                       {!isPro && campaignPercentage >= 100 && (
                         <p className="text-xs text-destructive mt-2 flex items-center gap-1.5"><AlertCircle size={12} /> Limit reached. Upgrade to launch more.</p>
@@ -939,11 +950,19 @@ export function EleInBilling() {
                 <SpotlightCard className={`p-8 rounded-xl border ${isPro ? 'border-border/60 bg-card' : 'border-primary/30 bg-card shadow-xs'} h-full flex flex-col`}>
                   {isPro ? (
                     <div className="flex flex-col h-full">
-                      <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center mb-6">
+                      <div className={`w-12 h-12 ${isEnterprise ? 'bg-purple-500/10 text-purple-400' : isAgency ? 'bg-indigo-500/10 text-indigo-400' : 'bg-primary/10 text-primary'} rounded-xl flex items-center justify-center mb-6`}>
                         <ShieldCheck size={24} />
                       </div>
-                      <h3 className="text-2xl font-bold mb-2">Growth Plan Active</h3>
-                      <p className="text-sm text-muted-foreground mb-8">You have full access to all premium features. Your subscription automatically renews.</p>
+                      <h3 className="text-2xl font-bold mb-2">
+                        {isEnterprise ? 'Enterprise Plan Active' : isAgency ? 'Agency Plan Active' : 'Growth Plan Active'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-8">
+                        {isEnterprise 
+                          ? 'Dedicated infrastructure, bespoke rate limits, custom CRM webhooks, and executive SLA support.' 
+                          : isAgency 
+                          ? 'Multi-client sub-workspaces, centralized credit allocation, and white-label client dashboards.' 
+                          : 'You have full access to all premium features. Your subscription automatically renews.'}
+                      </p>
                       
                       <div className="mt-auto space-y-3">
                         <button 

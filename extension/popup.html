@@ -182,12 +182,26 @@
       <div class="logo-icon">E</div>
       <h2>Ele-In LinkedIn Sync</h2>
     </div>
-    <span class="version">v1.2.0</span>
+    <span class="version">v1.3.0</span>
   </div>
 
   <div id="session-badge" class="session-badge inactive">
     <span class="dot"></span>
     <span id="session-text">Checking LinkedIn session...</span>
+  </div>
+
+  <div id="checkpoint-banner" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 10px; margin-bottom: 14px;">
+    <div style="font-size: 11px; font-weight: 700; color: #f87171; margin-bottom: 4px;">⚠️ Security Checkpoint Triggered</div>
+    <div id="checkpoint-reason-text" style="font-size: 10px; color: #d4d4d8; margin-bottom: 8px; line-height: 1.3;">LinkedIn has presented a verification challenge. Automation has paused to safeguard your account.</div>
+    <button id="reset-checkpoint-btn" style="width: 100%; background: #dc2626; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">Reset Challenge Lockout & Resume</button>
+  </div>
+
+  <div id="tab-leader-badge" class="session-badge" style="background: rgba(99, 102, 241, 0.1); color: #818cf8; border-color: rgba(99, 102, 241, 0.2); display: flex; justify-content: space-between;">
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span class="dot"></span>
+      <span id="tab-leader-text">Controller: Leader Active</span>
+    </div>
+    <button id="takeover-btn" style="background:#4f46e5; color:white; border:none; padding:2px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Claim Tab</button>
   </div>
 
   <div class="input-group">
@@ -201,7 +215,7 @@
   </div>
 
   <button id="sync-btn" class="btn-sync">
-    <span>⚡ 1-Click Sync LinkedIn Session</span>
+    <span>1-Click Sync LinkedIn Session</span>
   </button>
 
   <div id="status-message" class="status">
@@ -210,6 +224,10 @@
 
   <div id="advanced-toggle" class="advanced-toggle">Server Settings</div>
   <div id="advanced-section" class="advanced-section">
+    <div class="input-group">
+      <label>Workspace ID (Cross-Tenant Fence)</label>
+      <input type="text" id="workspace-id" placeholder="Optional Workspace UUID" />
+    </div>
     <div class="input-group">
       <label>API Base URL</label>
       <input type="text" id="api-base-url" placeholder="http://127.0.0.1:8000" />

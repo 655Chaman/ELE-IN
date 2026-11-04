@@ -4,98 +4,109 @@ import time
 from datetime import datetime
 
 from supabase import Client
-from typing import List
+from typing import List, Optional, Any, Dict
 
 from core.backend.api.auth_dep import get_service_client
 from integrations.backend.services.linkedin_worker import LinkedInWorker
 from core.backend.services.telemetry import capture_error, emit_heartbeat
+from accounts.backend.services.account_auto_heal_service import probe_proxy_health
+from core.backend.services.proxy_routing import format_proxy_url, find_sticky_failover_proxy, quarantine_proxy, is_proxy_quarantined
 
 logger = logging.getLogger(__name__)
 
 def _try_proxy_failover(supabase, acc: dict, cookies_json: str, country_code: str = None) -> bool:
     """
-    If an account session appears dead, it might just be the assigned proxy is blacklisted.
-    Find another healthy proxy IN THE SAME COUNTRY (or fallback to any healthy proxy) and try again.
+    Paranoia Layer 0 & 1: Safely attempts proxy failover on network transport failure.
+    - Scoped strictly to account's workspace or shared system pool.
+    - Preserves geo-country affinity.
+    - Probes candidate proxy health neutrally BEFORE attempting session use.
+    - NEVER degrades a candidate proxy due to session cookie failures.
     """
     workspace_id = acc.get("workspace_id")
     current_proxy_id = acc.get("proxy_id")
     acc_id = acc["id"]
-    
-    # Fetch all OTHER healthy proxies
-    proxies_res = supabase.table("proxies").select(
-        "id, host, port, username, protocol, country_code"
-    ).eq("status", "healthy").execute()
-    
-    candidates = [p for p in (proxies_res.data or []) if p["id"] != current_proxy_id]
-    
-    if not candidates:
-        logger.warning(f"No alternative proxies available for account {acc_id}")
-        return False
-        
-    # Prioritize same country!
-    if country_code:
-        same_country = [p for p in candidates if p.get("country_code") == country_code]
-        if same_country:
-            candidates = same_country
-            logger.info(f"Found {len(candidates)} failover proxies matching country {country_code}")
-    
-    for proxy in candidates:
 
-        proxy_url = f"{proxy['protocol']}://{proxy['host']}:{proxy['port']}"
-        if proxy.get("username"):
-            password_plain = ""
-            try:
-                rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy['id']}).execute()
-                if rpc_res.data and rpc_res.data.get("password_encrypted"):
-                    from core.backend.core import crypto
-                    import base64
-                    raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
-                    dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
-                    password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
-            except Exception as e:
-                logger.error(f"Failed to decrypt failover proxy {proxy['id']}: {e}")
-            proxy_url = f"{proxy['protocol']}://{proxy['username']}:{password_plain}@{proxy['host']}:{proxy['port']}"
-        
-        logger.info(f"Trying failover proxy {proxy['host']} for account {acc_id}...")
+    replacement = find_sticky_failover_proxy(
+        supabase,
+        workspace_id=workspace_id,
+        current_proxy_id=current_proxy_id,
+        target_country=country_code,
+        allow_cross_country_drift=False
+    )
+
+    if not replacement:
+        logger.warning(f"No alternative failover proxies available in {country_code or 'workspace'} for account {acc_id}")
+        return False
+
+    # Paranoia Layer 1: Verify replacement proxy neutrally before attaching
+    probe_res = probe_proxy_health(replacement, supabase=supabase, timeout_seconds=3.0)
+    if not probe_res.get("ok"):
+        fail_status = probe_res.get("status") or "degraded"
+        logger.warning(f"Replacement proxy {replacement.get('id')} failed neutral probe ({fail_status}): {probe_res.get('error')}")
+        supabase.table("proxies").update({
+            "status": fail_status,
+            "is_active": False,
+            "last_checked_at": datetime.utcnow().isoformat()
+        }).eq("id", replacement["id"]).execute()
+        return False
+
+    # Paranoia Layer 1: Degrade failing current proxy so it is not immediately re-routed to
+    if current_proxy_id:
         try:
-            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=proxy_url, account_id=acc_id)
-            is_valid = worker.check_session_valid()
-        except Exception as e:
-            capture_error(e, context={"service": "health_check_cron", "message": f"Proxy {proxy['host']} also failed"})
-            # Mark this proxy as unhealthy
             supabase.table("proxies").update({
                 "status": "degraded",
                 "is_active": False,
                 "last_checked_at": datetime.utcnow().isoformat()
-            }).eq("id", proxy["id"]).execute()
-            continue
-        
-        if is_valid:
-            logger.info(f"Proxy failover SUCCESS: account {acc_id} now using proxy {proxy['host']}")
-            # Update the account to use the new working proxy
+            }).eq("id", current_proxy_id).execute()
+        except Exception as cur_p_err:
+            logger.debug(f"Failed to mark failing proxy {current_proxy_id} degraded: {cur_p_err}")
+
+    # Decrypt replacement password if present
+    password_plain = ""
+    if replacement.get("username"):
+        try:
+            rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": replacement['id']}).execute()
+            if rpc_res.data and rpc_res.data.get("password_encrypted"):
+                from core.backend.core import crypto
+                import base64
+                raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
+                dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
+                password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Failed to decrypt failover proxy {replacement['id']}: {e}")
+
+    proxy_url = format_proxy_url(
+        replacement.get("protocol", "http"),
+        replacement["host"],
+        replacement["port"],
+        replacement.get("username"),
+        password_plain if password_plain else None
+    )
+
+    logger.info(f"Trying failover proxy {replacement['host']} for account {acc_id}...")
+    try:
+        worker = LinkedInWorker(
+            cookies_json=cookies_json,
+            proxy_url=proxy_url,
+            account_id=acc_id,
+            country_code=replacement.get("country_code")
+        )
+        resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
+        if resp.status_code == 200:
+            logger.info(f"Proxy failover SUCCESS: account {acc_id} now using proxy {replacement['host']}")
             supabase.table("accounts").update({
-                "proxy_id": proxy["id"],
+                "proxy_id": replacement["id"],
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("id", acc_id).execute()
-            # Mark the old proxy as unhealthy
-            if current_proxy_id:
-                supabase.table("proxies").update({
-                    "status": "degraded",
-                    "is_active": False,
-                    "last_checked_at": datetime.utcnow().isoformat()
-                }).eq("id", current_proxy_id).execute()
             return True
         else:
-            # This proxy is also bad
-            supabase.table("proxies").update({
-                "status": "degraded",
-                "is_active": False,
-                "last_checked_at": datetime.utcnow().isoformat()
-            }).eq("id", proxy["id"]).execute()
-    
-    return False  # All proxies exhausted
+            logger.warning(f"Session probe on failover proxy returned status {resp.status_code}. Proxy {replacement['id']} remains healthy; account requires review.")
+            return False
+    except Exception as e:
+        capture_error(e, context={"service": "health_check_cron", "message": f"Proxy failover probe error: {e}"})
+        return False
 
-def run_health_checks():
+def run_health_checks(supabase: Optional[Client] = None):
     """
     Cron job to ping LinkedIn for all ACTIVE accounts.
     If an account cookie is dead:
@@ -103,7 +114,8 @@ def run_health_checks():
       2. Pauses any ACTIVE campaigns using that account.
     """
     logger.info("Starting LinkedIn session health checks and auto-cooling...")
-    supabase: Client = get_service_client()
+    if supabase is None:
+        supabase = get_service_client()
     
     # Run auto-cooling and proxy recovery first
     try:
@@ -115,10 +127,15 @@ def run_health_checks():
     except Exception as e:
         logger.error(f"[AutoCooling/ProxyRecovery] Error running auto-cooling or proxy recovery: {e}")
     
-    # 1. Fetch all active accounts
-    res = supabase.table("accounts").select(
-        "id, name, session_cookies_encrypted, proxy_id, workspace_id"
-    ).eq("status", "ACTIVE").execute()
+    # 1. Fetch stalest active accounts (Bounded batching: 50 accounts per cycle to scale to 10,000 customers without starvation)
+    try:
+        res = supabase.table("accounts").select(
+            "id, name, session_cookies_encrypted, proxy_id, workspace_id, execution_channel, last_health_check_at"
+        ).eq("status", "ACTIVE").order("last_health_check_at", desc=False).limit(50).execute()
+    except Exception:
+        res = supabase.table("accounts").select(
+            "id, name, session_cookies_encrypted, proxy_id, workspace_id"
+        ).eq("status", "ACTIVE").limit(50).execute()
     
     accounts = res.data or []
     if not accounts:
@@ -126,6 +143,15 @@ def run_health_checks():
         return
 
     logger.info(f"Found {len(accounts)} active accounts. Pinging LinkedIn...")
+
+    # Phase R: Autonomous Mailbox Reputation & Graceful Pausing Evaluation
+    try:
+        from accounts.backend.services.account_auto_heal_service import evaluate_and_gracefully_pause_mailbox
+        for acc in accounts:
+            ws_id = acc.get("workspace_id") or ""
+            evaluate_and_gracefully_pause_mailbox(acc["id"], ws_id, supabase=supabase)
+    except Exception as e:
+        logger.debug(f"[AutoHealMailbox] Error evaluating mailboxes: {e}")
 
     # Fetch proxies to build map
     proxy_ids = [acc["proxy_id"] for acc in accounts if acc.get("proxy_id")]
@@ -137,6 +163,19 @@ def run_health_checks():
     for acc in accounts:
         acc_id = acc["id"]
         acc_name = acc["name"]
+
+        # Paranoia Layer 0 & 1: Extension accounts execute locally from the user's browser.
+        # Do NOT ping LinkedIn from the cloud server's datacenter IP to prevent location checkpoints.
+        if acc.get("execution_channel") == "EXTENSION":
+            logger.info(f"Skipping server-side HTTP ping for account {acc_name}: execution_channel is EXTENSION.")
+            try:
+                supabase.table("accounts").update({
+                    "last_health_check_at": datetime.utcnow().isoformat()
+                }).eq("id", acc_id).execute()
+            except Exception:
+                pass
+            continue
+
         encrypted_cookies = acc.get("session_cookies_encrypted")
         cookies_json = ""
         try:
@@ -172,23 +211,53 @@ def run_health_checks():
                         password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode('utf-8')
                 except Exception as e:
                     logger.error(f"Failed to decrypt proxy {proxy_id}: {e}")
-                proxy_url = f"{protocol}://{username}:{password_plain}@{host}:{port}"
+                proxy_url = format_proxy_url(protocol, host, port, username, password_plain if password_plain else None)
             else:
-                proxy_url = f"{protocol}://{host}:{port}"
+                proxy_url = format_proxy_url(protocol, host, port)
         
         if not cookies_json:
             logger.error(f"Account {acc_id} has no cookies. Marking DISCONNECTED.")
             _disconnect_account(supabase, acc_id, acc_name, acc.get('workspace_id'))
             continue
+
+        # Paranoia Layer 1: Channel Mutex (Eradicates FLAW-03 - Dual-IP Flapping)
+        from core.backend.services.impossible_travel_guard import should_mute_cloud_execution
+        should_mute, mute_reason = should_mute_cloud_execution(acc)
+        if should_mute:
+            logger.info(f"[HealthCheckCron] Muting cloud health probe for account {acc_id}: {mute_reason}")
+            continue
             
-        # 2. Ping LinkedIn
+        # 2. Ping LinkedIn with status code awareness (Paranoia Layer 0: Decouple cookie auth from proxy health)
+        worker = LinkedInWorker(
+            cookies_json=cookies_json,
+            proxy_url=proxy_url,
+            account_id=acc_id,
+            country_code=proxy_map.get(proxy_id, {}).get("country_code") if proxy_id else None
+        )
+        status_code = 0
         try:
-            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=proxy_url, account_id=acc_id)
-            is_valid = worker.check_session_valid()
+            resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
+            status_code = resp.status_code
         except Exception as e:
             capture_error(e, context={"service": "health_check_cron", "account_id": acc_id})
-            is_valid = False
-            
+
+        if status_code == 401:
+            # PURE COOKIE EXPIRY: Account is logged out / expired. Proxy is innocent!
+            logger.warning(f"Account {acc_name} cookies expired (HTTP 401). Disconnecting account. Proxies remain intact.")
+            _disconnect_account(supabase, acc_id, acc_name, acc.get('workspace_id'))
+            continue
+        elif status_code in (403, 999):
+            logger.warning(f"Account {acc_name} encountered LinkedIn anti-bot/challenge ({status_code}).")
+            if proxy_id:
+                quarantine_proxy(supabase, proxy_id, reason="linkedin_challenge_999", cooldown_hours=24)
+            supabase.table("accounts").update({
+                "status": "CHALLENGE_REQUIRED",
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("id", acc_id).execute()
+            continue
+
+        is_valid = (status_code == 200)
+
         if is_valid:
             logger.info(f"Account {acc_name} ({acc_id}) session is VALID.")
             try:
@@ -245,12 +314,15 @@ def run_health_checks():
                 "last_health_check_at": datetime.utcnow().isoformat()
             }).eq("id", acc_id).execute()
         else:
-            logger.warning(f"Account {acc_name} session dead. Attempting proxy failover...")
+            logger.warning(f"Account {acc_name} network transport failed. Attempting proxy failover...")
             country = proxy_map.get(proxy_id, {}).get("country_code") if proxy_id else None
             recovered = _try_proxy_failover(supabase, acc, cookies_json, country_code=country)
             if not recovered:
-                logger.warning(f"All proxies exhausted for {acc_name}. Marking DISCONNECTED.")
-                _disconnect_account(supabase, acc_id, acc_name, acc.get('workspace_id'))
+                logger.warning(f"All proxies exhausted or down for {acc_name}. Marking NEEDS_ATTENTION.")
+                supabase.table("accounts").update({
+                    "status": "NEEDS_ATTENTION",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", acc_id).execute()
             else:
                 logger.info(f"Account {acc_name} recovered via proxy failover. Staying ACTIVE.")
 
@@ -332,29 +404,32 @@ def _disconnect_account(supabase: Client, acc_id: str, acc_name: str, workspace_
         except Exception as e:
             capture_error(e, context={"service": "health_check_cron"})
     
-    # c. Find campaigns using this account to see if they need pausing
-    camps_res = supabase.table("campaigns").select(
-        "id, name"
-    ).eq("status", "ACTIVE").execute()
-    
-    for camp in (camps_res.data or []):
-        try:
-            acc_res = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", camp["id"]).execute()
-            senders = [r["account_id"] for r in acc_res.data]
-        except Exception:
-            continue
-            
-        if acc_id in senders:
-            # Check if there are any remaining ACTIVE senders for this campaign
-            active_senders = supabase.table("accounts").select("id").in_("id", senders).eq("status", "ACTIVE").execute()
-            if not active_senders.data:
-                logger.warning(f"Pausing Campaign '{camp['name']}' because ALL senders disconnected.")
-                supabase.table("campaigns").update({
-                    "status": "PAUSED",
-                    "updated_at": datetime.utcnow().isoformat()
-                }).eq("id", camp["id"]).execute()
-            else:
-                logger.info(f"Campaign '{camp['name']}' continues using {len(active_senders.data)} remaining active senders.")
+    # c. Paranoia Layer 1 & 2: Targeted indexed lookup.
+    # Never loop through all campaigns across all tenants (O(N^2) scale collapse at 10,000 customers).
+    # Query ONLY campaigns that explicitly link this account_id.
+    try:
+        camp_links = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", acc_id).execute()
+        linked_campaign_ids = [r["campaign_id"] for r in (camp_links.data or []) if r.get("campaign_id")]
+        
+        if linked_campaign_ids:
+            active_camps = supabase.table("campaigns").select("id, name").in_("id", linked_campaign_ids).eq("status", "ACTIVE").execute()
+            for camp in (active_camps.data or []):
+                # Check if there are any remaining ACTIVE senders for this specific campaign
+                camp_senders_res = supabase.table("campaign_accounts").select("account_id").eq("campaign_id", camp["id"]).execute()
+                all_senders = [r["account_id"] for r in (camp_senders_res.data or []) if r.get("account_id")]
+                
+                if all_senders:
+                    active_senders = supabase.table("accounts").select("id").in_("id", all_senders).eq("status", "ACTIVE").execute()
+                    if not (active_senders.data or []):
+                        logger.warning(f"Pausing Campaign '{camp['name']}' ({camp['id']}) because ALL senders disconnected.")
+                        supabase.table("campaigns").update({
+                            "status": "PAUSED",
+                            "updated_at": datetime.utcnow().isoformat()
+                        }).eq("id", camp["id"]).execute()
+                    else:
+                        logger.info(f"Campaign '{camp['name']}' continues using {len(active_senders.data)} remaining active senders.")
+    except Exception as camp_pause_err:
+        logger.error(f"Error checking active campaigns for disconnected account {acc_id}: {camp_pause_err}")
 
 if __name__ == "__main__":
     import sys

@@ -7,9 +7,10 @@ import uuid
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Set, Tuple, Dict, Any
-from core.backend.api.auth_dep import get_current_workspace, get_async_service_client, get_supabase_client, get_service_client, require_superadmin
+from core.backend.api.auth_dep import get_current_workspace, get_async_service_client, get_supabase_client, get_service_client, require_superadmin, get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -182,11 +183,17 @@ async def async_add_credits_safely_fallback(supabase, workspace_id: str, credits
 PACKAGES = {
     'credits_1000': {"credits": 1000, "inr_paise": 99900, "usd_cents": 1200, "tier": None},
     'credits_5000': {"credits": 5000, "inr_paise": 449900, "usd_cents": 5500, "tier": None},
+    'credits_10000': {"credits": 10000, "inr_paise": 799900, "usd_cents": 9900, "tier": None},
+    'credits_25000': {"credits": 25000, "inr_paise": 1799900, "usd_cents": 21900, "tier": None},
     'starter_tier': {"credits": 1500, "inr_paise": 249900, "usd_cents": 2900, "tier": "PRO"},
     'growth_tier': {"credits": 5000, "inr_paise": 799900, "usd_cents": 9900, "tier": "PRO"},
     'growth_tier_annual': {"credits": 60000, "inr_paise": 7798800, "usd_cents": 94800, "tier": "PRO"},
     'growth_tier_oto': {"credits": 5000, "inr_paise": 559900, "usd_cents": 6900, "tier": "PRO"},
-    'growth_tier_annual_oto': {"credits": 60000, "inr_paise": 5458800, "usd_cents": 66000, "tier": "PRO"}
+    'growth_tier_annual_oto': {"credits": 60000, "inr_paise": 5458800, "usd_cents": 66000, "tier": "PRO"},
+    'agency_tier': {"credits": 25000, "inr_paise": 1999900, "usd_cents": 24900, "tier": "AGENCY"},
+    'agency_tier_annual': {"credits": 300000, "inr_paise": 19499000, "usd_cents": 239000, "tier": "AGENCY"},
+    'enterprise_tier': {"credits": 100000, "inr_paise": 4999900, "usd_cents": 59900, "tier": "ENTERPRISE"},
+    'enterprise_tier_annual': {"credits": 1200000, "inr_paise": 49999000, "usd_cents": 599000, "tier": "ENTERPRISE"},
 }
 
 from core.backend.services.credit_service import is_mock_billing_allowed
@@ -447,16 +454,17 @@ async def verify_payment(
                     provider="mock"
                 )
 
-            # Update workspace tier if PRO package
-            if pkg_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
-                supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+            # Update workspace tier if package carries tier entitlement
+            target_tier = PACKAGES.get(pkg_id, {}).get("tier")
+            if target_tier:
+                supabase.table("workspaces").update({"tier": target_tier}).eq("id", workspace_id).execute()
             supabase.table("billing_transactions").update({
                 "status": "paid",
                 "provider_payment_id": req_pay_id,
                 "provider_order_id": req_order_id,
                 "credits_added": credits
             }).eq("id", req_sess_id).execute()
-            return {"status": "verified", "tier": "PRO"}
+            return {"status": "verified", "tier": target_tier or "PRO"}
 
         # Real Razorpay signature verification
         rzp_key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
@@ -489,8 +497,9 @@ async def verify_payment(
                 provider="razorpay"
             )
 
-        if pkg_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
-            supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+        if pkg_id in PACKAGES and PACKAGES[pkg_id].get("tier"):
+            target_tier = PACKAGES[pkg_id]["tier"]
+            supabase.table("workspaces").update({"tier": target_tier}).eq("id", workspace_id).execute()
 
         supabase.table("billing_transactions").update({
             "status": "paid",
@@ -501,7 +510,7 @@ async def verify_payment(
             "credits_added": credits
         }).eq("id", req_sess_id).execute()
 
-        return {"status": "verified", "tier": "PRO"}
+        return {"status": "verified", "tier": target_tier or "PRO"}
  
 class CancelSessionRequest(BaseModel):
     session_id: str
@@ -532,7 +541,14 @@ async def cancel_session(
         return {"status": "ok"}
 
 
-_PROCESSED_STRIPE_EVENTS = set()
+_PROCESSED_STRIPE_EVENTS: Set[str] = set()
+_PROCESSED_RAZORPAY_EVENTS: Set[str] = set()
+
+def clear_processed_webhook_events() -> None:
+    """Clears in-memory processed webhook sets for test suite isolation."""
+    _PROCESSED_STRIPE_EVENTS.clear()
+    _PROCESSED_RAZORPAY_EVENTS.clear()
+    _PROCESSED_FALLBACK_EVENTS.clear()
 
 def calculate_proration_credit(current_credits: int, days_remaining: int, total_days: int = 30) -> int:
     """
@@ -549,23 +565,28 @@ def calculate_proration_credit(current_credits: int, days_remaining: int, total_
 
 def verify_stripe_signature(body: bytes, signature_header: str, secret: str) -> bool:
     """
-    Paranoia Layer 0 & 1: Verifies Stripe signature or permits mock/test mode when explicitly enabled.
+    Paranoia Layer 0 & 1: Verifies Stripe signature with standard 300s timestamp freshness tolerance
+    and multi-v1 signature rotation support.
     """
-    if is_mock_billing_allowed():
-        return True
     if not secret or not signature_header:
-        return False
+        return is_mock_billing_allowed()
     try:
-        # Simple Stripe signature check or standard hmac
-        parts = dict(item.split("=") for item in signature_header.split(",") if "=" in item)
-        timestamp = parts.get("t", "")
-        v1_sig = parts.get("v1", "")
-        signed_payload = f"{timestamp}.".encode() + body
+        pairs = [item.split("=", 1) for item in signature_header.split(",") if "=" in item]
+        timestamps = [val for key, val in pairs if key.strip() == "t"]
+        v1_sigs = [val for key, val in pairs if key.strip() == "v1"]
+        if not timestamps or not v1_sigs:
+            return False
+            
+        t_val = float(timestamps[0])
+        # Enforce standard 300s timestamp freshness to prevent replay attacks
+        if abs(time.time() - t_val) > 300:
+            return False
+            
+        signed_payload = f"{timestamps[0]}.".encode() + body
         expected = hmac.new(secret.encode(), signed_payload, "sha256").hexdigest()
-        return hmac.compare_digest(expected, v1_sig) or hmac.compare_digest(hmac.new(secret.encode(), body, "sha256").hexdigest(), v1_sig)
+        return any(hmac.compare_digest(expected, s) for s in v1_sigs)
     except Exception:
-        # Fallback basic comparison
-        return hmac.compare_digest(hmac.new(secret.encode(), body, "sha256").hexdigest(), signature_header)
+        return False
 
 @router.post("/webhook/stripe")
 async def webhook_stripe(request: Request):
@@ -640,9 +661,11 @@ async def webhook_stripe(request: Request):
             credits = int(pkg_info.get("credits", 1000))
             tier = pkg_info.get("tier")
 
-            # Award credits safely
+            # Award credits safely under distributed lock
             if credits > 0:
-                await async_add_credits_safely_fallback(supabase, workspace_id, credits, event_id, "stripe")
+                from core.backend.services.credit_service import distributed_workspace_lock
+                with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
+                    await async_add_credits_safely_fallback(supabase, workspace_id, credits, event_id, "stripe")
 
             # Update tier if applicable
             if tier:
@@ -651,6 +674,8 @@ async def webhook_stripe(request: Request):
                     await upd_ws
 
             # Log transaction
+            amount_cents = int(event_object.get("amount_total") or pkg_info.get("usd_cents", 1200))
+            currency = str(event_object.get("currency", "USD")).upper()
             try:
                 ins_txn = supabase.table("billing_transactions").insert({
                     "id": str(uuid.uuid4()),
@@ -658,8 +683,8 @@ async def webhook_stripe(request: Request):
                     "provider": "stripe",
                     "provider_order_id": event_id,
                     "provider_payment_id": event_object.get("payment_intent") or event_object.get("id"),
-                    "amount_cents": int(event_object.get("amount_total") or pkg_info.get("usd_cents", 1200)),
-                    "currency": str(event_object.get("currency", "USD")).upper(),
+                    "amount_cents": amount_cents,
+                    "currency": currency,
                     "credits_added": credits,
                     "package_id": package_id,
                     "status": "paid"
@@ -668,6 +693,23 @@ async def webhook_stripe(request: Request):
                     await ins_txn
             except Exception as txn_err:
                 logger.warning(f"Error logging stripe billing transaction: {txn_err}")
+
+            # Paranoia Layer 0 & 1: Generate compliant 18% GST Tax Invoice (Pillar 8.2)
+            try:
+                from core.backend.services.gst_invoice_service import generate_gst_invoice
+                generate_gst_invoice(
+                    workspace_id=workspace_id,
+                    base_amount=float(amount_cents) / 100.0,
+                    customer_name=event_object.get("customer_details", {}).get("name") or "Valued Customer",
+                    customer_email=event_object.get("customer_details", {}).get("email") or "billing@ele-in.com",
+                    customer_state=metadata.get("customer_state") or "Outside India",
+                    provider="stripe",
+                    payment_id=event_object.get("payment_intent") or event_id,
+                    currency=currency,
+                    supabase=supabase
+                )
+            except Exception as inv_err:
+                logger.warning(f"[StripeWebhook] GST Invoice generation notice: {inv_err}")
 
         elif event_type == "invoice.payment_succeeded":
             subscription_id = event_object.get("subscription")
@@ -720,9 +762,87 @@ async def webhook_stripe(request: Request):
                 except Exception:
                     pass
 
+        elif event_type == "payment_intent.succeeded":
+            metadata = event_object.get("metadata") or {}
+            workspace_id = metadata.get("workspace_id")
+            if workspace_id:
+                ws_check_query = supabase.table("workspaces").select("id, status").eq("id", workspace_id).execute()
+                if hasattr(ws_check_query, "__await__"):
+                    ws_check = await ws_check_query
+                else:
+                    ws_check = ws_check_query
+                if ws_check.data and len(ws_check.data) > 0:
+                    ws_status = ws_check.data[0].get("status", "active")
+                    if ws_status != "pending_deletion":
+                        package_id = metadata.get("package_id", "credits_1000")
+                        pkg_info = PACKAGES.get(package_id, {"credits": 1000, "usd_cents": 1200, "tier": None})
+                        credits = int(pkg_info.get("credits", 1000))
+                        tier = pkg_info.get("tier")
+
+                        if credits > 0:
+                            from core.backend.services.credit_service import distributed_workspace_lock
+                            with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
+                                await async_add_credits_safely_fallback(supabase, workspace_id, credits, event_id, "stripe_payment_intent")
+
+                        if tier:
+                            upd_ws = supabase.table("workspaces").update({"tier": tier}).eq("id", workspace_id).execute()
+                            if hasattr(upd_ws, "__await__"):
+                                await upd_ws
+
+                        amount_cents = int(event_object.get("amount_received") or event_object.get("amount") or pkg_info.get("usd_cents", 1200))
+                        currency = str(event_object.get("currency", "USD")).upper()
+                        try:
+                            ins_txn = supabase.table("billing_transactions").insert({
+                                "id": str(uuid.uuid4()),
+                                "workspace_id": workspace_id,
+                                "provider": "stripe",
+                                "provider_order_id": event_id,
+                                "provider_payment_id": event_object.get("id") or event_id,
+                                "amount_cents": amount_cents,
+                                "currency": currency,
+                                "credits_added": credits,
+                                "package_id": package_id,
+                                "status": "paid"
+                            }).execute()
+                            if hasattr(ins_txn, "__await__"):
+                                await ins_txn
+                        except Exception as txn_err:
+                            logger.warning(f"Error logging stripe payment_intent transaction: {txn_err}")
+
+                        try:
+                            from core.backend.services.gst_invoice_service import generate_gst_invoice
+                            generate_gst_invoice(
+                                workspace_id=workspace_id,
+                                base_amount=float(amount_cents) / 100.0,
+                                customer_name=metadata.get("customer_name") or "Valued Customer",
+                                customer_email=metadata.get("customer_email") or "billing@ele-in.com",
+                                customer_state=metadata.get("customer_state") or "Outside India",
+                                provider="stripe",
+                                payment_id=event_object.get("id") or event_id,
+                                currency=currency,
+                                supabase=supabase
+                            )
+                        except Exception as inv_err:
+                            logger.warning(f"[StripeWebhook] GST Invoice generation notice for payment_intent: {inv_err}")
+
         elif event_type in ("customer.subscription.deleted", "subscription.deleted"):
             metadata = event_object.get("metadata") or {}
             workspace_id = metadata.get("workspace_id")
+            if not workspace_id:
+                cust_id = event_object.get("customer")
+                sub_id = event_object.get("id")
+                try:
+                    if cust_id:
+                        ws_res = supabase.table("workspaces").select("id").eq("stripe_customer_id", cust_id).execute()
+                        if ws_res.data:
+                            workspace_id = ws_res.data[0].get("id")
+                    if not workspace_id and sub_id:
+                        tx_res = supabase.table("billing_transactions").select("workspace_id").eq("provider_order_id", sub_id).execute()
+                        if tx_res.data:
+                            workspace_id = tx_res.data[0].get("workspace_id")
+                except Exception as lookup_err:
+                    logger.warning(f"[StripeWebhook] Fallback workspace lookup notice: {lookup_err}")
+
             if workspace_id:
                 try:
                     camp_upd = supabase.table("campaigns").update({"status": "PAUSED"}).eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
@@ -731,8 +851,57 @@ async def webhook_stripe(request: Request):
                     ws_upd = supabase.table("workspaces").update({"tier": "FREE"}).eq("id", workspace_id).execute()
                     if hasattr(ws_upd, "__await__"):
                         await ws_upd
+                    logger.info(f"[StripeWebhook] Workspace {workspace_id} downgraded to FREE on subscription.deleted.")
                 except Exception as e:
                     logger.warning(f"Error downgrading workspace on subscription deleted: {e}")
+
+        elif event_type in ("customer.subscription.updated", "subscription.updated"):
+            metadata = event_object.get("metadata") or {}
+            workspace_id = metadata.get("workspace_id")
+            if not workspace_id:
+                cust_id = event_object.get("customer")
+                sub_id = event_object.get("id")
+                try:
+                    if cust_id:
+                        ws_res = supabase.table("workspaces").select("id").eq("stripe_customer_id", cust_id).execute()
+                        if ws_res.data:
+                            workspace_id = ws_res.data[0].get("id")
+                    if not workspace_id and sub_id:
+                        tx_res = supabase.table("billing_transactions").select("workspace_id").eq("provider_order_id", sub_id).execute()
+                        if tx_res.data:
+                            workspace_id = tx_res.data[0].get("workspace_id")
+                except Exception as lookup_err:
+                    logger.warning(f"[StripeWebhook] Update workspace lookup notice: {lookup_err}")
+
+            if workspace_id:
+                sub_status = event_object.get("status")
+                cancel_at_period_end = bool(event_object.get("cancel_at_period_end"))
+                items = event_object.get("items", {}).get("data", []) if isinstance(event_object.get("items"), dict) else []
+                new_tier = None
+                for itm in items:
+                    plan_id = itm.get("plan", {}).get("id") or itm.get("price", {}).get("id")
+                    for pkg_id, pkg in PACKAGES.items():
+                        if pkg.get("tier") and (pkg_id in str(plan_id).lower() or pkg.get("tier").lower() in str(plan_id).lower()):
+                            new_tier = pkg["tier"]
+                            break
+
+                try:
+                    upd_data = {}
+                    if new_tier:
+                        upd_data["tier"] = new_tier
+                    if sub_status in ("canceled", "unpaid"):
+                        upd_data["tier"] = "FREE"
+                        camp_upd = supabase.table("campaigns").update({"status": "PAUSED"}).eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
+                        if hasattr(camp_upd, "__await__"):
+                            await camp_upd
+
+                    if upd_data:
+                        ws_upd = supabase.table("workspaces").update(upd_data).eq("id", workspace_id).execute()
+                        if hasattr(ws_upd, "__await__"):
+                            await ws_upd
+                        logger.info(f"[StripeWebhook] Workspace {workspace_id} updated via subscription.updated: {upd_data}")
+                except Exception as upd_err:
+                    logger.warning(f"[StripeWebhook] Error applying subscription update: {upd_err}")
 
     except HTTPException:
         raise
@@ -749,19 +918,30 @@ async def webhook_razorpay(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature")
     secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET")
-    if not secret:
-        raise HTTPException(status_code=501, detail="Razorpay webhook integration not configured")
-    
-    if not signature:
-        raise HTTPException(status_code=400, detail="Missing signature")
-        
-    expected_sig = hmac.new(secret.encode(), body, "sha256").hexdigest()
-    if not hmac.compare_digest(expected_sig, signature):
-        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Paranoia Layer 0 & 1: Timing-safe HMAC SHA-256 verification or strict mock gate
+    if not is_mock_billing_allowed():
+        if not secret:
+            raise HTTPException(status_code=501, detail="Razorpay webhook integration not configured")
+        if not signature:
+            raise HTTPException(status_code=400, detail="Missing signature")
+        expected_sig = hmac.new(secret.encode(), body, "sha256").hexdigest()
+        if not hmac.compare_digest(expected_sig, signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
+    else:
+        if secret and signature:
+            expected_sig = hmac.new(secret.encode(), body, "sha256").hexdigest()
+            if not hmac.compare_digest(expected_sig, signature):
+                raise HTTPException(status_code=400, detail="Invalid signature")
     
     try:
         data = json.loads(body)
         event_name = data.get("event", "")
+        event_id = data.get("id") or data.get("payload", {}).get("payment", {}).get("entity", {}).get("id")
+        
+        # Paranoia Layer 1: Idempotent Webhook Replay Guard
+        if event_id and event_id in _PROCESSED_RAZORPAY_EVENTS:
+            return {"status": "idempotent_duplicate", "event_id": event_id, "message": "Event already processed"}
         
         # Layer 1 Paranoia: Downgrade Kill Switch
         if event_name in ["subscription.cancelled", "subscription.halted", "invoice.payment_failed", "customer.subscription.deleted", "subscription.deleted"]:
@@ -778,10 +958,63 @@ async def webhook_razorpay(request: Request):
                     print(f"Error pausing campaigns / downgrading tier: {e}")
             return {"status": "ok"}
 
-        AUTHORIZED_PAYMENT_EVENTS = ["payment.captured", "order.paid"]
+        AUTHORIZED_PAYMENT_EVENTS = ["payment.captured", "order.paid", "subscription.charged"]
         if event_name not in AUTHORIZED_PAYMENT_EVENTS:
             logger.info(f"Ignoring non-payment Razorpay event: {event_name}")
             return {"status": "ignored", "event": event_name}
+
+        # Paranoia Layer 0 & 1: Handle Recurring Subscription Charge Renewal
+        if event_name == "subscription.charged":
+            payload_sub = data.get("payload", {}).get("subscription", {}).get("entity", {})
+            sub_id = payload_sub.get("id")
+            sub_notes = payload_sub.get("notes", {})
+            workspace_id = sub_notes.get("workspace_id")
+            package_id = sub_notes.get("package_id", "growth_tier")
+
+            supabase = await get_async_service_client()
+            if not workspace_id and sub_id:
+                try:
+                    db_sub = await supabase.table("subscriptions").select("workspace_id, tier").eq("provider_subscription_id", sub_id).execute()
+                    if db_sub.data and len(db_sub.data) > 0:
+                        workspace_id = db_sub.data[0].get("workspace_id")
+                        if db_sub.data[0].get("tier") == "ENTERPRISE":
+                            package_id = "enterprise_tier"
+                        elif db_sub.data[0].get("tier") == "AGENCY":
+                            package_id = "agency_tier"
+                except Exception as sub_err:
+                    logger.warning(f"[RazorpayWebhook] Sub lookup fallback error: {sub_err}")
+
+            if workspace_id:
+                payment_id = data.get("payload", {}).get("payment", {}).get("entity", {}).get("id") or f"sub_ch_{event_id}"
+                try:
+                    existing_txn = await supabase.table("billing_transactions").select("id").eq("provider_payment_id", payment_id).execute()
+                    if existing_txn.data and len(existing_txn.data) > 0:
+                        return {"status": "idempotent_duplicate", "message": "Renewal payment already credited"}
+                except Exception:
+                    pass
+
+                renewal_credits = 5000 if package_id in ("growth_tier", "growth_tier_annual") else 25000 if package_id == "agency_tier" else 100000
+                from core.backend.services.credit_service import distributed_workspace_lock
+                with distributed_workspace_lock(f"billing_credits_{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
+                    await async_add_credits_safely_fallback(supabase, workspace_id, renewal_credits, payment_id, "razorpay")
+                    target_tier = "ENTERPRISE" if package_id == "enterprise_tier" else "AGENCY" if package_id == "agency_tier" else "PRO"
+                    try:
+                        await supabase.table("workspaces").update({"tier": target_tier}).eq("id", workspace_id).execute()
+                        await supabase.table("billing_transactions").insert({
+                            "workspace_id": workspace_id,
+                            "provider": "razorpay",
+                            "provider_order_id": sub_id or payment_id,
+                            "provider_payment_id": payment_id,
+                            "amount_cents": data.get("payload", {}).get("payment", {}).get("entity", {}).get("amount", 799900),
+                            "currency": "INR",
+                            "credits_added": renewal_credits,
+                            "package_id": package_id,
+                            "status": "paid"
+                        }).execute()
+                    except Exception as ins_err:
+                        logger.warning(f"[RazorpayWebhook] Transaction record error: {ins_err}")
+                    logger.info(f"[RazorpayWebhook] Renewed subscription {sub_id} for workspace {workspace_id} with {renewal_credits} credits.")
+                return {"status": "ok", "message": "subscription_renewed", "credits_granted": renewal_credits}
 
         payment_entity = data.get("payload", {}).get("payment", {}).get("entity", {})
         notes = payment_entity.get("notes", {})
@@ -834,20 +1067,46 @@ async def webhook_razorpay(request: Request):
                 if credits > 0:
                     event_id = payment_entity.get("id") or f"rzp_{checkout_session_id}"
                     await async_add_credits_safely_fallback(supabase, workspace_id, credits, event_id, "razorpay")
+                    amount_paise = payment_entity.get("amount", 0)
+                    currency = payment_entity.get("currency", "INR")
                     try:
                         await supabase.table("billing_transactions").update({
                             "provider_order_id": event_id,
                             "provider_payment_id": payment_entity.get("id") or event_id,
-                            "amount_cents": payment_entity.get("amount", 0),
-                            "currency": payment_entity.get("currency", "INR"),
+                            "amount_cents": amount_paise,
+                            "currency": currency,
                             "credits_added": credits,
                             "status": "paid"
                         }).eq("id", checkout_session_id).execute()
                     except Exception as e:
                         logger.warning(f"Error updating billing transaction: {e}")
 
-                if package_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
-                    await supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+                    # Paranoia Layer 0 & 1: Generate compliant 18% GST Tax Invoice (Pillar 8.2)
+                    try:
+                        from core.backend.services.gst_invoice_service import generate_gst_invoice
+                        base_inr = float(amount_paise) / 100.0 if amount_paise else 100.0
+                        generate_gst_invoice(
+                            workspace_id=workspace_id,
+                            base_amount=base_inr,
+                            customer_name=notes.get("customer_name") or "Valued Customer",
+                            customer_email=notes.get("customer_email") or "billing@ele-in.com",
+                            customer_state=notes.get("customer_state") or "KA",
+                            customer_gstin=notes.get("customer_gstin"),
+                            provider="razorpay",
+                            payment_id=payment_entity.get("id") or event_id,
+                            currency=currency,
+                            supabase=supabase
+                        )
+                    except Exception as inv_err:
+                        logger.warning(f"[RazorpayWebhook] GST Invoice generation notice: {inv_err}")
+
+                if package_id in PACKAGES and PACKAGES[package_id].get("tier"):
+                    target_tier = PACKAGES[package_id]["tier"]
+                    await supabase.table("workspaces").update({"tier": target_tier}).eq("id", workspace_id).execute()
+
+        # Mark event processed in memory replay guard
+        if event_id:
+            _PROCESSED_RAZORPAY_EVENTS.add(event_id)
     except ValueError as val_err:
         logger.warning(f"[RazorpayWebhook] Invalid or already processed payload: {val_err}")
         return {"status": "ignored", "reason": str(val_err)}
@@ -937,8 +1196,9 @@ async def webhook_lemonsqueezy(request: Request):
                     }).eq("id", checkout_session_id).execute()
                 except Exception as e:
                     print(f"Error updating billing transaction: {e}")
-            if package_id in ["growth_tier", "growth_tier_annual", "growth_tier_oto", "growth_tier_annual_oto"]:
-                await supabase.table("workspaces").update({"tier": "PRO"}).eq("id", workspace_id).execute()
+            if package_id in PACKAGES and PACKAGES[package_id].get("tier"):
+                target_tier = PACKAGES[package_id]["tier"]
+                await supabase.table("workspaces").update({"tier": target_tier}).eq("id", workspace_id).execute()
     except Exception as e:
         print(f"Error processing webhook: {e}")
         
@@ -960,10 +1220,27 @@ async def get_credit_balance_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     try:
+        # Check if caller workspace belongs to platform owner or has ENTERPRISE tier
+        ws_res = supabase.table("workspaces").select("tier, owner_id").eq("id", workspace_id).execute()
+        ws_row = ws_res.data[0] if ws_res.data else {}
+        owner_override = os.environ.get("PLATFORM_OWNER_ID")
+        is_platform_owner = bool(owner_override and ws_row.get("owner_id") == owner_override)
+        if is_platform_owner:
+            return {
+                "balance": 999999,
+                "data_cleaning_credits": 999999,
+                "tier": "ENTERPRISE",
+                "used_this_month": 0,
+                "is_platform_owner": True
+            }
+
         result = supabase.rpc('get_credit_balance', {
             'p_workspace_id': workspace_id
         }).execute()
-        return result.data or {"balance": 0, "tier": "FREE", "used_this_month": 0}
+        res_data = result.data or {"balance": 0, "tier": "FREE", "used_this_month": 0}
+        if isinstance(res_data, dict):
+            res_data["is_platform_owner"] = False
+        return res_data
     except Exception as e:
         logger.warning(f"[Billing] get_credit_balance RPC failed, falling back to direct table query: {e}")
         try:
@@ -1162,24 +1439,23 @@ async def apply_salvage_offer(
         except Exception as e:
             logger.error(f"Error pausing campaigns for salvage pause: {e}")
 
-    # If starter downsell was chosen: grant starter credits and preserve Pro status
+    # If starter downsell was chosen: require payment checkout before granting credits (FLAW-12)
     if offer_type == "starter_downsell":
         try:
-            supabase.table("workspaces").update({
-                "tier": "PRO",
-                "status": "active"
-            }).eq("id", workspace_id).execute()
-            
-            # Atomically add starter credits with deterministic event_id
-            add_credits_safely_fallback(
-                supabase=supabase,
-                workspace_id=workspace_id,
-                credits=1500,
-                event_id=deterministic_event_id,
-                provider="salvage_retention"
-            )
+            supabase.table("billing_transactions").update({
+                "status": "pending_payment",
+                "amount_cents": 249900,
+            }).eq("id", session_id).execute()
         except Exception as e:
-            logger.error(f"Error applying starter downsell: {e}")
+            logger.error(f"Error marking starter downsell as pending payment: {e}")
+
+        return {
+            "status": "checkout_required",
+            "offer_applied": offer_type,
+            "checkout_session_id": session_id,
+            "amount_inr": 2499,
+            "message": "Solo Starter plan selected. Please complete checkout to activate 1,500 credits and retain your campaign sequences."
+        }
 
     return {
         "status": "success",
@@ -1202,6 +1478,7 @@ async def cancel_subscription(
     Paranoia Layer 1 & 2: Graceful Churn Handler
     Marks the subscription for cancellation at the end of the current billing cycle.
     Never abruptly terminates service or wipes user work immediately.
+    Syncs with Stripe cancel_at_period_end=True if active subscription exists.
     """
     session_id = str(uuid.uuid4())
     try:
@@ -1217,7 +1494,32 @@ async def cancel_subscription(
             "credits_added": 0
         }).execute()
     except Exception as db_e:
-        print(f"Error logging cancellation intent: {db_e}")
+        logger.warning(f"Error logging cancellation intent: {db_e}")
+
+    # Mark subscription in DB as canceling / scheduled_cancellation
+    sub_id = None
+    try:
+        sub_res = supabase.table("subscriptions").select("id, provider_subscription_id, status").eq("workspace_id", workspace_id).eq("status", "active").execute()
+        if sub_res.data and len(sub_res.data) > 0:
+            active_sub = sub_res.data[0]
+            sub_id = active_sub.get("provider_subscription_id")
+            supabase.table("subscriptions").update({
+                "status": "canceling",
+                "cancel_at_period_end": True
+            }).eq("id", active_sub.get("id")).execute()
+    except Exception as sub_err:
+        logger.warning(f"Error updating local subscription status to canceling: {sub_err}")
+
+    # Sync with Stripe if configured
+    stripe_key = os.getenv("STRIPE_SECRET_KEY")
+    if stripe_key and sub_id and sub_id.startswith("sub_"):
+        try:
+            import stripe
+            stripe.api_key = stripe_key
+            stripe.Subscription.modify(sub_id, cancel_at_period_end=True)
+            logger.info(f"[Billing] Successfully set cancel_at_period_end=True in Stripe for sub {sub_id}")
+        except Exception as stripe_err:
+            logger.warning(f"[Billing] Failed to update Stripe subscription cancel_at_period_end: {stripe_err}")
 
     return {
         "status": "success",
@@ -1234,7 +1536,9 @@ async def reactivate_subscription(
     Paranoia Layer 1 & 2: 1-Click Subscription Reactivation.
     Instantly revokes pending cancellation or unpauses account,
     restoring active workspace status without requiring re-entry of payment info.
+    Syncs with Stripe cancel_at_period_end=False if pending cancellation exists.
     """
+    sub_id = None
     try:
         # Mark pending cancellation as reactivated
         supabase.table("billing_transactions").update({
@@ -1246,12 +1550,33 @@ async def reactivate_subscription(
             "status": "active"
         }).eq("id", workspace_id).execute()
 
+        # Restore subscription status
+        sub_res = supabase.table("subscriptions").select("id, provider_subscription_id, status").eq("workspace_id", workspace_id).in_("status", ["canceling", "paused"]).execute()
+        if sub_res.data and len(sub_res.data) > 0:
+            active_sub = sub_res.data[0]
+            sub_id = active_sub.get("provider_subscription_id")
+            supabase.table("subscriptions").update({
+                "status": "active",
+                "cancel_at_period_end": False
+            }).eq("id", active_sub.get("id")).execute()
+
+        # Sync with Stripe
+        stripe_key = os.getenv("STRIPE_SECRET_KEY")
+        if stripe_key and sub_id and sub_id.startswith("sub_"):
+            try:
+                import stripe
+                stripe.api_key = stripe_key
+                stripe.Subscription.modify(sub_id, cancel_at_period_end=False)
+                logger.info(f"[Billing] Successfully set cancel_at_period_end=False in Stripe for sub {sub_id}")
+            except Exception as stripe_err:
+                logger.warning(f"[Billing] Failed to revoke Stripe cancellation: {stripe_err}")
+
         return {
             "status": "success",
             "message": "Workspace subscription successfully reactivated!"
         }
     except Exception as e:
-        print(f"Error reactivating subscription: {e}")
+        logger.error(f"Error reactivating subscription: {e}")
         return {
             "status": "success",
             "message": "Workspace reactivated."
@@ -1326,12 +1651,22 @@ async def get_auto_recharge_settings(
 async def update_auto_recharge(
     request: AutoRechargeSettingsUpdate,
     workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id),
     supabase: Client = Depends(get_supabase_client)
 ):
     """
     Paranoia Layer 0, 1 & 2: Update auto-recharge configuration.
-    Enforces Growth/Pro tier gate, validates bounds, prevents enabling without verified payment method on file, and sets circuit breakers.
+    Enforces Growth/Pro tier gate, validates bounds, prevents enabling without verified payment method on file, sets circuit breakers, and enforces owner/admin RBAC.
     """
+    # Paranoia Layer 2: Role authorization - only owners and admins can configure billing auto-recharge
+    svc = get_service_client()
+    mem_res = svc.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+    if not mem_res.data or mem_res.data[0].get("role") not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners and admins can modify billing auto-recharge settings."
+        )
+
     can_auto_recharge = check_tier_access(workspace_id, "auto_recharge")
     if request.enabled and not can_auto_recharge:
         raise HTTPException(
@@ -1472,6 +1807,41 @@ async def get_transaction_receipt(
     except Exception as e:
         logger.error(f"Error generating receipt for {transaction_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate receipt details")
+
+
+@router.get("/invoices/{invoice_number}/pdf")
+def download_invoice_pdf(
+    invoice_number: str,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Paranoia Layer 0, 1 & 2: Downloads statutory 18% GST Tax Invoice PDF.
+    - Scopes validation to the caller's workspace (Layer 2 IDOR defense).
+    - Returns application/pdf inline with cached bytes.
+    """
+    from fastapi import Response
+    from core.backend.services.gst_invoice_service import get_invoice_by_number, generate_gst_invoice_pdf
+
+    clean_num = str(invoice_number or "").strip()
+    inv_data = get_invoice_by_number(clean_num, workspace_id=workspace_id, supabase=supabase)
+    if not inv_data:
+        raise HTTPException(status_code=404, detail="Invoice not found or access denied")
+
+    try:
+        pdf_bytes = generate_gst_invoice_pdf(inv_data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename={clean_num}.pdf",
+                "Cache-Control": "private, max-age=3600"
+            }
+        )
+    except Exception as exc:
+        logger.error(f"[BillingRouter] Failed to generate PDF for invoice {clean_num}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to compile invoice PDF")
+
 
 
 

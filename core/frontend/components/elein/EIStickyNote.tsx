@@ -13,6 +13,15 @@ import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
+function extractTextFromReactNode(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractTextFromReactNode).join('')
+  if (React.isValidElement(node) && (node.props as any)?.children) {
+    return extractTextFromReactNode((node.props as any).children)
+  }
+  return ''
+}
+
 export type StickyColor = "amber" | "emerald" | "sky" | "rose" | "violet"
 export type StickyCategory = "note" | "todo" | "warning" | "strategy" | "handover"
 
@@ -108,6 +117,15 @@ export const STICKY_CATEGORIES: Record<StickyCategory, {
 }
 
 const PRESET_TEMPLATES = [
+  {
+    id: "note",
+    label: "Idea Note",
+    icon: StickyIcon,
+    title: "Strategy & Notes",
+    category: "note" as const,
+    color: "amber" as const,
+    text: `**Key Reminders:**\n- Value proposition hook\n- Target ICP persona notes\n- Next cadence adjustments`
+  },
   {
     id: "checklist",
     label: "Checklist",
@@ -459,16 +477,28 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
     setShowCategoryPicker(false)
   }, [draftTitle, draftText, note.id, updateStickyNoteFull])
 
+  const handleCancelEdit = useCallback(() => {
+    setDraftTitle(note.title || "")
+    setDraftText(note.text || "")
+    setIsEditing(false)
+    setShowColorPicker(false)
+    setShowCategoryPicker(false)
+  }, [note.title, note.text])
+
   // Save changes automatically when clicking outside the sticky note card
   useEffect(() => {
     if (!isEditing) return
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: Event) => {
       if (noteRef.current && !noteRef.current.contains(e.target as Node)) {
         handleSaveEdit()
       }
     }
     document.addEventListener("mousedown", handleOutsideClick)
-    return () => document.removeEventListener("mousedown", handleOutsideClick)
+    document.addEventListener("touchstart", handleOutsideClick)
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick)
+      document.removeEventListener("touchstart", handleOutsideClick)
+    }
   }, [isEditing, handleSaveEdit])
 
   const handleDeleteWithUndo = () => {
@@ -478,15 +508,21 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
       action: {
         label: "Undo",
         onClick: () => {
-          useHRTreeStore.setState(s => ({
-            stickyNotes: [...s.stickyNotes, backup]
-          }))
+          useHRTreeStore.setState(s => {
+            if (s.stickyNotes.some(n => n.id === backup.id)) return s
+            return { stickyNotes: [...s.stickyNotes, backup] }
+          })
         }
       }
     })
   }
 
   const applyPreset = (preset: typeof PRESET_TEMPLATES[0]) => {
+    const prevTitle = note.title
+    const prevText = note.text
+    const prevColor = note.color
+    const prevCategory = note.category
+
     setDraftTitle(preset.title)
     setDraftText(preset.text)
     updateStickyNoteFull(note.id, {
@@ -496,7 +532,22 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
       category: preset.category,
       updatedAt: new Date().toISOString()
     })
-    toast.success(`Loaded "${preset.label}" template`)
+    toast.success(`Loaded "${preset.label}" template`, {
+      action: {
+        label: "Undo",
+        onClick: () => {
+          setDraftTitle(prevTitle || "")
+          setDraftText(prevText || "")
+          updateStickyNoteFull(note.id, {
+            title: prevTitle,
+            text: prevText,
+            color: prevColor,
+            category: prevCategory,
+            updatedAt: new Date().toISOString()
+          })
+        }
+      }
+    })
     // Focus textarea immediately for quick tweaking
     setTimeout(() => {
       textareaRef.current?.focus()
@@ -563,27 +614,28 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
     }, 10)
   }
 
-  // Interactive Checklist Check/Uncheck toggle in View Mode
-  const toggleChecklistLine = (lineContent: string) => {
+  // Interactive Checklist Check/Uncheck toggle in View Mode (Indexed & Regex-targeted)
+  const toggleChecklistByIndex = useCallback((targetChecklistIndex: number) => {
     const raw = note.text || ""
-    const isChecked = lineContent.startsWith("[x] ") || lineContent.startsWith("[X] ")
-    const itemText = lineContent.slice(4)
-
     const lines = raw.split("\n")
+    let foundCount = 0
     const updatedLines = lines.map(line => {
-      const trimmed = line.trim()
-      if (isChecked && (trimmed === `- [x] ${itemText}` || trimmed === `- [X] ${itemText}`)) {
-        return line.replace(/- \[[xX]\]/, "- [ ]")
-      }
-      if (!isChecked && trimmed === `- [ ] ${itemText}`) {
-        return line.replace(/- \[ \]/, "- [x]")
+      const match = line.match(/^(\s*(?:[-*+]|\d+\.)\s*\[)([ xX])(\]\s*.*)$/)
+      if (match) {
+        if (foundCount === targetChecklistIndex) {
+          const currentCheck = match[2].toLowerCase()
+          const nextCheck = currentCheck === "x" ? " " : "x"
+          foundCount++
+          return `${match[1]}${nextCheck}${match[3]}`
+        }
+        foundCount++
       }
       return line
     })
 
     const nextText = updatedLines.join("\n")
     updateStickyNote(note.id, nextText)
-  }
+  }, [note.id, note.text, updateStickyNote])
 
   // ─── Collapsed State (Ultra-Compact Canvas Pill) ─────────────────────────
   if (note.isCollapsed) {
@@ -594,6 +646,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
         onClick={(e) => {
           e.stopPropagation()
           if (!hasMovedRef.current) {
@@ -602,7 +655,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
         }}
         style={{ left: note.x, top: note.y }}
         className={cn(
-          "sticky-note absolute rounded-full border px-3.5 py-1.5 flex items-center gap-2.5 backdrop-blur-md shadow-md z-30 select-none",
+          "sticky-note absolute rounded-full border px-3.5 py-1.5 flex items-center gap-2.5 backdrop-blur-md shadow-md z-30 select-none touch-none",
           !isDragging && "transition-[box-shadow,border-color,background-color] duration-150 hover:shadow-lg cursor-grab",
           isDragging && "cursor-grabbing ring-2 ring-primary/60 z-[100] shadow-2xl scale-[1.03] !transition-none",
           palette.bg,
@@ -642,18 +695,13 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
   return (
     <div
       ref={noteRef}
-      onPointerDown={isEditing ? undefined : startDrag}
-      onPointerMove={isEditing ? undefined : handlePointerMove}
-      onPointerUp={isEditing ? undefined : endDrag}
-      onPointerCancel={isEditing ? undefined : endDrag}
       className={cn(
-        "sticky-note absolute rounded-2xl border shadow-xl flex flex-col z-30 select-none min-w-[270px] max-w-[650px]",
+        "sticky-note absolute rounded-2xl border shadow-xl flex flex-col z-30 select-none min-w-[270px] max-w-[650px] touch-none",
         // Crucial: Only transition visual aesthetics, NEVER position or transform!
         !isDragging && "transition-[box-shadow,border-color,background-color] duration-150",
         isDragging && "cursor-grabbing z-[100] ring-2 ring-primary/60 shadow-2xl scale-[1.015] !transition-none",
         isEditing && "ring-2 ring-primary/30 shadow-2xl",
         note.isPinned && "border-dashed",
-        !isEditing && (note.isPinned ? "cursor-default" : "cursor-grab active:cursor-grabbing"),
         palette.bg,
         palette.border,
         palette.text
@@ -679,8 +727,9 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
         className={cn(
-          "px-3 py-2 flex items-center justify-between transition-colors select-none",
+          "px-3 py-2 flex items-center justify-between transition-colors select-none touch-none",
           palette.headerBg,
           note.isPinned ? "cursor-default" : "cursor-grab active:cursor-grabbing hover:bg-black/5 dark:hover:bg-white/5"
         )}
@@ -720,7 +769,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
                   initial={{ opacity: 0, y: -4, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                  className="absolute left-0 top-full mt-1.5 z-50 w-36 rounded-xl bg-card border border-border shadow-xl p-1 text-foreground"
+                  className="absolute left-0 top-full mt-1.5 z-50 w-44 rounded-xl bg-card border border-border shadow-xl p-1 text-foreground"
                 >
                   {(Object.keys(STICKY_CATEGORIES) as StickyCategory[]).map(catKey => {
                     const Cat = STICKY_CATEGORIES[catKey]
@@ -732,7 +781,28 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          updateStickyNoteFull(note.id, { category: catKey })
+                          const matchingPreset = PRESET_TEMPLATES.find(p => p.category === catKey)
+                          const isDefaultOrEmpty = !note.text || note.text.trim() === "" || 
+                            PRESET_TEMPLATES.some(p => p.text.trim() === note.text.trim())
+
+                          if (matchingPreset && (isDefaultOrEmpty || !note.title || PRESET_TEMPLATES.some(p => p.title === note.title))) {
+                            updateStickyNoteFull(note.id, {
+                              category: catKey,
+                              title: matchingPreset.title,
+                              text: isDefaultOrEmpty ? matchingPreset.text : note.text,
+                              color: matchingPreset.color,
+                              updatedAt: new Date().toISOString()
+                            })
+                            setDraftTitle(matchingPreset.title)
+                            if (isDefaultOrEmpty) setDraftText(matchingPreset.text)
+                            toast.success(`Applied ${Cat.label} template`)
+                          } else {
+                            updateStickyNoteFull(note.id, { 
+                              category: catKey,
+                              color: matchingPreset ? matchingPreset.color : note.color
+                            })
+                            toast.info(`Updated category to ${Cat.label}`)
+                          }
                           setShowCategoryPicker(false)
                         }}
                         className={cn(
@@ -759,6 +829,23 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
 
         {/* Action Controls */}
         <div className="flex items-center gap-0.5 shrink-0" data-no-drag="true">
+          {/* Edit Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setIsEditing(prev => !prev)
+            }}
+            className={cn(
+              "p-1 rounded-md transition-colors cursor-pointer",
+              isEditing ? "bg-primary/20 text-primary" : "hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100"
+            )}
+            title={isEditing ? "Finish editing" : "Edit note"}
+            aria-label={isEditing ? "Finish editing" : "Edit sticky note"}
+          >
+            <Edit3 size={13} />
+          </button>
+
           {/* Color Switcher Button */}
           <div className="relative">
             <button
@@ -882,7 +969,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
                 e.preventDefault()
                 textareaRef.current?.focus()
               }
-              if (e.key === 'Escape') handleSaveEdit()
+              if (e.key === 'Escape') handleCancelEdit()
             }}
             placeholder="Note title (optional)..."
             className={cn(
@@ -931,17 +1018,17 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
         {isEditing ? (
           <div className="space-y-2 min-w-0">
             {/* Markdown Micro-Toolbar - Contained, Responsive & Zero-Bleed */}
-            <div className="flex items-center justify-between pb-1.5 border-b border-black/10 dark:border-white/10 text-xs min-w-0">
-              <div className="flex items-center gap-1 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-1 pb-1.5 border-b border-black/10 dark:border-white/10 text-xs min-w-0 max-w-full overflow-hidden">
+              <div className="flex flex-wrap items-center gap-1 min-w-0">
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => insertFormatting("checklist")}
-                  className="px-2 py-1 rounded-md text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-all cursor-pointer"
+                  className="h-6 px-2 rounded-md text-[10px] font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-all cursor-pointer shrink-0"
                   title="Checklist item (- [ ])"
                 >
                   <CheckSquare size={12} className="shrink-0" />
-                  <span>Checklist</span>
+                  <span className="hidden sm:inline">Checklist</span>
                 </button>
                 <button
                   type="button"
@@ -1000,7 +1087,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
                 e.target.style.height = `${Math.min(320, Math.max(90, e.target.scrollHeight))}px`
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') handleSaveEdit()
+                if (e.key === 'Escape') handleCancelEdit()
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault()
                   handleSaveEdit()
@@ -1012,7 +1099,7 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
                 palette.focusRing
               )}
             />
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 min-w-0 max-w-full">
               <span className="text-[10px] opacity-60">Cmd+Enter to save</span>
               <div className="flex items-center gap-2">
                 <button
@@ -1044,88 +1131,120 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
           </div>
         ) : (
           <div
+            onClick={(e) => {
+              const target = e.target as HTMLElement
+              if (!target.closest('a, button, li, input, textarea')) {
+                if (!note.text) {
+                  e.stopPropagation()
+                  setIsEditing(true)
+                }
+              }
+            }}
             onDoubleClick={(e) => {
               e.stopPropagation()
               setIsEditing(true)
             }}
-            className="text-xs font-medium leading-relaxed cursor-text select-text min-h-[44px]"
+            className="text-xs font-medium leading-relaxed cursor-text select-text min-h-[44px] max-h-[480px] overflow-y-auto overflow-x-hidden break-words"
           >
-            {note.text ? (
-              <ReactMarkdown
-                components={{
-                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                  ul: ({ children }) => <ul className="pl-4 list-disc space-y-1 mb-2 last:mb-0">{children}</ul>,
-                  ol: ({ children }) => <ol className="pl-4 list-decimal space-y-1 mb-2 last:mb-0">{children}</ol>,
-                  li: ({ children }) => {
-                    const text = React.Children.toArray(children)
-                      .map(c => (typeof c === 'string' ? c : ''))
-                      .join('')
-                    if (text.startsWith('[ ] ') || text.startsWith('[x] ') || text.startsWith('[X] ')) {
-                      const isChecked = text.startsWith('[x] ') || text.startsWith('[X] ')
-                      const labelText = text.slice(4)
+            {note.text ? (() => {
+              let checklistIndexCounter = 0
+              return (
+                <ReactMarkdown
+                  components={{
+                    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    ul: ({ children }) => <ul className="pl-4 list-disc space-y-1 mb-2 last:mb-0">{children}</ul>,
+                    ol: ({ children }) => <ol className="pl-4 list-decimal space-y-1 mb-2 last:mb-0">{children}</ol>,
+                    li: ({ children }) => {
+                      const text = extractTextFromReactNode(children)
+                      if (text.startsWith('[ ] ') || text.startsWith('[x] ') || text.startsWith('[X] ')) {
+                        const isChecked = text.startsWith('[x] ') || text.startsWith('[X] ')
+                        const myIndex = checklistIndexCounter++
+                        const strippedChildren = React.Children.toArray(children).map(child => {
+                          if (typeof child === 'string' && (child.startsWith('[ ] ') || child.startsWith('[x] ') || child.startsWith('[X] '))) {
+                            return child.slice(4)
+                          }
+                          return child
+                        })
+                        return (
+                          <li 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleChecklistByIndex(myIndex)
+                            }}
+                            className="list-none -ml-4 flex items-start gap-2 my-1 cursor-pointer select-none group/item"
+                          >
+                            <span className="mt-0.5 shrink-0 opacity-70 group-hover/item:opacity-100 transition-opacity">
+                              {isChecked ? (
+                                <CheckSquare size={13} className={palette.accent} />
+                              ) : (
+                                <Square size={13} className="opacity-60" />
+                              )}
+                            </span>
+                            <span className={cn("text-xs leading-relaxed transition-all", isChecked && "line-through opacity-50")}>
+                              {strippedChildren}
+                            </span>
+                          </li>
+                        )
+                      }
+                      return <li className="mb-1">{children}</li>
+                    },
+                    img: () => (
+                      <span className="text-[10px] font-mono text-muted-foreground italic px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
+                        [External image blocked]
+                      </span>
+                    ),
+                    h1: ({ children }) => <h1 className="text-sm font-bold mb-1 mt-2 first:mt-0">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-xs font-bold mb-1 mt-2 first:mt-0">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-xs font-semibold mb-0.5 mt-1.5 first:mt-0">{children}</h3>,
+                    strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                    em: ({ children }) => <em className="italic opacity-90">{children}</em>,
+                    code: ({ children }) => (
+                      <code className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[10px]">
+                        {children}
+                      </code>
+                    ),
+                    blockquote: ({ children }) => (
+                      <blockquote className="border-l-2 border-current/30 pl-2.5 italic opacity-85 my-1.5">
+                        {children}
+                      </blockquote>
+                    ),
+                    a: ({ href, children }) => {
+                      const safeHref = href && /^(https?:\/\/|mailto:)/i.test(href.trim()) ? href.trim() : '#'
                       return (
-                        <li 
+                        <a 
+                          href={safeHref} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="underline hover:opacity-80"
                           onClick={(e) => {
                             e.stopPropagation()
-                            toggleChecklistLine(text)
+                            if (safeHref === '#') e.preventDefault()
                           }}
-                          className="list-none -ml-4 flex items-start gap-2 my-1 cursor-pointer select-none group/item"
                         >
-                          <span className="mt-0.5 shrink-0 opacity-70 group-hover/item:opacity-100 transition-opacity">
-                            {isChecked ? (
-                              <CheckSquare size={13} className={palette.accent} />
-                            ) : (
-                              <Square size={13} className="opacity-60" />
-                            )}
-                          </span>
-                          <span className={cn("text-xs leading-relaxed transition-all", isChecked && "line-through opacity-50")}>
-                            {labelText}
-                          </span>
-                        </li>
+                          {children}
+                        </a>
                       )
                     }
-                    return <li className="mb-1">{children}</li>
-                  },
-                  h1: ({ children }) => <h1 className="text-sm font-bold mb-1 mt-2 first:mt-0">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-xs font-bold mb-1 mt-2 first:mt-0">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-xs font-semibold mb-0.5 mt-1.5 first:mt-0">{children}</h3>,
-                  strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-                  em: ({ children }) => <em className="italic opacity-90">{children}</em>,
-                  code: ({ children }) => (
-                    <code className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[10px]">
-                      {children}
-                    </code>
-                  ),
-                  blockquote: ({ children }) => (
-                    <blockquote className="border-l-2 border-current/30 pl-2.5 italic opacity-85 my-1.5">
-                      {children}
-                    </blockquote>
-                  ),
-                  a: ({ href, children }) => {
-                    const safeHref = href && /^(https?:\/\/|mailto:)/i.test(href.trim()) ? href.trim() : '#'
-                    return (
-                      <a 
-                        href={safeHref} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="underline hover:opacity-80"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (safeHref === '#') e.preventDefault()
-                        }}
-                      >
-                        {children}
-                      </a>
-                    )
-                  }
+                  }}
+                >
+                  {note.text}
+                </ReactMarkdown>
+              )
+            })() : (
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsEditing(true)
                 }}
+                className="py-3 px-2 text-center border border-dashed border-black/10 dark:border-white/10 rounded-lg cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group/empty"
               >
-                {note.text}
-              </ReactMarkdown>
-            ) : (
-              <span className="text-xs italic opacity-40">
-                Empty note. Double-click to write thoughts or checklists...
-              </span>
+                <p className="text-xs font-semibold opacity-70 group-hover/empty:opacity-100 transition-opacity">
+                  Click to write notes or checklist
+                </p>
+                <span className="text-[10px] opacity-45 block mt-0.5">
+                  Or select category above (Checklist, Caution, Strategy, SDR Handover)
+                </span>
+              </div>
             )}
           </div>
         )}
@@ -1169,12 +1288,13 @@ export function EIStickyNote({ note, zoom = 1 }: EIStickyNoteProps) {
           onPointerMove={handleResizeMove}
           onPointerUp={endResize}
           onPointerCancel={endResize}
+          onLostPointerCapture={endResize}
           onDoubleClick={(e) => {
             e.stopPropagation()
             updateStickyNoteFull(note.id, { width: 290 })
           }}
           title="Drag to resize width (Double-click to reset)"
-          className="absolute bottom-1 right-1 p-1 text-current/30 hover:text-current/80 cursor-se-resize select-none transition-colors"
+          className="absolute bottom-1 right-1 p-1 text-current/30 hover:text-current/80 cursor-se-resize select-none transition-colors touch-none"
         >
           <svg width="8" height="8" viewBox="0 0 8 8" className="stroke-current fill-none stroke-[1.5]">
             <line x1="7" y1="1" x2="1" y2="7" />

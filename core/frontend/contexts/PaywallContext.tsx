@@ -37,6 +37,10 @@ interface PaywallContextType {
   isPaywallOpen: boolean;
   isTopUpOpen: boolean;
   isMilestoneOpen: boolean;
+  tier: string;
+  isPro: boolean;
+  isEnterprise: boolean;
+  isPlatformOwner: boolean;
 }
 
 const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
@@ -53,26 +57,59 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const { mutate } = useSWRConfig();
   const { data: balanceData } = useSWR('/api/elein/billing/credits/balance', fetcher);
+  const { data: billingData } = useSWR<{ tier?: string; is_platform_owner?: boolean }>('/api/elein/workspaces/billing', fetcher);
   const currentCredits = Number(balanceData?.balance ?? balanceData?.data_cleaning_credits ?? 0);
+  const rawTier = (billingData?.tier || balanceData?.tier || 'FREE').toUpperCase();
+  const tier = rawTier;
+  const isPlatformOwner = Boolean(billingData?.is_platform_owner || balanceData?.is_platform_owner);
+  const isEnterprise = tier === 'ENTERPRISE' || tier === 'AGENCY' || isPlatformOwner;
+  const isPro = tier === 'PRO' || tier === 'GROWTH' || isEnterprise;
 
-  // ============================================================================
-  // PRE-COMMERCIAL LAUNCH (Phase 21): Enable live CreditTopUpModal and Paywalls
-  // ============================================================================
+  // Standard production beta testing flag (set to false so system behavior is restored for all normal accounts)
   const isBetaTestingMode = false;
 
   // Paranoia Layer 1: Concurrency Lock to prevent duplicate modal spam from parallel requests
   const isLockedRef = useRef(false);
 
   const openPaywall = useCallback((opts: PaywallTriggerOptions | string = {}) => {
+    const normalizedOpts: PaywallTriggerOptions = typeof opts === 'string' ? { featureName: opts } : opts;
+    const requiredMinTier = (normalizedOpts.minTier || (
+      normalizedOpts.featureName?.toLowerCase().includes('enterprise') ||
+      normalizedOpts.featureName?.toLowerCase().includes('pod') ||
+      normalizedOpts.featureName?.toLowerCase().includes('canary') ||
+      normalizedOpts.featureName?.toLowerCase().includes('ghidra') ||
+      normalizedOpts.featureName?.toLowerCase().includes('soc2') ||
+      normalizedOpts.featureName?.toLowerCase().includes('cname')
+        ? 'ENTERPRISE'
+        : 'PRO'
+    )).toUpperCase();
+
+    // Platform owner or beta testing mode bypasses all tier gating
+    if (isPlatformOwner || isBetaTestingMode) {
+      if (normalizedOpts.onSuccess) normalizedOpts.onSuccess();
+      return;
+    }
+
+    // Enterprise tier has all features unlocked
+    if (isEnterprise) {
+      if (normalizedOpts.onSuccess) normalizedOpts.onSuccess();
+      return;
+    }
+
+    // Pro tier has standard features unlocked; only gated on ENTERPRISE-exclusive features
+    if (isPro && requiredMinTier === 'PRO') {
+      if (normalizedOpts.onSuccess) normalizedOpts.onSuccess();
+      return;
+    }
+
     if (isPaywallOpen || isTopUpOpen || isMilestoneOpen || isLockedRef.current) return;
     isLockedRef.current = true;
-    const normalizedOpts: PaywallTriggerOptions = typeof opts === 'string' ? { featureName: opts } : opts;
     setPaywallOptions(normalizedOpts);
     setIsPaywallOpen(true);
     setTimeout(() => {
       isLockedRef.current = false;
     }, 400);
-  }, [isPaywallOpen, isTopUpOpen, isMilestoneOpen]);
+  }, [isEnterprise, isPro, isPlatformOwner, isBetaTestingMode, isPaywallOpen, isTopUpOpen, isMilestoneOpen]);
 
   const closePaywall = useCallback(() => {
     setIsPaywallOpen(false);
@@ -80,8 +117,11 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const openTopUp = useCallback((opts: TopUpTriggerOptions = {}) => {
-    if (isBetaTestingMode) {
-      // Bypassed for beta testing phase per Captain directive
+    // Platform owner bypass: Developer account has unlimited credits
+    if (isPlatformOwner || isBetaTestingMode) {
+      if (opts.onSuccess) {
+        opts.onSuccess();
+      }
       return;
     }
     if (isTopUpOpen || isPaywallOpen || isMilestoneOpen || isLockedRef.current) return;
@@ -91,7 +131,7 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setTimeout(() => {
       isLockedRef.current = false;
     }, 400);
-  }, [isTopUpOpen, isPaywallOpen, isMilestoneOpen]);
+  }, [isPlatformOwner, isBetaTestingMode, isTopUpOpen, isPaywallOpen, isMilestoneOpen]);
 
   const closeTopUp = useCallback(() => {
     setIsTopUpOpen(false);
@@ -99,6 +139,12 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const openMilestoneModal = useCallback((opts: MilestoneTriggerOptions = {}) => {
+    if (isPlatformOwner || isBetaTestingMode) {
+      if (opts.onSuccess) {
+        opts.onSuccess();
+      }
+      return;
+    }
     if (isMilestoneOpen || isPaywallOpen || isTopUpOpen || isLockedRef.current) return;
     isLockedRef.current = true;
     setMilestoneOptions(opts);
@@ -106,7 +152,7 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setTimeout(() => {
       isLockedRef.current = false;
     }, 400);
-  }, [isMilestoneOpen, isPaywallOpen, isTopUpOpen]);
+  }, [isPlatformOwner, isBetaTestingMode, isMilestoneOpen, isPaywallOpen, isTopUpOpen]);
 
   const closeMilestoneModal = useCallback(() => {
     setIsMilestoneOpen(false);
@@ -121,6 +167,7 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
         reason?: string;
         featureName?: string;
         neededCredits?: number;
+        minTier?: string;
       }>;
 
       const detail = customEvent.detail || {};
@@ -133,6 +180,7 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
         openPaywall({
           featureName: detail.featureName,
           reason: detail.reason,
+          minTier: detail.minTier,
           campaignName: 'Your Campaign',
         });
       }
@@ -195,20 +243,28 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isPaywallOpen,
         isTopUpOpen,
         isMilestoneOpen,
+        tier,
+        isPro,
+        isEnterprise,
+        isPlatformOwner,
       }}
     >
       {children}
 
-      {/* Global In-Situ Paywall Modal */}
-      <EleInPaywallModal
-        isOpen={isPaywallOpen}
-        onClose={closePaywall}
-        campaignName={paywallOptions.campaignName || 'Your Outreach'}
-        onSuccess={handlePaywallSuccess}
-      />
+      {/* Global In-Situ Paywall Modal (Active for non-enterprise, non-platform-owner accounts) */}
+      {!isEnterprise && !isPlatformOwner && (
+        <EleInPaywallModal
+          isOpen={isPaywallOpen}
+          onClose={closePaywall}
+          campaignName={paywallOptions.campaignName || 'Your Outreach'}
+          featureName={paywallOptions.featureName}
+          minTier={paywallOptions.minTier}
+          onSuccess={handlePaywallSuccess}
+        />
+      )}
 
-      {/* Global In-Situ Micro-Monetization Top-Up Modal (Bypassed during Beta Testing) */}
-      {!isBetaTestingMode && (
+      {/* Global In-Situ Micro-Monetization Top-Up Modal (Active for non-platform-owner accounts) */}
+      {!isPlatformOwner && (
         <CreditTopUpModal
           isOpen={isTopUpOpen}
           onClose={closeTopUp}
@@ -217,14 +273,16 @@ export const PaywallProvider: React.FC<{ children: React.ReactNode }> = ({ child
         />
       )}
 
-      {/* Global First-Win Milestone OTO Expansion Modal */}
-      <FirstWinMilestoneModal
-        isOpen={isMilestoneOpen}
-        onClose={closeMilestoneModal}
-        prospectName={milestoneOptions.prospectName}
-        campaignName={milestoneOptions.campaignName}
-        onSuccess={handleMilestoneSuccess}
-      />
+      {/* Global First-Win Milestone OTO Expansion Modal (Active for non-platform-owner accounts) */}
+      {!isPlatformOwner && (
+        <FirstWinMilestoneModal
+          isOpen={isMilestoneOpen}
+          onClose={closeMilestoneModal}
+          prospectName={milestoneOptions.prospectName}
+          campaignName={milestoneOptions.campaignName}
+          onSuccess={handleMilestoneSuccess}
+        />
+      )}
     </PaywallContext.Provider>
   );
 };

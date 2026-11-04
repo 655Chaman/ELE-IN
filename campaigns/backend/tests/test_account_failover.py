@@ -46,7 +46,14 @@ class TestAccountFailover(unittest.TestCase):
                 camp_mock = MagicMock()
                 camp_mock.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"status": "ACTIVE"}])
                 return camp_mock
-            return MagicMock()
+            elif tbl_name == "messages":
+                msg_mock = MagicMock()
+                msg_mock.select.return_value.eq.return_value.or_.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+                msg_mock.select.return_value.eq.return_value.or_.return_value.gt.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+                return msg_mock
+            default_m = MagicMock()
+            default_m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            return default_m
 
         table_mock.side_effect = table_side_effect
 
@@ -67,7 +74,8 @@ class TestAccountFailover(unittest.TestCase):
             "opportunity_id": "opp_1",
         }
 
-        with patch.object(self.orchestrator, "execute_node_action", return_value={"status": "account_disconnected"}), \
+        with patch("campaigns.backend.services.elein_orchestrator.is_lead_active_in_other_campaign", return_value=False), \
+             patch.object(self.orchestrator, "execute_node_action", return_value={"status": "account_disconnected"}), \
              patch.object(self.orchestrator, "update_state") as mock_update_state:
             self.orchestrator.process_lead(state, lease_token="lease_abc")
 
@@ -128,7 +136,14 @@ class TestAccountFailover(unittest.TestCase):
                 camp_mock = MagicMock()
                 camp_mock.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"status": "ACTIVE"}])
                 return camp_mock
-            return MagicMock()
+            elif tbl_name == "messages":
+                msg_mock = MagicMock()
+                msg_mock.select.return_value.eq.return_value.or_.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+                msg_mock.select.return_value.eq.return_value.or_.return_value.gt.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+                return msg_mock
+            default_m = MagicMock()
+            default_m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            return default_m
 
         table_mock.side_effect = table_side_effect
 
@@ -154,7 +169,8 @@ class TestAccountFailover(unittest.TestCase):
             "opportunity_id": "opp_2",
         }
 
-        with patch.object(self.orchestrator, "execute_node_action", return_value={"status": "account_disconnected"}), \
+        with patch("campaigns.backend.services.elein_orchestrator.is_lead_active_in_other_campaign", return_value=False), \
+             patch.object(self.orchestrator, "execute_node_action", return_value={"status": "account_disconnected"}), \
              patch.object(self.orchestrator, "update_state") as mock_update_state:
             self.orchestrator.process_lead(state, lease_token="lease_xyz")
 

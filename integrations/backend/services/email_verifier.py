@@ -1,4 +1,7 @@
 import smtplib
+import os
+import socket
+import uuid
 try:
     import dns.resolver
     HAS_DNS = True
@@ -10,6 +13,8 @@ import logging
 from typing import Optional, List
 
 logger = logging.getLogger(__name__)
+
+ENABLE_DIRECT_SMTP_VERIFICATION = os.getenv("ENABLE_DIRECT_SMTP_VERIFICATION", "").lower() in ("true", "1")
 
 class EmailVerifier:
     """
@@ -73,14 +78,22 @@ class EmailVerifier:
     @staticmethod
     def verify_email_smtp(email: str, mx_record: str) -> bool:
         """
-        Layer 1 Paranoia: SMTP verification can hang or be blocked by spamhaus. 
-        Always use timeout, and handle gracefully.
+        Layer 1 Paranoia: Direct SMTP verification over port 25 is blocked by major cloud
+        providers (AWS, GCP, Render) and direct connections without proper rDNS will be flagged.
+        Guarded by ENABLE_DIRECT_SMTP_VERIFICATION.
+        Uses verified host configuration instead of spoofing third-party ESP domains.
         """
+        enabled = os.getenv("ENABLE_DIRECT_SMTP_VERIFICATION", "").lower() in ("true", "1")
+        if not enabled:
+            logger.debug(f"[EmailVerifier] Direct SMTP handshake skipped for {email} (ENABLE_DIRECT_SMTP_VERIFICATION is off).")
+            return False
+
         try:
             with smtplib.SMTP(mx_record, 25, timeout=10) as smtp:
-                # Paranoia: Use a realistic hostname to avoid instant drop by Mimecast/Proofpoint
-                smtp.helo('mail.google.com')
-                smtp.mail('bounces@mail.google.com')
+                helo_host = os.getenv("SMTP_HELO_HOST") or socket.getfqdn() or "mail.elein.ai"
+                verify_sender = os.getenv("SMTP_VERIFY_SENDER") or f"verify@{helo_host}"
+                smtp.helo(helo_host)
+                smtp.mail(f"<{verify_sender}>")
                 code, message = smtp.rcpt(email)
                 # 250 means OK
                 # 251 means user not local but will forward
@@ -107,7 +120,7 @@ class EmailVerifier:
         # Paranoia Layer 2: Catch-All Domain Detection
         # If a random gibberish email returns True, the domain is a catch-all. 
         # We cannot verify ANY email on a catch-all domain reliably via SMTP.
-        catch_all_test = f"xyz_elein_test_123456789@{domain}"
+        catch_all_test = f"test_chk_{uuid.uuid4().hex[:12]}@{domain}"
         if cls.verify_email_smtp(catch_all_test, mx_record):
             logger.info(f"Domain {domain} is a catch-all. SMTP verification is impossible.")
             return None

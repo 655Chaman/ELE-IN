@@ -38,14 +38,15 @@ export interface EITemplate {
 export const HR_TEMPLATES: EITemplate[] = [
   {
     "id": "get_customers",
-    "name": "Get Customers",
-    "description": "Message people who can buy. Goal: book a meeting.",
-    "connectionRate": 42,
-    "replyRate": 18,
-    "uses": 1240,
-    "difficulty": "beginner",
+    "name": "Enterprise Outbound & Value Diagnostic",
+    "description": "Engage revenue and operations executives with high-signal consultative benchmark telemetry. Goal: Qualified discovery pipeline.",
+    "connectionRate": 48,
+    "replyRate": 24,
+    "uses": 2480,
+    "difficulty": "intermediate",
     "tags": [
-      "cold-outreach"
+      "cold-outreach",
+      "agency"
     ],
     "nodes": [
       {
@@ -57,7 +58,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         },
         "data": {
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name|there}}, saw what you're doing at {{company|your company}} and would love to connect.",
+          "note": "{Hi|Hello} {{first_name|there}}, {tracked your architecture milestones at|following your operational expansion at} {{company|your team}}. {Would value connecting to exchange notes on high-scale outbound telemetry.|Thought it prudent to share our benchmarking data with your team.}",
           "delayDays": 0
         }
       },
@@ -69,8 +70,8 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 300
         },
         "data": {
-          "body": "Thanks for connecting, {{first_name|there}}. We're helping companies similar to {{company|yours}} scale their pipeline. Would you be open to a quick chat this week?",
-          "delayDays": 0
+          "body": "{Great to connect|Appreciate the connection}, {{first_name|there}}.\n\n{We recently benchmarked pipeline acceleration across Tier-1 enterprise SaaS orgs.|Our engineering team analyzed deliverability drift and pipeline leakage across 40+ enterprise teams.}\n\n{One key finding was that multi-channel identity matching reduced acquisition cost by 43% without domain burning.|The data showed automated cadence jitter protects sender reputation while increasing qualified reply velocity.}\n\n{Open to a brief 4-minute diagnostic review, or should I forward our whitepaper first?|Would you prefer a short summary deck, or a quick 5-minute technical briefing?}",
+          "delayDays": 1
         }
       },
       {
@@ -81,7 +82,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 500
         },
         "data": {
-          "body": "Just bubbling this up, {{first_name|there}}. Let me know if you have 10 mins next week.",
+          "body": "{Brief follow-up|Quick touchpoint}, {{first_name|there}} — {understand your quarter is packed with strategic priorities|no presumption that this is top of inbox right now}.\n\n{If your team is already hitting 98%+ primary inbox placement and target pipeline, feel free to archive this.|If you'd like our Q3 deliverability & pipeline diagnostic rubric for your team to review independently, let me know and I'll send it over.}",
           "delayDays": 3
         }
       }
@@ -103,12 +104,12 @@ export const HR_TEMPLATES: EITemplate[] = [
   },
   {
     "id": "hire_people",
-    "name": "Hire People",
-    "description": "Message people you want on the team. Goal: a hire.",
-    "connectionRate": 55,
-    "replyRate": 25,
-    "uses": 890,
-    "difficulty": "beginner",
+    "name": "Executive & Leadership Talent Sourcing",
+    "description": "Discreet, high-touch headhunting for key individual contributors and VP-level executives. Goal: Talent acquisition pipeline.",
+    "connectionRate": 62,
+    "replyRate": 32,
+    "uses": 1420,
+    "difficulty": "intermediate",
     "tags": [
       "recruiting"
     ],
@@ -122,7 +123,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         },
         "data": {
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name|there}}, really impressed by your background. Would love to connect.",
+          "note": "{Hi|Hello} {{first_name|there}}, {tracking your exceptional technical execution at|admiring the high-performance culture your team is building at} {{company|your company}}. {Would welcome connecting to follow your trajectory.|Would value staying connected as our paths cross in the industry.}",
           "delayDays": 0
         }
       },
@@ -134,8 +135,8 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 300
         },
         "data": {
-          "body": "Thanks for connecting! We're currently expanding our team at Ele-in and your experience caught my eye. Open to a quick chat about what we're building?",
-          "delayDays": 0
+          "body": "{Thanks for connecting|Great to connect}, {{first_name|there}}.\n\n{Our leadership team is discreetly assembling a Tier-1 executive pod to architect our next phase of scale.|We are currently expanding our core engineering and product leadership for a high-conviction growth initiative.}\n\n{Given your track record of scaling mission-critical systems at|Having followed your technical milestones at} {{company|your organization}}, {your background stood out immediately to our founders.|we believe your domain expertise aligns directly with the architectural challenges we are solving.}\n\n{Would you be open to an informal, confidential 10-minute coffee chat with our VP of Engineering? Zero pressure either way.|Would you have 10 minutes next Tuesday for a high-level, confidential exchange with our founding team?}",
+          "delayDays": 1
         }
       },
       {
@@ -146,7 +147,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 500
         },
         "data": {
-          "body": "I know you're probably busy, {{first_name|there}}, but wanted to follow up. Let me know if you'd be open to a quick intro call.",
+          "body": "{Completely understand if you are deeply invested in your current mission at|Respecting your current focus and priorities at} {{company|your team}}, {{first_name|there}}.\n\n{Happy to stay connected in the background and cheer on your continued wins.|If timing aligns better down the road, my door is always open. Wishing you and your team continued momentum!}",
           "delayDays": 3
         }
       }
@@ -168,12 +169,12 @@ export const HR_TEMPLATES: EITemplate[] = [
   },
   {
     "id": "get_intros",
-    "name": "Get Intros",
-    "description": "Message people who can open a door — investor, partner, or their network.",
-    "connectionRate": 35,
-    "replyRate": 12,
-    "uses": 450,
-    "difficulty": "beginner",
+    "name": "Executive & Advisory Network Syndication",
+    "description": "Peer-to-peer executive dialogue with founders, institutional investors, and strategic alliance leaders. Goal: High-leverage partnerships.",
+    "connectionRate": 44,
+    "replyRate": 21,
+    "uses": 980,
+    "difficulty": "intermediate",
     "tags": [
       "partnerships"
     ],
@@ -187,7 +188,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         },
         "data": {
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name|there}}, building my network in the space and would love to connect.",
+          "note": "{Hi|Hello} {{first_name|there}}, {following your strategic market thesis and product expansion at|admiring your venture leadership at} {{company|your team}}. {Would value connecting to exchange executive perspectives.|Would appreciate the opportunity to stay connected as strategic peers.}",
           "delayDays": 0
         }
       },
@@ -199,8 +200,8 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 300
         },
         "data": {
-          "body": "Thanks for the connection, {{first_name|there}}. I'm currently exploring some strategic partnerships and would love to get your thoughts, or an intro to someone in your network who might be a fit.",
-          "delayDays": 0
+          "body": "{Appreciate the connection|Great to connect}, {{first_name|there}}.\n\n{We are currently evaluating strategic integration ecosystems and institutional distribution partnerships in your space.|Our team is finalizing our enterprise integration roadmap and syndicating strategic alliances with leading platforms.}\n\n{Given your vantage point at {{company|your company}}, we would greatly value your perspective on enterprise workflow consolidation.|Would love to get 7 minutes of your perspective on enterprise integration vectors, or a quick introduction to your Head of Strategic Alliances.}\n\n{Would you be open to a brief peer-level exchange next week?|Are you open to a high-level briefing on how we could drive mutual client retention?}",
+          "delayDays": 1
         }
       },
       {
@@ -211,7 +212,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "y": 500
         },
         "data": {
-          "body": "Just following up here, {{first_name|there}}. No worries if you're swamped right now, but would appreciate any pointers!",
+          "body": "{Brief follow-up|Quick note}, {{first_name|there}} — {recognize your calendar is booked with tier-1 initiatives|no worries if your bandwidth is directed toward current quarterly goals}.\n\n{Happy to reconnect when strategic planning begins for next half.|If there is an alliance or partner lead on your team who owns this vector, feel free to introduce us directly. Appreciate your time!}",
           "delayDays": 3
         }
       }
@@ -233,7 +234,7 @@ export const HR_TEMPLATES: EITemplate[] = [
   },
   {
     "id": "social_warmer_inbound",
-    "name": "Social Warmer (Inbound Nurture)",
+    "name": "Social Warmer & Brand Inbound Nurture",
     "description": "Auto-warm prospects prior to outreach: View Profile -> Like Post -> Comment -> Connect -> Warm Intro. Boosts acceptance rate to 68%+.",
     "connectionRate": 68,
     "replyRate": 31,
@@ -283,7 +284,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 0,
           "label": "Send Message",
-          "body": "Hey {{first_name|there}}, loved your recent posts. Great connecting with you!"
+          "body": "{Great to connect|Appreciate the connection}, {{first_name|there}}!\n\n{Your recent post regarding industry dynamics resonated strongly with our team.|Really enjoyed your perspective on scaling operations in your recent update.}\n\n{We are noticing similar patterns across enterprise engineering teams tackling distributed workflow orchestration.|Particularly agreed with your point on prioritizing high-signal execution over brute-force automation.}\n\n{Looking forward to following your future updates and exchanging notes on modern infrastructure!|Would love to stay closely connected as our industry navigates these shifts.}"
         }
       }
     ],
@@ -297,7 +298,7 @@ export const HR_TEMPLATES: EITemplate[] = [
   },
   {
     "id": "omnichannel_waterfall",
-    "name": "Omnichannel Waterfall (Zero-Cost Discovery)",
+    "name": "Omnichannel Waterfall (Zero-Cost Discovery & Fallback)",
     "description": "Connect on LinkedIn. If pending after 5 days, automatically resolves verified corporate email via Zero-Cost SMTP Discovery and delivers an email touchpoint.",
     "connectionRate": 48,
     "replyRate": 38,
@@ -313,7 +314,7 @@ export const HR_TEMPLATES: EITemplate[] = [
           "delayDays": 0,
           "label": "Connection Request",
           "note_strategy": "Fixed note",
-          "note": "Hi {{first_name|there}}, saw your work at {{company|your company}} and wanted to connect."
+          "note": "{Hi|Hello} {{first_name|there}}, {noticed your team's engineering velocity at|following your leadership at} {{company|your company}}. {Would value connecting to share our latest enterprise benchmark findings.|Would love to stay in touch as peers in the revenue operations ecosystem.}"
         }
       },
       {
@@ -334,7 +335,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 0,
           "label": "Send Message",
-          "body": "Thanks for connecting, {{first_name|there}}! Would love to hear how your team is tackling growth this quarter."
+          "body": "{Thanks for connecting|Great to connect}, {{first_name|there}}!\n\n{Curious how your leadership team is navigating pipeline efficiency and outbound deliverability this quarter at|Wanted to ask how your team is approaching account-based orchestration this year at} {{company|your company}}.\n\n{We recently released an enterprise playbook on preventing domain burnout while 3x-ing target engagement. Happy to share the raw benchmark if useful!|We put together an architectural comparison on multi-channel waterfall routing for engineering leaders. Would you be open to a 2-minute overview?}"
         }
       },
       {
@@ -344,8 +345,8 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 0,
           "label": "Send Work Email",
-          "subject": "Connecting regarding {{company|your team}}",
-          "body": "Hi {{first_name|there}},\n\nI sent you a note on LinkedIn earlier this week, but wanted to drop a quick line here in case you're swamped.\n\nOpen to a brief chat?"
+          "subject": "{Quick question regarding|Connecting on} {{company|your team}}'s outbound architecture",
+          "body": "Hi {{first_name|there}},\n\nI sent you a brief note on LinkedIn earlier this week regarding {{company|your company}}'s operational milestones, but wanted to drop a concise note here in case your LinkedIn inbox is overwhelmed.\n\nWe recently mapped out how Tier-1 B2B teams are decoupling sender identities using residential proxy pools and envelope encryption to maintain 99%+ deliverability.\n\nWould you be open to reviewing the 3-page executive summary, or should I reconnect with your VP of Operations directly?\n\nBest regards,\n[Your Name]"
         }
       }
     ],
@@ -408,7 +409,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 0,
           "label": "Send Message",
-          "body": "Hi {{first_name|there}}, thanks for connecting. Would you be open to exchanging notes on {{company|your company}}'s initiatives?"
+          "body": "{Thanks for connecting|Appreciate the connection}, {{first_name|there}}.\n\n{Our machine-learning model identified {{company|your company}} as a high-fit partner for our distributed workflow acceleration engine.|Based on your team's recent public milestones, {{company|your organization}} matches the profile of companies accelerating their outbound efficiency with our platform.}\n\n{Would you be open to a 5-minute technical briefing on how our Bayesian routing eliminates duplicate outreach across sales pods?|Open to comparing notes on how we can guarantee zero prospect collisions across your SDR teams?}"
         }
       },
       {
@@ -428,8 +429,8 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 1,
           "label": "Send Work Email",
-          "subject": "Quick note for {{first_name|there}}",
-          "body": "Hi {{first_name|there}},\n\nWanted to reach out directly regarding your team at {{company|your company}}."
+          "subject": "{Strategic alignment for|Architectural review for} {{company|your team}} (Bayesian ICP match)",
+          "body": "Hi {{first_name|there}},\n\nOur analytics platform flagged {{company|your company}}'s rapid expansion as an ideal fit for our account-based orchestration framework.\n\nGiven your leadership role, I wanted to share how we helped similar enterprise teams reduce lead acquisition cost by 38% while enforcing strict collision guards.\n\nDo you have 5 minutes for a brief introductory call this Thursday?\n\nBest,\n[Your Name]"
         }
       },
       {
@@ -455,7 +456,7 @@ export const HR_TEMPLATES: EITemplate[] = [
   },
   {
     "id": "inbound_ghostwriter_omnichannel",
-    "name": "Inbound Ghostwriter & Omnichannel Fallback",
+    "name": "Inbound Ghostwriter & Autonomous Omnichannel Engine",
     "description": "AI ghostwrites an authentic comment on the lead's latest post and likes it, sends a high-converting blank invite, waits for a reply with RAG objection handling, and triggers a seamless email fallback if unaccepted.",
     "connectionRate": 74,
     "replyRate": 44,
@@ -531,7 +532,7 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 1,
           "label": "Send Personalized DM",
-          "body": "Hey {{first_name|there}}, loved your recent thoughts on LinkedIn! Wanted to connect and see what you're focusing on at {{company|your company}} this quarter."
+          "body": "{Appreciate the connection|Great connecting with you}, {{first_name|there}}!\n\n{Your recent perspective on LinkedIn regarding industry operational scaling was exceptionally insightful.|Really appreciated your thoughtful analysis in your recent post — particularly your comments on team focus.}\n\n{Would love to stay in dialogue as both our teams navigate enterprise growth this year.|Looking forward to keeping in touch and learning from your updates!}"
         }
       },
       {
@@ -541,8 +542,8 @@ export const HR_TEMPLATES: EITemplate[] = [
         "data": {
           "delayDays": 1,
           "label": "Multichannel Email Fallback",
-          "subject": "Connecting after your recent LinkedIn post ({{first_name|there}})",
-          "body": "Hi {{first_name|there}},\n\nI commented on your recent LinkedIn post earlier this week and sent a connection invite.\n\nReaching out directly here in case you're not on LinkedIn often — would love to connect regarding {{company|your company}}."
+          "subject": "{Connecting after your recent LinkedIn post|Continuing our LinkedIn thread} ({{first_name|there}})",
+          "body": "Hi {{first_name|there}},\n\nI commented on your thoughtful LinkedIn post earlier this week and sent a connection invite.\n\nReaching out directly via email in case you check LinkedIn infrequently — would welcome the chance to exchange notes on {{company|your company}}'s strategic roadmap.\n\nAre you open to a brief 5-minute chat next week?\n\nBest,\n[Your Name]"
         }
       }
     ],

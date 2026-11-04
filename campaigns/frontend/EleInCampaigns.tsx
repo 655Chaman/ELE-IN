@@ -15,7 +15,6 @@ import {
 } from "lucide-react"
 
 import { NumberTicker } from "@/components/ui/number-ticker"
-import { EleInPaywallModal } from "./EleInPaywallModal"
 import { CampaignPreflightModal } from "./CampaignPreflightModal"
 import { CampaignROICertificateModal } from "@/components/campaigns/CampaignROICertificateModal"
 import { PreWarmStudioModal } from "@/components/campaigns/PreWarmStudioModal"
@@ -31,6 +30,7 @@ import { DisplacementStudioModal } from "@/components/campaigns/DisplacementStud
 import { CalendarConciergeStudioModal } from "@/components/campaigns/CalendarConciergeStudioModal"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { StatusPill } from "@/components/StatusPill"
 
 const STATUS_CONFIG: Record<string, any> = {
   ACTIVE: { label: "Active", dot: "bg-success", text: "text-success", badgeBg: "bg-success/10 border-success/20" },
@@ -126,7 +126,17 @@ export function EleInCampaigns() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [confirmModal?.isOpen]);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+
+  // Layer 2 Human Paranoia: Escape key dismissal for batch selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        setSelectedIds(new Set())
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedIds.size])
   const [preflightCampaign, setPreflightCampaign] = useState<{ id: string; name: string } | null>(null)
   const [selectedCertCampaign, setSelectedCertCampaign] = useState<{ id: string; name: string } | null>(null)
   const [banditCampaign, setBanditCampaign] = useState<{ id: string; name: string } | null>(null)
@@ -230,12 +240,19 @@ export function EleInCampaigns() {
     '/api/elein/workspaces/billing',
     fetcher
   )
-  const tier = billingData?.tier || 'FREE'
-  const isPro = tier === 'PRO' || tier === 'ENTERPRISE'
-  const maxActiveCampaigns = isPro ? (tier === 'ENTERPRISE' ? 100 : 20) : 1
+  const rawTier = (billingData?.tier || 'FREE').toUpperCase()
+  const isEnterprise = rawTier === 'ENTERPRISE'
+  const isAgency = rawTier === 'AGENCY'
+  const isPro = rawTier === 'PRO' || rawTier === 'GROWTH' || isAgency || isEnterprise
+  const maxActiveCampaigns = isEnterprise ? 100 : isAgency ? 50 : isPro ? 20 : 1
+  const tier = rawTier
 
   const { data: dashboardData, mutate } = useSWR("/api/elein/dashboard/stats", fetcher)
-  const campaigns: Campaign[] = dashboardData?.recent_campaigns || dashboardData?.campaigns || []
+  const campaigns: Campaign[] = useMemo(() => {
+    if (Array.isArray(dashboardData?.recent_campaigns)) return dashboardData.recent_campaigns;
+    if (Array.isArray(dashboardData?.campaigns)) return dashboardData.campaigns;
+    return [];
+  }, [dashboardData]);
 
   const { data: masterViewStats } = useSWR(
     "/api/master-view/stats",
@@ -397,7 +414,6 @@ export function EleInCampaigns() {
             ? "Enrichment & Scraping Nodes"
             : "Active Campaigns Limit";
           openPaywall({ featureName: feature });
-          setShowUpgradeModal(true);
           mutate();
           throw new Error(errMsg);
         }
@@ -436,10 +452,19 @@ export function EleInCampaigns() {
       return;
     }
 
-    if (!isPro && statusCounts.ACTIVE >= maxActiveCampaigns) {
-      openPaywall({ featureName: "Active Campaigns Limit" });
-      setShowUpgradeModal(true);
-      toast.info("Free plan is limited to 1 active campaign. Upgrade to Growth Pro to run up to 20 campaigns simultaneously.");
+    if (statusCounts.ACTIVE >= maxActiveCampaigns) {
+      if (!isPro) {
+        openPaywall({ featureName: "Active Campaigns Limit", minTier: "PRO" });
+        toast.info("Free plan is limited to 1 active campaign. Upgrade to Growth Pro to run up to 20 campaigns simultaneously.");
+      } else if (rawTier === 'PRO' || rawTier === 'GROWTH') {
+        openPaywall({ featureName: "Agency Active Campaigns", minTier: "AGENCY" });
+        toast.info("Growth Pro is limited to 20 active campaigns. Upgrade to Agency Tier to run up to 50 campaigns simultaneously.");
+      } else if (isAgency) {
+        openPaywall({ featureName: "Enterprise Active Campaigns", minTier: "ENTERPRISE" });
+        toast.info("Agency plan is limited to 50 active campaigns. Upgrade to Enterprise to run up to 100 campaigns simultaneously.");
+      } else {
+        toast.error("Enterprise limit of 100 active campaigns reached. Contact your account manager for custom volume expansion.");
+      }
       return;
     }
 
@@ -608,10 +633,9 @@ export function EleInCampaigns() {
       return c && c.status !== 'ACTIVE';
     });
 
-    if (!isPro && (statusCounts.ACTIVE + candidates.length) > maxActiveCampaigns) {
+    if ((statusCounts.ACTIVE + candidates.length) > maxActiveCampaigns) {
       openPaywall({ featureName: "Active Campaigns Limit" });
-      setShowUpgradeModal(true);
-      toast.info(`Free plan limit: You can only have ${maxActiveCampaigns} active campaign. Upgrade to Growth Pro to run up to 20.`);
+      toast.info(`Active campaign limit reached (${statusCounts.ACTIVE} active, max allowed ${maxActiveCampaigns}). Please upgrade your tier or pause inactive campaigns.`);
       return;
     }
 
@@ -886,14 +910,14 @@ export function EleInCampaigns() {
       ) : (
         <div className="space-y-4">
           {/* Multi-Campaign Scaling Pay Ramp Banner */}
-          {!isPro && statusCounts.ACTIVE >= maxActiveCampaigns && (
+          {statusCounts.ACTIVE >= maxActiveCampaigns && (
             <div className="border border-border bg-card px-4 py-2.5 rounded-xl flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-foreground">
-                  Free plan limit reached ({statusCounts.ACTIVE}/{maxActiveCampaigns} active)
+                  Active campaign limit reached ({statusCounts.ACTIVE}/{maxActiveCampaigns} active)
                 </span>
                 <span className="text-muted-foreground hidden md:inline">
-                  Upgrade to Growth Pro to run up to 20 campaigns simultaneously across multiple LinkedIn accounts.
+                  {!isPro ? "Upgrade to Growth Pro to run up to 20 campaigns simultaneously across multiple LinkedIn accounts." : isAgency ? "Upgrade to Enterprise to run up to 100 campaigns." : "Upgrade to Agency Tier to run up to 50 campaigns."}
                 </span>
               </div>
               <button
@@ -901,7 +925,7 @@ export function EleInCampaigns() {
                 onClick={() => openPaywall({ featureName: "Active Campaigns Limit" })}
                 className="px-3.5 py-1.5 rounded-lg bg-background hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer"
               >
-                Unlock 20 Campaigns
+                {!isPro ? "Unlock 20 Campaigns" : isAgency ? "Unlock 100 Campaigns" : "Unlock 50 Campaigns"}
               </button>
             </div>
           )}
@@ -1001,9 +1025,10 @@ export function EleInCampaigns() {
                   <button
                     type="button"
                     onClick={() => setSelectedIds(new Set())}
-                    className="text-xs text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer"
+                    className="text-xs text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer flex items-center gap-1"
                   >
-                    Deselect All
+                    <span>Deselect All</span>
+                    <kbd className="font-mono text-[10px] px-1 py-0.2 bg-muted rounded border border-border text-muted-foreground">Esc</kbd>
                   </button>
                 </div>
 
@@ -1152,22 +1177,21 @@ export function EleInCampaigns() {
                           {/* Status */}
                           <td className="px-4 py-3.5">
                             <div className="flex flex-col gap-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`w-2 h-2 rounded-full ${statusCfg.dot}`} />
-                                <span className={`text-xs font-medium ${statusCfg.text}`}>
-                                  {statusCfg.label}
-                                </span>
-                              </div>
+                              <StatusPill 
+                                status={c.status.toLowerCase()} 
+                                size="xs" 
+                                pulse={c.status === 'ACTIVE'} 
+                              />
                               {hasZeroSenders && (
                                 <span 
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     navigate(`/elein/campaigns/new?edit=${c.id}`);
                                   }}
-                                  className="text-xs text-muted-foreground hover:text-foreground underline w-fit"
+                                  className="text-[11px] text-amber-500 hover:text-amber-400 underline w-fit font-medium"
                                   title="Campaign active but 0 sender accounts assigned"
                                 >
-                                  0 senders
+                                  0 senders assigned
                                 </span>
                               )}
                             </div>
@@ -1383,17 +1407,6 @@ export function EleInCampaigns() {
       )}
 
       {/* ─── MODALS ───────────────────────────────────────────────────────────── */}
-      {/* High-Converting In-Situ Paywall Modal */}
-      <EleInPaywallModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        campaignName="Active Campaigns"
-        onSuccess={() => {
-          toast.success("Account upgraded to Growth Tier!");
-          mutate();
-        }}
-      />
-
       {/* Pre-Flight Launch Cockpit Gate */}
       {preflightCampaign && (
         <CampaignPreflightModal

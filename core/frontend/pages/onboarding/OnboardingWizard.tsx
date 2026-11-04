@@ -343,10 +343,47 @@ export function OnboardingWizard() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans selection:bg-primary/20">
       {/* ─── Top Bar ─── */}
-      <header className="h-16 border-b border-border/50 px-8 flex items-center justify-between shrink-0 bg-background/80 backdrop-blur-md sticky top-0 z-40">
+      <header className="h-16 border-b border-border/50 px-6 sm:px-8 flex items-center justify-between shrink-0 bg-background/80 backdrop-blur-md sticky top-0 z-40">
         <div className="flex items-center gap-2.5">
           <img src="/logo-icon.png" alt="Ele-in" className="w-6 h-6 object-contain rounded-md" />
           <span className="font-semibold text-sm tracking-tight text-foreground">Ele-in</span>
+        </div>
+
+        {/* Step Indicator Pills (Linear/Stripe Standard) */}
+        <div className="hidden md:flex items-center gap-1.5">
+          {["Goals & ICP", "Pitch & AI", "Audience", "Safety", "Launch"].map((name, i) => {
+            const stepNum = i + 1;
+            const isCurrent = step === stepNum;
+            const isCompleted = step > stepNum;
+            return (
+              <div key={name} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => { if (step > stepNum) setStep(stepNum) }}
+                  disabled={step < stepNum}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full transition-all",
+                    isCurrent ? "bg-primary text-primary-foreground shadow-2xs" :
+                    isCompleted ? "text-foreground hover:bg-muted cursor-pointer" :
+                    "text-muted-foreground/40 cursor-not-allowed"
+                  )}
+                >
+                  <span className={cn(
+                    "size-4 rounded-full flex items-center justify-center text-[9px] font-bold",
+                    isCurrent ? "bg-white text-primary" :
+                    isCompleted ? "bg-primary/20 text-primary" :
+                    "bg-muted text-muted-foreground/40"
+                  )}>
+                    {isCompleted ? <Check size={10} strokeWidth={3} /> : stepNum}
+                  </span>
+                  <span>{name}</span>
+                </button>
+                {i < 4 && (
+                  <div className={cn("w-2.5 h-px", isCompleted ? "bg-primary/50" : "bg-border/60")} />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="flex items-center gap-4">
@@ -363,6 +400,16 @@ export function OnboardingWizard() {
           <AnimatedThemeToggler variant="circle" theme={theme as any} onThemeChange={setTheme} />
         </div>
       </header>
+
+      {/* Progress Bar under Header */}
+      <div className="w-full h-0.5 bg-muted overflow-hidden">
+        <motion.div
+          className="h-full bg-primary"
+          initial={{ width: 0 }}
+          animate={{ width: `${(step / 5) * 100}%` }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        />
+      </div>
 
       {/* ─── Main Content Area ─── */}
       <main className="flex-1 flex flex-col justify-center items-center p-6 md:p-12 max-w-4xl w-full mx-auto">

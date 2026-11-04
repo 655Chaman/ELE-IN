@@ -41,7 +41,11 @@ class TestInMailArbitrage(unittest.TestCase):
         self.worker.send_inmail.return_value = {"status": "success"}
         mock_res = MagicMock()
         mock_res.data = [{"is_open_profile": True}]
-        self.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_res
+        query_mock = MagicMock()
+        query_mock.eq.return_value = query_mock
+        query_mock.execute.return_value = mock_res
+        self.supabase.table.return_value.select.return_value.eq.return_value = query_mock
+        self.supabase.table.return_value.select.return_value.execute.return_value = mock_res
 
         data = {
             "subject": "Hello {{first_name}}",

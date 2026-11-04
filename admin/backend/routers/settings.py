@@ -3,7 +3,7 @@ import os
 import uuid
 from fastapi import APIRouter, Request, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from core.backend.api.auth_dep import get_service_client, get_current_user_id, require_superadmin
@@ -27,7 +27,7 @@ def get_ai_keys(_auth=Depends(require_superadmin)):
     # Mask keys before sending to frontend
     keys = []
     for r in res.data:
-        k = r["api_key"]
+        k = r.get("api_key", "")
         masked = f"{k[:7]}...{k[-4:]}" if len(k) > 10 else "****"
         keys.append({
             "id": r["id"],
@@ -92,7 +92,12 @@ def add_ai_key(payload: APIKeyCreate, _auth=Depends(require_superadmin)):
     except Exception:
         pass
         
-    return res.data[0]
+    # Mask API key before returning to client (Layer 0 & Layer 2)
+    created = dict(res.data[0])
+    raw_key = created.get("api_key")
+    if raw_key:
+        created["api_key"] = f"{raw_key[:7]}...{raw_key[-4:]}" if len(raw_key) > 10 else "****"
+    return created
 
 @router.delete("/admin/api-keys/{key_id}")
 def delete_ai_key(key_id: str, _auth=Depends(require_superadmin)):

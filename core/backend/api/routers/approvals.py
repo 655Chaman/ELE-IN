@@ -641,6 +641,8 @@ def batch_approval_action(
         "failed_ids": failed_ids,
     }
 
+batch_approve_reject = batch_approval_action
+
 
 @router.post("/auto-approve-high-heat")
 def auto_approve_high_heat(
@@ -679,9 +681,12 @@ def auto_approve_high_heat(
 
     return {
         "status": "success",
+        "processed_count": len(approved),
         "approved_count": len(approved),
         "failed_count": len(failed),
-        "approved_ids": approved
+        "approved_ids": approved,
+        "successful_ids": approved,
+        "failed_ids": failed,
     }
 
 

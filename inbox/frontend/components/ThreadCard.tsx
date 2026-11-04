@@ -23,28 +23,48 @@ export function ThreadCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
-      className={`mx-2 my-1 p-3 rounded-xl cursor-pointer transition-all duration-150 relative border ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`mx-2 my-1 p-3 rounded-xl cursor-pointer transition-all duration-150 relative border focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
         isSelected
           ? 'bg-primary/10 border-primary/30 dark:bg-accent/70 dark:border-border shadow-xs'
           : 'border-transparent hover:bg-muted/70 hover:border-border/60'
       }`}
     >
       <div className="flex items-start gap-3">
-        {/* Avatar */}
-        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 bg-muted text-foreground border border-border">
-          {thread.sender_name
-            ? thread.sender_name.slice(0, 2).toUpperCase()
-            : 'LE'}
+        {/* Avatar with live unread indicator */}
+        <div className="relative shrink-0 mt-0.5">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-muted text-foreground border border-border">
+            {thread.sender_name
+              ? thread.sender_name.slice(0, 2).toUpperCase()
+              : 'LE'}
+          </div>
+          {(thread.unread_count ?? 0) > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-primary border-2 border-card" />
+          )}
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Line 1: Name + Date (Clean, never crowded) */}
+          {/* Line 1: Name + Date + Unread Badge (Clean, never crowded) */}
           <div className="flex justify-between items-baseline gap-2 mb-0.5">
-            <span className="text-sm font-semibold text-foreground truncate">
-              {thread.sender_name}
-            </span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`text-sm truncate ${(thread.unread_count ?? 0) > 0 ? 'font-bold text-foreground' : 'font-semibold text-foreground/90'}`}>
+                {thread.sender_name}
+              </span>
+              {(thread.unread_count ?? 0) > 0 && (
+                <span className="text-[10px] font-semibold bg-primary/15 text-primary border border-primary/25 px-1.5 py-0.5 rounded-full shrink-0">
+                  {thread.unread_count}
+                </span>
+              )}
+            </div>
 
             <span className="text-xs text-muted-foreground shrink-0 font-medium">
               {new Date(thread.created_at).toLocaleDateString([], {
@@ -60,7 +80,7 @@ export function ThreadCard({
           </div>
 
           {/* Line 3: Message Preview */}
-          <div className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+          <div className={`text-xs line-clamp-2 leading-relaxed ${(thread.unread_count ?? 0) > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
             {thread.type === 'connection_accepted' ? (
               <span className="flex items-center gap-1 italic text-primary">
                 <UserCheck size={12} className="shrink-0" /> Connection Accepted

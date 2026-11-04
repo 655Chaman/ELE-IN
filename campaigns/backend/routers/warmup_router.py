@@ -16,6 +16,7 @@ from campaigns.backend.services.warmup_service import (
     get_warmup_telemetry,
     calculate_daily_ramp_limit
 )
+from integrations.backend.services.mailbox_warmup_service import execute_warmup_swarm_batch
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,11 @@ class ToggleWarmupPayload(BaseModel):
 
 class DnsAuditPayload(BaseModel):
     domain: str = Field(..., description="Domain name to audit (e.g. outbound-scale.com)")
+
+
+class ExecuteSwarmBatchPayload(BaseModel):
+    target_exchanges_per_box: Optional[int] = Field(3, description="Target peer exchanges per active mailbox")
+    mailbox_ids: Optional[List[str]] = Field(None, description="Optional subset of mailbox IDs")
 
 
 @router.get("/mailboxes")
@@ -226,4 +232,41 @@ def get_telemetry_endpoint(
         }
     except Exception as e:
         logger.exception("Failed to get warmup telemetry: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/swarm/execute-batch")
+def execute_swarm_batch_endpoint(
+    payload: Optional[ExecuteSwarmBatchPayload] = None,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase=Depends(get_service_client)
+):
+    """
+    Paranoia Layer 0, 1 & 2:
+    Executes a high-reputation P2P warmup swarm batch across active workspace mailboxes.
+    Evaluates deliverability health (0-100), throttles compromised inboxes by 50% or pauses them,
+    and inserts exchange records into warmup_swarm_exchanges.
+    """
+    try:
+        raw_boxes = list_warmup_mailboxes(workspace_id=workspace_id, supabase=supabase)
+        active_boxes = [b for b in raw_boxes if b.get("warmup_status") in ("warming", "active", "ramp")]
+        
+        target_ids = payload.mailbox_ids if payload and payload.mailbox_ids else None
+        if target_ids:
+            active_boxes = [b for b in active_boxes if b.get("id") in target_ids]
+
+        target_exchanges = payload.target_exchanges_per_box if payload and payload.target_exchanges_per_box else 3
+        
+        result = execute_warmup_swarm_batch(
+            mailboxes=active_boxes,
+            supabase=supabase,
+            target_exchanges_per_box=target_exchanges,
+            workspace_id=workspace_id
+        )
+        return {
+            "success": True,
+            "data": result
+        }
+    except Exception as e:
+        logger.exception("Failed to execute warmup swarm batch: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

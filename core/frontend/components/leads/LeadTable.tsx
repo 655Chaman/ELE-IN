@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download, RotateCw, Sliders, Send } from "lucide-react"
 import { TableSkeleton } from "../EleInSkeleton"
 import type { LeadList } from "./leads.types"
+import { StatusPill } from "@/components/StatusPill"
 
 const TYPE_LABEL: Record<string, string> = {
   csv: "CSV Upload",
@@ -143,16 +144,14 @@ export function LeadTable({
                   <p className="text-sm font-semibold text-foreground truncate">{list.name}</p>
                   {(() => {
                     const st = (list as any).status || (list.row_count === -1 ? 'importing' : list.row_count === -2 ? 'error' : 'completed')
-                    const badge = STATUS_BADGE[st]
-                    if (!badge || st === 'completed') return null
+                    if (st === 'completed') return null
                     return (
-                      <span 
-                        title={badge.title} 
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${badge.className}`}
-                      >
-                        {badge.icon && <AlertCircle size={10} />}
-                        {badge.label}
-                      </span>
+                      <StatusPill 
+                        status={st === 'importing' ? 'verifying' : st === 'error' || st === 'failed' ? 'failed' : st === 'session_expired' ? 'disconnected' : st === 'throttled' ? 'rate_limited' : 'pending'} 
+                        size="xs" 
+                        label={st === 'importing' ? 'Importing...' : st === 'error' || st === 'failed' ? 'Error' : st === 'session_expired' ? 'Session Expired' : st === 'throttled' ? 'Throttled' : st}
+                        pulse={st === 'importing'} 
+                      />
                     )
                   })()}
                 </div>

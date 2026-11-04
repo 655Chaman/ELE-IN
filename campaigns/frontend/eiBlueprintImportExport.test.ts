@@ -4,6 +4,9 @@ import {
   validateBlueprint,
   exportBlueprint,
   repairTruncatedJson,
+  parseBlueprintJsonString,
+  sanitizeHexColor,
+  applyVariableFallbacksToTree,
 } from "../../core/frontend/lib/blueprintSchema"
 import { dagToTree, treeToDag } from "./eiTreeStore"
 
@@ -147,11 +150,70 @@ describe("Blueprint Import & Export Paranoia Architecture", () => {
       expect(() => JSON.parse(repaired)).not.toThrow()
     })
 
+    it("detects and auto-repairs truncated JSON payloads in parseBlueprintJsonString", () => {
+      const truncated = '{"schema":"elein-blueprint-v1","metadata":{"name":"Auto Healed Test","version":"1.0.0"},"sequence":{"rootNodes":[]'
+      const parsed = parseBlueprintJsonString(truncated)
+      expect(parsed.metadata.name).toBe("Auto Healed Test")
+      expect(parsed._wasAutoRepaired).toBe(true)
+    })
+
     it("safely handles empty strings and invalid types in validateBlueprint", () => {
       expect(validateBlueprint("").isValid).toBe(false)
       expect(validateBlueprint(null).isValid).toBe(false)
       expect(validateBlueprint(12345).isValid).toBe(false)
       expect(validateBlueprint({}).isValid).toBe(false)
+    })
+
+    it("sanitizes CSV / formula injection prefixes across node strings and notes", () => {
+      const maliciousTree: any[] = [
+        {
+          id: "node-x",
+          type: "send_message",
+          data: {
+            message: "=cmd|' /C calc'!A0",
+            label: "+SUM(1+1)",
+            note: "@evil_macro",
+          },
+          children: {},
+        },
+      ]
+
+      const exported = exportBlueprint(maliciousTree, [], {
+        name: "=HYPERLINK('http://evil.com')",
+      })
+
+      const exportedNode = exported.sequence.rootNodes[0]
+      expect(exportedNode.data.message.startsWith("'=")).toBe(true)
+      expect(exportedNode.data.label.startsWith("'+")).toBe(true)
+      expect(exportedNode.data.note.startsWith("'@")).toBe(true)
+      expect(exported.metadata.name.startsWith("'=")).toBe(true)
+    })
+
+    it("sanitizes brand accent colors to prevent CSS injection", () => {
+      expect(sanitizeHexColor("#6366f1")).toBe("#6366f1")
+      expect(sanitizeHexColor("#fff")).toBe("#fff")
+      expect(sanitizeHexColor("javascript:alert(1)")).toBe("#6366f1")
+      expect(sanitizeHexColor("red; background-image: url(...)")).toBe("#6366f1")
+      expect(sanitizeHexColor(undefined)).toBe("#6366f1")
+    })
+
+    it("rejects blueprint JSON strings exceeding the 500KB safety ceiling", () => {
+      const hugeString = "a".repeat(500001)
+      expect(() => parseBlueprintJsonString(hugeString)).toThrow(/500KB/)
+    })
+
+    it("resists infinite recursion in variable fallbacks when given circular graphs", () => {
+      const cyclicNode: any = {
+        id: "cyclic-1",
+        type: "send_message",
+        data: { message: "Hello {{first_name}}" },
+        children: {},
+      }
+      cyclicNode.children.then = [cyclicNode] // Direct self-cycle
+
+      expect(() => {
+        applyVariableFallbacksToTree([cyclicNode], { first_name: "there" })
+      }).not.toThrow()
     })
   })
 })

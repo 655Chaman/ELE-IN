@@ -620,6 +620,109 @@ def evaluate_inbox_deliverability_tripwire(
     }
 
 
+def evaluate_domain_burnout_tripwire(
+    domain_metrics: Dict[str, Any],
+    bounce_threshold_pct: float = 3.0,
+    spam_threshold_pct: float = 0.1,
+    min_sample_size: int = 15,
+    cooldown_hours: int = 24,
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Domain-level Circuit Breaker & Burnout Protection.
+    - Small-sample false-positive guard: does not trip percentage-based burnout
+      unless total_sent >= min_sample_size or absolute bounces >= 5 or absolute spam >= 2.
+    - Trips burnout if aggregate_bounce_rate_pct >= bounce_threshold_pct
+      or aggregate_spam_rate_pct >= spam_threshold_pct
+      or if >= 50% of inboxes on the domain are individually quarantined.
+    - Returns:
+      {"should_quarantine": bool, "quarantine_reason": Optional[str], "quarantined_until": Optional[str], "status": "BURNOUT_QUARANTINED" | "HEALTHY"}
+      with 24h default cooldown.
+    """
+    if not isinstance(domain_metrics, dict):
+        domain_metrics = {}
+
+    safe_bounce_threshold = max(0.5, min(25.0, float(bounce_threshold_pct or 3.0)))
+    safe_spam_threshold = max(0.01, min(5.0, float(spam_threshold_pct or 0.1)))
+    safe_min_sample = max(5, min(500, int(min_sample_size or 15)))
+    safe_cooldown = max(1, min(168, int(cooldown_hours or 24)))
+
+    total_sent = max(0, int(domain_metrics.get("total_sent", 0) or 0))
+    total_bounces = max(0, int(domain_metrics.get("total_bounces", 0) or 0))
+    total_spam = max(0, int(domain_metrics.get("total_spam_complaints", 0) or 0))
+    inbox_count = max(0, int(domain_metrics.get("inbox_count", 0) or 0))
+    active_inbox_count = max(0, int(domain_metrics.get("active_inbox_count", 0) or 0))
+
+    bounce_rate_pct = float(domain_metrics.get("aggregate_bounce_rate_pct", 0.0) or 0.0)
+    if bounce_rate_pct == 0.0 and total_sent > 0 and total_bounces > 0:
+        bounce_rate_pct = round((total_bounces / total_sent) * 100.0, 2)
+
+    spam_rate_pct = float(domain_metrics.get("aggregate_spam_rate_pct", 0.0) or 0.0)
+    if spam_rate_pct == 0.0 and total_sent > 0 and total_spam > 0:
+        spam_rate_pct = round((total_spam / total_sent) * 100.0, 3)
+
+    q_until_raw = domain_metrics.get("quarantined_until")
+    if q_until_raw:
+        try:
+            clean_str = str(q_until_raw).replace("Z", "+00:00")
+            q_dt = datetime.fromisoformat(clean_str)
+            if q_dt.tzinfo is None:
+                q_dt = q_dt.replace(tzinfo=timezone.utc)
+            if q_dt > datetime.now(timezone.utc):
+                return {
+                    "should_quarantine": True,
+                    "quarantine_reason": domain_metrics.get("quarantine_reason") or "DOMAIN_BURNOUT_ACTIVE_COOLDOWN",
+                    "quarantined_until": q_until_raw,
+                    "status": "BURNOUT_QUARANTINED",
+                }
+        except Exception:
+            pass
+
+    reasons: List[str] = []
+    sample_reached = total_sent >= safe_min_sample
+
+    if total_bounces >= 5:
+        reasons.append(f"DOMAIN_ABSOLUTE_BOUNCE_CEILING_EXCEEDED (bounces={total_bounces} >= 5)")
+    elif sample_reached and bounce_rate_pct >= safe_bounce_threshold:
+        reasons.append(
+            f"DOMAIN_BOUNCE_RATE_EXCEEDED ({bounce_rate_pct}% >= {safe_bounce_threshold}%, count={total_bounces}/{total_sent})"
+        )
+
+    if total_spam >= 2:
+        reasons.append(f"DOMAIN_ABSOLUTE_SPAM_CEILING_EXCEEDED (spam={total_spam} >= 2)")
+    elif sample_reached and spam_rate_pct >= safe_spam_threshold:
+        reasons.append(
+            f"DOMAIN_SPAM_RATE_EXCEEDED ({spam_rate_pct}% >= {safe_spam_threshold}%, count={total_spam}/{total_sent})"
+        )
+
+    if inbox_count > 1:
+        quarantined_inboxes = inbox_count - active_inbox_count
+        if quarantined_inboxes >= 2 and (quarantined_inboxes / float(inbox_count)) >= 0.5:
+            reasons.append(
+                f"DOMAIN_MAJORITY_INBOXES_QUARANTINED ({quarantined_inboxes}/{inbox_count} inboxes quarantined >= 50%)"
+            )
+
+    should_quarantine = len(reasons) > 0
+    now_utc = datetime.now(timezone.utc)
+    quarantined_until = (now_utc + timedelta(hours=safe_cooldown)).isoformat() if should_quarantine else None
+
+    return {
+        "should_quarantine": should_quarantine,
+        "quarantine_reason": "; ".join(reasons) if reasons else None,
+        "quarantined_until": quarantined_until,
+        "status": "BURNOUT_QUARANTINED" if should_quarantine else "HEALTHY",
+        "metrics": {
+            "total_sent": total_sent,
+            "total_bounces": total_bounces,
+            "total_spam_complaints": total_spam,
+            "aggregate_bounce_rate_pct": bounce_rate_pct,
+            "aggregate_spam_rate_pct": spam_rate_pct,
+            "inbox_count": inbox_count,
+            "active_inbox_count": active_inbox_count,
+            "sample_size_reached": sample_reached,
+        },
+    }
+
+
 def rewrite_tracking_links(
     body: str,
     tracking_domain: Optional[str],

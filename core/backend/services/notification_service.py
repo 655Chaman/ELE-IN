@@ -1,6 +1,6 @@
 import uuid
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Any
 from supabase import Client
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,14 @@ DEFAULT_CHANNELS: Dict[str, Dict[str, bool]] = {
     'approval_queue_pending':  {'in_app': True,  'email': False},
     'campaign_completed':      {'in_app': True,  'email': False},
     'campaign_needs_attention':{'in_app': True,  'email': True},
+    'campaign_anomaly':        {'in_app': True,  'email': True},
     'daily_digest':            {'in_app': False, 'email': False},
+}
+
+# Aliases between backend orchestrator event types and frontend settings labels
+EVENT_TYPE_ALIASES: Dict[str, str] = {
+    'campaign_needs_attention': 'campaign_anomaly',
+    'campaign_anomaly': 'campaign_needs_attention',
 }
 
 # Channels that can NEVER be disabled (safety floor)
@@ -30,11 +37,17 @@ def _resolve_channels_for_user(
     defaults = DEFAULT_CHANNELS.get(event_type, {'in_app': True, 'email': True})
     locked = LOCKED_ON_CHANNELS.get(event_type, set())
     active = []
+    alias_type = EVENT_TYPE_ALIASES.get(event_type)
     for channel, default_enabled in defaults.items():
         if channel in locked:
             active.append(channel)  # Always on regardless of preference
-        elif prefs_map.get((user_id, channel), default_enabled):
-            active.append(channel)
+        else:
+            # Check primary event_type then alias
+            user_pref = prefs_map.get((user_id, channel))
+            if user_pref is None and alias_type:
+                user_pref = prefs_map.get((user_id, f"{alias_type}:{channel}"))
+            if user_pref if user_pref is not None else default_enabled:
+                active.append(channel)
     return active
 
 
@@ -136,3 +149,146 @@ def dispatch_notification(
     except Exception as e:
         # Notification failure MUST NOT propagate — it must never block the calling business operation
         logger.error(f'Failed to dispatch notification {event_type} for workspace {workspace_id}: {e}')
+
+
+def dispatch_workspace_alert_webhooks(
+    svc: Client,
+    workspace_id: str,
+    event_type: str,
+    title: str,
+    description: str,
+    data: Optional[dict] = None
+) -> Dict[str, Any]:
+    """
+    Dispatches unified workspace alerts to configured Slack, Discord, and custom webhooks
+    according to the workspace's channel routing matrix.
+    
+    Paranoia Layer 1 (Environmental failure analysis):
+      - Webhook requests use strict 5.0s timeout to never hang callers.
+      - Exceptions are caught and logged; delivery failures never fail the caller.
+      
+    Paranoia Layer 2 (Human paranoia):
+      - SSRF verification ensures targets are valid public HTTPS URLs.
+      - Slack block and Discord embeds formatted cleanly with markdown.
+    """
+    import os
+    import requests
+    from core.backend.core.validators import is_safe_ssrf_url
+
+    results = {"slack": "skipped", "discord": "skipped", "custom": "skipped"}
+    if not workspace_id:
+        return results
+
+    try:
+        ws_res = svc.table("workspaces").select("metadata").eq("id", workspace_id).limit(1).execute()
+        if not ws_res.data:
+            return results
+        
+        meta = ws_res.data[0].get("metadata") or {}
+        wh = meta.get("webhooks", {})
+        if not wh:
+            return results
+
+        channel_routing = wh.get("channel_routing", {})
+        routing_for_event = channel_routing.get(event_type, {"slack": True, "discord": True})
+
+        slack_url = wh.get("slack_webhook_url")
+        discord_url = wh.get("discord_webhook_url")
+        custom_url = wh.get("custom_webhook_url")
+
+        # 1. Slack Dispatch
+        if slack_url and routing_for_event.get("slack", True):
+            if is_safe_ssrf_url(slack_url):
+                try:
+                    payload = {
+                        "text": f"*{title}*\n{description}",
+                        "blocks": [
+                            {
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": f"*{title}*\n{description}"}
+                            }
+                        ]
+                    }
+                    resp = requests.post(slack_url, json=payload, timeout=5.0)
+                    results["slack"] = "sent" if resp.status_code < 400 else f"failed_{resp.status_code}"
+                except Exception as slack_err:
+                    logger.warning(f"[WebhookDispatch] Slack error for workspace {workspace_id}: {slack_err}")
+                    results["slack"] = f"error: {slack_err}"
+            else:
+                results["slack"] = "blocked_ssrf"
+
+        # 2. Discord Dispatch
+        if discord_url and routing_for_event.get("discord", True):
+            if is_safe_ssrf_url(discord_url):
+                try:
+                    payload = {
+                        "content": f"**{title}**\n{description}"
+                    }
+                    resp = requests.post(discord_url, json=payload, timeout=5.0)
+                    results["discord"] = "sent" if resp.status_code < 400 else f"failed_{resp.status_code}"
+                except Exception as discord_err:
+                    logger.warning(f"[WebhookDispatch] Discord error for workspace {workspace_id}: {discord_err}")
+                    results["discord"] = f"error: {discord_err}"
+            else:
+                results["discord"] = "blocked_ssrf"
+
+        # 3. Custom Webhook Dispatch
+        if custom_url:
+            if is_safe_ssrf_url(custom_url):
+                try:
+                    payload = {
+                        "event": event_type,
+                        "workspace_id": workspace_id,
+                        "title": title,
+                        "description": description,
+                        "data": data or {}
+                    }
+                    resp = requests.post(custom_url, json=payload, timeout=5.0)
+                    results["custom"] = "sent" if resp.status_code < 400 else f"failed_{resp.status_code}"
+                except Exception as custom_err:
+                    logger.warning(f"[WebhookDispatch] Custom webhook error for workspace {workspace_id}: {custom_err}")
+                    results["custom"] = f"error: {custom_err}"
+            else:
+                results["custom"] = "blocked_ssrf"
+
+    except Exception as e:
+        logger.error(f"[WebhookDispatch] General error for workspace {workspace_id}: {e}")
+
+    return results
+
+
+def dispatch_invitation_email(
+    svc: Client,
+    workspace_id: str,
+    email: str,
+    role: str,
+    token: str,
+    inviter_email: Optional[str] = None
+) -> bool:
+    """
+    Enqueues transactional invitation email into outbox_events with idempotency key.
+    """
+    import os
+    try:
+        app_url = os.environ.get("APP_URL", "http://localhost:5173").rstrip("/")
+        invite_link = f"{app_url}/accept-invite?token={token}"
+        idempotency_key = f"invite:{workspace_id}:{email}:{token}"
+
+        event_payload = {
+            "workspace_id": workspace_id,
+            "event_type": "notification.email",
+            "payload": {
+                "recipient_email": email,
+                "subject": "You have been invited to join a workspace on Ele-in",
+                "body": f"You've been invited to join an Ele-in workspace as a {role}.\n\nClick the link below to accept:\n{invite_link}\n\nThis invitation expires in 7 days.",
+                "link": invite_link,
+                "role": role,
+                "token": token
+            },
+            "idempotency_key": idempotency_key
+        }
+        svc.table("outbox_events").upsert(event_payload, on_conflict="idempotency_key").execute()
+        return True
+    except Exception as e:
+        logger.warning(f"[InvitationEmail] Failed to enqueue invite email for {email}: {e}")
+        return False

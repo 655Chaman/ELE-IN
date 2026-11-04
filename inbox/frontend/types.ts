@@ -28,6 +28,8 @@ export interface ThreadSummary {
   sender_name: string;
   lead_id?: string;
   account_id?: string;
+  sender_account_name?: string;
+  all_account_names?: string[];
   thread_key: string;
   last_message: string;
   direction: string;
@@ -110,6 +112,9 @@ export interface Message {
   direction: string;
   created_at: string;
   type?: string;
+  account_id?: string;
+  sender_account_name?: string;
+  lead_id?: string;
 }
 
 export type OutcomeType = 'INTERESTED' | 'MEETING_BOOKED' | 'FOLLOW_UP' | 'INFO_SENT' | 'NOT_INTERESTED';

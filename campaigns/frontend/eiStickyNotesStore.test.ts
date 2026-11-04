@@ -98,5 +98,26 @@ describe("Sticky Notes Engine & Paranoia Architecture", () => {
       const remaining = useHRTreeStore.getState().stickyNotes
       expect(remaining.length).toBe(0)
     })
+
+    it("restores sticky notes accurately through canvas undo and redo", () => {
+      useHRTreeStore.getState().reset()
+      expect(useHRTreeStore.getState().stickyNotes.length).toBe(0)
+
+      const id = useHRTreeStore.getState().addStickyNote(300, 400, "sky", "strategy")
+      expect(useHRTreeStore.getState().stickyNotes.length).toBe(1)
+
+      // Remove note (recorded in history)
+      useHRTreeStore.getState().removeStickyNote(id)
+      expect(useHRTreeStore.getState().stickyNotes.length).toBe(0)
+
+      // Canvas Undo: restores the note
+      useHRTreeStore.getState().undo()
+      expect(useHRTreeStore.getState().stickyNotes.length).toBe(1)
+      expect(useHRTreeStore.getState().stickyNotes[0].id).toBe(id)
+
+      // Canvas Redo: re-applies the deletion
+      useHRTreeStore.getState().redo()
+      expect(useHRTreeStore.getState().stickyNotes.length).toBe(0)
+    })
   })
 })

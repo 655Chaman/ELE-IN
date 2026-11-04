@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header, Query, Request
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from supabase import Client
 import uuid
 import logging
 import base64
+import hmac
+import os
 
-from core.backend.api.auth_dep import get_supabase_client, get_current_workspace
+from core.backend.api.auth_dep import get_supabase_client, get_current_workspace, get_service_client
 from core.backend.core import crypto
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,8 @@ class ProxyResponse(BaseModel):
     last_checked_at: Optional[str] = None
     quarantined_until: Optional[str] = None
     quarantine_reason: Optional[str] = None
+    is_system: Optional[bool] = False
+    assigned_accounts_count: Optional[int] = 0
 
 class ProxyTestRequest(BaseModel):
     provider: Optional[str] = "custom"
@@ -55,11 +59,70 @@ class ProxyTestResponse(BaseModel):
 @router.get("", response_model=List[ProxyResponse])
 def get_proxies(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
     try:
+        # 1. Fetch workspace-dedicated proxies
+        ws_proxies = []
         try:
-            res = supabase.table("proxies").select("id, provider, host, port, protocol, username, status, country_code, latency_ms, exit_ip, last_checked_at, quarantined_until, quarantine_reason").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
+            ws_res = supabase.table("proxies").select(
+                "id, provider, host, port, protocol, username, status, country_code, latency_ms, exit_ip, last_checked_at, quarantined_until, quarantine_reason, workspace_id"
+            ).eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
+            ws_proxies = ws_res.data or []
         except Exception:
-            res = supabase.table("proxies").select("id, provider, host, port, protocol, username, status, country_code").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
-        return res.data or []
+            try:
+                ws_res = supabase.table("proxies").select("id, provider, host, port, protocol, username, status, country_code, workspace_id").eq("workspace_id", workspace_id).order("created_at", desc=True).execute()
+                ws_proxies = ws_res.data or []
+            except Exception:
+                pass
+
+        # 2. Fetch shared system proxies (workspace_id IS NULL)
+        sys_proxies = []
+        try:
+            sys_res = supabase.table("proxies").select(
+                "id, provider, host, port, protocol, username, status, country_code, latency_ms, exit_ip, last_checked_at, quarantined_until, quarantine_reason, workspace_id"
+            ).is_("workspace_id", "null").order("created_at", desc=True).execute()
+            sys_proxies = sys_res.data or []
+        except Exception:
+            pass
+
+        all_proxies = ws_proxies + sys_proxies
+
+        # 3. Compute assigned accounts per proxy
+        proxy_ids = [p["id"] for p in all_proxies if isinstance(p, dict) and p.get("id")]
+        acc_counts: Dict[str, int] = {pid: 0 for pid in proxy_ids}
+        if proxy_ids:
+            try:
+                acc_res = supabase.table("accounts").select("proxy_id").in_("proxy_id", proxy_ids).execute()
+                for row in (acc_res.data or []):
+                    pid = row.get("proxy_id")
+                    if pid in acc_counts:
+                        acc_counts[pid] += 1
+            except Exception as e:
+                logger.debug(f"Could not compute proxy account counts: {e}")
+
+        enriched: List[Dict[str, Any]] = []
+        for p in all_proxies:
+            if not isinstance(p, dict):
+                continue
+            pid = p.get("id")
+            p_ws = p.get("workspace_id")
+            enriched.append({
+                "id": pid,
+                "provider": p.get("provider") or "custom",
+                "host": p.get("host"),
+                "port": p.get("port"),
+                "protocol": p.get("protocol") or "http",
+                "username": p.get("username"),
+                "status": p.get("status") or "healthy",
+                "country_code": p.get("country_code"),
+                "latency_ms": p.get("latency_ms"),
+                "exit_ip": p.get("exit_ip"),
+                "last_checked_at": p.get("last_checked_at"),
+                "quarantined_until": p.get("quarantined_until"),
+                "quarantine_reason": p.get("quarantine_reason"),
+                "is_system": (p_ws is None),
+                "assigned_accounts_count": acc_counts.get(pid, 0)
+            })
+
+        return enriched
     except Exception as e:
         logger.error(f"Error fetching proxies: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch proxies")
@@ -212,11 +275,15 @@ def delete_proxy(
 
 @router.post("/{proxy_id}/test", response_model=ProxyTestResponse)
 def test_existing_proxy(proxy_id: str, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
-    """Tests an existing proxy from the workspace pool and updates its latency and status."""
+    """Tests an existing proxy from the workspace pool or system pool and updates its latency and status."""
     res = supabase.table("proxies").select("*").eq("id", proxy_id).eq("workspace_id", workspace_id).execute()
-    if not res.data:
+    proxy = res.data[0] if (res and res.data) else None
+    if not proxy:
+        sys_res = supabase.table("proxies").select("*").eq("id", proxy_id).is_("workspace_id", "null").execute()
+        proxy = sys_res.data[0] if (sys_res and sys_res.data) else None
+
+    if not proxy:
         raise HTTPException(status_code=404, detail="Proxy not found")
-    proxy = res.data[0]
     from core.backend.services.proxy_routing import is_proxy_quarantined
     if is_proxy_quarantined(proxy):
         return {
@@ -274,3 +341,95 @@ async def sync_webshare(
     except Exception as e:
         logger.error(f"Error syncing webshare proxies: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to sync proxies: {str(e)}")
+
+def _verify_webshare_webhook_secret(
+    authorization: Optional[str] = Header(None),
+    x_webshare_signature: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+    supabase: Client = Depends(get_service_client)
+) -> bool:
+    """
+    Paranoia Layer 2: Constant-time authentication for Webshare webhooks.
+    Validates token via Bearer header, X-Webshare-Signature, or query param.
+    """
+    candidates = []
+    if isinstance(authorization, str) and authorization.strip():
+        parts = authorization.strip().split()
+        if len(parts) == 2 and parts[0].lower() in ("bearer", "token"):
+            candidates.append(parts[1])
+        else:
+            candidates.append(authorization.strip())
+    if isinstance(x_webshare_signature, str) and x_webshare_signature.strip():
+        candidates.append(x_webshare_signature.strip())
+    if isinstance(token, str) and token.strip():
+        candidates.append(token.strip())
+
+    if not candidates:
+        raise HTTPException(status_code=401, detail="Missing webhook authorization token")
+
+    expected_secrets = []
+    if env_sec := os.environ.get("WEBSHARE_WEBHOOK_SECRET"):
+        expected_secrets.append(env_sec)
+    if env_key := os.environ.get("WEBSHARE_API_KEY"):
+        expected_secrets.append(env_key)
+
+    try:
+        res = supabase.table("system_api_keys").select("api_key").in_("action_type", ["webshare_webhook", "webshare"]).execute()
+        for row in (res.data or []):
+            if row.get("api_key"):
+                expected_secrets.append(row["api_key"])
+    except Exception:
+        pass
+
+    # Paranoia Layer 1 & 2: Hard Fail-Closed Security (Eradicates FLAW-07)
+    if not expected_secrets:
+        logger.error("[WebshareWebhook] Rejection: Neither WEBSHARE_WEBHOOK_SECRET nor valid system API keys are configured.")
+        raise HTTPException(
+            status_code=500,
+            detail="Webhook ingestion disabled: WEBSHARE_WEBHOOK_SECRET is unconfigured. Direct injection prohibited."
+        )
+
+    for cand in candidates:
+        for exp in expected_secrets:
+            if hmac.compare_digest(cand.encode("utf-8"), exp.encode("utf-8")):
+                return True
+
+    raise HTTPException(status_code=401, detail="Invalid webhook signature or token")
+
+@router.post("/webshare/webhook")
+async def webshare_webhook(
+    request: Request,
+    workspace_id: Optional[str] = Query(None),
+    authorized: bool = Depends(_verify_webshare_webhook_secret),
+    supabase: Client = Depends(get_service_client)
+):
+    # Paranoia Layer 1 & 2: Strict Multi-Tenant Scope Validation (Eradicates FLAW-12)
+    if workspace_id:
+        import uuid
+        try:
+            uuid.UUID(workspace_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid workspace_id format. UUID required.")
+        try:
+            ws_check = supabase.table("workspaces").select("id").eq("id", workspace_id).execute()
+            if not ws_check.data:
+                raise HTTPException(status_code=404, detail="Specified workspace does not exist.")
+        except HTTPException:
+            raise
+        except Exception as ws_err:
+            logger.warning(f"[WebshareWebhook] Workspace verification non-blocking warning: {ws_err}")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    from integrations.backend.services.webshare_sync import handle_webshare_webhook_payload
+    try:
+        result = handle_webshare_webhook_payload(body, supabase, workspace_id=workspace_id)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[WebshareWebhook] Error processing webhook: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")

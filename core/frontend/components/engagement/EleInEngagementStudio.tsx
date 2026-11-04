@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { motion } from 'motion/react';
 import useSWR from 'swr';
 import { 
   Sparkles, Share2, MessageSquare, Zap, Clock, ShieldCheck, 
@@ -550,47 +551,39 @@ export function EleInEngagementStudio() {
 
         {/* Tab Switcher */}
         <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-xl border border-border/60">
-          <button
-            type="button"
-            onClick={() => setActiveTab('content')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'content'
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <MessageSquare size={13} />
-            <span>Thought Leadership</span>
-            {!isPro && <Lock size={10} className="text-amber-500 ml-0.5" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('prewarm')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'prewarm'
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Flame size={13} />
-            <span>Social Pre-Warmer</span>
-            {!isPro && <Lock size={10} className="text-amber-500 ml-0.5" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('omnichannel')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'omnichannel'
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Radio size={13} />
-            <span>Omnichannel Fallback</span>
-            {!isPro && <Lock size={10} className="text-amber-500 ml-0.5" />}
-          </button>
+          {[
+            { id: 'content', label: 'Thought Leadership', icon: MessageSquare },
+            { id: 'prewarm', label: 'Social Pre-Warmer', icon: Flame },
+            { id: 'omnichannel', label: 'Omnichannel Fallback', icon: Radio },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  isActive
+                    ? 'text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="engagement-studio-tab"
+                    className="absolute inset-0 bg-primary rounded-lg shadow-xs"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <Icon size={13} />
+                  <span>{tab.label}</span>
+                  {!isPro && <Lock size={10} className={isActive ? "text-primary-foreground/80 ml-0.5" : "text-amber-500 ml-0.5"} />}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

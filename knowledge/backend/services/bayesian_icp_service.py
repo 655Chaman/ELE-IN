@@ -114,12 +114,19 @@ def calculate_beta_metrics(alpha: float, beta: float, weight_multiplier: float =
     variance = (a * b) / (total * total * (total + 1.0))
     std_dev = math.sqrt(variance)
 
+    # Paranoia Layer 1: Hierarchical Empirical Bayes Cold-Start Shrinkage Regularization
+    # When sample size is small (N < 10), shrink empirical mean toward neutral prior (0.5)
+    # with credibility weight lambda = N / (N + 5.0).
+    prior_baseline = 0.5
+    shrinkage_lambda = min(1.0, max(0.0, total / (total + 5.0)))
+    regularized_mean = (shrinkage_lambda * raw_mean) + ((1.0 - shrinkage_lambda) * prior_baseline)
+
     # 95% Credible Interval (normal approximation for Beta when total is reasonable)
-    ci_lower = max(0.0, raw_mean - (1.96 * std_dev))
-    ci_upper = min(1.0, raw_mean + (1.96 * std_dev))
+    ci_lower = max(0.0, regularized_mean - (1.96 * std_dev))
+    ci_upper = min(1.0, regularized_mean + (1.96 * std_dev))
 
     # Apply operator weight multiplier to effective scoring weight
-    effective_prob = max(0.0, min(1.0, raw_mean * multiplier))
+    effective_prob = max(0.0, min(1.0, regularized_mean * multiplier))
 
     if total >= 30:
         confidence_tier = "HIGH"
@@ -133,6 +140,7 @@ def calculate_beta_metrics(alpha: float, beta: float, weight_multiplier: float =
         "beta": int(b),
         "sample_size": int(total),
         "raw_mean": round(raw_mean, 4),
+        "regularized_mean": round(regularized_mean, 4),
         "effective_weight": round(effective_prob, 4),
         "variance": round(variance, 6),
         "std_dev": round(std_dev, 4),
@@ -724,8 +732,9 @@ def compute_bayesian_icp_score(
             total_logit -= penalty
             reasoning_parts.append(f"missing_{sig_name} (penalty: -{penalty:.2f})")
 
-        # Convert posterior log-odds back to probability [0, 1]
-        posterior_p = 1.0 / (1.0 + math.exp(-total_logit))
+        # Convert posterior log-odds back to probability [0, 1] with numerical overflow protection
+        clamped_logit = max(-10.0, min(10.0, total_logit))
+        posterior_p = 1.0 / (1.0 + math.exp(-clamped_logit))
         score = int(round(posterior_p * 100))
         score = max(0, min(100, score))
 

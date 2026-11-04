@@ -1389,6 +1389,23 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
         # Cascade halt active LinkedIn outreach
         _cascade_halt_lead_linkedin_outreach(supabase, workspace_id, lead_id, error_reason="email_replied")
 
+        # Paranoia Layer 0 & 1: Record inbound email reply in messages table for Unified Inbox & Phase 7 Orchestrator
+        try:
+            msg_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"smartlead_reply:{workspace_id}:{lead_id}:{email}:{now_iso}"))
+            supabase.table("messages").insert({
+                "id": msg_id,
+                "workspace_id": workspace_id,
+                "lead_id": lead_id,
+                "sender_name": email,
+                "message_text": reply_text or "Prospect replied via email",
+                "direction": "inbound",
+                "intent": "reply",
+                "thread_url": f"email:{email}",
+                "created_at": now_iso
+            }).execute()
+        except Exception as _m_err:
+            logger.warning(f"Failed inserting Smartlead email reply into messages table: {_m_err}")
+
         # In-app notification into outbox_events
         try:
             supabase.table("outbox_events").insert({
@@ -1742,6 +1759,23 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
 
         # Cascade halt active LinkedIn outreach
         _cascade_halt_lead_linkedin_outreach(supabase, workspace_id, lead_id, error_reason="email_replied")
+
+        # Paranoia Layer 0 & 1: Record inbound email reply in messages table for Unified Inbox & Phase 7 Orchestrator
+        try:
+            msg_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"smartlead_reply:{workspace_id}:{lead_id}:{email}:{now_iso}"))
+            supabase.table("messages").insert({
+                "id": msg_id,
+                "workspace_id": workspace_id,
+                "lead_id": lead_id,
+                "sender_name": email,
+                "message_text": reply_text or "Prospect replied via email",
+                "direction": "inbound",
+                "intent": "reply",
+                "thread_url": f"email:{email}",
+                "created_at": now_iso
+            }).execute()
+        except Exception as _m_err:
+            logger.warning(f"Failed inserting Smartlead email reply into messages table: {_m_err}")
 
         # In-app notification into outbox_events
         try:

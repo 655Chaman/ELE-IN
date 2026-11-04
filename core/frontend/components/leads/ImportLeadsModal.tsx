@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "motion/react"
 import { toast } from "sonner"
-import { X, ChevronRight, ArrowLeft, FileSpreadsheet, Compass, Link2, Search, Lock, Loader2, Sparkles } from "lucide-react"
+import { X, ChevronRight, ArrowLeft, FileSpreadsheet, Compass, Link2, Search, Lock, Loader2, Sparkles, ShieldCheck } from "lucide-react"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { LeadImportProvider, useLeadImport } from "./LeadImportContext"
@@ -23,6 +23,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
     file,
     mappings,
     cleanData,
+    collisionPolicy,
     activeAccount,
     budget,
     liveUrl,
@@ -36,6 +37,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
 
   const isPro = billing?.tier === 'PRO' || billing?.tier === 'ENTERPRISE';
 
+  const [uploadStage, setUploadStage] = useState<"idle" | "normalizing" | "collision" | "enqueuing">("idle");
   const isUploading = isSubmitting;
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -91,6 +93,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
     }
 
     setIsSubmitting(true)
+    setUploadStage("normalizing")
     try {
       const isAuto = targetTimezone === "auto";
       const selectedRegion = TARGET_REGIONS.find(r => r.timezone === targetTimezone);
@@ -98,6 +101,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
       const effectiveTz = isAuto ? "UTC" : targetTimezone;
       
       if (method === "search") {
+        setUploadStage("enqueuing");
         if (!liveUrl) { toast.error("Please select at least one search filter"); setIsSubmitting(false); return; }
         if (!activeAccount) { toast.error("No active LinkedIn account connected. Go to Accounts to connect one."); setIsSubmitting(false); return; }
         if (budget.remaining <= 0) { toast.error(`Daily scraping limit reached (${budget.limit}/day). Resets tomorrow.`); setIsSubmitting(false); return; }
@@ -119,6 +123,9 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         }
         toast.success(`Native search import started for "${name}"! Leads will appear shortly.`)
       } else if (method === "csv") {
+        setUploadStage("collision");
+        await new Promise(r => setTimeout(r, 120));
+        setUploadStage("enqueuing");
         const formData = new FormData()
         formData.append("file", file!)
         formData.append("list_name", name)
@@ -127,6 +134,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         formData.append("target_region_label", regionLabel)
         formData.append("mappings", JSON.stringify(mappings))
         formData.append("clean_data", String(cleanData))
+        formData.append("collision_policy", collisionPolicy || "merge")
         abortControllerRef.current = new AbortController()
         const res = await fetchWithAuth("/api/elein/leads/upload_csv", { 
           method: "POST", 
@@ -149,7 +157,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
         const urls = urlList.split("\n").map(u => u.trim()).filter(Boolean)
         if (urls.length === 0) { toast.error("Please enter at least one URL"); setIsSubmitting(false); return; }
         const res = await fetchWithAuth("/api/elein/leads/upload_urls", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls, target_timezone: effectiveTz, target_region_label: regionLabel })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, urls, target_timezone: effectiveTz, target_region_label: regionLabel, collision_policy: collisionPolicy || "merge" })
         })
         if (!res.ok) {
           let errDetail = "Failed to upload profile URLs";
@@ -210,6 +218,7 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
       }
     } finally { 
       setIsSubmitting(false); 
+      setUploadStage("idle");
     }
   }
 
@@ -363,6 +372,61 @@ function ImportLeadsModalContent({ onClose, onAdd }: { onClose: () => void; onAd
 
             </div>
             </div>
+
+            {/* Layer 1 & 2 Paranoia: Real-time Ingestion Progress Bar */}
+            {isUploading && (
+              <div className="mx-6 mb-2 p-4 rounded-lg bg-card border border-border/80 shadow-xs space-y-2.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 font-bold text-foreground">
+                    <Loader2 size={14} className="animate-spin text-primary" />
+                    <span>
+                      {uploadStage === "normalizing" && "Normalizing & validating CSV format..."}
+                      {uploadStage === "collision" && "Analyzing cross-campaign collision risks..."}
+                      {uploadStage === "enqueuing" && "Streaming lead records into audience hub..."}
+                      {uploadStage === "idle" && "Processing import..."}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-primary">
+                    {uploadStage === "normalizing" && "25%"}
+                    {uploadStage === "collision" && "60%"}
+                    {uploadStage === "enqueuing" && "90%"}
+                    {uploadStage === "idle" && "Working..."}
+                  </span>
+                </div>
+                <div className="w-full bg-muted/60 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width:
+                        uploadStage === "normalizing"
+                          ? "25%"
+                          : uploadStage === "collision"
+                          ? "60%"
+                          : uploadStage === "enqueuing"
+                          ? "90%"
+                          : "100%",
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>Target list: <strong className="text-foreground">{name}</strong></span>
+                  {abortControllerRef.current && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        abortControllerRef.current?.abort();
+                        toast.info("Import cancelled by user.");
+                        setIsSubmitting(false);
+                        setUploadStage("idle");
+                      }}
+                      className="text-rose-500 dark:text-rose-400 hover:underline font-medium cursor-pointer"
+                    >
+                      Cancel Upload
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {method !== "hubspot" && (
               <div className="p-6 border-t bg-muted/5 flex items-center justify-between shrink-0">

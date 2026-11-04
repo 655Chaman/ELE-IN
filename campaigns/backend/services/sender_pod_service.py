@@ -37,8 +37,8 @@ def _is_account_quarantined(account: Dict[str, Any]) -> bool:
     if not isinstance(account, dict):
         return False
 
-    status = account.get("status")
-    if status in ["RESTRICTED", "DISCONNECTED"]:
+    status = str(account.get("status") or "").upper()
+    if status in ["RESTRICTED", "DISCONNECTED", "CHALLENGE_REQUIRED", "RATE_LIMITED"]:
         return True
 
     quarantined_until = account.get("quarantined_until")
@@ -382,30 +382,75 @@ def select_pod_sender(
     # =========================================================================
     if lead_id:
         try:
-            # Check if this lead is already bound to an account in campaign_enrollments
-            enr_res = supabase.table("campaign_enrollments") \
-                .select("account_id") \
-                .eq("campaign_id", campaign_id) \
-                .eq("lead_id", lead_id) \
-                .limit(1) \
-                .execute()
-            if enr_res.data and enr_res.data[0].get("account_id"):
-                initiating_acc_id = enr_res.data[0]["account_id"]
-                if initiating_acc_id not in exclude_set:
-                    # Fetch initiating account status
-                    acc_res = supabase.table("accounts") \
-                        .select("id, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, workspace_id, timezone") \
-                        .eq("id", initiating_acc_id) \
-                        .execute()
-                    if acc_res.data:
-                        init_acc = acc_res.data[0]
-                        # Verify tenant isolation for initiating account
-                        if workspace_id and init_acc.get("workspace_id") and str(init_acc["workspace_id"]).strip() != str(workspace_id).strip():
+            initiating_acc_id = None
+            # 1. Primary check: dedicated campaign_lead_sender_locks table
+            try:
+                lock_q = supabase.table("campaign_lead_sender_locks") \
+                    .select("account_id") \
+                    .eq("lead_id", str(lead_id))
+                if workspace_id:
+                    lock_q = lock_q.eq("workspace_id", str(workspace_id))
+                lock_res = lock_q.limit(1).execute()
+                if lock_res.data and lock_res.data[0].get("account_id"):
+                    initiating_acc_id = lock_res.data[0]["account_id"]
+            except Exception as lock_err:
+                logger.debug(f"campaign_lead_sender_locks query non-fatal: {lock_err}")
+
+            # 2. Fallback check: campaign_enrollments
+            if not initiating_acc_id:
+                enr_res = supabase.table("campaign_enrollments") \
+                    .select("account_id") \
+                    .eq("campaign_id", campaign_id) \
+                    .eq("lead_id", str(lead_id)) \
+                    .limit(1) \
+                    .execute()
+                if enr_res.data and enr_res.data[0].get("account_id"):
+                    initiating_acc_id = enr_res.data[0]["account_id"]
+
+            if initiating_acc_id and initiating_acc_id not in exclude_set:
+                # Fetch initiating account status
+                acc_res = supabase.table("accounts") \
+                    .select("id, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, workspace_id, timezone, proxy_id") \
+                    .eq("id", initiating_acc_id) \
+                    .execute()
+                if acc_res.data:
+                    init_acc = acc_res.data[0]
+                    # Verify tenant isolation for initiating account
+                    if workspace_id and init_acc.get("workspace_id") and str(init_acc["workspace_id"]).strip() != str(workspace_id).strip():
+                        return {
+                            "account_id": None,
+                            "status": "UNAUTHORIZED_WORKSPACE",
+                            "message": "Initiating account belongs to another workspace."
+                        }
+
+                    # Paranoia Layer 1: Check proxy health for thread affinity sender
+                    proxy_unhealthy = False
+                    p_id = init_acc.get("proxy_id")
+                    if p_id:
+                        try:
+                            p_res = supabase.table("proxies").select("status, is_active").eq("id", p_id).execute()
+                            if p_res.data and isinstance(p_res.data, list) and len(p_res.data) > 0:
+                                p_row = p_res.data[0]
+                                if str(p_row.get("status") or "").lower() in ("quarantined", "failed", "unhealthy") or p_row.get("is_active") is False:
+                                    proxy_unhealthy = True
+                        except Exception:
+                            pass
+
+                    if proxy_unhealthy:
+                        logger.warning(
+                            f"[PodSender] Thread affinity sender '{initiating_acc_id}' proxy '{p_id}' is quarantined. Automatically failing over to healthy pod candidate."
+                        )
+                        exclude_set.add(initiating_acc_id)
+                    else:
+                        acc_status = str(init_acc.get("status") or "").upper()
+                        if acc_status == "RATE_LIMITED":
                             return {
                                 "account_id": None,
-                                "status": "UNAUTHORIZED_WORKSPACE",
-                                "message": "Initiating account belongs to another workspace."
+                                "status": "THREAD_AFFINITY_RATE_LIMITED",
+                                "initiating_account_id": initiating_acc_id,
+                                "message": "Initiating sender reached daily rate limit. Outreach paused to maintain relationship continuity."
                             }
+
                         if not _is_account_quarantined(init_acc):
                             # Check capacity
                             cap = _calculate_account_action_capacity(init_acc, action_type, supabase, effective_date)
@@ -427,13 +472,11 @@ def select_pod_sender(
                                     "message": "Initiating sender reached daily safety limit. Outreach locked to maintain relationship continuity."
                                 }
                         else:
-                            # Quarantined / cooldown initiating sender — must NOT fail over to another sender in the pod!
-                            # Thread affinity requires message continuity with the exact same LinkedIn member.
                             return {
                                 "account_id": None,
                                 "status": "THREAD_AFFINITY_SENDER_QUARANTINED",
                                 "initiating_account_id": initiating_acc_id,
-                                "message": f"Initiating sender is currently quarantined ({init_acc.get('quarantine_reason', 'cooldown')}). Outreach paused to preserve thread affinity."
+                                "message": f"Initiating sender is currently unavailable ({acc_status or init_acc.get('quarantine_reason', 'cooldown')}). Outreach paused to preserve thread affinity."
                             }
         except Exception as ex:
             logger.warning(f"Error checking thread affinity for lead {lead_id}: {ex}")
@@ -479,7 +522,7 @@ def select_pod_sender(
 
     # Fetch candidate accounts
     candidates_res = supabase.table("accounts") \
-        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, timezone, workspace_id") \
+        .select("id, name, status, is_warmup, warmup_max_connections, warmup_max_messages, daily_connection_limit, daily_message_limit, quarantined_until, quarantine_reason, is_pod_eligible, timezone, workspace_id, proxy_id") \
         .in_("id", account_ids) \
         .execute()
     candidate_accounts = candidates_res.data or []
@@ -492,7 +535,7 @@ def select_pod_sender(
             if not acc.get("workspace_id") or str(acc.get("workspace_id")).strip() == clean_ws
         ]
 
-    # Filter out quarantined, degraded, or ineligible accounts
+    # Filter out quarantined, degraded, or ineligible accounts, or accounts with quarantined proxies
     healthy_candidates = []
     for acc in candidate_accounts:
         if acc.get("is_pod_eligible", True) is False:
@@ -501,6 +544,16 @@ def select_pod_sender(
             continue
         if acc.get("status") != "ACTIVE":
             continue
+        p_id = acc.get("proxy_id")
+        if p_id:
+            try:
+                p_res = supabase.table("proxies").select("status, is_active").eq("id", p_id).execute()
+                if p_res.data and isinstance(p_res.data, list) and len(p_res.data) > 0:
+                    p_row = p_res.data[0]
+                    if str(p_row.get("status") or "").lower() in ("quarantined", "failed", "unhealthy") or p_row.get("is_active") is False:
+                        continue
+            except Exception:
+                pass
         healthy_candidates.append(acc)
 
     if not healthy_candidates:
@@ -597,6 +650,21 @@ def select_pod_sender(
         }).execute()
     except Exception as ex:
         logger.warning(f"Failed to record pod dispatch audit log: {ex}")
+
+    # Persist lead-to-sender affinity lock for future sequence touchpoints
+    if acc.get("id") and lead_id:
+        try:
+            lock_payload = {
+                "workspace_id": str(workspace_id or "ws-default"),
+                "lead_id": str(lead_id),
+                "account_id": str(acc["id"]),
+                "updated_at": _get_utc_now().isoformat()
+            }
+            if campaign_id:
+                lock_payload["campaign_id"] = str(campaign_id)
+            supabase.table("campaign_lead_sender_locks").upsert(lock_payload).execute()
+        except Exception as lock_up_err:
+            logger.debug(f"campaign_lead_sender_locks upsert notice: {lock_up_err}")
 
     return {
         "account_id": acc["id"],
@@ -1005,4 +1073,97 @@ def resume_pod(
         "campaign_id": clean_cid,
         "pod_emergency_paused": False,
         "message": "Sender pod dispatches resumed."
+    }
+
+
+def reassign_lead_sender(
+    supabase: Client,
+    workspace_id: str,
+    campaign_id: str,
+    lead_id: str,
+    new_account_id: str,
+    reason: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Layer 0 & Layer 2: Admin Thread Affinity Reassignment Override.
+    Safely migrates a prospect's thread affinity lock to a new healthy account within the same workspace.
+    Guarantees tenant isolation, updates campaign_lead_sender_locks, campaign_enrollments,
+    and in-flight campaign_execution_states, emitting an audit log.
+    """
+    if not workspace_id or not lead_id or not new_account_id:
+        return {"status": "error", "message": "workspace_id, lead_id, and new_account_id are required."}
+
+    # Verify new account exists, belongs to workspace, and is active
+    try:
+        acc_res = supabase.table("accounts") \
+            .select("id, workspace_id, status, name") \
+            .eq("id", str(new_account_id)) \
+            .execute()
+        if not acc_res.data:
+            return {"status": "error", "message": f"Account {new_account_id} not found."}
+        acc_row = acc_res.data[0]
+        if str(acc_row.get("workspace_id", "")).strip() != str(workspace_id).strip():
+            return {"status": "error", "message": "Target account belongs to another workspace."}
+        if str(acc_row.get("status", "")).upper() not in ("ACTIVE", "CONNECTED"):
+            return {"status": "error", "message": f"Target account is not active (status: {acc_row.get('status')})."}
+    except Exception as e:
+        logger.error(f"Failed to verify target account {new_account_id}: {e}")
+        return {"status": "error", "message": str(e)}
+
+    now_iso = _get_utc_now().isoformat()
+
+    # 1. Update/Upsert campaign_lead_sender_locks
+    try:
+        lock_payload = {
+            "workspace_id": str(workspace_id),
+            "lead_id": str(lead_id),
+            "account_id": str(new_account_id),
+            "updated_at": now_iso
+        }
+        if campaign_id:
+            lock_payload["campaign_id"] = str(campaign_id)
+        supabase.table("campaign_lead_sender_locks").upsert(lock_payload).execute()
+    except Exception as lock_err:
+        logger.warning(f"Failed to upsert campaign_lead_sender_locks: {lock_err}")
+
+    # 2. Update campaign_enrollments
+    try:
+        q = supabase.table("campaign_enrollments").update({"account_id": str(new_account_id)}).eq("lead_id", str(lead_id))
+        if campaign_id:
+            q = q.eq("campaign_id", str(campaign_id))
+        q.execute()
+    except Exception as enr_err:
+        logger.warning(f"Failed to update campaign_enrollments: {enr_err}")
+
+    # 3. Update active execution states
+    try:
+        q_st = supabase.table("campaign_execution_states").update({"account_id": str(new_account_id)}).eq("opportunity_id", str(lead_id))
+        if campaign_id:
+            q_st = q_st.eq("campaign_id", str(campaign_id))
+        q_st.execute()
+    except Exception as st_err:
+        logger.warning(f"Failed to update campaign_execution_states: {st_err}")
+
+    # 4. Audit outbox event
+    try:
+        supabase.table("outbox_events").insert({
+            "workspace_id": str(workspace_id),
+            "event_type": "campaign.lead_sender_reassigned",
+            "payload": {
+                "campaign_id": campaign_id,
+                "lead_id": str(lead_id),
+                "new_account_id": str(new_account_id),
+                "reason": reason or "admin_thread_reassignment"
+            },
+            "status": "pending"
+        }).execute()
+    except Exception as out_err:
+        logger.debug(f"Audit outbox insert non-fatal: {out_err}")
+
+    return {
+        "status": "success",
+        "lead_id": str(lead_id),
+        "reassigned_account_id": str(new_account_id),
+        "account_name": acc_row.get("name"),
+        "reassigned_at": now_iso
     }

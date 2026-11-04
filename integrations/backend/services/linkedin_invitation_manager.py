@@ -268,16 +268,18 @@ def withdraw_stale_invitations(
         )
         if not candidates and supabase and account_id != "unknown_account":
             try:
+                # Paranoia Layer 1: Schema-tolerant retrieval. The leads table does not have account_id,
+                # so check messages table for outbound connection requests or fallback gracefully.
                 res = (
-                    supabase.table("leads")
+                    supabase.table("messages")
                     .select("*")
                     .eq("account_id", account_id)
-                    .eq("status", InvitationStatus.PENDING.value)
+                    .eq("direction", "outbound")
                     .execute()
                 )
                 candidates = res.data or []
             except Exception as e:
-                logger.warning(f"Error fetching pending leads for account {account_id} from Supabase: {e}")
+                logger.debug(f"Graceful fallback: unable to fetch pending invitations for account {account_id}: {e}")
                 candidates = []
 
     # Filter stale invitations

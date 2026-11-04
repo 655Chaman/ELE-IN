@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useId } from "react";
 import { ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -17,13 +17,19 @@ export function AdvancedSettingsPanel({
   className
 }: AdvancedSettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const uniqueId = useId();
+  const buttonId = `panel-trigger-${uniqueId}`;
+  const regionId = `panel-region-${uniqueId}`;
 
   return (
     <div className={cn("w-full border border-border/50 rounded-xl overflow-hidden bg-muted/10", className)}>
       <button
+        id={buttonId}
         type="button"
+        aria-expanded={isOpen}
+        aria-controls={regionId}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-3 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+        className="w-full flex items-center justify-between p-3 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors cursor-pointer"
       >
         <span>{label}</span>
         <ChevronDown 
@@ -34,6 +40,9 @@ export function AdvancedSettingsPanel({
       <AnimatePresence initial={false}>
         {isOpen && (
           <motion.div
+            id={regionId}
+            role="region"
+            aria-labelledby={buttonId}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}

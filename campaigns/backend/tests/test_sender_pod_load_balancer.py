@@ -173,6 +173,10 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
                 t.select.return_value.eq.return_value.execute.return_value = MagicMock(
                     data=[{"pod_emergency_paused": False, "pod_dispatch_strategy": "CAPACITY_WEIGHTED"}]
                 )
+            elif tbl_name == "campaign_lead_sender_locks":
+                t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+                    data=[{"account_id": "acc_original"}]
+                )
             elif tbl_name == "campaign_enrollments":
                 t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
             elif tbl_name == "campaign_accounts":
@@ -279,6 +283,10 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
                 t.select.return_value.eq.return_value.execute.return_value = MagicMock(
                     data=[{"pod_emergency_paused": False, "pod_dispatch_strategy": "CAPACITY_WEIGHTED"}]
                 )
+            elif tbl_name == "campaign_lead_sender_locks":
+                t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+                    data=[{"account_id": "acc_original"}]
+                )
             elif tbl_name == "campaign_enrollments":
                 # Lead is bound to acc_original
                 t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
@@ -324,6 +332,10 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
             if tbl_name == "campaigns":
                 t.select.return_value.eq.return_value.execute.return_value = MagicMock(
                     data=[{"pod_emergency_paused": False}]
+                )
+            elif tbl_name == "campaign_lead_sender_locks":
+                t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+                    data=[{"account_id": "acc_capped"}]
                 )
             elif tbl_name == "campaign_enrollments":
                 t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
@@ -371,6 +383,10 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
                 t.select.return_value.eq.return_value.execute.return_value = MagicMock(
                     data=[{"pod_emergency_paused": False}]
                 )
+            elif tbl_name == "campaign_lead_sender_locks":
+                t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+                    data=[{"account_id": "acc_capped"}]
+                )
             elif tbl_name == "campaign_enrollments":
                 t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
             elif tbl_name == "campaign_accounts":
@@ -406,6 +422,10 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
             if tbl_name == "campaigns":
                 t.select.return_value.eq.return_value.execute.return_value = MagicMock(
                     data=[{"pod_emergency_paused": False}]
+                )
+            elif tbl_name == "campaign_lead_sender_locks":
+                t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+                    data=[{"account_id": "acc_capped"}]
                 )
             elif tbl_name == "campaign_enrollments":
                 t.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(data=[])

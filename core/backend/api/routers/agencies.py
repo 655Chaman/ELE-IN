@@ -100,6 +100,16 @@ async def create_agency(
     if not clean_name:
         raise HTTPException(status_code=400, detail="Agency name cannot be empty")
 
+    # Paranoia Layer 1 & 2: Plan entitlement gate. Agency management requires Agency, Enterprise, or Pro tier.
+    ws_res = await supabase.table("workspaces").select("tier").eq("owner_id", user_id).execute()
+    user_tiers = [str(w.get("tier") or "FREE").upper() for w in (ws_res.data or [])]
+    allowed_tiers = {"AGENCY", "ENTERPRISE", "PRO", "GROWTH"}
+    if not any(t in allowed_tiers for t in user_tiers):
+        raise HTTPException(
+            status_code=403,
+            detail="Agency Management and multi-client delegation require Growth Pro, Agency, or Enterprise tier."
+        )
+
     # 1. Create agency
     agency_res = await supabase.table("agencies").insert({
         "name": clean_name,
@@ -131,10 +141,33 @@ async def create_client_workspace(
     if not clean_name:
         raise HTTPException(status_code=400, detail="Client workspace name cannot be empty")
 
+    # Paranoia Layer 1 & 2: Enforce client workspace count ceilings by agency tier
+    ws_res = await supabase.table("workspaces").select("tier").eq("owner_id", user_id).execute()
+    user_tiers = [str(w.get("tier") or "FREE").upper() for w in (ws_res.data or [])]
+    if "ENTERPRISE" in user_tiers or "AGENCY" in user_tiers:
+        max_clients = 100
+    elif "PRO" in user_tiers or "GROWTH" in user_tiers:
+        max_clients = 5
+    else:
+        raise HTTPException(status_code=403, detail="Agency tier required to create client workspaces.")
+
+    existing_clients = await supabase.table("workspaces").select("id", count="exact").eq("agency_id", agency_id).execute()
+    current_count = getattr(existing_clients, "count", 0) or len(getattr(existing_clients, "data", []) or [])
+    if current_count >= max_clients:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Client workspace limit reached ({current_count}/{max_clients}). Upgrade your agency plan to add more clients."
+        )
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Client workspace name cannot be empty")
+
+    child_tier = "AGENCY" if ("ENTERPRISE" in user_tiers or "AGENCY" in user_tiers) else "PRO"
+
     ws_res = await supabase.table("workspaces").insert({
         "name": clean_name,
         "owner_id": user_id,
-        "agency_id": agency_id
+        "agency_id": agency_id,
+        "tier": child_tier
     }).execute()
     
     if not ws_res.data:
@@ -482,10 +515,10 @@ async def get_agency_credits_overview(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    Paranoia Layer 0 & 1: Master agency credit pool, sub-workspace allocations,
-    and consumption telemetry.
+    Paranoia Layer 0, 1 & 2: Master agency credit pool, sub-workspace allocations,
+    and consumption telemetry. Restricted strictly to Agency Owners and Admins.
     """
-    await _verify_agency_member(agency_id, user_id, supabase)
+    await _verify_agency_owner_or_admin(agency_id, user_id, supabase)
     master_ws = await _resolve_agency_master_workspace(agency_id, supabase)
     master_id = master_ws["id"]
     master_balance = master_ws.get("data_cleaning_credits", 0)
@@ -596,11 +629,12 @@ async def allocate_agency_credits(
     if master_id == payload.client_workspace_id:
         raise HTTPException(status_code=400, detail="Cannot allocate credits from master workspace to itself")
 
-    # Layer 2: Deduplication / Idempotency Check
-    dedupe_key = f"alloc_{agency_id}_{payload.idempotency_key}" if payload.idempotency_key else f"alloc_{agency_id}_{master_id}_{payload.client_workspace_id}_{amount}"
-    cached_res = await _check_and_store_agency_transfer(dedupe_key)
-    if cached_res:
-        return cached_res
+    # Layer 2: Deduplication / Idempotency Check (only dedupe when explicit key provided or within 3s window)
+    dedupe_key = f"alloc_{agency_id}_{payload.idempotency_key}" if payload.idempotency_key else None
+    if dedupe_key:
+        cached_res = await _check_and_store_agency_transfer(dedupe_key)
+        if cached_res:
+            return cached_res
 
     # Layer 1: Execute atomic transfer RPC
     try:
@@ -627,7 +661,8 @@ async def allocate_agency_credits(
             "master_balance": res_data.get("from_balance"),
             "client_balance": res_data.get("to_balance")
         }
-        await _check_and_store_agency_transfer(dedupe_key, resp)
+        if dedupe_key:
+            await _check_and_store_agency_transfer(dedupe_key, resp)
         return resp
     except HTTPException:
         raise
@@ -689,7 +724,8 @@ async def allocate_agency_credits(
                 "master_balance": new_m,
                 "client_balance": new_t
             }
-            await _check_and_store_agency_transfer(dedupe_key, fallback_resp)
+            if dedupe_key:
+                await _check_and_store_agency_transfer(dedupe_key, fallback_resp)
             return fallback_resp
 
 
@@ -724,11 +760,12 @@ async def reclaim_agency_credits(
     master_ws = await _resolve_agency_master_workspace(agency_id, supabase)
     master_id = master_ws["id"]
 
-    # Layer 2: Deduplication / Idempotency Check
-    dedupe_key = f"reclaim_{agency_id}_{payload.idempotency_key}" if payload.idempotency_key else f"reclaim_{agency_id}_{payload.client_workspace_id}_{master_id}_{amount}"
-    cached_res = await _check_and_store_agency_transfer(dedupe_key)
-    if cached_res:
-        return cached_res
+    # Layer 2: Deduplication / Idempotency Check (only dedupe when explicit key provided)
+    dedupe_key = f"reclaim_{agency_id}_{payload.idempotency_key}" if payload.idempotency_key else None
+    if dedupe_key:
+        cached_res = await _check_and_store_agency_transfer(dedupe_key)
+        if cached_res:
+            return cached_res
 
     # Layer 1: Execute atomic transfer RPC
     try:
@@ -753,7 +790,8 @@ async def reclaim_agency_credits(
             "client_balance": res_data.get("from_balance"),
             "master_balance": res_data.get("to_balance")
         }
-        await _check_and_store_agency_transfer(dedupe_key, resp)
+        if dedupe_key:
+            await _check_and_store_agency_transfer(dedupe_key, resp)
         return resp
     except HTTPException:
         raise
@@ -818,7 +856,8 @@ async def reclaim_agency_credits(
                 "client_balance": new_c,
                 "master_balance": new_m
             }
-            await _check_and_store_agency_transfer(dedupe_key, fallback_resp)
+            if dedupe_key:
+                await _check_and_store_agency_transfer(dedupe_key, fallback_resp)
             return fallback_resp
 
 
@@ -1138,13 +1177,14 @@ async def export_agency_statement_html(
         raise HTTPException(status_code=404, detail="Statement not found")
 
     # Fetch agency branding
+    import html
     brand_name = "Agency Outbound Services"
     accent_color = "#6366f1"
     try:
         wl_res = await supabase.table("agency_whitelabel").select("brand_name, accent_color")\
             .eq("agency_id", agency_id).limit(1).execute()
         if wl_res.data:
-            brand_name = wl_res.data[0].get("brand_name") or brand_name
+            brand_name = html.escape(wl_res.data[0].get("brand_name") or brand_name)
             accent_color = wl_res.data[0].get("accent_color") or accent_color
     except Exception:
         pass
@@ -1158,7 +1198,7 @@ async def export_agency_statement_html(
 
     rows_html = ""
     for c in clients_list:
-        c_name = c.get("client_name", "Client")
+        c_name = html.escape(str(c.get("client_name") or "Client"))
         base_fee = c.get("platform_base_fee_cents", 0)
         credits_count = c.get("billable_credits", 0)
         credits_cost = c.get("credit_charge_cents", 0)
@@ -1298,7 +1338,7 @@ async def export_agency_statement_html(
             </div>
         </div>
 
-        {f'<div style="padding: 16px; background: #f8fafc; border-radius: 8px; font-size: 12px; color: #64748b; border: 1px solid #f1f5f9;"><strong>Notes:</strong> {stmt.get("notes")}</div>' if stmt.get('notes') else ''}
+        {f'<div style="padding: 16px; background: #f8fafc; border-radius: 8px; font-size: 12px; color: #64748b; border: 1px solid #f1f5f9;"><strong>Notes:</strong> {html.escape(str(stmt.get("notes")))}</div>' if stmt.get('notes') else ''}
     </div>
 </body>
 </html>

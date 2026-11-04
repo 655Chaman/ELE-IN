@@ -31,12 +31,16 @@ Layer 2 (Human Paranoia):
 """
 
 import os
+import re
 import time
 import json
 import hmac
 import base64
 import hashlib
 import logging
+import urllib
+import urllib.parse
+import urllib.request
 from enum import Enum
 from typing import Dict, Any, List, Optional, Union, Tuple
 from datetime import datetime, timezone
@@ -53,6 +57,7 @@ class ESPProvider(str, Enum):
     MAILGUN = "MAILGUN"
     POSTMARK = "POSTMARK"
     AMAZON_SES = "AMAZON_SES"
+    RESEND = "RESEND"
     GENERIC_SMTP = "GENERIC_SMTP"
 
 
@@ -223,6 +228,165 @@ def verify_postmark_token(
     return hmac.compare_digest(clean_expected, clean_header)
 
 
+def verify_resend_signature(
+    payload_bytes: Union[bytes, str],
+    svix_id: Optional[str],
+    svix_timestamp: Optional[str],
+    svix_signature: Optional[str],
+    secret: str,
+    tolerance_seconds: int = 300,
+) -> bool:
+    """
+    Paranoia Layer 0, 1 & 2:
+    Cryptographically verifies Svix standard webhook signatures used by Resend.
+    - svix-id: unique message identifier
+    - svix-timestamp: seconds since Unix epoch
+    - svix-signature: space-separated list of signatures (e.g. 'v1,base64_sig')
+    - secret: Svix secret, usually prefixed with 'whsec_'
+    Validates clock drift against tolerance_seconds (default: 300s).
+    Uses hmac.compare_digest for constant-time comparison to prevent timing attacks.
+    """
+    if not svix_id or not svix_timestamp or not svix_signature or not secret:
+        return False
+
+    # Clock drift validation
+    try:
+        ts_int = int(svix_timestamp)
+        now_ts = int(time.time())
+        if abs(now_ts - ts_int) > tolerance_seconds:
+            logger.warning(f"[ResendWebhook] Clock drift exceeded tolerance: {abs(now_ts - ts_int)}s > {tolerance_seconds}s")
+            return False
+    except (ValueError, TypeError):
+        return False
+
+    clean_secret = str(secret).strip()
+    if clean_secret.startswith("whsec_"):
+        clean_secret = clean_secret[6:]
+
+    try:
+        key_bytes = base64.b64decode(clean_secret)
+    except Exception:
+        key_bytes = clean_secret.encode("utf-8")
+
+    if isinstance(payload_bytes, bytes):
+        body_str = payload_bytes.decode("utf-8")
+    else:
+        body_str = str(payload_bytes)
+
+    to_sign = f"{svix_id}.{svix_timestamp}.{body_str}".encode("utf-8")
+    expected_digest = hmac.new(key_bytes, to_sign, hashlib.sha256).digest()
+    expected_b64 = base64.b64encode(expected_digest).decode("utf-8")
+
+    signatures = svix_signature.strip().split(" ")
+    for sig_part in signatures:
+        if "," in sig_part:
+            version, sig_val = sig_part.split(",", 1)
+            if version == "v1" and hmac.compare_digest(sig_val.strip(), expected_b64):
+                return True
+
+    return False
+
+
+_SNS_CERT_CACHE: Dict[str, Any] = {}
+
+def _build_sns_signable_bytes(payload_dict: Dict[str, Any]) -> bytes:
+    """Builds canonical AWS SNS string to sign according to AWS SNS specification."""
+    msg_type = payload_dict.get("Type")
+    lines = []
+    if msg_type == "Notification":
+        fields = ["Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type"]
+    elif msg_type in ("SubscriptionConfirmation", "UnsubscribeConfirmation"):
+        fields = ["Message", "MessageId", "SubscribeURL", "Timestamp", "Token", "TopicArn", "Type"]
+    else:
+        fields = ["Message", "MessageId", "Timestamp", "TopicArn", "Type"]
+
+    for field in fields:
+        val = payload_dict.get(field)
+        if val is not None:
+            lines.append(f"{field}\n{val}\n")
+    return "".join(lines).encode("utf-8")
+
+def verify_ses_sns_signature(
+    raw_payload: Union[bytes, str, Dict[str, Any]],
+    preshared_token: Optional[str] = None,
+    expected_token: Optional[str] = None,
+) -> bool:
+    """
+    Paranoia Layer 0, 1 & 2:
+    Validates AWS SES SNS notification integrity.
+    Supports pre-shared shared secret token comparison and genuine cryptographic
+    X.509 RSA-SHA1/SHA256 signature verification over the canonical SNS signable payload.
+    """
+    if expected_token and preshared_token:
+        return hmac.compare_digest(str(preshared_token).strip(), str(expected_token).strip())
+
+    payload_dict = raw_payload if isinstance(raw_payload, dict) else {}
+    if not payload_dict and isinstance(raw_payload, (str, bytes)):
+        try:
+            body_str = raw_payload.decode("utf-8") if isinstance(raw_payload, bytes) else str(raw_payload)
+            payload_dict = json.loads(body_str)
+        except Exception:
+            payload_dict = {}
+
+    sig_b64 = payload_dict.get("Signature")
+    cert_url = payload_dict.get("SigningCertURL")
+
+    if cert_url:
+        parsed = urllib.parse.urlparse(cert_url)
+        if parsed.scheme != "https":
+            return False
+        hostname = (parsed.hostname or "").lower()
+        if not re.match(r"^sns\.[a-z0-9-]+\.amazonaws\.com$", hostname):
+            logger.warning(f"[SESWebhook] Invalid AWS SNS SigningCertURL host rejected: {hostname}")
+            return False
+        if not cert_url.endswith(".pem"):
+            logger.warning(f"[SESWebhook] SigningCertURL does not end in .pem: {cert_url}")
+            return False
+
+        if not sig_b64:
+            return False
+
+        try:
+            import base64
+            from cryptography.x509 import load_pem_x509_certificate
+            from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
+            from cryptography.hazmat.primitives import hashes
+
+            # Layer 1 Paranoia: In-memory LRU certificate cache
+            cert_obj = _SNS_CERT_CACHE.get(cert_url)
+            if not cert_obj:
+                # Preflight check against SSRF
+                from core.backend.core.validators import is_safe_ssrf_url
+                if not is_safe_ssrf_url(cert_url):
+                    logger.error(f"[SESWebhook] SSRF blocked for cert URL: {cert_url}")
+                    return False
+
+                req = urllib.request.Request(cert_url, headers={"User-Agent": "EleIn-SES-Verifier/1.0"})
+                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                    cert_data = resp.read()
+                cert_obj = load_pem_x509_certificate(cert_data)
+                if len(_SNS_CERT_CACHE) > 50:
+                    _SNS_CERT_CACHE.clear()
+                _SNS_CERT_CACHE[cert_url] = cert_obj
+
+            public_key = cert_obj.public_key()
+            signable_bytes = _SNS_SIGNABLE_BYTES = _build_sns_signable_bytes(payload_dict)
+            sig_bytes = base64.b64decode(sig_b64)
+
+            sig_ver = str(payload_dict.get("SignatureVersion", "1"))
+            hash_algo = hashes.SHA256() if sig_ver == "2" else hashes.SHA1()
+
+            public_key.verify(sig_bytes, signable_bytes, PKCS1v15(), hash_algo)
+            return True
+        except Exception as sig_err:
+            logger.warning(f"[SESWebhook] Cryptographic SNS signature verification failed: {sig_err}")
+            return False
+
+    return False
+
+verify_aws_sns_signature = verify_ses_sns_signature
+
+
 # ==============================================================================
 # 3. Ingestion & Normalization
 # ==============================================================================
@@ -256,6 +420,17 @@ def normalize_esp_event(
     if not isinstance(raw_event, dict):
         raw_event = {}
 
+    # Unpack SNS envelope if nested
+    if "Type" in raw_event and raw_event.get("Type") == "Notification" and "Message" in raw_event:
+        msg_val = raw_event["Message"]
+        if isinstance(msg_val, str):
+            try:
+                raw_event = json.loads(msg_val)
+            except Exception:
+                pass
+        elif isinstance(msg_val, dict):
+            raw_event = msg_val
+
     # Resolve Provider Enum
     clean_prov_str = str(getattr(provider, "value", provider) or "SENDGRID").upper()
     try:
@@ -268,6 +443,8 @@ def normalize_esp_event(
             resolved_provider = ESPProvider.POSTMARK
         elif "eventType" in raw_event or "notificationType" in raw_event:
             resolved_provider = ESPProvider.AMAZON_SES
+        elif "type" in raw_event and str(raw_event.get("type", "")).startswith("email."):
+            resolved_provider = ESPProvider.RESEND
         else:
             resolved_provider = ESPProvider.SENDGRID
 
@@ -466,12 +643,39 @@ def normalize_esp_event(
         mail_obj = raw_event.get("mail") if isinstance(raw_event.get("mail"), dict) else {}
         dest_list = mail_obj.get("destination", [])
         clean_email = str(dest_list[0] if dest_list else raw_event.get("email") or "").strip().lower()
+
+        # Check complaint recipients if clean_email is empty
+        if not clean_email and "complaint" in raw_event and isinstance(raw_event.get("complaint"), dict):
+            c_recips = raw_event["complaint"].get("complainedRecipients", [])
+            if isinstance(c_recips, list) and c_recips:
+                clean_email = str(c_recips[0].get("emailAddress") or "").strip().lower()
+
+        # Check bounce recipients if clean_email is empty
+        if not clean_email and "bounce" in raw_event and isinstance(raw_event.get("bounce"), dict):
+            b_recips = raw_event["bounce"].get("bouncedRecipients", [])
+            if isinstance(b_recips, list) and b_recips:
+                clean_email = str(b_recips[0].get("emailAddress") or "").strip().lower()
+
         message_id = mail_obj.get("messageId")
 
         tags = mail_obj.get("tags") if isinstance(mail_obj.get("tags"), dict) else {}
         campaign_id = tags.get("campaign_id", [None])[0] if isinstance(tags.get("campaign_id"), list) else tags.get("campaign_id")
         lead_id = tags.get("lead_id", [None])[0] if isinstance(tags.get("lead_id"), list) else tags.get("lead_id")
         workspace_id = tags.get("workspace_id", [None])[0] if isinstance(tags.get("workspace_id"), list) else tags.get("workspace_id")
+
+        # Unpack headers list if present in mail_obj
+        headers_list = mail_obj.get("headers", [])
+        if isinstance(headers_list, list):
+            for h in headers_list:
+                if isinstance(h, dict):
+                    h_name = str(h.get("name", "")).lower()
+                    h_val = h.get("value")
+                    if h_name in ("x-elein-campaign-id", "x-campaign-id", "campaign_id"):
+                        campaign_id = campaign_id or h_val
+                    elif h_name in ("x-elein-lead-id", "x-lead-id", "lead_id"):
+                        lead_id = lead_id or h_val
+                    elif h_name in ("x-elein-workspace-id", "x-workspace-id", "workspace_id"):
+                        workspace_id = workspace_id or h_val
 
         if raw_type == "delivery":
             event_type = WebhookEventType.DELIVERED
@@ -489,6 +693,70 @@ def normalize_esp_event(
                 event_type = WebhookEventType.BOUNCE_SOFT
         elif raw_type in ("complaint", "spam"):
             event_type = WebhookEventType.SPAM_COMPLAINT
+        else:
+            event_type = WebhookEventType.UNKNOWN
+
+    # --------------------------------------------------------------------------
+    # Resend Ingestion
+    # --------------------------------------------------------------------------
+    elif resolved_provider == ESPProvider.RESEND:
+        raw_type = str(raw_event.get("type", "")).strip().lower()
+        data_obj = raw_event.get("data") if isinstance(raw_event.get("data"), dict) else {}
+        
+        to_list = data_obj.get("to", [])
+        if isinstance(to_list, list) and to_list:
+            clean_email = str(to_list[0]).strip().lower()
+        elif isinstance(to_list, str):
+            clean_email = to_list.strip().lower()
+        else:
+            clean_email = str(data_obj.get("email") or raw_event.get("email") or "").strip().lower()
+
+        message_id = data_obj.get("email_id") or data_obj.get("id") or raw_event.get("id")
+        created_at_val = raw_event.get("created_at") or data_obj.get("created_at")
+        if created_at_val:
+            event_timestamp = str(created_at_val)
+
+        # Tags and headers unwrapping
+        tags_obj = data_obj.get("tags") or {}
+        if isinstance(tags_obj, dict):
+            campaign_id = tags_obj.get("campaign_id")
+            lead_id = tags_obj.get("lead_id")
+            node_id = tags_obj.get("node_id")
+            workspace_id = tags_obj.get("workspace_id")
+            inbox_id = tags_obj.get("inbox_id")
+        elif isinstance(tags_obj, list):
+            for t in tags_obj:
+                if isinstance(t, dict):
+                    k = t.get("name")
+                    v = t.get("value")
+                    if k == "campaign_id": campaign_id = v
+                    elif k == "lead_id": lead_id = v
+                    elif k == "node_id": node_id = v
+                    elif k == "workspace_id": workspace_id = v
+                    elif k == "inbox_id": inbox_id = v
+
+        headers_obj = data_obj.get("headers") or {}
+        if isinstance(headers_obj, dict):
+            campaign_id = campaign_id or headers_obj.get("X-Campaign-Id")
+            lead_id = lead_id or headers_obj.get("X-Lead-Id")
+            workspace_id = workspace_id or headers_obj.get("X-Workspace-Id")
+
+        if raw_type == "email.delivered":
+            event_type = WebhookEventType.DELIVERED
+        elif raw_type == "email.bounced":
+            bounce_type = str(data_obj.get("bounce_type") or "").lower()
+            if "soft" in bounce_type:
+                event_type = WebhookEventType.BOUNCE_SOFT
+            else:
+                event_type = WebhookEventType.BOUNCE_HARD
+            reason = data_obj.get("error") or data_obj.get("message") or "Resend email bounce"
+        elif raw_type == "email.complained":
+            event_type = WebhookEventType.SPAM_COMPLAINT
+            reason = "Recipient marked email as spam"
+        elif raw_type == "email.opened":
+            event_type = WebhookEventType.OPEN
+        elif raw_type == "email.clicked":
+            event_type = WebhookEventType.CLICK
         else:
             event_type = WebhookEventType.UNKNOWN
 
@@ -527,9 +795,23 @@ def normalize_esp_event(
     # Paranoia Layer 2: Sanitize email string
     clean_email = clean_email.replace("\x00", "").strip().lower()
 
+    event_id = (
+        raw_event.get("event_id")
+        or raw_event.get("sg_event_id")
+        or (raw_event.get("event-data", {}).get("id") if isinstance(raw_event.get("event-data"), dict) else None)
+        or raw_event.get("MessageID")
+        or raw_event.get("ID")
+        or raw_event.get("id")
+        or (raw_event.get("data", {}).get("id") if isinstance(raw_event.get("data"), dict) else None)
+        or message_id
+        or raw_event.get("message_id")
+    )
+
     return {
+        "email": clean_email,
         "clean_email": clean_email,
         "event_type": event_type,
+        "event_id": str(event_id).strip() if event_id else None,
         "campaign_id": str(campaign_id).strip() if campaign_id else None,
         "lead_id": str(lead_id).strip() if lead_id else None,
         "node_id": str(node_id).strip() if node_id else None,
@@ -578,8 +860,9 @@ def process_esp_event(
         return {"status": "error", "message": "Event payload must be a dictionary."}
 
     # Normalize if raw event passed
-    if "clean_email" not in event or "event_type" not in event:
-        norm = normalize_esp_event(event)
+    if ("clean_email" not in event and "email" not in event) or "event_type" not in event:
+        prov = event.get("provider", ESPProvider.SENDGRID)
+        norm = normalize_esp_event(event, provider=prov)
     else:
         norm = dict(event)
 
@@ -619,6 +902,41 @@ def process_esp_event(
                 campaign_id = campaign_id or lead_row.get("campaign_id")
         except Exception as exc:
             logger.debug(f"[ESPWebhook] Lead tenant resolution fallback error: {exc}")
+
+    # Layer 0 & 1 Paranoia: Idempotency deduplication via esp_webhook_events
+    event_id = norm.get("event_id") or norm.get("message_id")
+    provider_str = str(getattr(norm.get("provider"), "value", norm.get("provider")) or "UNKNOWN").upper()
+    if supabase and event_id:
+        try:
+            idemp_res = supabase.table("esp_webhook_events") \
+                .select("id") \
+                .eq("provider", provider_str) \
+                .eq("event_id", str(event_id)) \
+                .limit(1) \
+                .execute()
+            if idemp_res and getattr(idemp_res, "data", None) and len(idemp_res.data) > 0:
+                logger.info(f"[ESPWebhook] Duplicate event ignored (provider={provider_str}, event_id={event_id})")
+                return {
+                    "status": "skipped_duplicate",
+                    "action_taken": "IDEMPOTENT_DUPLICATE_SKIPPED",
+                    "event_type": str(event_type.value if hasattr(event_type, "value") else event_type),
+                    "email": clean_email,
+                    "message": f"Event {event_id} already processed for {provider_str}",
+                    "deduplicated": True,
+                }
+            
+            # Record into esp_webhook_events
+            supabase.table("esp_webhook_events").insert({
+                "provider": provider_str,
+                "event_id": str(event_id),
+                "message_id": norm.get("message_id"),
+                "event_type": str(event_type.value if hasattr(event_type, "value") else event_type),
+                "email": clean_email,
+                "workspace_id": workspace_id,
+                "payload": norm
+            }).execute()
+        except Exception as idemp_err:
+            logger.debug(f"[ESPWebhook] Idempotency record non-fatal: {idemp_err}")
 
     # --------------------------------------------------------------------------
     # Case: SPAM_COMPLAINT (FBL Abuse Report)
@@ -980,6 +1298,25 @@ class ESPWebhookProcessor:
         header_token: str,
     ) -> bool:
         return verify_postmark_token(expected_token, header_token)
+
+    @staticmethod
+    def verify_resend_signature(
+        payload_bytes: Union[bytes, str],
+        svix_id: Optional[str],
+        svix_timestamp: Optional[str],
+        svix_signature: Optional[str],
+        secret: str,
+        tolerance_seconds: int = 300,
+    ) -> bool:
+        return verify_resend_signature(payload_bytes, svix_id, svix_timestamp, svix_signature, secret, tolerance_seconds)
+
+    @staticmethod
+    def verify_ses_sns_signature(
+        raw_payload: Union[bytes, str, Dict[str, Any]],
+        preshared_token: Optional[str] = None,
+        expected_token: Optional[str] = None,
+    ) -> bool:
+        return verify_ses_sns_signature(raw_payload, preshared_token, expected_token)
 
     @staticmethod
     def normalize_esp_event(

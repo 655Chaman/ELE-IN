@@ -235,3 +235,80 @@ def get_telemetry_endpoint(
     except Exception as e:
         logger.exception("Failed to get CRM sync telemetry: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class SyncDealPayload(BaseModel):
+    deal_data: Dict[str, Any]
+    provider: Optional[str] = "hubspot"
+    simulate_429: Optional[bool] = False
+
+
+@router.post("/deals")
+def sync_deal_endpoint(
+    payload: SyncDealPayload,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase=Depends(get_service_client)
+):
+    """
+    Pillar 6.4: Bi-directional CRM Deal Sync with Dead Letter Queue failover on 429 rate limits.
+    """
+    from campaigns.backend.services.crm_attribution_service import sync_deal_to_crm
+    try:
+        res = sync_deal_to_crm(
+            workspace_id=workspace_id,
+            deal_data=payload.deal_data,
+            provider=payload.provider or "hubspot",
+            supabase=supabase,
+            simulate_429=bool(payload.simulate_429)
+        )
+        return res
+    except Exception as e:
+        logger.exception("Failed to sync deal to CRM: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dlq")
+def list_dlq_endpoint(
+    status: Optional[str] = None,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase=Depends(get_service_client)
+):
+    """
+    Pillar 6.4: Lists Dead Letter Queue items for the workspace.
+    """
+    from campaigns.backend.services.crm_attribution_service import list_crm_dead_letters
+    try:
+        items = list_crm_dead_letters(workspace_id=workspace_id, status=status, supabase=supabase)
+        return {
+            "success": True,
+            "data": items,
+            "count": len(items)
+        }
+    except Exception as e:
+        logger.exception("Failed to list CRM dead letters: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/dlq/retry")
+def retry_dlq_endpoint(
+    max_retries: int = 5,
+    base_backoff_seconds: int = 30,
+    simulate_fail_all: bool = False,
+    supabase=Depends(get_service_client)
+):
+    """
+    Pillar 6.4: Triggers worker sweep to retry pending CRM DLQ items with exponential backoff.
+    """
+    from campaigns.backend.services.crm_attribution_service import retry_failed_crm_sync_dead_letters
+    try:
+        res = retry_failed_crm_sync_dead_letters(
+            supabase=supabase,
+            max_retries=max_retries,
+            base_backoff_seconds=base_backoff_seconds,
+            simulate_fail_all=simulate_fail_all
+        )
+        return {"success": True, "data": res}
+    except Exception as e:
+        logger.exception("Failed to retry CRM dead letters: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+

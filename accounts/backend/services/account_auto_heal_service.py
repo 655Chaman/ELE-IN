@@ -68,11 +68,28 @@ def probe_proxy_health(
         try:
             from core.backend.api.auth_dep import get_service_client
             svc = get_service_client() or supabase
-            rpc_payload = {"p_proxy_id": proxy_id}
             p_ws = proxy.get("workspace_id")
+            if not p_ws and svc:
+                try:
+                    p_row = svc.table("proxies").select("workspace_id").eq("id", proxy_id).limit(1).execute()
+                    if p_row.data and p_row.data[0].get("workspace_id"):
+                        p_ws = p_row.data[0]["workspace_id"]
+                except Exception:
+                    pass
+
+            rpc_payload = {"p_proxy_id": proxy_id}
             if p_ws:
                 rpc_payload["p_workspace_id"] = p_ws
-            rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
+
+            try:
+                rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
+            except Exception as rpc_err:
+                if "PGRST203" in str(rpc_err) and "p_workspace_id" not in rpc_payload:
+                    rpc_payload["p_workspace_id"] = "00000000-0000-0000-0000-000000000000"
+                    rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
+                else:
+                    raise rpc_err
+
             if rpc_res.data and rpc_res.data.get("password_encrypted"):
                 raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
                 dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
@@ -80,13 +97,10 @@ def probe_proxy_health(
         except Exception as e:
             logger.warning(f"Could not decrypt password for proxy {proxy_id}: {e}")
 
-    # Build proxy URL
-    if username and password_plain:
-        proxy_url = f"{protocol}://{username}:{password_plain}@{host}:{port}"
-    elif username and proxy.get("password"):
-        proxy_url = f"{protocol}://{username}:{proxy['password']}@{host}:{port}"
-    else:
-        proxy_url = f"{protocol}://{host}:{port}"
+    # Build proxy URL with strict password/username percent-encoding
+    from core.backend.services.proxy_routing import format_proxy_url
+    effective_pwd = password_plain or proxy.get("password")
+    proxy_url = format_proxy_url(protocol, host, port, username, effective_pwd if effective_pwd else None)
 
     start_time = time.perf_counter()
     exit_ip = None
@@ -111,20 +125,72 @@ def probe_proxy_health(
                     status = "degraded"
                     err_msg = None
                 
+                exit_ip_1 = None
+                exit_ip_2 = None
                 try:
                     ip_resp = client.get("https://api.ipify.org?format=json", timeout=2.0)
                     if ip_resp.status_code == 200:
-                        exit_ip = ip_resp.json().get("ip")
+                        exit_ip_1 = ip_resp.json().get("ip")
+                        exit_ip = exit_ip_1
+
+                        # Paranoia Layer 1: Two-ping rotating proxy drift detector
+                        # Ping exit IP a second time after 200ms pause to ensure static/sticky IP stability
+                        try:
+                            time.sleep(0.2)
+                            ip_resp2 = client.get("https://api.ipify.org?format=json", timeout=2.0)
+                            if ip_resp2.status_code == 200:
+                                exit_ip_2 = ip_resp2.json().get("ip")
+                        except (Exception, StopIteration):
+                            pass
+
+                        if not (exit_ip_1 and exit_ip_2 and exit_ip_1 != exit_ip_2):
+                            if not detected_country and exit_ip:
+                                try:
+                                    geo_resp = client.get(f"https://ipapi.co/{exit_ip}/country/", timeout=1.5)
+                                    if geo_resp.status_code == 200 and len(geo_resp.text.strip()) == 2:
+                                        detected_country = geo_resp.text.strip().upper()
+                                except Exception:
+                                    pass
                 except Exception:
                     pass
 
+                if exit_ip_1 and exit_ip_2 and exit_ip_1 != exit_ip_2:
+                    result = {
+                        "ok": False,
+                        "latency_ms": latency_ms,
+                        "status": "rotating_flapping",
+                        "exit_ip": exit_ip_1,
+                        "country_code": detected_country,
+                        "error": f"Rotating proxy detected (exit IP mutated from {exit_ip_1} to {exit_ip_2}). LinkedIn requires static/sticky residential IPs."
+                    }
+                else:
+                    result = {
+                        "ok": True,
+                        "latency_ms": latency_ms,
+                        "status": status,
+                        "exit_ip": exit_ip or host,
+                        "country_code": detected_country,
+                        "error": err_msg
+                    }
+            elif probe_resp.status_code == 407:
+                # Paranoia Layer 1: Gateway Proxy Authentication Required
                 result = {
-                    "ok": True,
+                    "ok": False,
                     "latency_ms": latency_ms,
-                    "status": status,
-                    "exit_ip": exit_ip or host,
+                    "status": "auth_failed",
+                    "exit_ip": None,
                     "country_code": detected_country,
-                    "error": err_msg
+                    "error": "Proxy Authentication Required (HTTP 407) - Check username and password"
+                }
+            elif probe_resp.status_code in (402, 429):
+                # Paranoia Layer 1: Gateway Quota / Bandwidth Exhaustion or Rate Limit
+                result = {
+                    "ok": False,
+                    "latency_ms": latency_ms,
+                    "status": "quota_exceeded",
+                    "exit_ip": None,
+                    "country_code": detected_country,
+                    "error": f"Proxy provider quota depleted or rate limited (HTTP {probe_resp.status_code}). Please top up bandwidth or increase concurrent connection limit."
                 }
             elif probe_resp.status_code in (403, 999):
                 # Paranoia Layer 1: Treat anti-bot challenge codes as banned, not healthy
@@ -153,7 +219,13 @@ def probe_proxy_health(
         result = {"ok": False, "latency_ms": latency_ms, "status": "failed", "exit_ip": None, "country_code": detected_country, "error": f"Connection timed out after {timeout_seconds}s"}
     except httpx.ProxyError as pe:
         latency_ms = int((time.perf_counter() - start_time) * 1000)
-        result = {"ok": False, "latency_ms": latency_ms, "status": "failed", "exit_ip": None, "country_code": detected_country, "error": f"Proxy authentication or connection error: {pe}"}
+        pe_str = str(pe).lower()
+        if "407" in pe_str or "authentication" in pe_str or "credentials" in pe_str:
+            result = {"ok": False, "latency_ms": latency_ms, "status": "auth_failed", "exit_ip": None, "country_code": detected_country, "error": f"Proxy Authentication Required (HTTP 407) - Check username and password: {pe}"}
+        elif "402" in pe_str or "payment" in pe_str or "quota" in pe_str or "429" in pe_str or "rate limit" in pe_str:
+            result = {"ok": False, "latency_ms": latency_ms, "status": "quota_exceeded", "exit_ip": None, "country_code": detected_country, "error": f"Proxy provider quota depleted or rate limited: {pe}"}
+        else:
+            result = {"ok": False, "latency_ms": latency_ms, "status": "failed", "exit_ip": None, "country_code": detected_country, "error": f"Proxy authentication or connection error: {pe}"}
     except Exception as e:
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         result = {"ok": False, "latency_ms": latency_ms, "status": "failed", "exit_ip": None, "country_code": detected_country, "error": str(e)}
@@ -238,45 +310,16 @@ def calculate_composite_health_score(
 # ── PROXY RESOLUTION HELPER ───────────────────────────────────────────────────
 
 def _build_account_proxy_url(acc: dict, supabase: Client) -> Optional[str]:
-    proxy_id = acc.get("proxy_id")
-    if not proxy_id:
-        return None
-    try:
-        p_res = supabase.table("proxies").select("id, host, port, protocol, username, password, password_encrypted, workspace_id").eq("id", proxy_id).execute()
-        if not p_res.data:
-            return None
-        proxy = p_res.data[0]
-        acc_ws = acc.get("workspace_id")
-        p_ws = proxy.get("workspace_id")
-        if acc_ws and p_ws and str(acc_ws).strip() != str(p_ws).strip():
-            logger.warning(f"Proxy {proxy_id} workspace {p_ws} does not match account workspace {acc_ws}")
-            return None
-        
-        password_plain = ""
-        username = proxy.get("username")
-        if username:
-            if proxy.get("password_encrypted"):
-                try:
-                    rpc_res = supabase.rpc("get_decrypted_proxy_payload", {"p_proxy_id": proxy_id, "p_workspace_id": p_ws}).execute()
-                    if rpc_res.data and rpc_res.data.get("password_encrypted"):
-                        raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
-                        dek_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
-                        password_plain = crypto.decrypt_bytes(raw_encrypted, dek=dek_bytes).decode("utf-8")
-                except Exception as e:
-                    logger.warning(f"Could not decrypt proxy password for {proxy_id}: {e}")
-            elif proxy.get("password"):
-                password_plain = proxy["password"]
-
-        protocol = (proxy.get("protocol") or "http").lower().strip()
-        host = proxy.get("host")
-        port = proxy.get("port")
-        if not host or not port:
-            return None
-        auth = f"{username}:{password_plain}@" if username and password_plain else f"{username}@" if username else ""
-        return f"{protocol}://{auth}{host}:{port}"
-    except Exception as e:
-        logger.error(f"Failed to build proxy url for proxy {proxy_id}: {e}")
-        return None
+    from core.backend.services.proxy_routing import build_authenticated_proxy_url
+    # Paranoia Layer 1: If proxies relation was not joined, hydrate proxy record directly
+    if acc.get("proxy_id") and not acc.get("proxies") and supabase:
+        try:
+            px_res = supabase.table("proxies").select("*").eq("id", acc["proxy_id"]).execute()
+            if px_res.data:
+                acc["proxies"] = px_res.data[0]
+        except Exception as e:
+            logger.warning(f"Could not fetch proxy row for account {acc.get('id')}: {e}")
+    return build_authenticated_proxy_url(acc, supabase)
 
 
 # ── AUTONOMOUS SINGLE-ACCOUNT AUTO-HEAL ───────────────────────────────────────
@@ -483,7 +526,8 @@ def auto_heal_account(
                         supabase,
                         workspace_id,
                         current_proxy_id=proxy_id,
-                        target_country=target_country
+                        target_country=target_country,
+                        allow_cross_country_drift=False
                     )
 
                     if replacement:
@@ -494,41 +538,26 @@ def auto_heal_account(
                                 "updated_at": now_iso
                             }).eq("id", account_id).execute()
                             proxy_id = replacement["id"]
+                            account["proxy_id"] = replacement["id"]
+                            account["proxies"] = replacement
+                            try:
+                                from integrations.backend.services.linkedin_pool import global_browser_pool
+                                global_browser_pool.evict(account_id)
+                            except Exception:
+                                pass
                             proxy_latency_ms = rep_probe.get("latency_ms")
                             proxy_status = "healthy"
                             actions_taken.append(f"Auto-rotated account to healthy proxy {replacement.get('host')}:{replacement.get('port')} (Latency: {proxy_latency_ms}ms).")
                         else:
-                            actions_taken.append(f"Candidate backup proxy {replacement.get('host')} also failed. Falling back to direct connection.")
+                            actions_taken.append(f"Candidate backup proxy {replacement.get('host')} also failed neutral probe. Direct unproxied connection safely blocked.")
                     else:
-                        actions_taken.append("No healthy backup residential proxies available in workspace pool.")
+                        actions_taken.append("No healthy backup residential proxies available in matching country in workspace pool.")
                 else:
                     actions_taken.append(f"Current proxy {current_proxy.get('host')} verified healthy (Latency: {proxy_latency_ms}ms).")
 
         if proxy_id:
-            px_res = supabase.table("proxies").select("*").eq("id", proxy_id).execute()
-            if px_res.data:
-                px = px_res.data[0]
-                pwd = ""
-                if px.get("username"):
-                    try:
-                        from core.backend.api.auth_dep import get_service_client
-                        svc = get_service_client() or supabase
-                        rpc_payload = {"p_proxy_id": proxy_id}
-                        px_ws = px.get("workspace_id") or account.get("workspace_id")
-                        if px_ws:
-                            rpc_payload["p_workspace_id"] = px_ws
-                        rpc_res = svc.rpc("get_decrypted_proxy_payload", rpc_payload).execute()
-                        if rpc_res.data and rpc_res.data.get("password_encrypted"):
-                            raw_encrypted = base64.b64decode(rpc_res.data["password_encrypted"])
-                            d_bytes = base64.b64decode(rpc_res.data["dek"]) if rpc_res.data.get("dek") else None
-                            pwd = crypto.decrypt_bytes(raw_encrypted, dek=d_bytes).decode("utf-8")
-                    except Exception:
-                        pass
-                proto = px.get("protocol", "http")
-                if px.get("username") and pwd:
-                    active_proxy_url = f"{proto}://{px['username']}:{pwd}@{px['host']}:{px['port']}"
-                else:
-                    active_proxy_url = f"{proto}://{px['host']}:{px['port']}"
+            from core.backend.services.proxy_routing import build_authenticated_proxy_url
+            active_proxy_url = build_authenticated_proxy_url(account, supabase)
 
         # Paranoia Layer 1: If account is configured to use a proxy, NEVER leak datacenter IP
         if account.get("proxy_id") and not active_proxy_url:
@@ -605,11 +634,15 @@ def auto_heal_account(
             
             if proxy_id:
                 try:
-                    from core.backend.services.proxy_routing import quarantine_proxy
-                    quarantine_proxy(supabase, proxy_id, reason="account_security_challenge", cooldown_hours=24)
-                    actions_taken.append(f"Quarantined proxy {proxy_id} for 24h to prevent cross-account challenge contamination.")
+                    from core.backend.services.proxy_routing import canary_check_proxy, quarantine_proxy
+                    canary = canary_check_proxy(supabase, proxy_id)
+                    if not canary.get("is_healthy"):
+                        quarantine_proxy(supabase, proxy_id, reason="proxy_canary_failed_on_challenge", cooldown_hours=24)
+                        actions_taken.append(f"Proxy {proxy_id} failed independent canary check ({canary.get('reason')}). Quarantined for 24h.")
+                    else:
+                        actions_taken.append(f"Proxy {proxy_id} passed independent canary check. Account challenged individually; proxy preserved for fleet.")
                 except Exception as q_err:
-                    logger.warning(f"Could not quarantine proxy: {q_err}")
+                    logger.warning(f"Could not evaluate proxy canary: {q_err}")
             
             try:
                 camp_accs = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", account_id).execute()
@@ -1038,4 +1071,746 @@ def renew_account_session(
         "status": "ACTIVE",
         "cookie_expires_at": cookie_expires_at,
         "message": "Session successfully renewed and verified. Outreach campaigns active."
+    }
+
+
+# ── PHASE R: AUTOMATED ACCOUNT RECOVERY & REPUTATION ENGINE ───────────────────
+
+def _sanitize_account_string(val: Any, max_len: int = 500) -> str:
+    """Paranoia Layer 2: Sanitizes string inputs, neutralizes formula injection and strips null bytes."""
+    if val is None:
+        return ""
+    s = str(val).replace("\x00", "").replace("\r", " ").strip()
+    while s and s[0] in ('=', '+', '-', '@', '\t'):
+        s = s[1:].strip()
+    return s[:max_len]
+
+
+def _zeroize_bytearray(buffer: bytearray) -> None:
+    """Paranoia Layer 1 & 2: Cryptographic memory zeroization."""
+    if buffer is not None and isinstance(buffer, bytearray):
+        for i in range(len(buffer)):
+            buffer[i] = 0
+
+
+def detect_session_death_and_validate_cookies(
+    account_id: str,
+    workspace_id: str,
+    supabase: Client,
+    force_probe: bool = False
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Active Cookie Session Validation & Session-Death Detection.
+    - Layer 0: Resolves credentials, decrypts cookies via DEK, verifies li_at presence & expiration.
+    - Layer 1: Detects definitive session-death signatures (401 Unauthorized, login redirect, revoked token).
+               On death, transitions account to DISCONNECTED, auto-pauses tied campaigns, and queues outbox alert.
+    - Layer 2: Neutralizes formula injection, performs zeroization on decrypted plaintext, and enforces workspace isolation.
+    """
+    if not account_id or not workspace_id:
+        return {"session_valid": False, "status": "error", "error": "Missing account_id or workspace_id"}
+
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+
+    try:
+        acc_res = supabase.table("accounts") \
+            .select("id, name, status, workspace_id, proxy_id, cookie_expires_at, cookie_secret_ref, session_cookies_encrypted, proxies(*)") \
+            .eq("id", account_id) \
+            .eq("workspace_id", workspace_id) \
+            .execute()
+        if not acc_res.data or len(acc_res.data) == 0:
+            raise ValueError(f"Account {account_id} not found in workspace {workspace_id}")
+        account = acc_res.data[0]
+    except Exception as e:
+        logger.error(f"[SessionDeathDetector] Account query error: {e}")
+        return {"session_valid": False, "status": "error", "error": str(e)}
+
+    raw_encrypted = account.get("session_cookies_encrypted")
+    if not raw_encrypted:
+        # Definitive session death: missing cookies
+        _mark_session_death(
+            supabase=supabase,
+            account_id=account_id,
+            workspace_id=workspace_id,
+            reason="MISSING_SESSION_COOKIES",
+            now_iso=now_iso
+        )
+        return {
+            "session_valid": False,
+            "session_death": True,
+            "status": "DISCONNECTED",
+            "reason": "MISSING_SESSION_COOKIES",
+            "actions_taken": ["No session cookies configured. Transitioned status to DISCONNECTED."],
+            "checked_at": now_iso
+        }
+
+    # Decrypt cookies via DEK
+    dek_bytes = None
+    cookie_secret_ref = account.get("cookie_secret_ref")
+    if cookie_secret_ref:
+        try:
+            rpc_res = supabase.rpc("get_decrypted_account_payload", {"p_account_id": account_id}).execute()
+            if rpc_res.data and rpc_res.data.get("dek"):
+                dek_bytes = base64.b64decode(rpc_res.data["dek"])
+        except Exception as dek_err:
+            logger.debug(f"[SessionDeathDetector] RPC DEK retrieval fallback: {dek_err}")
+
+    cookies_json = ""
+    try:
+        raw_bytes = crypto.pg_hex_to_bytes(raw_encrypted) if isinstance(raw_encrypted, str) else raw_encrypted
+        decrypted_raw = crypto.decrypt_bytes(raw_bytes, dek=dek_bytes)
+        cookies_json = decrypted_raw.decode("utf-8")
+        # Memory zeroization on decrypted bytes
+        decrypted_ba = bytearray(decrypted_raw)
+        _zeroize_bytearray(decrypted_ba)
+    except Exception as dec_err:
+        logger.warning(f"[SessionDeathDetector] Cookie decryption failed: {dec_err}")
+        _mark_session_death(
+            supabase=supabase,
+            account_id=account_id,
+            workspace_id=workspace_id,
+            reason=f"DECRYPTION_FAILED: {dec_err}",
+            now_iso=now_iso
+        )
+        return {
+            "session_valid": False,
+            "session_death": True,
+            "status": "DISCONNECTED",
+            "reason": "DECRYPTION_FAILED",
+            "error": _sanitize_account_string(str(dec_err)),
+            "checked_at": now_iso
+        }
+
+    # Parse cookies JSON
+    try:
+        cookie_list = json.loads(cookies_json) if isinstance(cookies_json, str) else cookies_json
+        if not isinstance(cookie_list, list):
+            raise ValueError("Cookies must be a list of cookie objects")
+    except Exception as json_err:
+        _mark_session_death(
+            supabase=supabase,
+            account_id=account_id,
+            workspace_id=workspace_id,
+            reason=f"CORRUPT_COOKIE_JSON: {json_err}",
+            now_iso=now_iso
+        )
+        return {
+            "session_valid": False,
+            "session_death": True,
+            "status": "DISCONNECTED",
+            "reason": "CORRUPT_COOKIE_JSON",
+            "checked_at": now_iso
+        }
+
+    # Verify li_at presence
+    li_at = next((c.get("value") for c in cookie_list if isinstance(c, dict) and c.get("name") == "li_at"), None)
+    if not li_at or not str(li_at).strip():
+        _mark_session_death(
+            supabase=supabase,
+            account_id=account_id,
+            workspace_id=workspace_id,
+            reason="MISSING_LI_AT_TOKEN",
+            now_iso=now_iso
+        )
+        return {
+            "session_valid": False,
+            "session_death": True,
+            "status": "DISCONNECTED",
+            "reason": "MISSING_LI_AT_TOKEN",
+            "checked_at": now_iso
+        }
+
+    # Check expiration date
+    exp_str = account.get("cookie_expires_at")
+    if exp_str:
+        try:
+            exp_dt = datetime.fromisoformat(str(exp_str).replace("Z", "+00:00"))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if now_utc > exp_dt:
+                _mark_session_death(
+                    supabase=supabase,
+                    account_id=account_id,
+                    workspace_id=workspace_id,
+                    reason=f"COOKIE_EXPIRED_ON_{exp_str}",
+                    now_iso=now_iso
+                )
+                return {
+                    "session_valid": False,
+                    "session_death": True,
+                    "status": "DISCONNECTED",
+                    "reason": "COOKIE_EXPIRED",
+                    "expires_at": exp_str,
+                    "checked_at": now_iso
+                }
+        except Exception:
+            pass
+
+    # Optional active API session probe
+    session_valid = True
+    session_death = False
+    death_reason = None
+    actions_taken = ["Session cookies decrypted and validated format."]
+
+    if force_probe or account.get("status") in ("DISCONNECTED", "NEEDS_ATTENTION"):
+        active_proxy_url = _build_account_proxy_url(account, supabase)
+        try:
+            worker = LinkedInWorker(cookies_json=cookies_json, proxy_url=active_proxy_url, account_id=account_id)
+            resp = worker._http_get("https://www.linkedin.com/voyager/api/me")
+            if resp.status_code == 200:
+                resp_text = resp.text or ""
+                if "checkpoint/challenge" in resp_text or "security-check" in resp_text:
+                    session_valid = False
+                    session_death = False
+                    dispatch_challenge_verification_alert(
+                        account_id=account_id,
+                        workspace_id=workspace_id,
+                        challenge_type="SECURITY_CHECKPOINT",
+                        detail="Redirected to checkpoint during session check",
+                        supabase=supabase
+                    )
+                    return {
+                        "session_valid": False,
+                        "session_death": False,
+                        "status": "CHALLENGE_REQUIRED",
+                        "reason": "SECURITY_CHECKPOINT",
+                        "checked_at": now_iso
+                    }
+                else:
+                    session_valid = True
+                    actions_taken.append("Active LinkedIn Voyager probe succeeded (HTTP 200).")
+            elif resp.status_code == 403:
+                # Paranoia Layer 1: Distinguish checkpoint / challenge challenges from permanent death
+                resp_text = ""
+                try:
+                    resp_text = resp.text.lower() if hasattr(resp, "text") else ""
+                except Exception:
+                    pass
+                if any(w in resp_text for w in ("challenge", "checkpoint", "captcha", "security", "verify")):
+                    session_valid = False
+                    session_death = False
+                    dispatch_challenge_verification_alert(
+                        account_id=account_id,
+                        workspace_id=workspace_id,
+                        challenge_type="HTTP_403_SECURITY_CHECKPOINT",
+                        detail="LinkedIn returned HTTP 403 with checkpoint signature",
+                        supabase=supabase
+                    )
+                    return {
+                        "session_valid": False,
+                        "session_death": False,
+                        "status": "CHALLENGE_REQUIRED",
+                        "reason": "SECURITY_CHECKPOINT",
+                        "checked_at": now_iso
+                    }
+                else:
+                    session_valid = False
+                    session_death = True
+                    death_reason = "HTTP_403_FORBIDDEN"
+            elif resp.status_code == 401:
+                session_valid = False
+                session_death = True
+                death_reason = "HTTP_401_UNAUTHORIZED"
+            elif resp.status_code == 999:
+                # Paranoia Layer 1: Anti-scraping HTTP 999 Request Denied
+                session_valid = False
+                session_death = False
+                logger.warning(f"[SessionCheck] LinkedIn anti-bot 999 response for account {account_id}.")
+                dispatch_challenge_verification_alert(
+                    account_id=account_id,
+                    workspace_id=workspace_id,
+                    challenge_type="HTTP_999_REQUEST_DENIED",
+                    detail="LinkedIn returned HTTP 999 Anti-Bot Request Denied",
+                    supabase=supabase
+                )
+                return {
+                    "session_valid": False,
+                    "session_death": False,
+                    "status": "CHALLENGE_REQUIRED",
+                    "reason": "HTTP_999_REQUEST_DENIED",
+                    "checked_at": now_iso
+                }
+            elif resp.status_code == 429:
+                session_valid = True  # session is alive, just rate limited
+                actions_taken.append("Account is rate-limited (HTTP 429), session remains alive.")
+            else:
+                session_valid = False
+                session_death = True
+                death_reason = f"HTTP_{resp.status_code}_UNEXPECTED"
+        except SecurityChallengeError as sce:
+            session_valid = False
+            session_death = False
+            dispatch_challenge_verification_alert(
+                account_id=account_id,
+                workspace_id=workspace_id,
+                challenge_type="SECURITY_CHALLENGE",
+                detail=str(sce),
+                supabase=supabase
+            )
+            return {
+                "session_valid": False,
+                "session_death": False,
+                "status": "CHALLENGE_REQUIRED",
+                "reason": "SECURITY_CHALLENGE",
+                "checked_at": now_iso
+            }
+        except Exception as probe_err:
+            # Paranoia Layer 1: If probe error is proxy related, do NOT mark session death
+            err_str = str(probe_err).lower()
+            if any(term in err_str for term in ("proxy", "connecttimeout", "timed out", "407", "402")):
+                actions_taken.append(f"Proxy network error during probe ({probe_err}). Session not declared dead.")
+            else:
+                actions_taken.append(f"Probe error: {probe_err}")
+
+    if session_death and death_reason:
+        _mark_session_death(
+            supabase=supabase,
+            account_id=account_id,
+            workspace_id=workspace_id,
+            reason=death_reason,
+            now_iso=now_iso
+        )
+        return {
+            "session_valid": False,
+            "session_death": True,
+            "status": "DISCONNECTED",
+            "reason": death_reason,
+            "actions_taken": actions_taken,
+            "checked_at": now_iso
+        }
+
+    # Update last checked timestamp
+    try:
+        supabase.table("accounts").update({
+            "last_health_check_at": now_iso
+        }).eq("id", account_id).execute()
+    except Exception:
+        pass
+
+    return {
+        "session_valid": True,
+        "session_death": False,
+        "status": account.get("status", "ACTIVE"),
+        "cookie_expires_at": account.get("cookie_expires_at"),
+        "actions_taken": actions_taken,
+        "checked_at": now_iso
+    }
+
+
+def _mark_session_death(
+    supabase: Client,
+    account_id: str,
+    workspace_id: str,
+    reason: str,
+    now_iso: str
+) -> None:
+    """Paranoia Layer 0 & 1: Marks account DISCONNECTED and safely pauses tied campaigns."""
+    clean_reason = _sanitize_account_string(reason, 255)
+    try:
+        supabase.table("accounts").update({
+            "status": "DISCONNECTED",
+            "session_death_detected_at": now_iso,
+            "session_death_reason": clean_reason,
+            "health_score": 10,
+            "updated_at": now_iso
+        }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+    except Exception as e:
+        logger.warning(f"[SessionDeath] DB update failed: {e}")
+
+    # Pause tied campaigns
+    try:
+        camp_res = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", account_id).execute()
+        camp_ids = [r["campaign_id"] for r in (camp_res.data or []) if r.get("campaign_id")]
+        if camp_ids:
+            supabase.table("campaigns").update({
+                "status": "PAUSED",
+                "pod_emergency_paused": True,
+                "pod_pause_reason": f"ACCOUNT_SESSION_DEATH:{clean_reason}",
+                "updated_at": now_iso
+            }).in_("id", camp_ids).eq("status", "ACTIVE").execute()
+    except Exception as camp_pause_err:
+        logger.warning(f"[SessionDeath] Campaign pause failed: {camp_pause_err}")
+
+    # Queue alert notification
+    try:
+        supabase.table("outbox_events").insert({
+            "workspace_id": workspace_id,
+            "event_type": "account.session_expired",
+            "payload": {
+                "account_id": account_id,
+                "reason": clean_reason,
+                "detected_at": now_iso
+            },
+            "status": "pending",
+            "created_at": now_iso
+        }).execute()
+    except Exception as outbox_err:
+        logger.debug(f"[SessionDeath] Outbox alert failed: {outbox_err}")
+
+
+def rotate_account_credential_dek(
+    account_id: str,
+    workspace_id: str,
+    supabase: Client
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Automated Credential Refresh with Vault DEK Rotation.
+    - Decrypts existing credentials under current DEK.
+    - Generates a fresh 256-bit cryptographically secure DEK.
+    - Stores new DEK into Vault via 'store_account_secret' RPC.
+    - Re-encrypts credentials under the new DEK and zeroes out plaintext memory.
+    - Updates database record atomically with new secret_ref and encrypted hex.
+    """
+    if not account_id or not workspace_id or not supabase:
+        return {"status": "error", "message": "Missing required parameters"}
+
+    with _heal_locks_mutex:
+        if account_id in _active_heals:
+            return {"status": "error", "message": "Account locked: another operation is in progress"}
+        _active_heals[account_id] = time.time()
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        acc_res = supabase.table("accounts") \
+            .select("id, workspace_id, session_cookies_encrypted, cookie_secret_ref") \
+            .eq("id", account_id) \
+            .eq("workspace_id", workspace_id) \
+            .execute()
+        if not acc_res.data or len(acc_res.data) == 0:
+            return {"status": "error", "message": "Account not found or access denied"}
+        account = acc_res.data[0]
+
+        raw_encrypted = account.get("session_cookies_encrypted")
+        if not raw_encrypted:
+            return {"status": "error", "message": "Account has no encrypted credentials to rotate"}
+
+        # 1. Decrypt existing payload
+        dek_bytes = None
+        old_ref = account.get("cookie_secret_ref")
+        if old_ref:
+            try:
+                rpc_res = supabase.rpc("get_decrypted_account_payload", {"p_account_id": account_id}).execute()
+                if rpc_res.data and rpc_res.data.get("dek"):
+                    dek_bytes = base64.b64decode(rpc_res.data["dek"])
+            except Exception as e:
+                logger.debug(f"[DEKRotate] Old DEK retrieval fallback: {e}")
+
+        raw_bytes = crypto.pg_hex_to_bytes(raw_encrypted) if isinstance(raw_encrypted, str) else raw_encrypted
+        decrypted_raw = crypto.decrypt_bytes(raw_bytes, dek=dek_bytes)
+
+        # 2. Generate new DEK
+        new_dek_b64 = crypto.generate_dek()
+        try:
+            if isinstance(new_dek_b64, str):
+                pad_len = (4 - len(new_dek_b64) % 4) % 4
+                new_dek_bytes = base64.b64decode(new_dek_b64 + ("=" * pad_len))
+            else:
+                new_dek_bytes = new_dek_b64
+        except Exception:
+            import os
+            new_dek_bytes = os.urandom(32)
+
+        # 3. Store new DEK in Vault
+        new_secret_ref = None
+        try:
+            store_res = supabase.rpc("store_account_secret", {"p_secret": new_dek_b64}).execute()
+            new_secret_ref = store_res.data
+        except Exception as v_err:
+            logger.warning(f"[DEKRotate] Vault RPC failed, using internal envelope: {v_err}")
+
+        # 4. Re-encrypt under new DEK
+        new_encrypted = crypto.encrypt_bytes(decrypted_raw, dek=new_dek_bytes if new_secret_ref else None)
+        new_hex = crypto.bytes_to_pg_hex(new_encrypted)
+
+        # 5. Zeroize memory
+        decrypted_ba = bytearray(decrypted_raw)
+        _zeroize_bytearray(decrypted_ba)
+        if dek_bytes:
+            old_dek_ba = bytearray(dek_bytes)
+            _zeroize_bytearray(old_dek_ba)
+
+        # 6. Persist rotation to accounts table
+        update_payload = {
+            "session_cookies_encrypted": new_hex,
+            "dek_rotated_at": now_iso,
+            "updated_at": now_iso
+        }
+        if new_secret_ref:
+            update_payload["cookie_secret_ref"] = new_secret_ref
+
+        supabase.table("accounts").update(update_payload).eq("id", account_id).execute()
+
+        # Log audit entry
+        try:
+            supabase.table("account_health_checks").insert({
+                "account_id": account_id,
+                "check_type": "dek_rotated",
+                "result": "pass",
+                "detail": {"rotated_at": now_iso, "vault_ref": bool(new_secret_ref)},
+                "checked_at": now_iso
+            }).execute()
+        except Exception:
+            pass
+
+        return {
+            "status": "success",
+            "account_id": account_id,
+            "rotated_at": now_iso,
+            "vault_secured": bool(new_secret_ref),
+            "message": "Credential DEK rotated successfully with zero-leakage memory zeroization."
+        }
+    finally:
+        with _heal_locks_mutex:
+            _active_heals.pop(account_id, None)
+
+
+def dispatch_challenge_verification_alert(
+    account_id: str,
+    workspace_id: str,
+    challenge_type: str,
+    detail: Optional[str] = None,
+    supabase: Optional[Client] = None
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Challenge Verification Alert Dispatcher.
+    - Transitions account to CHALLENGE_REQUIRED and quarantines it for 24h.
+    - Quarantines the associated proxy to protect sibling accounts in the pool.
+    - Auto-pauses tied campaigns to halt outbound actions before bans occur.
+    - Enqueues high-priority alert in outbox_events and account_health_checks.
+    """
+    clean_type = _sanitize_account_string(challenge_type or "SECURITY_CHALLENGE", 50).upper()
+    clean_detail = _sanitize_account_string(detail or "Verification checkpoint encountered", 500)
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+    quarantine_until = (now_utc + timedelta(hours=24)).isoformat()
+
+    actions = [f"Challenge alert triggered: {clean_type}. Account placed in 24h quarantine."]
+
+    if supabase:
+        try:
+            # 1. Update account status & quarantine
+            supabase.table("accounts").update({
+                "status": "CHALLENGE_REQUIRED",
+                "quarantined_until": quarantine_until,
+                "quarantine_reason": f"{clean_type}: {clean_detail}",
+                "health_score": 15,
+                "updated_at": now_iso
+            }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+
+            # 2. Quarantine assigned proxy if present
+            acc_res = supabase.table("accounts").select("proxy_id").eq("id", account_id).execute()
+            if acc_res.data and acc_res.data[0].get("proxy_id"):
+                px_id = acc_res.data[0]["proxy_id"]
+                from core.backend.services.proxy_routing import quarantine_proxy
+                quarantine_proxy(supabase, px_id, reason=f"account_challenge_{clean_type.lower()}", cooldown_hours=24)
+                actions.append(f"Quarantined proxy {px_id} for 24h.")
+
+            # 3. Auto-pause associated campaigns
+            camp_res = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", account_id).execute()
+            camp_ids = [r["campaign_id"] for r in (camp_res.data or []) if r.get("campaign_id")]
+            if camp_ids:
+                supabase.table("campaigns").update({
+                    "status": "PAUSED",
+                    "pod_emergency_paused": True,
+                    "pod_pause_reason": f"CHALLENGE_ALERT:{clean_type}",
+                    "updated_at": now_iso
+                }).in_("id", camp_ids).eq("status", "ACTIVE").execute()
+                actions.append(f"Auto-paused {len(camp_ids)} campaign(s) attached to challenged sender.")
+
+            # 4. Enqueue outbox notification
+            supabase.table("outbox_events").insert({
+                "workspace_id": workspace_id,
+                "event_type": "account.security_challenge",
+                "payload": {
+                    "account_id": account_id,
+                    "challenge_type": clean_type,
+                    "detail": clean_detail,
+                    "quarantined_until": quarantine_until,
+                    "timestamp": now_iso
+                },
+                "status": "pending",
+                "created_at": now_iso
+            }).execute()
+
+            # 5. Insert health check event
+            supabase.table("account_health_checks").insert({
+                "account_id": account_id,
+                "check_type": "security_challenge",
+                "result": "challenge",
+                "detail": {"challenge_type": clean_type, "detail": clean_detail, "actions": actions},
+                "checked_at": now_iso
+            }).execute()
+        except Exception as e:
+            logger.error(f"[ChallengeAlert] Error dispatching alert: {e}")
+            actions.append(f"Alert logging error: {e}")
+
+    return {
+        "status": "alert_dispatched",
+        "account_id": account_id,
+        "challenge_type": clean_type,
+        "quarantined_until": quarantine_until,
+        "actions_taken": actions,
+        "timestamp": now_iso
+    }
+
+
+def evaluate_and_gracefully_pause_mailbox(
+    account_id: str,
+    workspace_id: str,
+    supabase: Optional[Client] = None,
+    deliverability_score_threshold: float = 70.0,
+    max_bounce_rate_pct: float = 5.0,
+    max_spam_rate_pct: float = 0.1,
+    min_sample_size: int = 10
+) -> Dict[str, Any]:
+    """
+    Paranoia Layer 0, 1 & 2: Graceful Account Pausing on Deliverability Threshold Breach.
+    - Evaluates rolling mailbox metrics (sent count, bounces, spam complaints, deliverability score).
+    - Protects small sample sizes (< 10) from premature false-positive pauses unless absolute bounds are violated.
+    - If deliverability dips below 70.0 or bounce rate exceeds 5.0% or spam exceeds 0.1%:
+      Gracefully pauses the mailbox, sets auto_heal_status='DELIVERABILITY_COOLDOWN',
+      pauses tied campaign steps with MAILBOX_REPUTATION_PROTECT, and enqueues outbox event.
+    """
+    if not account_id or not workspace_id:
+        return {"status": "error", "message": "Missing account_id or workspace_id"}
+
+    # Layer 2 Paranoia: Clamp thresholds to safe operational bounds
+    safe_deliv_threshold = max(20.0, min(95.0, float(deliverability_score_threshold or 70.0)))
+    safe_bounce_threshold = max(0.5, min(20.0, float(max_bounce_rate_pct or 5.0)))
+    safe_spam_threshold = max(0.01, min(5.0, float(max_spam_rate_pct or 0.1)))
+    safe_min_sample = max(5, min(200, int(min_sample_size or 10)))
+
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+    cooldown_until = (now_utc + timedelta(hours=24)).isoformat()
+
+    sent_count = 0
+    bounce_count = 0
+    spam_count = 0
+    deliverability_score = 100.0
+
+    if supabase:
+        try:
+            # Query email events for this account over last 7 days
+            since_7d = (now_utc - timedelta(days=7)).isoformat()
+            evt_res = supabase.table("email_events") \
+                .select("event_type") \
+                .eq("workspace_id", workspace_id) \
+                .gte("created_at", since_7d) \
+                .execute()
+            for row in (evt_res.data or []):
+                evt = (row.get("event_type") or "").lower()
+                sent_count += 1
+                if "bounce" in evt:
+                    bounce_count += 1
+                elif "spam" in evt or "complaint" in evt:
+                    spam_count += 1
+        except Exception as e:
+            logger.debug(f"[MailboxPauseGuard] email_events query fallback: {e}")
+
+    # Calculate metrics
+    denominator = max(sent_count, bounce_count, spam_count)
+    bounce_rate_pct = round((bounce_count / denominator) * 100.0, 2) if denominator > 0 else 0.0
+    spam_rate_pct = round((spam_count / denominator) * 100.0, 3) if denominator > 0 else 0.0
+
+    # Compute composite deliverability score
+    penalty = (bounce_rate_pct * 8.0) + (spam_rate_pct * 150.0)
+    deliverability_score = max(0.0, round(100.0 - penalty, 1))
+
+    sample_reached = denominator >= safe_min_sample
+    breaches: List[str] = []
+
+    # Deliverability score breach
+    if sample_reached and deliverability_score < safe_deliv_threshold:
+        breaches.append(f"Deliverability score {deliverability_score} below threshold {safe_deliv_threshold}")
+
+    # Bounce rate breach
+    if (sample_reached and bounce_rate_pct >= safe_bounce_threshold) or bounce_count >= 3:
+        breaches.append(f"Bounce rate {bounce_rate_pct}% exceeded limit {safe_bounce_threshold}% ({bounce_count} bounces)")
+
+    # Spam complaint breach
+    if (sample_reached and spam_rate_pct >= safe_spam_threshold) or spam_count >= 1:
+        breaches.append(f"Spam complaint rate {spam_rate_pct}% exceeded limit {safe_spam_threshold}% ({spam_count} spam reports)")
+
+    should_pause = len(breaches) > 0
+    actions_taken: List[str] = []
+
+    if should_pause:
+        actions_taken.append(f"Gracefully paused mailbox due to deliverability breach: {'; '.join(breaches)}")
+        if supabase:
+            try:
+                # 1. Update account status to COOLDOWN
+                supabase.table("accounts").update({
+                    "status": "COOLDOWN",
+                    "auto_heal_status": "DELIVERABILITY_COOLDOWN",
+                    "quarantined_until": cooldown_until,
+                    "quarantine_reason": f"Deliverability threshold breach: {'; '.join(breaches)}",
+                    "health_score": int(deliverability_score),
+                    "updated_at": now_iso
+                }).eq("id", account_id).eq("workspace_id", workspace_id).execute()
+
+                # 2. Pause tied campaigns with MAILBOX_REPUTATION_PROTECT
+                camp_res = supabase.table("campaign_accounts").select("campaign_id").eq("account_id", account_id).execute()
+                camp_ids = [r["campaign_id"] for r in (camp_res.data or []) if r.get("campaign_id")]
+                if camp_ids:
+                    supabase.table("campaigns").update({
+                        "status": "PAUSED",
+                        "pod_emergency_paused": True,
+                        "pod_pause_reason": "MAILBOX_REPUTATION_PROTECT",
+                        "updated_at": now_iso
+                    }).in_("id", camp_ids).eq("status", "ACTIVE").execute()
+                    actions_taken.append(f"Auto-paused {len(camp_ids)} campaign(s) to protect domain reputation.")
+
+                # 3. Enqueue outbox notification event
+                supabase.table("outbox_events").insert({
+                    "workspace_id": workspace_id,
+                    "event_type": "mailbox.reputation_paused",
+                    "payload": {
+                        "account_id": account_id,
+                        "deliverability_score": deliverability_score,
+                        "bounce_rate_pct": bounce_rate_pct,
+                        "spam_rate_pct": spam_rate_pct,
+                        "breaches": breaches,
+                        "cooldown_until": cooldown_until,
+                        "timestamp": now_iso
+                    },
+                    "status": "pending",
+                    "created_at": now_iso
+                }).execute()
+
+                # 4. Insert health check audit event
+                supabase.table("account_health_checks").insert({
+                    "account_id": account_id,
+                    "check_type": "mailbox_reputation",
+                    "result": "warn",
+                    "detail": {"deliverability_score": deliverability_score, "breaches": breaches, "actions": actions_taken},
+                    "checked_at": now_iso
+                }).execute()
+            except Exception as pause_err:
+                logger.error(f"[MailboxPauseGuard] Failed to persist mailbox pause: {pause_err}")
+    else:
+        actions_taken.append(f"Mailbox reputation verified healthy (Score: {deliverability_score}, Bounce: {bounce_rate_pct}%, Spam: {spam_rate_pct}%).")
+        if supabase:
+            try:
+                supabase.table("accounts").update({
+                    "health_score": int(deliverability_score),
+                    "auto_heal_status": "ALL_CLEAR",
+                    "last_health_check_at": now_iso
+                }).eq("id", account_id).execute()
+            except Exception:
+                pass
+
+    return {
+        "account_id": account_id,
+        "paused": should_pause,
+        "status": "COOLDOWN" if should_pause else "ACTIVE",
+        "deliverability_score": deliverability_score,
+        "bounce_rate_pct": bounce_rate_pct,
+        "spam_rate_pct": spam_rate_pct,
+        "sample_size": denominator,
+        "sample_reached": sample_reached,
+        "cooldown_until": cooldown_until if should_pause else None,
+        "breaches": breaches,
+        "actions_taken": actions_taken,
+        "timestamp": now_iso
     }

@@ -29,9 +29,24 @@ export class ErrorBoundary extends Component<Props, State> {
       componentStack: errorInfo.componentStack,
       source: "ErrorBoundary",
     });
+
+    // Paranoia Layer 1: Auto-recover from stale dynamic chunk imports following a production deployment
+    const errMsg = (error?.message || "").toLowerCase();
+    if (errMsg.includes("dynamically imported module") || errMsg.includes("loading chunk") || errMsg.includes("failed to fetch")) {
+      const hasRetried = sessionStorage.getItem("elein_chunk_reload_attempted");
+      if (!hasRetried) {
+        sessionStorage.setItem("elein_chunk_reload_attempted", "true");
+        window.location.reload();
+      }
+    }
   }
 
+  private handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
   private handleRefresh = () => {
+    sessionStorage.removeItem("elein_chunk_reload_attempted");
     window.location.reload();
   };
   
@@ -72,19 +87,19 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex items-center gap-3 pt-2 relative z-10">
               <button 
                 type="button"
-                onClick={this.handleGoHome}
+                onClick={this.handleReset}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors border border-border/60"
               >
-                <Home className="w-4 h-4" />
-                Go Home
+                <RefreshCw className="w-4 h-4" />
+                Try Again
               </button>
               <button 
                 type="button"
                 onClick={this.handleRefresh}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
               >
-                <RefreshCw className="w-4 h-4" />
-                Refresh
+                <Home className="w-4 h-4" />
+                Reload Page
               </button>
             </div>
           </div>

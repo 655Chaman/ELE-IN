@@ -89,14 +89,22 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
     Raises HTTPException(402) with structured metadata if locked on current tier.
     Permits test workspaces and unconfigured mocks for resilient automated testing.
     """
-    if workspace_id in ("ws-test", "test-workspace", "ws-test-bandit") or not supabase:
+    if workspace_id in ("ws-test", "test-workspace", "ws-test-bandit"):
         return
-    try:
-        rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
-        raw_data = getattr(rpc_result, "data", None)
-        tier = (raw_data.get("tier") if isinstance(raw_data, dict) else "FREE") or "FREE"
-    except Exception:
-        tier = "FREE"
+    tier = "FREE"
+    if supabase is not None:
+        try:
+            if hasattr(supabase, "rpc"):
+                rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
+                raw_data = getattr(rpc_result, "data", None)
+                if isinstance(raw_data, dict):
+                    tier = (raw_data.get("tier") or "FREE").upper()
+            if tier == "FREE" and hasattr(supabase, "table"):
+                ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+                if ws_res.data:
+                    tier = (ws_res.data[0].get("tier") or "FREE").upper()
+        except Exception:
+            tier = "FREE"
 
     from core.backend.services.credit_service import TIER_LIMITS
     tier_perm = TIER_LIMITS.get(tier, {}).get(permission_flag, False)
@@ -121,6 +129,7 @@ def get_experiment_stats(
     Paranoia Layer 0 & 1: Retrieves bandit experiment with Bayesian posteriors,
     win probabilities, and arm degradation states.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_bandit_optimizer", supabase)
     try:
         data = select_variant_thompson_sampling(workspace_id, campaign_id, supabase=supabase)
         return {
@@ -172,6 +181,7 @@ def record_feedback_endpoint(
     """
     Paranoia Layer 0 & 2: Ingests lead response feedback and updates Beta parameters.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_bandit_optimizer", supabase)
     try:
         result = record_variant_feedback(
             variant_id=payload.variant_id,

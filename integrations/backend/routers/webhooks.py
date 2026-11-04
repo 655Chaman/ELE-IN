@@ -301,3 +301,60 @@ def retry_dlq_delivery_endpoint(
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     return res
+
+
+# ── CRM SYNC DEAD-LETTER QUEUE & INBOUND BUFFER ENDPOINTS (PHASE O RESILIENCE) ─
+
+@router.post("/dlq/replay")
+def replay_crm_dlq_endpoint(
+    limit: Optional[int] = 50,
+    force: Optional[bool] = False,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_service_client)
+):
+    """
+    Paranoia Layer 0, 1 & 2: Replays failed CRM sync events from the dead-letter queue.
+    Applies exponential retry backoff and clamps batch limit to 100 max.
+    """
+    from integrations.backend.services.inbound_ingest_service import replay_dead_letter_webhooks
+    clamped_limit = max(1, min(limit or 50, 100))
+    res = replay_dead_letter_webhooks(
+        supabase=supabase,
+        workspace_id=workspace_id,
+        limit=clamped_limit,
+        force=bool(force)
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message", "DLQ replay failed"))
+    return res
+
+
+@router.get("/dlq/stats")
+def get_crm_dlq_stats_endpoint(
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_service_client)
+):
+    """
+    Paranoia Layer 0 & 2: Returns CRM DLQ telemetry (pending, replayed, quarantined counts).
+    """
+    from integrations.backend.services.inbound_ingest_service import get_crm_dlq_stats
+    return get_crm_dlq_stats(supabase=supabase, workspace_id=workspace_id)
+
+
+@router.post("/buffer/drain")
+def drain_inbound_buffer_endpoint(
+    limit: Optional[int] = 50,
+    workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_service_client)
+):
+    """
+    Paranoia Layer 0, 1 & 2: Drains staged inbound webhooks into target subsystems.
+    Guarantees asynchronous event ingestion resilience across backend restarts.
+    """
+    from integrations.backend.services.inbound_ingest_service import process_staged_inbound_webhooks
+    clamped_limit = max(1, min(limit or 50, 100))
+    return process_staged_inbound_webhooks(
+        supabase=supabase,
+        workspace_id=workspace_id,
+        limit=clamped_limit
+    )

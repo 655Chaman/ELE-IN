@@ -68,6 +68,22 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
   const [weekendSending, setWeekendSending] = useState(false);
   const [minJitterSec, setMinJitterSec] = useState(45);
   const [maxJitterSec, setMaxJitterSec] = useState(180);
+  const [bounceRateLimit, setBounceRateLimit] = useState(3.5);
+  const [spamRateLimit, setSpamRateLimit] = useState(0.1);
+  const [autoWarmupThrottle, setAutoWarmupThrottle] = useState(true);
+
+  // Day-by-Day Schedule Matrix & National Holiday Auto-Pause
+  const [dayScheduleOverrides, setDayScheduleOverrides] = useState<Record<string, { enabled: boolean; start: string; end: string }>>({
+    monday: { enabled: true, start: "08:00", end: "18:00" },
+    tuesday: { enabled: true, start: "08:00", end: "18:00" },
+    wednesday: { enabled: true, start: "08:00", end: "18:00" },
+    thursday: { enabled: true, start: "08:00", end: "18:00" },
+    friday: { enabled: true, start: "08:00", end: "17:00" },
+    saturday: { enabled: false, start: "09:00", end: "14:00" },
+    sunday: { enabled: false, start: "09:00", end: "14:00" },
+  });
+  const [pauseOnNationalHolidays, setPauseOnNationalHolidays] = useState(false);
+  const [nationalHolidayCountry, setNationalHolidayCountry] = useState("US");
 
   // Human Paranoia & Validation state
   const [dangerAcknowledged, setDangerAcknowledged] = useState(false);
@@ -94,6 +110,18 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
       setWorkEnd(formatTimeDisplay(data.default_working_hours_end || "18:00:00"));
       setTimezone(data.default_timezone || "UTC");
       setWeekendSending(Boolean(data.weekend_sending_enabled));
+      setBounceRateLimit(data.bounce_rate_killswitch_threshold ?? 3.5);
+      setSpamRateLimit(data.spam_complaint_killswitch_threshold ?? 0.1);
+      setAutoWarmupThrottle(data.auto_warmup_throttle_enabled ?? true);
+      setMinJitterSec(data.min_action_delay_seconds ?? 45);
+      setMaxJitterSec(data.max_action_delay_seconds ?? 180);
+      if (data.day_schedule_overrides && typeof data.day_schedule_overrides === "object" && Object.keys(data.day_schedule_overrides).length > 0) {
+        setDayScheduleOverrides((prev) => ({ ...prev, ...data.day_schedule_overrides }));
+      }
+      setPauseOnNationalHolidays(Boolean(data.pause_on_national_holidays));
+      if (data.national_holiday_country) {
+        setNationalHolidayCountry(data.national_holiday_country);
+      }
     }
   }, [data]);
 
@@ -164,6 +192,15 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
   })();
 
   const isExtremeVolume = connLimit > 30 || msgLimit > 80;
+  const isJitterInverted = minJitterSec >= maxJitterSec;
+
+  const deliverabilityScore = Math.min(100, Math.max(20,
+    (warmupDays >= 14 ? 25 : warmupDays >= 7 ? 15 : 5) +
+    (minJitterSec >= 45 ? 25 : minJitterSec >= 20 ? 15 : 5) +
+    (connLimit <= 20 ? 20 : connLimit <= 30 ? 12 : 5) +
+    (msgLimit <= 40 ? 15 : msgLimit <= 60 ? 10 : 3) +
+    (bounceRateLimit <= 4.0 ? 15 : 5)
+  ));
 
   const hasChanges = Boolean(
     data &&
@@ -173,13 +210,22 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
       workStart !== formatTimeDisplay(data.default_working_hours_start || "08:00:00") ||
       workEnd !== formatTimeDisplay(data.default_working_hours_end || "18:00:00") ||
       timezone !== (data.default_timezone || "UTC") ||
-      weekendSending !== Boolean(data.weekend_sending_enabled))
+      weekendSending !== Boolean(data.weekend_sending_enabled) ||
+      bounceRateLimit !== (data.bounce_rate_killswitch_threshold ?? 3.5) ||
+      spamRateLimit !== (data.spam_complaint_killswitch_threshold ?? 0.1) ||
+      autoWarmupThrottle !== (data.auto_warmup_throttle_enabled ?? true) ||
+      minJitterSec !== (data.min_action_delay_seconds ?? 45) ||
+      maxJitterSec !== (data.max_action_delay_seconds ?? 180) ||
+      pauseOnNationalHolidays !== Boolean(data.pause_on_national_holidays) ||
+      nationalHolidayCountry !== (data.national_holiday_country || "US") ||
+      JSON.stringify(dayScheduleOverrides) !== JSON.stringify(data.day_schedule_overrides || {}))
   );
 
   const isSaveBlocked = 
     !hasChanges || 
     saving || 
     isTimeWindowInverted || 
+    isJitterInverted ||
     (isExtremeVolume && !dangerAcknowledged);
 
   const handleResetToSafeBaseline = () => {
@@ -190,6 +236,11 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
     setWorkEnd("18:00");
     setWeekendSending(false);
     setDangerAcknowledged(false);
+    setBounceRateLimit(3.5);
+    setSpamRateLimit(0.1);
+    setAutoWarmupThrottle(true);
+    setMinJitterSec(45);
+    setMaxJitterSec(180);
     toast.success("Reset parameters to LinkedIn Safe Baseline (20 conns, 40 msgs, 14d warmup)");
   };
 
@@ -201,6 +252,10 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
     }
     if (isTimeWindowInverted) {
       toast.error("Operating start time must precede end time");
+      return;
+    }
+    if (isJitterInverted) {
+      toast.error("Minimum jitter interval must be strictly less than maximum jitter");
       return;
     }
     if (isExtremeVolume && !dangerAcknowledged) {
@@ -230,7 +285,15 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
           default_working_hours_start: normalizeTimeForApi(workStart),
           default_working_hours_end: normalizeTimeForApi(workEnd),
           default_timezone: timezone,
-          weekend_sending_enabled: weekendSending
+          weekend_sending_enabled: weekendSending,
+          bounce_rate_killswitch_threshold: bounceRateLimit,
+          spam_complaint_killswitch_threshold: spamRateLimit,
+          auto_warmup_throttle_enabled: autoWarmupThrottle,
+          min_action_delay_seconds: minJitterSec,
+          max_action_delay_seconds: maxJitterSec,
+          day_schedule_overrides: dayScheduleOverrides,
+          pause_on_national_holidays: pauseOnNationalHolidays,
+          national_holiday_country: nationalHolidayCountry
         }),
       });
 
@@ -661,6 +724,183 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
                 </span>
               </div>
             )}
+
+            {/* Granular Day-by-Day Schedule Matrix (Pro+) */}
+            <div className="mt-6 pt-5 border-t border-gray-100 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-900">Granular Day-by-Day Schedule Matrix</span>
+                    <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium border border-primary/20">Pro+</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    Customize independent operational time windows and active days for each day of the week.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const mon = dayScheduleOverrides.monday || { enabled: true, start: "08:00", end: "18:00" };
+                      setDayScheduleOverrides({
+                        monday: { ...mon },
+                        tuesday: { ...mon },
+                        wednesday: { ...mon },
+                        thursday: { ...mon },
+                        friday: { ...mon },
+                        saturday: { enabled: false, start: "09:00", end: "14:00" },
+                        sunday: { enabled: false, start: "09:00", end: "14:00" },
+                      });
+                      toast.success("Applied Monday schedule to all weekdays");
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
+                  >
+                    Sync Weekdays
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDayScheduleOverrides((prev) => ({
+                        ...prev,
+                        friday: { enabled: true, start: "08:30", end: "13:00" },
+                      }));
+                      toast.info("Applied Friday half-day (08:30–13:00)");
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
+                  >
+                    Friday Half-Day
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5">
+                {[
+                  { key: "monday", label: "Mon" },
+                  { key: "tuesday", label: "Tue" },
+                  { key: "wednesday", label: "Wed" },
+                  { key: "thursday", label: "Thu" },
+                  { key: "friday", label: "Fri" },
+                  { key: "saturday", label: "Sat" },
+                  { key: "sunday", label: "Sun" },
+                ].map((d) => {
+                  const day = dayScheduleOverrides[d.key] || { enabled: d.key !== "saturday" && d.key !== "sunday", start: "08:00", end: "18:00" };
+                  return (
+                    <div 
+                      key={d.key} 
+                      className={`p-3 rounded-xl border text-center transition-all ${
+                        day.enabled ? "bg-white border-gray-200 shadow-xs" : "bg-gray-50/70 border-gray-200/60 opacity-60"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-gray-900">{d.label}</span>
+                        <input
+                          type="checkbox"
+                          checked={day.enabled}
+                          disabled={isCustomSendingLocked}
+                          onChange={(e) => {
+                            setDayScheduleOverrides((prev) => ({
+                              ...prev,
+                              [d.key]: { ...(prev[d.key] || day), enabled: e.target.checked },
+                            }));
+                          }}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                        />
+                      </div>
+                      {day.enabled ? (
+                        <div className="space-y-1.5 text-left">
+                          <div>
+                            <span className="text-[10px] text-gray-400 block font-mono">Start</span>
+                            <input
+                              type="time"
+                              value={day.start}
+                              disabled={isCustomSendingLocked}
+                              onChange={(e) => {
+                                setDayScheduleOverrides((prev) => ({
+                                  ...prev,
+                                  [d.key]: { ...(prev[d.key] || day), start: e.target.value },
+                                }));
+                              }}
+                              className="w-full text-[11px] font-mono px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-900 font-bold"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-400 block font-mono">End</span>
+                            <input
+                              type="time"
+                              value={day.end}
+                              disabled={isCustomSendingLocked}
+                              onChange={(e) => {
+                                setDayScheduleOverrides((prev) => ({
+                                  ...prev,
+                                  [d.key]: { ...(prev[d.key] || day), end: e.target.value },
+                                }));
+                              }}
+                              className="w-full text-[11px] font-mono px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-900 font-bold"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-4 text-[11px] font-medium text-gray-400">Rest Day</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* National Public Holidays Auto-Pause Station */}
+            <div className="mt-5 pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-primary/10 rounded-xl text-primary mt-0.5">
+                  <ShieldCheck size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-900">National Public Holiday Auto-Pause</span>
+                    <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">Deliverability Guard</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-0.5 max-w-xl">
+                    Automatically pauses outreach during recognized national bank holidays in your recipient's jurisdiction, preventing spam flags when prospects are out of office.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                {pauseOnNationalHolidays && (
+                  <select
+                    value={nationalHolidayCountry}
+                    disabled={isCustomSendingLocked}
+                    onChange={(e) => setNationalHolidayCountry(e.target.value)}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 text-gray-800"
+                  >
+                    <option value="US">United States (Federal)</option>
+                    <option value="GB">United Kingdom (Bank)</option>
+                    <option value="CA">Canada (Statutory)</option>
+                    <option value="AU">Australia (National)</option>
+                    <option value="DE">Germany (Bundesweit)</option>
+                    <option value="FR">France (Jours fériés)</option>
+                    <option value="IN">India (Gazetted)</option>
+                  </select>
+                )}
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={pauseOnNationalHolidays}
+                    disabled={isCustomSendingLocked}
+                    onChange={(e) => {
+                      if (isCustomSendingLocked) {
+                        openPaywall({ featureName: "National Holiday Outreach Auto-Pause" });
+                        return;
+                      }
+                      setPauseOnNationalHolidays(e.target.checked);
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Section 3: Daily Limits Card (Layer 0 & Layer 2) */}
@@ -981,6 +1221,187 @@ export function SendingDefaults({ workspaceId }: { workspaceId: string | null })
             </div>
           </div>
           
+          {/* Section 5: Deliverability Reputation Guardrails & Safety Scorecard */}
+          <div className="p-6 rounded-xl border border-gray-100 bg-white shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-lg">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                    Deliverability Reputation Guardrails & Killswitches
+                    <span className="text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider rounded-md bg-emerald-100 text-emerald-800">
+                      Tier 1 Anti-Burn
+                    </span>
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Proactive mailbox preservation policies protecting domain reputation and sender deliverability.
+                  </p>
+                </div>
+              </div>
+
+              {/* Dynamic Deliverability Score Badge */}
+              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200">
+                <div className="text-right">
+                  <div className="text-[10px] uppercase font-bold text-gray-400">Mailbox Health Index</div>
+                  <div className="text-xs font-semibold text-gray-700">
+                    {deliverabilityScore >= 85 ? "Optimal Deliverability" : deliverabilityScore >= 65 ? "Moderate Exposure" : "High Risk Exposure"}
+                  </div>
+                </div>
+                <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm text-white shadow-xs ${
+                  deliverabilityScore >= 85 ? "bg-emerald-600" : deliverabilityScore >= 65 ? "bg-amber-500" : "bg-rose-600"
+                }`}>
+                  {deliverabilityScore}
+                </div>
+              </div>
+            </div>
+
+            {/* Guardrail Controls Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Bounce Rate Killswitch Slider */}
+              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                    <AlertTriangle size={14} className="text-amber-500" />
+                    Bounce Rate Killswitch
+                  </label>
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 bg-white border border-gray-200 rounded-md text-amber-700">
+                    {bounceRateLimit.toFixed(1)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="1.0"
+                  max="8.0"
+                  step="0.5"
+                  value={bounceRateLimit}
+                  onChange={(e) => setBounceRateLimit(parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>1.0% (Strict)</span>
+                  <span>3.5% (Recommended)</span>
+                  <span>8.0% (Permissive)</span>
+                </div>
+                <p className="text-[11px] text-gray-500 leading-normal">
+                  Automatically pauses any campaign where the rolling bounce rate breaches this threshold to prevent sender domain blacklisting.
+                </p>
+              </div>
+
+              {/* Spam Complaint Threshold Slider */}
+              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                    <ShieldAlert size={14} className="text-rose-500" />
+                    Spam Complaint Quarantine
+                  </label>
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 bg-white border border-gray-200 rounded-md text-rose-700">
+                    {spamRateLimit.toFixed(2)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.05"
+                  max="0.50"
+                  step="0.01"
+                  value={spamRateLimit}
+                  onChange={(e) => setSpamRateLimit(parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rose-600"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>0.05% (Google Tier)</span>
+                  <span>0.10% (ESP Standard)</span>
+                  <span>0.50% (Max)</span>
+                </div>
+                <p className="text-[11px] text-gray-500 leading-normal">
+                  Immediately quarantines mailbox if spam complaint rate exceeds this limit (Google/Yahoo 2024 compliance requires &lt;0.10%).
+                </p>
+              </div>
+
+              {/* Human Action Jitter Dispersion Sliders */}
+              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                    <Clock size={14} className="text-primary" />
+                    Human Action Delay Jitter
+                  </label>
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 bg-white border border-gray-200 rounded-md text-primary">
+                    {minJitterSec}s – {maxJitterSec}s
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-[10px] text-gray-500 font-medium">Min Delay ({minJitterSec}s)</span>
+                    <input
+                      type="range"
+                      min="15"
+                      max="120"
+                      step="5"
+                      value={minJitterSec}
+                      onChange={(e) => setMinJitterSec(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary mt-1"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500 font-medium">Max Delay ({maxJitterSec}s)</span>
+                    <input
+                      type="range"
+                      min="60"
+                      max="360"
+                      step="10"
+                      value={maxJitterSec}
+                      onChange={(e) => setMaxJitterSec(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary mt-1"
+                    />
+                  </div>
+                </div>
+                {minJitterSec >= maxJitterSec && (
+                  <p className="text-[11px] text-rose-600 font-semibold">
+                    Warning: Minimum jitter must be strictly lower than maximum jitter.
+                  </p>
+                )}
+                <p className="text-[11px] text-gray-500 leading-normal">
+                  Injects randomized non-robotic timing intervals between outreach messages to evade platform anti-bot behavioral filters.
+                </p>
+              </div>
+
+              {/* Adaptive Warmup Auto-Throttle Toggle */}
+              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                      <Zap size={14} className="text-indigo-600" />
+                      Adaptive Rate-Limit Auto-Throttle
+                    </label>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={autoWarmupThrottle}
+                      onClick={() => setAutoWarmupThrottle(!autoWarmupThrottle)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        autoWarmupThrottle ? "bg-indigo-600" : "bg-gray-200"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          autoWarmupThrottle ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-2 leading-normal">
+                    When enabled, automatically reduces hourly dispatch volume by 50% for 4 hours whenever transient HTTP 429 or provider throttling errors are intercepted.
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-gray-200/50 flex items-center gap-2 text-[10px] text-indigo-700 font-medium">
+                  <CheckCircle2 size={12} />
+                  Protected by Autonomous Failure Detection
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Success Banner */}
           <AnimatePresence>
             {showSuccess && (

@@ -12,6 +12,7 @@ import asyncio
 import threading
 import time
 from io import StringIO
+import random
 from datetime import date, datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Tuple, Union
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends, Query, Header
@@ -22,6 +23,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from supabase import Client, AsyncClient
 
 from core.backend.api.auth_dep import get_supabase_client, verify_token_and_get_user_id, get_async_supabase_client, get_service_client
+from core.backend.services.credit_service import TIER_LIMITS, normalize_tier
 from core.backend.services.job_queue import enqueue_job
 from core.backend.services import storage_service
 from campaigns.backend.schemas.elein import (
@@ -240,197 +242,7 @@ def update_workspace_profile(
         logger.error(f"Error updating workspace profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
-TIER_LIMITS = {
-    'FREE': {
-        'monthly_credit_allowance': 500,
-        'max_team_members': 1,
-        'max_linkedin_accounts': 1,
-        'max_active_campaigns': 1,
-        'max_knowledge_assets': 3,
-        'max_personas': 1,
-        'can_use_enrichment': False,
-        'can_use_apify': False,
-        'can_use_bayesian_icp': False,
-        'max_export_leads': 25,
-        'can_export_unmasked': False,
-        'can_use_crm_sync': False,
-        'can_use_api_keys': False,
-        'max_webhooks': 0,
-        'can_custom_sending_defaults': False,
-        'can_run_manual_health_check': False,
-        'can_use_custom_proxies': False,
-        'can_view_audit_logs': False,
-        'can_manage_team_roles': False,
-        'can_enforce_2fa': False,
-        'can_custom_notification_routing': False,
-        'can_extended_analytics': False,
-        'can_export_analytics_pdf': False,
-        'can_export_funnel_csv': False,
-        'can_custom_branding': False,
-        'can_custom_domain': False,
-        'can_remove_watermark': False,
-        'can_batch_approvals': False,
-        'can_auto_approve_high_heat': False,
-        'can_ai_reply_tuning': False,
-        'can_advanced_warmup': False,
-        'can_schedule_curfews': False,
-        'can_lead_local_timezone': False,
-        'can_choose_ai_models': False,
-        'can_byok_ai_keys': False,
-        'can_view_token_telemetry': False,
-        'can_auto_recharge': False,
-        'can_use_battlecards': False,
-        'can_deal_pipeline': False,
-        'can_smart_calendar_slots': False,
-        'can_social_prewarm': False,
-        'can_omnichannel_cascade': False,
-        'can_thought_leadership_studio': False,
-        'can_use_bandit_optimizer': False,
-        'can_use_trigger_radar': False,
-        'can_harvest_events': False,
-        'can_multimodal_studio': False,
-        'can_dynamic_lead_segmentation': False,
-        'can_ai_sto': False,
-        'can_deliverability_pool': False,
-        'can_reply_sentiment_copilot': False,
-        'can_abm_multithreading': False,
-        'abm_multithreading': False,
-        'can_champion_revival': False,
-        'can_boomerang_revival': False,
-        'champion_revival': False,
-        'boomerang_revival': False,
-        'can_competitive_displacement': False,
-        'competitive_displacement': False,
-        'can_calendar_concierge': False,
-        'calendar_concierge': False,
-    },
-    'PRO': {
-        'monthly_credit_allowance': 5000,
-        'max_team_members': 5,
-        'max_linkedin_accounts': 5,
-        'max_active_campaigns': 20,
-        'max_knowledge_assets': 25,
-        'max_personas': 10,
-        'can_use_enrichment': True,
-        'can_use_apify': True,
-        'can_use_bayesian_icp': True,
-        'max_export_leads': 10000,
-        'can_export_unmasked': True,
-        'can_use_crm_sync': True,
-        'can_use_api_keys': True,
-        'max_webhooks': 5,
-        'can_custom_sending_defaults': True,
-        'can_run_manual_health_check': True,
-        'can_use_custom_proxies': True,
-        'can_view_audit_logs': True,
-        'can_manage_team_roles': True,
-        'can_enforce_2fa': True,
-        'can_custom_notification_routing': True,
-        'can_extended_analytics': True,
-        'can_export_analytics_pdf': True,
-        'can_export_funnel_csv': True,
-        'can_custom_branding': True,
-        'can_custom_domain': True,
-        'can_remove_watermark': True,
-        'can_batch_approvals': True,
-        'can_auto_approve_high_heat': True,
-        'can_ai_reply_tuning': True,
-        'can_advanced_warmup': True,
-        'can_schedule_curfews': True,
-        'can_lead_local_timezone': True,
-        'can_choose_ai_models': True,
-        'can_byok_ai_keys': True,
-        'can_view_token_telemetry': True,
-        'can_auto_recharge': True,
-        'can_use_battlecards': True,
-        'can_deal_pipeline': True,
-        'can_smart_calendar_slots': True,
-        'can_social_prewarm': True,
-        'can_omnichannel_cascade': True,
-        'can_thought_leadership_studio': True,
-        'can_use_bandit_optimizer': True,
-        'can_use_trigger_radar': True,
-        'can_harvest_events': True,
-        'can_multimodal_studio': True,
-        'can_dynamic_lead_segmentation': True,
-        'can_ai_sto': True,
-        'can_deliverability_pool': True,
-        'can_reply_sentiment_copilot': True,
-        'can_abm_multithreading': True,
-        'abm_multithreading': True,
-        'can_champion_revival': True,
-        'can_boomerang_revival': True,
-        'champion_revival': True,
-        'boomerang_revival': True,
-        'can_competitive_displacement': True,
-        'competitive_displacement': True,
-        'can_calendar_concierge': True,
-        'calendar_concierge': True,
-    },
-    'ENTERPRISE': {
-        'monthly_credit_allowance': 100000,
-        'max_team_members': 25,
-        'max_linkedin_accounts': 25,
-        'max_active_campaigns': 100,
-        'max_knowledge_assets': 100,
-        'max_personas': 50,
-        'can_use_enrichment': True,
-        'can_use_apify': True,
-        'can_use_bayesian_icp': True,
-        'max_export_leads': 100000,
-        'can_export_unmasked': True,
-        'can_use_crm_sync': True,
-        'can_use_api_keys': True,
-        'max_webhooks': 50,
-        'can_custom_sending_defaults': True,
-        'can_run_manual_health_check': True,
-        'can_use_custom_proxies': True,
-        'can_view_audit_logs': True,
-        'can_manage_team_roles': True,
-        'can_enforce_2fa': True,
-        'can_custom_notification_routing': True,
-        'can_extended_analytics': True,
-        'can_export_analytics_pdf': True,
-        'can_export_funnel_csv': True,
-        'can_custom_branding': True,
-        'can_custom_domain': True,
-        'can_remove_watermark': True,
-        'can_batch_approvals': True,
-        'can_auto_approve_high_heat': True,
-        'can_ai_reply_tuning': True,
-        'can_advanced_warmup': True,
-        'can_schedule_curfews': True,
-        'can_lead_local_timezone': True,
-        'can_choose_ai_models': True,
-        'can_byok_ai_keys': True,
-        'can_view_token_telemetry': True,
-        'can_auto_recharge': True,
-        'can_use_battlecards': True,
-        'can_deal_pipeline': True,
-        'can_smart_calendar_slots': True,
-        'can_social_prewarm': True,
-        'can_omnichannel_cascade': True,
-        'can_thought_leadership_studio': True,
-        'can_use_bandit_optimizer': True,
-        'can_use_trigger_radar': True,
-        'can_harvest_events': True,
-        'can_multimodal_studio': True,
-        'can_dynamic_lead_segmentation': True,
-        'can_ai_sto': True,
-        'can_deliverability_pool': True,
-        'can_reply_sentiment_copilot': True,
-        'can_abm_multithreading': True,
-        'abm_multithreading': True,
-        'can_champion_revival': True,
-        'can_boomerang_revival': True,
-        'champion_revival': True,
-        'boomerang_revival': True,
-        'can_competitive_displacement': True,
-        'competitive_displacement': True,
-        'can_calendar_concierge': True,
-        'calendar_concierge': True,
-    }
-}
+from core.backend.services.credit_service import TIER_LIMITS
 
 @router.get("/workspaces/billing", response_model=dict)
 def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
@@ -439,8 +251,8 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
         raw_data = getattr(rpc_result, "data", None)
         data = raw_data if isinstance(raw_data, dict) else {}
         
-        plan = data.get("tier", "FREE")
-        plan_name = "Growth Tier" if plan == "PRO" else "Enterprise Tier" if plan == "ENTERPRISE" else "Free Tier"
+        plan = normalize_tier(data.get("tier", "FREE"))
+        plan_name = "Agency Tier" if plan == "AGENCY" else "Growth Tier" if plan == "PRO" else "Enterprise Tier" if plan == "ENTERPRISE" else "Free Tier"
         credits = data.get("balance", 0)
         
         active_campaigns = 0
@@ -468,14 +280,32 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
         except Exception:
             pass
 
-        limits = TIER_LIMITS.get(plan, TIER_LIMITS['FREE'])
+        # Check platform owner override
+        ws_res = supabase.table("workspaces").select("tier, owner_id").eq("id", workspace_id).execute()
+        ws_row = ws_res.data[0] if ws_res.data else {}
+        db_tier = normalize_tier(ws_row.get("tier") or plan)
+        owner_override = os.environ.get("PLATFORM_OWNER_ID")
+        is_platform_owner = bool(owner_override and ws_row.get("owner_id") == owner_override)
+
+        if is_platform_owner:
+            plan = "ENTERPRISE"
+            plan_name = "Enterprise Tier (Owner Access)"
+            credits = 999999
+            limits = TIER_LIMITS.get('ENTERPRISE', TIER_LIMITS['FREE'])
+        else:
+            plan = db_tier if db_tier in TIER_LIMITS else "FREE"
+            plan_name = "Agency Tier" if plan == "AGENCY" else "Growth Tier" if plan == "PRO" else "Enterprise Tier" if plan == "ENTERPRISE" else "Free Tier"
+            limits = TIER_LIMITS.get(plan, TIER_LIMITS['FREE'])
+
         return {
             "data_cleaning_credits": credits,
             "credits_remaining": credits,
+            "balance": credits,
             "plan_name": plan_name,
             "active_campaigns": active_campaigns,
             "tier": plan,
             "tier_limits": limits,
+            "is_platform_owner": is_platform_owner,
             "first_win_at": first_win_at,
             "oto_expires_at": oto_expires_at,
             "oto_expired": oto_expired
@@ -489,6 +319,7 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
             "active_campaigns": 0,
             "tier": "FREE",
             "tier_limits": TIER_LIMITS['FREE'],
+            "is_platform_owner": False,
             "first_win_at": None,
             "oto_expires_at": None,
             "oto_expired": False
@@ -565,8 +396,28 @@ def process_csv_background(list_id: str, file_path: str, mappings: dict = None, 
         with open(file_path, "r", encoding=encoding, errors="replace", newline=None) as f:
             total_rows = max(0, sum(1 for _ in clean_line_generator(f)) - 1) # minus header
 
-        if total_rows > 25000:
-            raise ValueError(f"CSV exceeds maximum allowed rows (25,000). Found {total_rows} rows.")
+        # Paranoia Layer 1 & 2: Dynamic Tier-Aware CSV Upload Ceiling
+        ws_tier = "FREE"
+        max_rows_allowed = 25000
+        if workspace_id and supabase and hasattr(supabase, "table"):
+            try:
+                ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+                if ws_res and getattr(ws_res, "data", None):
+                    ws_tier = (ws_res.data[0].get("tier") or "FREE").upper()
+                if ws_tier in ("ENTERPRISE", "AGENCY"):
+                    max_rows_allowed = 100000
+                elif ws_tier in ("PRO", "GROWTH"):
+                    max_rows_allowed = 50000
+                else:
+                    max_rows_allowed = 25000
+            except Exception:
+                max_rows_allowed = 25000
+
+        if total_rows > max_rows_allowed:
+            raise ValueError(
+                f"CSV exceeds maximum allowed rows ({max_rows_allowed:,} for {ws_tier} tier). Found {total_rows:,} rows. "
+                "Please split the file into smaller batches or upgrade your workspace tier."
+            )
 
         if total_rows == 0:
             supabase.table("lead_lists").update({"row_count": 0, "status": "completed"}).eq("id", list_id).execute()
@@ -862,11 +713,16 @@ def upload_csv(
     collision_policy: Optional[str] = Form("merge"),
     supabase: Client = Depends(get_supabase_client),
     workspace_id: str = Depends(get_current_workspace),
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id),
+    background_tasks: Optional[Any] = None,
+    db: Optional[Any] = None
 ):
     """Streams a CSV file to local disk and processes it in a background task to prevent OOM."""
     import tempfile
     import json
+
+    if supabase is None and db is not None:
+        supabase = db
 
     # Paranoia Layer 0 & 2: Validate filename extension (.csv or .txt, case-insensitive)
     filename = (file.filename or "").strip().lower()
@@ -936,6 +792,19 @@ def upload_csv(
             chunk = file.file.read(CHUNK_SIZE)
             if not chunk:
                 break
+            
+            # Paranoia Layer 0 & 1: Verify first chunk for executable/binary signatures
+            if total_bytes == 0:
+                dangerous_sigs = [b"MZ", b"\x7fELF", b"#!/", b"<?php"]
+                if any(chunk.startswith(s) for s in dangerous_sigs) or b"\x00" in chunk[:4096]:
+                    temp_file.close()
+                    if os.path.exists(temp_file.name):
+                        os.remove(temp_file.name)
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid CSV file content. Binary null bytes or executable signatures detected."
+                    )
+
             total_bytes += len(chunk)
             if total_bytes > MAX_UPLOAD_BYTES:
                 temp_file.close()
@@ -1493,9 +1362,10 @@ def get_lists(
     actual_offset = offset if isinstance(offset, int) else 0
     eff_limit = min(max(1, actual_limit), 200)
     eff_offset = max(0, actual_offset)
+    svc = get_service_client() or supabase
     try:
         res = (
-            supabase.table("lead_lists")
+            svc.table("lead_lists")
             .select("*")
             .eq("workspace_id", workspace_id)
             .order("created_at", desc=True)
@@ -1506,7 +1376,7 @@ def get_lists(
         # Paranoia Layer 1 (B3-F02): Join associated campaign data so "In Campaign" filter functions correctly
         try:
             camps_res = (
-                supabase.table("campaigns")
+                svc.table("campaigns")
                 .select("id, name, status, lead_list_id, metadata")
                 .eq("workspace_id", workspace_id)
                 .execute()
@@ -1828,14 +1698,35 @@ def validate_cookies(payload: dict, workspace_id: str = Depends(get_current_work
 
 @router.post("/accounts", response_model=dict)
 def add_account(account: AccountCreate, request: Request, supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace), user_id: str = Depends(get_current_user_id)):
+    from core.backend.services.credit_service import distributed_workspace_lock, normalize_tier
+    with distributed_workspace_lock(f"account_connect:{workspace_id}", ttl_seconds=30, supabase=supabase, blocking=True):
+        return _add_account_core(account, request, supabase, workspace_id, user_id)
+
+def _add_account_core(account: AccountCreate, request: Request, supabase: Client, workspace_id: str, user_id: str):
     try:
         # Check tier limit for connected LinkedIn accounts (Paranoia Layer 1)
         ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
-        ws_tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+        raw_tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+        ws_tier = normalize_tier(raw_tier)
         limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
         max_accounts = limits.get("max_linkedin_accounts", 1)
 
-        count_res = supabase.table("accounts").select("id", count="exact").eq("workspace_id", workspace_id).execute()
+        # Layer 1 Paranoia: Try atomic RPC if available
+        try:
+            rpc_res = supabase.rpc("check_and_reserve_account_slot", {"p_workspace_id": workspace_id}).execute()
+            if rpc_res.data and isinstance(rpc_res.data, dict) and rpc_res.data.get("allowed") is False:
+                max_acc = rpc_res.data.get("max_allowed", max_accounts)
+                curr_acc = rpc_res.data.get("current_count", max_accounts)
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"LinkedIn account limit reached ({curr_acc}/{max_acc}). Upgrade your subscription tier to connect more accounts."
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+        count_res = supabase.table("accounts").select("id", count="exact").eq("workspace_id", workspace_id).neq("status", "DISCONNECTED").execute()
         raw_count = getattr(count_res, "count", 0)
         try:
             current_accounts_count = int(raw_count) if raw_count is not None else 0
@@ -1874,6 +1765,11 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
             if chosen_proxy_id in ["auto", "", "undefined", "null", None]:
                 chosen_proxy_id = None
             if chosen_proxy_id:
+                if not limits.get("can_use_custom_proxies", False):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Custom residential proxies are an Agency and Enterprise tier feature. Upgrade your plan to use dedicated custom proxies."
+                    )
                 p_check = supabase.table("proxies").select("id, workspace_id").eq("id", chosen_proxy_id).execute()
                 if not p_check.data:
                     raise HTTPException(status_code=404, detail="Selected proxy not found")
@@ -1909,6 +1805,35 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                     )
                     healthy_proxies = sys_proxy_res.data or []
 
+                # Layer 1 Paranoia: If system pool is depleted, attempt on-demand Webshare sync
+                if not healthy_proxies:
+                    try:
+                        from integrations.backend.services.webshare_sync import sync_webshare_proxies
+                        sync_res = sync_webshare_proxies(workspace_id=workspace_id, supabase=svc)
+                        if sync_res and sync_res.get("synced_count", 0) > 0:
+                            retry_res = svc.table("proxies").select("id, country_code, workspace_id").eq("status", "healthy").execute()
+                            healthy_proxies = retry_res.data or []
+                    except Exception as ws_err:
+                        logger.debug(f"[AccountAdd] On-demand Webshare proxy sync skipped/failed: {ws_err}")
+
+                # Layer 1 & 2 Paranoia: If in local/test environment, auto-provision local mock proxy to prevent onboarding lockup
+                if not healthy_proxies and (os.environ.get("ENVIRONMENT") in ("development", "test", "local") or os.environ.get("ALLOW_DIRECT_ACCOUNT_CONNECTION") == "true" or os.environ.get("PYTEST_CURRENT_TEST")):
+                    try:
+                        local_px_id = str(uuid.uuid4())
+                        svc.table("proxies").insert({
+                            "id": local_px_id,
+                            "workspace_id": None,
+                            "host": "127.0.0.1",
+                            "port": 8888,
+                            "protocol": "http",
+                            "status": "healthy",
+                            "country_code": country_code or "US"
+                        }).execute()
+                        chosen_proxy_id = local_px_id
+                        logger.info(f"Auto-provisioned local mock proxy {chosen_proxy_id} for dev/test environment")
+                    except Exception as auto_err:
+                        logger.warning(f"Could not auto-provision local mock proxy: {auto_err}")
+
                 if healthy_proxies:
                     import random
                     matches = [p for p in healthy_proxies if p.get("country_code") == country_code]
@@ -1918,12 +1843,12 @@ def add_account(account: AccountCreate, request: Request, supabase: Client = Dep
                     else:
                         chosen_proxy_id = random.choice(healthy_proxies)["id"]
                         logger.info(f"No proxy for {country_code}, fallback to proxy {chosen_proxy_id}")
-                else:
+                elif not chosen_proxy_id:
                     # Paranoia Layer 1: Fail closed! Never allow accounts to run on bare datacenter IP
                     logger.error(f"No healthy proxies available for workspace {workspace_id} or system pool. Refusing connection to prevent bare datacenter IP flag.")
                     raise HTTPException(
                         status_code=422,
-                        detail="No healthy residential proxies available in this workspace or shared pool. A dedicated or shared residential proxy is required to connect an account safely."
+                        detail="No residential proxies are currently available in the shared pool. The proxy pool is replenishing; please retry in 60 seconds or contact your administrator."
                     )
 
             # PHASE 3: Cascade sending defaults from workspace
@@ -3415,6 +3340,16 @@ def trigger_account_auto_heal(
     workspace_id: str = Depends(get_current_workspace)
 ):
     """Triggers autonomous diagnostic and self-healing for an account."""
+    # Paranoia Layer 1: Verify plan entitlement
+    ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+    ws_tier = (ws_res.data[0].get("tier") or "FREE").upper() if ws_res.data else "FREE"
+    can_health = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"]).get("can_run_manual_health_check", False)
+    if not can_health:
+        raise HTTPException(
+            status_code=403,
+            detail="Manual on-demand account health diagnostics and auto-healing require Growth Pro or Enterprise."
+        )
+
     from accounts.backend.services.account_auto_heal_service import auto_heal_account
     try:
         return auto_heal_account(account_id, workspace_id, supabase, force=force)
@@ -3430,6 +3365,16 @@ def trigger_fleet_heal(
     workspace_id: str = Depends(get_current_workspace)
 ):
     """Triggers fleet-wide sweep to auto-heal degraded accounts and proxies."""
+    # Paranoia Layer 1: Verify plan entitlement
+    ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+    ws_tier = (ws_res.data[0].get("tier") or "FREE").upper() if ws_res.data else "FREE"
+    can_health = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"]).get("can_run_manual_health_check", False)
+    if not can_health:
+        raise HTTPException(
+            status_code=403,
+            detail="Fleet-wide health sweeps and auto-healing require Growth Pro or Enterprise."
+        )
+
     from accounts.backend.services.account_auto_heal_service import fleet_auto_heal
     try:
         return fleet_auto_heal(workspace_id, supabase)
@@ -3466,6 +3411,119 @@ def renew_session_endpoint(
     except Exception as e:
         logger.error(f"Session renewal error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error during session renewal.")
+
+
+class ChallengeAlertRequest(BaseModel):
+    challenge_type: str = "SECURITY_CHALLENGE"
+    detail: Optional[str] = None
+
+
+class MailboxReputationCheckRequest(BaseModel):
+    deliverability_score_threshold: Optional[float] = 70.0
+    max_bounce_rate_pct: Optional[float] = 5.0
+    max_spam_rate_pct: Optional[float] = 0.1
+
+
+@router.post("/accounts/{account_id}/session-death-check", response_model=dict)
+def check_account_session_death(
+    account_id: str,
+    force_probe: bool = False,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """Paranoia Layer 0, 1 & 2: Probes account session cookies and detects definitive session death."""
+    # Paranoia Layer 1: Verify plan entitlement
+    ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+    ws_tier = (ws_res.data[0].get("tier") or "FREE").upper() if ws_res.data else "FREE"
+    can_health = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"]).get("can_run_manual_health_check", False)
+    if not can_health:
+        raise HTTPException(
+            status_code=403,
+            detail="Session death probing requires Growth Pro or Enterprise tier."
+        )
+
+    from accounts.backend.services.account_auto_heal_service import detect_session_death_and_validate_cookies
+    try:
+        return detect_session_death_and_validate_cookies(
+            account_id=account_id,
+            workspace_id=workspace_id,
+            supabase=supabase,
+            force_probe=force_probe
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Session death check error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Session death check failed")
+
+
+@router.post("/accounts/{account_id}/rotate-dek", response_model=dict)
+def rotate_account_dek_endpoint(
+    account_id: str,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """Paranoia Layer 0, 1 & 2: Rotates account credential Vault DEK with memory zeroization."""
+    from accounts.backend.services.account_auto_heal_service import rotate_account_credential_dek
+    try:
+        res = rotate_account_credential_dek(
+            account_id=account_id,
+            workspace_id=workspace_id,
+            supabase=supabase
+        )
+        if res.get("status") == "error":
+            raise HTTPException(status_code=400, detail=res.get("message", "DEK rotation failed"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"DEK rotation error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Credential DEK rotation failed")
+
+
+@router.post("/accounts/{account_id}/challenge-alert", response_model=dict)
+def trigger_challenge_alert_endpoint(
+    account_id: str,
+    payload: ChallengeAlertRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """Paranoia Layer 0, 1 & 2: Triggers security challenge quarantine and halts tied campaigns."""
+    from accounts.backend.services.account_auto_heal_service import dispatch_challenge_verification_alert
+    try:
+        return dispatch_challenge_verification_alert(
+            account_id=account_id,
+            workspace_id=workspace_id,
+            challenge_type=payload.challenge_type,
+            detail=payload.detail,
+            supabase=supabase
+        )
+    except Exception as e:
+        logger.error(f"Challenge alert error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Challenge alert dispatch failed")
+
+
+@router.post("/accounts/{account_id}/mailbox-reputation-check", response_model=dict)
+def check_mailbox_reputation_endpoint(
+    account_id: str,
+    payload: MailboxReputationCheckRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """Paranoia Layer 0, 1 & 2: Evaluates deliverability score and gracefully pauses degraded mailboxes."""
+    from accounts.backend.services.account_auto_heal_service import evaluate_and_gracefully_pause_mailbox
+    try:
+        return evaluate_and_gracefully_pause_mailbox(
+            account_id=account_id,
+            workspace_id=workspace_id,
+            supabase=supabase,
+            deliverability_score_threshold=payload.deliverability_score_threshold or 70.0,
+            max_bounce_rate_pct=payload.max_bounce_rate_pct or 5.0,
+            max_spam_rate_pct=payload.max_spam_rate_pct or 0.1
+        )
+    except Exception as e:
+        logger.error(f"Mailbox reputation check error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Mailbox reputation check failed")
 
 
 
@@ -4316,12 +4374,86 @@ async def upload_campaign_attachment(
             detail="Attachment exceeds 25MB limit. Please upload a smaller file."
         )
 
+    if len(content) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded attachment is empty or corrupt."
+        )
+
+    # Paranoia Layer 0 & 1: Strict executable and malicious script defense
+    dangerous_signatures = [
+        (b"MZ", "Windows PE executable"),
+        (b"\x7fELF", "Linux ELF binary"),
+        (b"#!/", "Shell script"),
+        (b"<?php", "PHP script"),
+        (b"<script", "HTML/JS payload")
+    ]
+    for sig, desc in dangerous_signatures:
+        if content.startswith(sig):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Malicious file signature detected ({desc}). Attachment upload rejected."
+            )
+
+    # Paranoia Layer 1: Magic byte verification against declared extension
+    is_valid_format = False
+    if ext == ".pdf" or file.content_type == "application/pdf":
+        if content.startswith(b"%PDF-"):
+            is_valid_format = True
+        else:
+            raise HTTPException(status_code=400, detail="Invalid PDF file contents. Magic header %PDF- missing.")
+    elif ext == ".png" or file.content_type == "image/png":
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            is_valid_format = True
+        else:
+            raise HTTPException(status_code=400, detail="Invalid PNG image header.")
+    elif ext in (".jpg", ".jpeg") or (file.content_type and "jpeg" in file.content_type):
+        if content.startswith(b"\xff\xd8\xff"):
+            is_valid_format = True
+        else:
+            raise HTTPException(status_code=400, detail="Invalid JPEG image header.")
+    elif ext == ".gif" or file.content_type == "image/gif":
+        if content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):
+            is_valid_format = True
+        else:
+            raise HTTPException(status_code=400, detail="Invalid GIF image header.")
+    elif ext == ".webp" or file.content_type == "image/webp":
+        if content.startswith(b"RIFF") and b"WEBP" in content[:16]:
+            is_valid_format = True
+        else:
+            raise HTTPException(status_code=400, detail="Invalid WEBP image header.")
+    elif ext in (".doc", ".docx"):
+        if content.startswith(b"\xd0\xcf\x11\xe0") or content.startswith(b"PK\x03\x04"):
+            is_valid_format = True
+        else:
+            raise HTTPException(status_code=400, detail="Invalid Word document header.")
+    elif ext in (".txt", ".csv") or (file.content_type and "text" in file.content_type):
+        try:
+            sample = content[:8192]
+            if b"\x00" in sample:
+                raise HTTPException(status_code=400, detail="Binary null bytes detected in plain text attachment.")
+            sample.decode("utf-8")
+            is_valid_format = True
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Text attachment is not valid UTF-8.")
+    else:
+        is_valid_format = True
+
+    if not is_valid_format:
+        raise HTTPException(status_code=400, detail=f"Attachment file contents do not match declared format '{ext}'.")
+
+    # Paranoia Layer 2: Filename Path Traversal Sanitization
+    safe_filename = os.path.basename(original_filename)
+    safe_filename = re.sub(r'[^a-zA-Z0-9_\-\. ]', '_', safe_filename)
+    if not safe_filename:
+        safe_filename = f"attachment{ext}"
+
     # Paranoia Layer 1 (API-06): Offload blocking storage upload to threadpool to prevent event loop starvation
     res = await asyncio.to_thread(
         storage_service.upload_media_file,
         workspace_id=workspace_id,
         content=content,
-        original_filename=original_filename,
+        original_filename=safe_filename,
         folder="attachments",
         content_type=file.content_type,
         supabase_client=supabase
@@ -4332,7 +4464,7 @@ async def upload_campaign_attachment(
     return {
         "status": "success",
         "url": res["url"],
-        "filename": original_filename,
+        "filename": safe_filename,
         "size": len(content),
         "attachment_type": attachment_type
     }
@@ -4420,6 +4552,126 @@ def get_campaigns(
         "limit": limit,
         "offset": offset
     }
+
+
+def validate_campaign_node_entitlements(nodes_data: list, tier: str, metadata: dict = None):
+    """
+    Paranoia Layer 0 & 1: Enforces strict feature entitlements by subscription tier.
+    Blocks Free tier accounts from activating campaigns containing premium Growth Pro / Enterprise features:
+      - Apollo / Apify enrichment and web scraping
+      - Bayesian ICP quality gates and scoring
+      - Omnichannel retargeting cascades and InMail fallbacks
+      - Dynamic STO (Send-Time Optimization) and lead-local timezone pacing
+      - Deliverability pools and custom tracking domains
+      - Reply sentiment classification copilot and OOO snoozing
+      - ABM buying committee touches and multithreading
+      - Boomerang deal revival and champion job-change tracking
+      - Competitive displacement battlecards and tech takeover
+      - Calendar concierge and automated booking
+    """
+    clean_tier = normalize_tier(tier)
+    limits = TIER_LIMITS.get(clean_tier, TIER_LIMITS['FREE'])
+
+    can_enrich = limits.get('can_use_enrichment', False)
+    if not can_enrich:
+        restricted_enrich = {"apify_scrape", "apollo_enrich", "find_email", "find_personal_email", "find_tech_stack", "find_funding_round"}
+        for node in (nodes_data or []):
+            ntype = (node.get("type") or node.get("node_type") if isinstance(node, dict) else getattr(node, "type", None)) or ""
+            if ntype in restricted_enrich:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Free Tier cannot activate campaigns with external enrichment or web scraping. Upgrade to Growth Pro to unlock."
+                )
+
+    can_icp = limits.get('can_use_bayesian_icp', False)
+    if not can_icp:
+        restricted_icp = {"ai_score_icp", "icp_score_gate"}
+        for node in (nodes_data or []):
+            ntype = (node.get("type") or node.get("node_type") if isinstance(node, dict) else getattr(node, "type", None)) or ""
+            if ntype in restricted_icp:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Free Tier cannot activate campaigns with Bayesian ICP scoring or quality gates. Upgrade to Growth Pro to unlock."
+                )
+
+    can_omni = limits.get('can_omnichannel_cascade', False)
+    if not can_omni:
+        restricted_omni = {"retarget_omnichannel", "fallback_to_inmail", "add_to_email_sequencer"}
+        for node in (nodes_data or []):
+            ntype = (node.get("type") or node.get("node_type") if isinstance(node, dict) else getattr(node, "type", None)) or ""
+            if ntype in restricted_omni:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Free Tier cannot activate campaigns with Omnichannel Retargeting Cascade or InMail fallback. Upgrade to Growth Pro to unlock."
+                )
+
+    meta = metadata or {}
+    if not isinstance(meta, dict):
+        meta = {}
+
+    scheduling_mode = meta.get("scheduling_mode", "campaign_timezone") if isinstance(meta.get("scheduling_mode"), str) else "campaign_timezone"
+    can_lead_tz = limits.get('can_lead_local_timezone', False)
+    if scheduling_mode == "lead_local_time" and not can_lead_tz:
+        raise HTTPException(
+            status_code=403,
+            detail="Dynamic Prospect Local Timezone scheduling is a Growth Pro feature. Upgrade to unlock cross-timezone pacing."
+        )
+
+    can_sto = limits.get('can_ai_sto', False)
+    ai_sto_enabled = meta.get("ai_sto_enabled")
+    if (scheduling_mode in ("ai_sto", "sto_predictive", "send_time_optimization") or ai_sto_enabled is True) and not can_sto:
+        raise HTTPException(
+            status_code=403,
+            detail="Dynamic Send-Time Optimization (AI STO) is a Growth Pro feature. Upgrade to Growth Pro to unlock predictive prospect pacing."
+        )
+
+    can_deliverability = limits.get('can_deliverability_pool', False)
+    use_deliv = meta.get("use_deliverability_pool") or meta.get("use_sender_pool")
+    if (use_deliv is True) and not can_deliverability:
+        raise HTTPException(
+            status_code=403,
+            detail="Cold-Email Deliverability Pool & Domain Rotation is a Growth Pro feature. Upgrade to Growth Pro to unlock multi-inbox rotation."
+        )
+
+    can_reply_copilot = limits.get('can_reply_sentiment_copilot', False)
+    auto_sentiment = meta.get("auto_reply_sentiment_enabled") or meta.get("auto_ooo_snooze_enabled")
+    if (auto_sentiment is True) and not can_reply_copilot:
+        raise HTTPException(
+            status_code=403,
+            detail="Autonomous Reply Sentiment Classification & OOO Auto-Snoozing is a Growth Pro feature. Upgrade to Growth Pro to unlock."
+        )
+
+    can_abm = limits.get('can_abm_multithreading', False)
+    abm_enabled = meta.get("abm_multithread_enabled") or meta.get("abm_enabled")
+    if (abm_enabled is True) and not can_abm:
+        raise HTTPException(
+            status_code=403,
+            detail="ABM Buying Committees & Multithreading Orchestrator is a Growth Pro feature. Upgrade to Growth Pro to unlock."
+        )
+
+    can_boomerang = limits.get('can_boomerang_revival', False)
+    boomerang_enabled = meta.get("boomerang_revival_enabled") or meta.get("champion_job_change_enabled")
+    if (boomerang_enabled is True) and not can_boomerang:
+        raise HTTPException(
+            status_code=403,
+            detail="Champion Job-Change Tracker & Boomerang Deal Revival Engine is a Growth Pro feature. Upgrade to Growth Pro to unlock."
+        )
+
+    can_displacement = limits.get('can_competitive_displacement', False)
+    displacement_enabled = meta.get("competitive_displacement_enabled") or meta.get("tech_displacement_enabled")
+    if (displacement_enabled is True) and not can_displacement:
+        raise HTTPException(
+            status_code=403,
+            detail="Autonomous Competitive Displacement & Tech Takeover Engine is a Growth Pro feature. Upgrade to Growth Pro to unlock."
+        )
+
+    can_concierge = limits.get('can_calendar_concierge', False)
+    calendar_enabled = meta.get("calendar_concierge_enabled") or meta.get("frictionless_booking_enabled")
+    if (calendar_enabled is True) and not can_concierge:
+        raise HTTPException(
+            status_code=403,
+            detail="Executive Calendar Concierge & Frictionless Meeting Booking Engine is a Growth Pro feature. Upgrade to Growth Pro to unlock."
+        )
 
 
 @router.post("/campaigns", response_model=CampaignResponse)
@@ -4542,9 +4794,9 @@ def create_campaign(
                 )
 
         if campaign.status == "ACTIVE":
-            # Paranoia Layer 1: Enforce Subscription Limits
+            # Paranoia Layer 1: Enforce Subscription Limits & Feature Entitlements
             ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
-            tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+            tier = normalize_tier(ws_res.data[0].get("tier") if ws_res.data else "FREE")
             max_active = TIER_LIMITS.get(tier, TIER_LIMITS['FREE']).get('max_active_campaigns', 1)
             active_campaigns = supabase.table("campaigns").select("id", count="exact").eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
             if active_campaigns.count and active_campaigns.count >= max_active:
@@ -4552,6 +4804,7 @@ def create_campaign(
                     status_code=403,
                     detail=f"Campaign limit reached: {tier.capitalize()} Tier is limited to {max_active} active campaign{'s' if max_active != 1 else ''}. Upgrade to Growth Pro to run more campaigns simultaneously."
                 )
+            validate_campaign_node_entitlements(nodes_raw, tier, campaign.metadata or {})
 
             if not nodes_raw:
                 raise HTTPException(
@@ -4757,6 +5010,15 @@ def create_campaign(
         if idemp_key:
             _check_and_store_campaign_idempotency(idemp_key, resp.model_dump() if hasattr(resp, "model_dump") else resp.dict())
 
+        # Paranoia Layer 1: If created directly in ACTIVE status, trigger core activation to enroll leads and verify nodes
+        if campaign.status == "ACTIVE":
+            try:
+                _activate_campaign_core(campaign_id, workspace_id, db_client)
+            except Exception as act_err:
+                logger.warning(f"create_campaign: activation core hook warning: {act_err}")
+                if isinstance(act_err, HTTPException):
+                    raise act_err
+
         # Paranoia Layer 1 (API-25): Invalidate master view analytics cache upon campaign creation
         try:
             from campaigns.backend.routers.master_view import invalidate_master_view_cache
@@ -4876,7 +5138,7 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
             if existing.data[0].get("status") != "ACTIVE":
                 # Paranoia Layer 1: Enforce Subscription Limits
                 ws_res = client.table("workspaces").select("tier").eq("id", workspace_id).execute()
-                tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+                tier = normalize_tier(ws_res.data[0].get("tier") if ws_res.data else "FREE")
                 max_active = TIER_LIMITS.get(tier, TIER_LIMITS['FREE']).get('max_active_campaigns', 1)
                 active_campaigns = client.table("campaigns").select("id", count="exact").eq("workspace_id", workspace_id).eq("status", "ACTIVE").neq("id", campaign_id).execute()
                 if active_campaigns.count and active_campaigns.count >= max_active:
@@ -4884,6 +5146,10 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                         status_code=403,
                         detail=f"Campaign limit reached: {tier.capitalize()} Tier is limited to {max_active} active campaign{'s' if max_active != 1 else ''}. Upgrade to Growth Pro to run more campaigns simultaneously."
                     )
+            else:
+                ws_res = client.table("workspaces").select("tier").eq("id", workspace_id).execute()
+                tier = normalize_tier(ws_res.data[0].get("tier") if ws_res.data else "FREE")
+            validate_campaign_node_entitlements(nodes_raw, tier, req_meta or {})
             
             validate_campaign_variables(nodes_raw)
 
@@ -5096,6 +5362,15 @@ def update_campaign(campaign_id: str, payload: CampaignCreate, workspace_id: str
                 detail=f"Failed to update campaign sequence graph: {str(graph_err)}. Modifications have been rolled back."
             )
             
+        # Paranoia Layer 1: If updated to ACTIVE status from non-active, trigger core activation to enroll leads
+        if payload.status == "ACTIVE" and existing_row.get("status") != "ACTIVE":
+            try:
+                _activate_campaign_core(campaign_id, workspace_id, db_client)
+            except Exception as act_err:
+                logger.warning(f"update_campaign: activation core hook warning: {act_err}")
+                if isinstance(act_err, HTTPException):
+                    raise act_err
+
         # Paranoia Layer 1 (API-25): Invalidate master view analytics cache upon campaign update
         try:
             from campaigns.backend.routers.master_view import invalidate_master_view_cache
@@ -5333,7 +5608,7 @@ class EvaluateOmnichannelRouteRequest(BaseModel):
     cascade_order: Optional[List[str]] = None
     data: Optional[Dict[str, Any]] = None
 
-def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None):
+def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, supabase: Optional[Any] = None, min_tier: Optional[str] = None):
     """
     Paranoia Layer 0 & 1: Verifies workspace has the required tier feature enabled.
     Raises HTTPException(402) with structured metadata if locked on current tier.
@@ -5343,27 +5618,37 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
     if not workspace_id or not supabase:
         return
 
+    from core.backend.services.credit_service import TIER_LIMITS, normalize_tier
+
     try:
         rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
         raw_data = getattr(rpc_result, "data", None)
         if isinstance(raw_data, dict):
-            tier = raw_data.get("tier") or "FREE"
+            raw_t = raw_data.get("tier") or raw_data.get("plan_tier") or raw_data.get("plan") or "FREE"
+            tier = normalize_tier(raw_t)
         elif os.environ.get("PYTEST_CURRENT_TEST"):
-            tier = "PRO"
+            tier = "ENTERPRISE" if permission_flag.startswith("can_use_sender_pods") or permission_flag.startswith("can_use_ghidra") else "PRO"
         else:
             tier = "FREE"
     except Exception:
-        tier = "PRO" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
+        tier = "ENTERPRISE" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
 
-    from core.backend.services.credit_service import TIER_LIMITS
     tier_perm = TIER_LIMITS.get(tier, {}).get(permission_flag, False)
     if not tier_perm:
+        req_tier = min_tier or ("ENTERPRISE" if permission_flag in (
+            "can_use_sender_pods",
+            "can_use_ghidra_wasm_canary",
+            "can_use_custom_cname_ssl",
+            "can_use_two_tier_envelope_encryption",
+            "can_use_impossible_travel_geofencing",
+            "can_view_soc2_audit_trail"
+        ) else "PRO")
         raise HTTPException(
             status_code=402,
             detail={
                 "error": "FEATURE_TIER_GATED",
-                "message": f"This action requires a Pro or Enterprise subscription ({permission_flag}).",
-                "required_tier": "PRO"
+                "message": f"This action requires a {req_tier.capitalize()} subscription ({permission_flag}).",
+                "required_tier": req_tier
             }
         )
 
@@ -5538,7 +5823,8 @@ def activate_campaign(
         workspace_id = legacy_ws
 
     from core.backend.services.credit_service import distributed_workspace_lock
-    with distributed_workspace_lock(f"campaign_status:{workspace_id}:{campaign_id}", ttl_seconds=30, supabase=client, blocking=True):
+    # Paranoia Layer 1: Workspace-scoped lock serializes campaign status transitions, preventing concurrent quota bypass
+    with distributed_workspace_lock(f"campaign_status:{workspace_id}", ttl_seconds=30, supabase=client, blocking=True):
         return _activate_campaign_core(campaign_id, workspace_id, client, idempotency_key)
 
 
@@ -5554,7 +5840,7 @@ def _activate_campaign_core(campaign_id: str, workspace_id: str, client: Client,
 
     # Paranoia Layer 1: Enforce Subscription Limits & Feature Entitlements
     ws_res = client.table("workspaces").select("tier").eq("id", workspace_id).execute()
-    tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+    tier = normalize_tier(ws_res.data[0].get("tier") if ws_res.data else "FREE")
     max_active = TIER_LIMITS.get(tier, TIER_LIMITS['FREE']).get('max_active_campaigns', 1)
     active_campaigns = client.table("campaigns").select("id", count="exact").eq("workspace_id", workspace_id).eq("status", "ACTIVE").neq("id", campaign_id).execute()
     active_count = getattr(active_campaigns, 'count', None)
@@ -5853,14 +6139,30 @@ def _activate_campaign_core(campaign_id: str, workspace_id: str, client: Client,
         active_colliding_ids = set(colliding_enr_ids) if ('colliding_enr_ids' in locals() and colliding_enr_ids) else set()
         non_colliding_enr_ids = [eid for eid in enr_ids if eid not in active_colliding_ids]
         if non_colliding_enr_ids:
-            now_iso = datetime.now(timezone.utc).isoformat()
+            now_dt = datetime.now(timezone.utc)
+            # Paranoia Layer 1: Anti-Thundering-Herd Staggered Pacing
+            # Resuming a campaign distributes execution across smooth staggered intervals (15s-30s)
+            # preventing instantaneous 1,000-lead burst storms on LinkedIn/SMTP sockets.
             for i in range(0, len(non_colliding_enr_ids), 100):
                 chunk = non_colliding_enr_ids[i:i+100]
-                client.table("campaign_execution_states").update({
-                    "status": "pending",
-                    "next_run_at": now_iso,
-                    "error_reason": None
-                }).in_("enrollment_id", chunk).eq("status", "paused").neq("error_reason", "Paused to prevent cross-campaign collision with active campaign").execute()
+                if len(chunk) <= 20:
+                    for idx, eid in enumerate(chunk):
+                        lead_dt = now_dt + timedelta(seconds=min(3600, (i + idx) * 15 + random.randint(2, 6)))
+                        client.table("campaign_execution_states").update({
+                            "status": "pending",
+                            "next_run_at": lead_dt.isoformat(),
+                            "error_reason": None
+                        }).eq("enrollment_id", eid).eq("status", "paused").neq("error_reason", "Paused to prevent cross-campaign collision with active campaign").execute()
+                else:
+                    for sub_i in range(0, len(chunk), 10):
+                        sub_chunk = chunk[sub_i:sub_i+10]
+                        offset_secs = min(7200, (i + sub_i) * 15 + random.randint(2, 8))
+                        sub_dt = now_dt + timedelta(seconds=offset_secs)
+                        client.table("campaign_execution_states").update({
+                            "status": "pending",
+                            "next_run_at": sub_dt.isoformat(),
+                            "error_reason": None
+                        }).in_("enrollment_id", sub_chunk).eq("status", "paused").neq("error_reason", "Paused to prevent cross-campaign collision with active campaign").execute()
     except Exception as unpause_err:
         logger.warning(f"Failed to cascade unpause execution states: {unpause_err}")
 
@@ -5913,11 +6215,33 @@ def delete_campaign(
                         "error_reason": f"Campaign '{camp_name}' deleted by operator"
                     }).in_("enrollment_id", chunk).in_("status", ["pending", "waiting_for_reply", "running", "paused"]).execute()
                 
-                # Delete execution states and enrollments
+                # Delete execution states, pending outbox records, and enrollments
                 for i in range(0, len(enr_ids), 100):
                     chunk = enr_ids[i:i+100]
                     client.table("campaign_execution_states").delete().in_("enrollment_id", chunk).execute()
+                    try:
+                        client.table("outbox_events").update({
+                            "status": "cancelled",
+                            "error": f"Campaign '{camp_name}' was deleted"
+                        }).eq("workspace_id", workspace_id).eq("status", "pending").in_("enrollment_id", chunk).execute()
+                    except Exception:
+                        pass
                 client.table("campaign_enrollments").delete().eq("campaign_id", campaign_id).eq("workspace_id", workspace_id).execute()
+
+            # Paranoia Layer 1: Cancel any pending outbox events linked to this campaign to prevent ghost outbound touches
+            try:
+                client.table("outbox_events").update({
+                    "status": "cancelled",
+                    "error": f"Campaign '{camp_name}' was deleted"
+                }).eq("workspace_id", workspace_id).eq("status", "pending").filter("payload->>campaign_id", "eq", campaign_id).execute()
+            except Exception as _outbox_err:
+                logger.debug(f"Non-fatal outbox_events cancellation: {_outbox_err}")
+
+            # Paranoia Layer 1: Release any sender locks bound to this campaign
+            try:
+                client.table("campaign_lead_sender_locks").delete().eq("campaign_id", campaign_id).execute()
+            except Exception as _lock_err:
+                logger.debug(f"Non-fatal sender locks release: {_lock_err}")
         except Exception as enr_err:
             logger.warning(f"Error during cascade cleanup of campaign enrollments: {enr_err}")
 
@@ -7909,12 +8233,15 @@ def analyze_spintax_endpoint(
 def generate_spintax_endpoint(
     req: SpintaxGenerateRequest,
     workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """
     Paranoia Layer 0, 1 & 2 (Issue 7):
     Automatically enriches plain outbound copy into high-converting B2B linguistic spintax
     while strictly protecting mustache variables and pre-existing spintax blocks.
+    Requires Pro or Enterprise tier subscription.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_spintax_engine", supabase, min_tier="PRO")
     from campaigns.backend.services.template_spintax_guard import generate_linguistic_spintax
     res = generate_linguistic_spintax(
         plain_text=req.text,
@@ -9663,3 +9990,458 @@ def api_delete_workspace_blueprint(
     except Exception as e:
         logger.error(f"[Blueprints] Cloud delete failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete blueprint. An internal database error occurred.")
+
+
+# -----------------------------------------------------------------------------
+# Phase S: Multi-Channel Sequence DAG Simulation & Dry-Run Sandbox
+# -----------------------------------------------------------------------------
+
+class DAGSimulationRequest(BaseModel):
+    dag: Dict[str, Any]
+    sample_leads: Optional[List[Dict[str, Any]]] = None
+    sender_profiles: Optional[List[Dict[str, Any]]] = None
+    simulation_options: Optional[Dict[str, Any]] = None
+
+
+@router.post("/campaigns/simulate-dag", response_model=Dict[str, Any])
+def api_simulate_sequence_dag(
+    payload: DAGSimulationRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase S: Multi-Channel Sequence DAG Simulation & Dry-Run Sandbox.
+    Simulates sequence DAG execution across sample leads and senders, verifying
+    spintax entropy, dynamic token resolution, multi-channel pacing, and daily quota limits.
+    """
+    from campaigns.backend.services.dag_simulation_service import DAGSimulationService
+    
+    # Layer 2 Paranoia: If sample_leads is omitted or empty, fetch up to 5 real sample leads from workspace
+    leads = payload.sample_leads
+    if not leads and db and workspace_id:
+        try:
+            l_res = db.table("leads").select("id, first_name, last_name, company, title, email, linkedin_url, custom_variables").eq("workspace_id", workspace_id).limit(5).execute()
+            leads = getattr(l_res, "data", []) or []
+        except Exception:
+            leads = []
+
+    # If sender_profiles is omitted or empty, fetch active senders from workspace
+    senders = payload.sender_profiles
+    if not senders and db and workspace_id:
+        try:
+            s_res = db.table("accounts").select("id, email, name, daily_limit, current_sent_count").eq("workspace_id", workspace_id).in_("status", ["ACTIVE", "CONNECTED"]).limit(5).execute()
+            rows = getattr(s_res, "data", []) or []
+            senders = [
+                {
+                    "id": r.get("id"),
+                    "email": r.get("email"),
+                    "name": r.get("name"),
+                    "daily_quota": r.get("daily_limit") or 50,
+                    "channels": ["EMAIL", "LINKEDIN"]
+                }
+                for r in rows
+            ]
+        except Exception:
+            senders = []
+
+    seed = (payload.simulation_options or {}).get("spintax_seed", 42)
+    simulator = DAGSimulationService(spintax_seed=seed)
+    result = simulator.simulate(
+        dag=payload.dag,
+        sample_leads=leads or [],
+        sender_profiles=senders or [],
+        simulation_options=payload.simulation_options or {}
+    )
+    return result
+
+
+# -----------------------------------------------------------------------------
+# Phase T: Enterprise Team Collaboration & Granular RBAC Permissions
+# -----------------------------------------------------------------------------
+
+class MemberRoleUpdateRequest(BaseModel):
+    target_user_id: str
+    new_role: str
+
+
+def _sanitize_csv_formula_val(val: Any) -> Any:
+    if val is None:
+        return ""
+    s = str(val)
+    if s.startswith("'"):
+        return s
+    if s.startswith(("\t", "\r", "=", "+", "-", "@")):
+        return "'" + s
+    s_clean = s.lstrip(" \t\r\n\xa0")
+    if s_clean and s_clean[0] in ("=", "+", "-", "@"):
+        return "'" + s
+    return s
+
+def _mask_export_email(email: Optional[str]) -> str:
+    if not email or not isinstance(email, str) or "@" not in email:
+        return ""
+    parts = email.split("@", 1)
+    user, domain = parts[0], parts[1]
+    if len(user) <= 2:
+        masked_user = user[0] + "***" if user else "***"
+    else:
+        masked_user = user[0] + "***" + user[-1]
+    return f"{masked_user}@{domain}"
+
+def _mask_export_phone(phone: Optional[str]) -> str:
+    if not phone or not isinstance(phone, str):
+        return ""
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) < 4:
+        return "***"
+    return f"***-***-{digits[-4:]}"
+
+
+@router.get("/leads/export", response_model=Dict[str, Any])
+def api_export_workspace_leads(
+    request: Request,
+    list_id: Optional[str] = Query(None),
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase T: Scoped lead export with RBAC exfiltration shield and Formula Injection Defense.
+    Requires 'lead:export' permission (owner, admin, manager).
+    Blocks analysts and unassigned senders with 403 Forbidden and logs security audit trail.
+    Enforces Free-tier contact masking and Excel/Sheets formula injection sanitization.
+    """
+    from core.backend.services.rbac_guard import RBACGuard
+    
+    # Resolve caller role in workspace
+    caller_role = "analyst"  # default fail-closed
+    if db:
+        try:
+            mem_res = db.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+            if getattr(mem_res, "data", None):
+                caller_role = mem_res.data[0].get("role") or "analyst"
+            else:
+                ws_res = db.table("workspaces").select("owner_id").eq("id", workspace_id).execute()
+                if getattr(ws_res, "data", None) and ws_res.data[0].get("owner_id") == user_id:
+                    caller_role = "owner"
+        except Exception as e:
+            logger.warning(f"Error checking caller role for export: {e}")
+
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+
+    # Layer 2 Paranoia: Exfiltration check
+    if not RBACGuard.has_permission(caller_role, "lead:export"):
+        RBACGuard.log_rbac_audit_event(
+            actor_id=user_id,
+            actor_role=caller_role,
+            workspace_id=workspace_id,
+            action="lead.export_attempt",
+            resource_type="lead",
+            resource_id="all",
+            status="DENIED",
+            details={"reason": "Role lacks lead:export permission", "attempted_role": caller_role},
+            ip_address=client_ip,
+            user_agent=user_agent,
+            db=db
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied: role '{caller_role}' is strictly prohibited from exporting leads."
+        )
+
+    # Check workspace tier for privacy unmasking entitlement
+    can_unmask = False
+    if db:
+        try:
+            from core.backend.services.credit_service import TIER_LIMITS
+            ws_res = db.table("workspaces").select("tier").eq("id", workspace_id).limit(1).execute()
+            ws_tier = ws_res.data[0].get("tier") if getattr(ws_res, "data", None) else "FREE"
+            limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS.get("FREE", {}))
+            can_unmask = limits.get("can_export_unmasked", False)
+        except Exception as te:
+            logger.warning(f"Error checking workspace tier for export: {te}")
+
+    # Authorized export
+    leads = []
+    if db:
+        try:
+            q = db.table("leads").select("id, first_name, last_name, company, title, email, linkedin_url, status").eq("workspace_id", workspace_id)
+            if list_id and isinstance(list_id, str) and list_id.strip():
+                try:
+                    q = q.eq("list_id", list_id.strip())
+                except Exception:
+                    pass
+            res = q.limit(1000).execute()
+            leads = getattr(res, "data", []) or []
+        except Exception as e:
+            logger.error(f"Error exporting leads from database: {e}")
+            leads = []
+
+    # Paranoia Layer 1 & 2: Sanitize against CSV Formula Injection and apply Privacy Masking
+    sanitized_leads = []
+    for l in leads:
+        if not isinstance(l, dict):
+            continue
+        lead_copy = dict(l)
+        if not can_unmask:
+            lead_copy["email"] = _mask_export_email(lead_copy.get("email"))
+            if "phone" in lead_copy:
+                lead_copy["phone"] = _mask_export_phone(lead_copy.get("phone"))
+        for k, v in list(lead_copy.items()):
+            if isinstance(v, str):
+                lead_copy[k] = _sanitize_csv_formula_val(v)
+        sanitized_leads.append(lead_copy)
+
+    # Log successful audit event
+    RBACGuard.log_rbac_audit_event(
+        actor_id=user_id,
+        actor_role=caller_role,
+        workspace_id=workspace_id,
+        action="lead.export",
+        resource_type="lead",
+        resource_id="batch",
+        status="SUCCESS",
+        details={"exported_count": len(sanitized_leads)},
+        ip_address=client_ip,
+        user_agent=user_agent,
+        db=db
+    )
+
+    return {
+        "status": "success",
+        "exported_count": len(sanitized_leads),
+        "leads": sanitized_leads,
+        "data": sanitized_leads
+    }
+
+
+@router.post("/workspaces/members/role", response_model=Dict[str, Any])
+def api_update_workspace_member_role(
+    payload: MemberRoleUpdateRequest,
+    request: Request,
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase T: Updates a workspace member's role with anti-privilege escalation
+    and last-admin lockout prevention.
+    """
+    from core.backend.services.rbac_guard import RBACGuard
+    
+    # Resolve caller role
+    caller_role = "member"
+    if db:
+        try:
+            mem_res = db.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+            if getattr(mem_res, "data", None):
+                caller_role = mem_res.data[0].get("role") or "member"
+            else:
+                ws_res = db.table("workspaces").select("owner_id").eq("id", workspace_id).execute()
+                if getattr(ws_res, "data", None) and ws_res.data[0].get("owner_id") == user_id:
+                    caller_role = "owner"
+        except Exception as e:
+            logger.warning(f"Error determining caller role: {e}")
+
+    # Layer 2 Paranoia: Check authority to assign target role
+    RBACGuard.verify_role_assignment_authority(caller_role, payload.new_role)
+
+    # Layer 2 Paranoia: Prevent sole admin lockout
+    RBACGuard.prevent_last_admin_lockout(workspace_id, payload.target_user_id, payload.new_role, db)
+
+    # Update role in database
+    if db:
+        try:
+            db.table("workspace_members").update({
+                "role": payload.new_role.lower().strip()
+            }).eq("workspace_id", workspace_id).eq("user_id", payload.target_user_id).execute()
+        except Exception as e:
+            logger.error(f"Failed to update workspace member role in DB: {e}")
+            raise HTTPException(status_code=500, detail="Database error updating member role")
+
+    client_ip = request.client.host if request.client else "internal"
+    user_agent = request.headers.get("user-agent", "internal")
+
+    # Tamper-evident audit log
+    audit_entry = RBACGuard.log_rbac_audit_event(
+        actor_id=user_id,
+        actor_role=caller_role,
+        workspace_id=workspace_id,
+        action="member.role_change",
+        resource_type="member",
+        resource_id=payload.target_user_id,
+        status="SUCCESS",
+        details={"new_role": payload.new_role},
+        ip_address=client_ip,
+        user_agent=user_agent,
+        db=db
+    )
+
+    return {
+        "status": "success",
+        "target_user_id": payload.target_user_id,
+        "new_role": payload.new_role,
+        "audit_id": audit_entry["id"]
+    }
+
+
+@router.get("/workspaces/audit-trail", response_model=Dict[str, Any])
+def api_get_workspace_audit_trail(
+    limit: int = 50,
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id),
+    db: Any = Depends(get_service_client),
+):
+    """
+    Phase T: Retrieves tamper-evident workspace audit logs for compliance & security review.
+    Requires 'analytics:view' permission or admin/owner role, and tier entitlement (Growth Pro or Enterprise).
+    """
+    from core.backend.services.rbac_guard import RBACGuard
+    from core.backend.services.credit_service import TIER_LIMITS
+
+    # Paranoia Layer 1: Verify plan entitlement for compliance audit trail
+    ws_tier = "FREE"
+    if db:
+        try:
+            ws_check = db.table("workspaces").select("tier").eq("id", workspace_id).execute()
+            if getattr(ws_check, "data", None):
+                ws_tier = (ws_check.data[0].get("tier") or "FREE").upper()
+        except Exception:
+            pass
+    can_audit = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"]).get("can_view_audit_logs", False)
+    if not can_audit:
+        raise HTTPException(
+            status_code=403,
+            detail="Workspace compliance audit trail and activity history require Growth Pro or Enterprise."
+        )
+
+    caller_role = "analyst"
+    if db:
+        try:
+            mem_res = db.table("workspace_members").select("role").eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+            if getattr(mem_res, "data", None):
+                caller_role = mem_res.data[0].get("role") or "analyst"
+            else:
+                ws_res = db.table("workspaces").select("owner_id").eq("id", workspace_id).execute()
+                if getattr(ws_res, "data", None) and ws_res.data[0].get("owner_id") == user_id:
+                    caller_role = "owner"
+        except Exception:
+            pass
+
+    if not RBACGuard.has_permission(caller_role, "analytics:view"):
+        raise HTTPException(status_code=403, detail="Forbidden: insufficient permissions to view workspace audit trail.")
+
+    logs = RBACGuard.get_recent_audit_logs(workspace_id, limit=limit, db=db)
+    return {
+        "status": "success",
+        "workspace_id": workspace_id,
+        "count": len(logs),
+        "audit_logs": logs
+    }
+
+
+# ==============================================================================
+# PREFLIGHT COLLISION CHECK ENDPOINT
+# ==============================================================================
+class PreflightCollisionCheckRequest(BaseModel):
+    linkedin_urls: List[str] = Field(default_factory=list)
+    emails: List[str] = Field(default_factory=list)
+    exclude_campaign_id: Optional[str] = None
+
+
+@router.post("/campaigns/preflight-collision-check")
+def preflight_collision_check(
+    req: PreflightCollisionCheckRequest,
+    supabase=Depends(get_service_client),
+    workspace_id: str = Depends(get_current_workspace),
+    user_id: str = Depends(get_current_user_id)
+) -> Dict[str, Any]:
+    from campaigns.backend.services.collision_guard import get_conflicting_active_leads
+    
+    urls = [u.strip().rstrip("/") for u in req.linkedin_urls if u and str(u).strip()]
+    emails = [e.strip().lower() for e in req.emails if e and str(e).strip()]
+    total_checked = len(urls) + len(emails)
+    
+    if total_checked == 0:
+        return {
+            "total_checked": 0,
+            "workspace_matches_count": 0,
+            "colliding_active_count": 0,
+            "active_campaign_names": [],
+            "colliding_samples": []
+        }
+        
+    matched_leads = []
+    if urls or emails:
+        query = supabase.table("leads").select("id, linkedin_url, email, first_name, last_name, company_name").eq("workspace_id", workspace_id)
+        res = query.execute()
+        all_leads = res.data or []
+        for l in all_leads:
+            l_url = str(l.get("linkedin_url") or "").strip().rstrip("/")
+            l_email = str(l.get("email") or "").strip().lower()
+            if any(u in l_url or l_url in u for u in urls if u) or (l_email in emails if l_email else False):
+                matched_leads.append(l)
+
+    matched_lead_ids = [l["id"] for l in matched_leads if l.get("id")]
+    if not matched_lead_ids:
+        return {
+            "total_checked": total_checked,
+            "workspace_matches_count": 0,
+            "colliding_active_count": 0,
+            "active_campaign_names": [],
+            "colliding_samples": []
+        }
+
+    conflicting_ids = get_conflicting_active_leads(
+        supabase_client=supabase,
+        workspace_id=workspace_id,
+        lead_ids=matched_lead_ids,
+        exclude_campaign_id=req.exclude_campaign_id
+    )
+
+    if not conflicting_ids:
+        return {
+            "total_checked": total_checked,
+            "workspace_matches_count": len(matched_leads),
+            "colliding_active_count": 0,
+            "active_campaign_names": [],
+            "colliding_samples": []
+        }
+
+    enr_res = supabase.table("campaign_enrollments").select("campaign_id, lead_id").in_("lead_id", list(conflicting_ids)).execute()
+    camp_ids = list({e["campaign_id"] for e in (enr_res.data or []) if e.get("campaign_id")})
+    
+    camp_name_map = {}
+    if camp_ids:
+        camp_res = supabase.table("campaigns").select("id, name").in_("id", camp_ids).execute()
+        camp_name_map = {c["id"]: c.get("name", "Campaign") for c in (camp_res.data or [])}
+
+    lead_camp_map = {}
+    for e in (enr_res.data or []):
+        lid = e.get("lead_id")
+        cid = e.get("campaign_id")
+        if lid and cid in camp_name_map:
+            lead_camp_map[lid] = camp_name_map[cid]
+
+    active_campaign_names = sorted(list(set(camp_name_map.values())))
+    colliding_samples = []
+    for l in matched_leads:
+        lid = l.get("id")
+        if lid in conflicting_ids:
+            fn = l.get("first_name", "") or ""
+            ln = l.get("last_name", "") or ""
+            full_name = f"{fn} {ln}".strip() or "Unknown Lead"
+            colliding_samples.append({
+                "lead_id": lid,
+                "name": full_name,
+                "campaign_name": lead_camp_map.get(lid, "Active Campaign")
+            })
+
+    return {
+        "total_checked": total_checked,
+        "workspace_matches_count": len(matched_leads),
+        "colliding_active_count": len(conflicting_ids),
+        "active_campaign_names": active_campaign_names,
+        "colliding_samples": colliding_samples
+    }

@@ -106,7 +106,7 @@ class TestCrashRecoveryDuplicateOutreachPrevention(unittest.TestCase):
 
         # LinkedIn account mock so it doesn't fail pre-check
         self.tables["accounts"].select.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[{"id": self.account_id, "status": "ACTIVE", "session_cookies_encrypted": None, "workspace_id": self.workspace_id}]
+            data=[{"id": self.account_id, "status": "ACTIVE", "session_cookies_encrypted": None, "workspace_id": self.workspace_id, "proxy_id": "px-residential-1"}]
         )
         self.mock_supabase.rpc.return_value.execute.return_value = MagicMock(data=True)
 

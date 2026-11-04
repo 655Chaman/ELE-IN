@@ -582,10 +582,10 @@ export default function EleInKnowledge() {
                 aria-selected={isActive}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`group relative flex items-center gap-2 pb-3 pt-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap border-b-2 -mb-px outline-hidden ${
+                className={`group relative flex items-center gap-2 pb-3 pt-1 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap outline-hidden ${
                   isActive 
-                    ? 'border-foreground text-foreground' 
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                    ? 'text-foreground font-semibold' 
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <span className={`shrink-0 transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
@@ -603,6 +603,13 @@ export default function EleInKnowledge() {
                 }`}>
                   {tab.count}
                 </span>
+                {isActive && (
+                  <motion.div
+                    layoutId="knowledge-tab-pill"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-foreground rounded-t-full"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
               </button>
             );
           })}

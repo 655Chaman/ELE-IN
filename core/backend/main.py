@@ -19,6 +19,7 @@ from core.backend.core.logging import setup_logging
 from core.backend.core.security import setup_security
 
 import os
+import time
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
@@ -209,8 +210,8 @@ def liveness_probe():
 def readiness_probe():
     """
     Paranoia Layer 0 & 1: Unauthenticated readiness probe verifying database connectivity
-    and essential services before routing traffic. Returns HTTP 200 if connected, or
-    HTTP 503 with degraded status if unreachable.
+    and connection pool responsiveness before routing traffic. Returns HTTP 200 if connected,
+    or HTTP 503 with degraded status if unreachable or experiencing severe latency (>5000ms).
     """
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
@@ -228,11 +229,29 @@ def readiness_probe():
                     "timestamp": now_iso
                 }
             )
-        # Fast query with minimal overhead to verify PostgREST connection
+        # Fast query with timing to verify PostgREST responsiveness and pool health
+        start_t = time.monotonic()
         svc.table("workspaces").select("id").limit(1).execute()
+        latency_ms = round((time.monotonic() - start_t) * 1000, 2)
+
+        if latency_ms > 5000:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "degraded",
+                    "database": "high_latency",
+                    "latency_ms": latency_ms,
+                    "service": "ele-in-backend",
+                    "version": app.version,
+                    "error": f"Database ping exceeded 5000ms threshold: {latency_ms}ms",
+                    "timestamp": now_iso
+                }
+            )
+
         return {
             "status": "ready",
             "database": "connected",
+            "latency_ms": latency_ms,
             "service": "ele-in-backend",
             "version": app.version,
             "timestamp": now_iso
@@ -318,4 +337,31 @@ def startup_ensure_storage_bucket():
         ensure_bucket_exists()
     except Exception as e:
         print(f"Warning: Failed to ensure storage bucket on startup: {e}")
+
+
+@app.on_event("startup")
+def start_health_check_cron():
+    """
+    Phase R Background Worker: Autonomous account health, session death detection,
+    and auto-cooling scheduled on a 15-minute background cadence.
+    """
+    try:
+        import threading
+        import time
+
+        def _health_loop():
+            # Initial stagger delay of 30s so server boot finishes cleanly
+            time.sleep(30)
+            while True:
+                try:
+                    from core.backend.services.health_check_cron import run_health_checks
+                    run_health_checks()
+                except Exception as cron_err:
+                    print(f"[HealthCheckCron] Error during scheduled health run: {cron_err}")
+                time.sleep(900)  # 15 minutes
+
+        threading.Thread(target=_health_loop, daemon=True, name="account-health-cron").start()
+        print("[HealthCheckCron] Autonomous 15-minute account healing cron initialized.")
+    except Exception as e:
+        print(f"Warning: Failed to start health check cron: {e}")
 

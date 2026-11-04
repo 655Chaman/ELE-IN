@@ -43,6 +43,21 @@ async def ai_suggest_reply(req: AISuggestRequest, workspace_id: str = Depends(ge
     async def generate():
         yield " "
         try:
+            playbook = req.objection_playbook or ""
+            if not playbook and req.objection_type:
+                try:
+                    from inbox.backend.services.battlecard_service import get_competitive_intel
+                    obj_parts = [f"OBJECTION TYPE: {req.objection_type}"]
+                    if req.detected_competitor:
+                        intel = get_competitive_intel(req.detected_competitor)
+                        if intel and intel.get("kill_points"):
+                            obj_parts.append(f"COMPETITOR: {req.detected_competitor}")
+                            obj_parts.append(f"DIFFERENTIATOR / PIVOT: {intel.get('pivot_angle', '')}")
+                            obj_parts.append(f"KILL POINTS: {'; '.join(intel.get('kill_points', []))}")
+                    playbook = "\n".join(obj_parts)
+                except Exception:
+                    playbook = f"OBJECTION TYPE: {req.objection_type}"
+
             gen = stream_reply_draft(
                 sender_name=req.sender_name,
                 thread_messages=req.thread_messages,
@@ -52,6 +67,7 @@ async def ai_suggest_reply(req: AISuggestRequest, workspace_id: str = Depends(ge
                 workspace_id=workspace_id,
                 idempotency_key=req.idempotency_key or None,
                 is_simulation=bool(req.is_simulation),
+                objection_playbook=playbook
             )
             while True:
                 try:

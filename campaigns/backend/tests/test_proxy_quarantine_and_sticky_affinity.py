@@ -258,6 +258,9 @@ class TestProxyQuarantineAndStickyAffinity(unittest.TestCase):
                 m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"status": "ACTIVE"}])
             elif table_name == "accounts":
                 m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"proxy_id": "proxy-tainted"}])
+            elif table_name in ("leads", "messages"):
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+                m.select.return_value.eq.return_value.or_.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
             return m
         mock_supabase.table.side_effect = mock_table
 
@@ -318,6 +321,66 @@ class TestProxyQuarantineAndStickyAffinity(unittest.TestCase):
         self.assertEqual(res["status"], "degraded")
         self.assertGreater(res["latency_ms"], 2500)
         self.assertIn("High latency detected", res["error"])
+
+    def test_fail_closed_proxy_enforcement_prevents_bare_datacenter_connections(self):
+        """Paranoia Layer 0 & 1: Verifies orchestrator halts outreach when an account has no residential proxy in production."""
+        from campaigns.backend.services.elein_orchestrator import EleInOrchestrator
+        import os
+
+        # Temporarily clear PYTEST_CURRENT_TEST to simulate production environment
+        prev_test_env = os.environ.pop("PYTEST_CURRENT_TEST", None)
+        prev_allow_bare = os.environ.pop("ALLOW_BARE_DATACENTER_IP", None)
+
+        try:
+            mock_supabase = MagicMock()
+            def mock_table(table_name):
+                m = MagicMock()
+                if table_name == "campaigns":
+                    m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"status": "ACTIVE"}])
+                elif table_name == "accounts":
+                    m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[
+                        {
+                            "id": "acc-bare",
+                            "workspace_id": "ws-1",
+                            "session_cookies_encrypted": "deadbeef",
+                            "proxy_id": None,
+                            "proxies": None
+                        }
+                    ])
+                elif table_name in ("leads", "messages"):
+                    m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+                    m.select.return_value.eq.return_value.or_.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+                return m
+
+            mock_supabase.table.side_effect = mock_table
+            orchestrator = EleInOrchestrator(supabase=mock_supabase)
+            orchestrator.mark_error = MagicMock()
+
+            with patch("core.backend.core.crypto.decrypt_bytes", return_value=b'[{"name": "li_at", "value": "123"}]'):
+                with patch("campaigns.backend.services.elein_orchestrator._build_proxy_url", return_value=None):
+                    state = {
+                        "id": "state-1",
+                        "campaign_id": "camp-1",
+                        "workspace_id": "ws-1",
+                        "nodes": [{"id": "node-1", "type": "connection_request", "data": {}}],
+                        "edges": [],
+                        "current_node_id": "node-1",
+                        "sender_id": "acc-bare",
+                        "account_id": "acc-bare",
+                        "opportunity_id": "opp-1",
+                        "attempts": 0,
+                        "max_attempts": 3,
+                        "variables": {}
+                    }
+                    orchestrator.process_lead(state, "lease-1")
+                    orchestrator.mark_error.assert_called_once()
+                    error_arg = orchestrator.mark_error.call_args[0][1]
+                    self.assertIn("no residential proxy assigned", error_arg.lower())
+        finally:
+            if prev_test_env is not None:
+                os.environ["PYTEST_CURRENT_TEST"] = prev_test_env
+            if prev_allow_bare is not None:
+                os.environ["ALLOW_BARE_DATACENTER_IP"] = prev_allow_bare
 
 
 if __name__ == "__main__":

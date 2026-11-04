@@ -11,8 +11,8 @@ interface ThreadListPaneProps {
   onSelectThread: (thread: ThreadSummary) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  outcomeFilter: 'ALL' | 'INBOUND' | OutcomeType;
-  onOutcomeFilterChange: (f: 'ALL' | 'INBOUND' | OutcomeType) => void;
+  outcomeFilter: 'ALL' | 'UNREAD' | 'INBOUND' | OutcomeType;
+  onOutcomeFilterChange: (f: 'ALL' | 'UNREAD' | 'INBOUND' | OutcomeType) => void;
   dealStageFilter: 'ALL' | DealStage;
   onDealStageFilterChange: (f: 'ALL' | DealStage) => void;
   counts: Record<string, number>;
@@ -186,6 +186,17 @@ export function ThreadListPane({
               }`}
             >
               All ({counts.ALL ?? 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => onOutcomeFilterChange('UNREAD')}
+              className={`flex-1 py-1 text-center rounded-md text-xs font-medium transition-all cursor-pointer ${
+                outcomeFilter === 'UNREAD'
+                  ? 'bg-card text-foreground font-semibold shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Unread ({counts.UNREAD ?? 0})
             </button>
             <button
               type="button"
@@ -407,6 +418,19 @@ export function ThreadListPane({
             );
           })
         )}
+      </div>
+
+      {/* Superhuman Keyboard navigation micro-footer */}
+      <div className="px-3 py-1.5 border-t border-border bg-card/60 flex items-center justify-between text-[10px] text-muted-foreground select-none shrink-0">
+        <div className="flex items-center gap-1.5">
+          <kbd className="font-mono px-1 py-0.2 rounded bg-muted border border-border/60 text-foreground font-semibold">J</kbd>
+          <kbd className="font-mono px-1 py-0.2 rounded bg-muted border border-border/60 text-foreground font-semibold">K</kbd>
+          <span>navigate</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <kbd className="font-mono px-1 py-0.2 rounded bg-muted border border-border/60 text-foreground font-semibold">⌘↵</kbd>
+          <span>send</span>
+        </div>
       </div>
     </div>
   );

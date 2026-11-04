@@ -19,6 +19,32 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
   currentBalance,
   onSuccess,
 }) => {
+  const { data: billingData } = useSWR<{ tier?: string; is_platform_owner?: boolean }>('/api/elein/workspaces/billing', fetcher);
+  const isOwner = Boolean(billingData?.is_platform_owner);
+
+  // Owner auto-bypass: If mounted directly, complete without rendering top-up
+  React.useEffect(() => {
+    if (isOpen && isOwner) {
+      if (onSuccess) onSuccess();
+      onClose();
+    }
+  }, [isOpen, isOwner, onSuccess, onClose]);
+
+  // Paranoia Layer 1 & 2: Handle Escape key dismissal gracefully
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (isOpen && isOwner) return null;
+
   const [selectedOption, setSelectedOption] = useState<'credits' | 'growth'>('credits');
   const { startCheckout, isProcessing, isVerifying } = useEleInCheckout();
   const { mutate } = useSWRConfig();
@@ -37,6 +63,9 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
 
   if (!isOpen) return null;
 
+  const currentTier = (balanceData?.tier || 'FREE').toUpperCase();
+  const isPaidTier = currentTier === 'PRO' || currentTier === 'GROWTH' || currentTier === 'AGENCY' || currentTier === 'ENTERPRISE';
+
   const handlePurchase = () => {
     if (selectedOption === 'credits') {
       startCheckout({
@@ -54,8 +83,8 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
     } else {
       startCheckout({
         provider: 'razorpay',
-        action: 'upgrade',
-        packageId: 'growth_tier',
+        action: isPaidTier ? 'credits' : 'upgrade',
+        packageId: isPaidTier ? 'credits_5000' : 'growth_tier',
         onSuccess: () => {
           mutate('/api/elein/billing/credits/balance');
           mutate('/api/elein/workspaces/billing');
@@ -67,8 +96,17 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
     }
   };
 
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && !isProcessing && !isVerifying) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 cursor-default"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -108,8 +146,8 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
           </div>
           <div className="text-right">
             <span className="text-muted-foreground block text-[11px]">Overdraft Buffer</span>
-            <span className="text-emerald-400 font-semibold text-xs mt-0.5 block">
-              Covered to -500 credits
+            <span className={`font-semibold text-xs mt-0.5 block ${isPaidTier ? "text-emerald-400" : "text-muted-foreground"}`}>
+              {isPaidTier ? "Covered to -500 credits" : "0 credits (Upgrade to unlock -500)"}
             </span>
           </div>
         </div>
@@ -144,7 +182,7 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
             </div>
           </button>
 
-          {/* Option B: Upgrade to Growth Tier */}
+          {/* Option B: 5,000 Bulk Credits (Paid Tier) OR Upgrade to Growth Tier (Free Tier) */}
           <button
             type="button"
             onClick={() => setSelectedOption('growth')}
@@ -156,21 +194,23 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
             }`}
           >
             <span className="absolute -top-2.5 right-4 text-[9px] bg-primary text-primary-foreground font-bold px-2 py-0.5 rounded-md uppercase tracking-wider shadow-sm z-10">
-              Best Value
+              {isPaidTier ? "Popular Top-Up" : "Best Value"}
             </span>
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-bold text-sm text-foreground flex items-center gap-2">
                   <Sparkles size={15} className="text-primary" />
-                  <span>Growth Tier Upgrade</span>
+                  <span>{isPaidTier ? "5,000 Bulk Credits" : "Growth Tier Upgrade"}</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  5,000 credits/mo + 20 active campaigns + 5 sender accounts.
+                  {isPaidTier 
+                    ? "Instant reload for high-volume outreach and lead enrichment." 
+                    : "5,000 credits/mo + 20 active campaigns + 5 sender accounts."}
                 </p>
               </div>
               <div className="text-right">
-                <span className="font-bold text-base text-primary">₹7,999</span>
-                <span className="block text-[10px] text-muted-foreground">/ month</span>
+                <span className="font-bold text-base text-primary">{isPaidTier ? "₹4,499" : "₹7,999"}</span>
+                <span className="block text-[10px] text-muted-foreground">{isPaidTier ? "one-time" : "/ month"}</span>
               </div>
             </div>
           </button>
@@ -198,7 +238,11 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
               <>
                 <Zap size={16} className="fill-current" />
                 <span>
-                  {selectedOption === 'credits' ? 'Purchase 1,000 Credits (₹999)' : 'Upgrade to Growth Tier (₹7,999)'}
+                  {selectedOption === 'credits' 
+                    ? 'Purchase 1,000 Credits (₹999)' 
+                    : isPaidTier 
+                    ? 'Purchase 5,000 Bulk Credits (₹4,499)' 
+                    : 'Upgrade to Growth Tier (₹7,999)'}
                 </span>
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </>

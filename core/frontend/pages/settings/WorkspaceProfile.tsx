@@ -2,7 +2,8 @@ import useSWR from "swr";
 import { useState, useEffect } from "react";
 import { 
   Info, Loader2, Save, Check, Clock, Hash, AlertTriangle,
-  Globe, Palette, Image as ImageIcon, ShieldCheck, Lock, Sparkles, RefreshCw, ExternalLink 
+  Globe, Palette, Image as ImageIcon, ShieldCheck, Lock, Sparkles, RefreshCw, ExternalLink,
+  Building, MapPin, FileText, Scale, Sliders, DollarSign, Eye, AlertCircle 
 } from "lucide-react";
 import { toast } from "sonner";
 import { friendlyToast } from "../../components/FriendlyError";
@@ -70,6 +71,11 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
   const [savingBranding, setSavingBranding] = useState(false);
   const [savedBrandingSuccess, setSavedBrandingSuccess] = useState(false);
   const [verifyingDomain, setVerifyingDomain] = useState(false);
+  const [logoLoadError, setLogoLoadError] = useState(false);
+
+  useEffect(() => {
+    setLogoLoadError(false);
+  }, [logoUrl]);
 
   const isBrandingLocked = Boolean(branding && !branding.can_custom_branding);
   const isDomainLocked = Boolean(branding && !branding.can_custom_domain);
@@ -105,6 +111,108 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
     hideWatermark !== Boolean(branding.hide_watermark)
   );
 
+  // Legal Compliance & CAN-SPAM SWR
+  const { data: legalData, mutate: mutateLegalData, isLoading: isLegalLoading } = useSWR<{
+    company_legal_name?: string;
+    tax_id?: string;
+    address_line1?: string;
+    address_line2?: string;
+    city?: string;
+    state_province?: string;
+    postal_code?: string;
+    country?: string;
+    custom_unsubscribe_text?: string;
+    date_format?: string;
+    time_format?: string;
+    default_currency?: string;
+  }>(workspaceId ? `/api/workspaces/${workspaceId}/legal-profile` : null, fetcher);
+
+  const [legalName, setLegalName] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [address1, setAddress1] = useState("");
+  const [address2, setAddress2] = useState("");
+  const [city, setCity] = useState("");
+  const [stateProvince, setStateProvince] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [country, setCountry] = useState("United States");
+  const [unsubscribeText, setUnsubscribeText] = useState("");
+  const [dateFormat, setDateFormat] = useState("YYYY-MM-DD");
+  const [timeFormat, setTimeFormat] = useState("24h");
+  const [defaultCurrency, setDefaultCurrency] = useState("USD");
+  const [savingLegal, setSavingLegal] = useState(false);
+  const [savedLegalSuccess, setSavedLegalSuccess] = useState(false);
+
+  useEffect(() => {
+    if (legalData && !savingLegal) {
+      setLegalName(legalData.company_legal_name || "");
+      setTaxId(legalData.tax_id || "");
+      setAddress1(legalData.address_line1 || "");
+      setAddress2(legalData.address_line2 || "");
+      setCity(legalData.city || "");
+      setStateProvince(legalData.state_province || "");
+      setPostalCode(legalData.postal_code || "");
+      setCountry(legalData.country || "United States");
+      setUnsubscribeText(legalData.custom_unsubscribe_text || "If you no longer wish to receive these communications, click here to unsubscribe.");
+      setDateFormat(legalData.date_format || "YYYY-MM-DD");
+      setTimeFormat(legalData.time_format || "24h");
+      setDefaultCurrency(legalData.default_currency || "USD");
+    }
+  }, [legalData, savingLegal]);
+
+  const hasLegalChanges = legalData !== undefined && (
+    legalName !== (legalData.company_legal_name || "") ||
+    taxId !== (legalData.tax_id || "") ||
+    address1 !== (legalData.address_line1 || "") ||
+    address2 !== (legalData.address_line2 || "") ||
+    city !== (legalData.city || "") ||
+    stateProvince !== (legalData.state_province || "") ||
+    postalCode !== (legalData.postal_code || "") ||
+    country !== (legalData.country || "United States") ||
+    unsubscribeText !== (legalData.custom_unsubscribe_text || "If you no longer wish to receive these communications, click here to unsubscribe.") ||
+    dateFormat !== (legalData.date_format || "YYYY-MM-DD") ||
+    timeFormat !== (legalData.time_format || "24h") ||
+    defaultCurrency !== (legalData.default_currency || "USD")
+  );
+
+  const handleSaveLegal = async () => {
+    if (!workspaceId || savingLegal) return;
+    setSavingLegal(true);
+    try {
+      const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/legal-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_legal_name: legalName,
+          tax_id: taxId,
+          address_line1: address1,
+          address_line2: address2,
+          city,
+          state_province: stateProvince,
+          postal_code: postalCode,
+          country,
+          custom_unsubscribe_text: unsubscribeText,
+          date_format: dateFormat,
+          time_format: timeFormat,
+          default_currency: defaultCurrency,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Failed to update legal profile");
+      }
+
+      toast.success("Legal compliance and regional settings saved!");
+      setSavedLegalSuccess(true);
+      setTimeout(() => setSavedLegalSuccess(false), 2500);
+      mutateLegalData();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save legal settings");
+    } finally {
+      setSavingLegal(false);
+    }
+  };
+
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
   };
@@ -131,7 +239,11 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
         const errText = await res.text();
         throw new Error(errText || "Failed to update profile");
       }
-      mutate({ ...data, name: name.trim() }, false);
+      if (data) {
+        mutate({ ...data, id: data.id || workspaceId || "", name: name.trim() }, false);
+      } else {
+        mutate();
+      }
       setSavedSuccess(true);
       setLastSaved(new Date());
       await refreshWorkspaces();
@@ -147,6 +259,21 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
     if (!workspaceId || savingBranding) return;
     if (isWhiteLabelLocked) {
       openPaywall({ featureName: "Agency White-Label Branding & Custom CNAME Domains" });
+      return;
+    }
+
+    // Paranoia Layer 2: Input format validation
+    const hexColorRegex = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
+    if (primaryColor.trim() && !hexColorRegex.test(primaryColor.trim())) {
+      toast.error("Please enter a valid hex color code (e.g. #4F46E5)");
+      return;
+    }
+    if (logoUrl.trim() && !/^https?:\/\//i.test(logoUrl.trim()) && !logoUrl.trim().startsWith("data:image/")) {
+      toast.error("Logo URL must start with https:// or http://");
+      return;
+    }
+    if (faviconUrl.trim() && !/^https?:\/\//i.test(faviconUrl.trim()) && !faviconUrl.trim().startsWith("data:image/")) {
+      toast.error("Favicon URL must start with https:// or http://");
       return;
     }
 
@@ -502,14 +629,13 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
 
           <div className="p-4 rounded-xl bg-background border border-border/60 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              {logoUrl.trim() ? (
+              {logoUrl.trim() && !logoLoadError ? (
                 <img
                   src={logoUrl.trim()}
                   alt="Agency Logo Preview"
                   className="w-10 h-10 rounded-xl object-contain border border-border/40 p-1 bg-card"
-                  onError={(e) => {
-                    // Fallback to placeholder on broken image
-                    (e.target as HTMLElement).style.display = 'none';
+                  onError={() => {
+                    setLogoLoadError(true);
                   }}
                 />
               ) : (
@@ -797,6 +923,226 @@ export function WorkspaceProfile({ workspaceId }: { workspaceId: string | null }
               )}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* 3. Legal Compliance & CAN-SPAM Physical Postal Address Card */}
+      <div className="p-6 md:p-8 rounded-xl border border-border bg-card shadow-sm space-y-6">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Scale size={20} className="text-primary" />
+            <span>Legal Compliance & CAN-SPAM Postal Address</span>
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Global anti-spam regulations (CAN-SPAM, GDPR, CASL) legally mandate a valid physical postal address and accessible unsubscribe link in outreach emails.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Company Legal Name</label>
+            <input
+              type="text"
+              value={legalName}
+              onChange={(e) => setLegalName(e.target.value)}
+              placeholder="Acme Corporation, LLC"
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Tax ID / VAT / GST Number</label>
+            <input
+              type="text"
+              value={taxId}
+              onChange={(e) => setTaxId(e.target.value)}
+              placeholder="e.g. US-123456789 or GB-987654321"
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="text-xs font-semibold text-foreground">Street Address Line 1</label>
+            <input
+              type="text"
+              value={address1}
+              onChange={(e) => setAddress1(e.target.value)}
+              placeholder="123 Innovation Way, Suite 400"
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">City</label>
+            <input
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="San Francisco"
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">State / Province / Region</label>
+            <input
+              type="text"
+              value={stateProvince}
+              onChange={(e) => setStateProvince(e.target.value)}
+              placeholder="CA"
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Postal / ZIP Code</label>
+            <input
+              type="text"
+              value={postalCode}
+              onChange={(e) => setPostalCode(e.target.value)}
+              placeholder="94105"
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Country</label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
+            >
+              <option value="United States">United States</option>
+              <option value="United Kingdom">United Kingdom</option>
+              <option value="Canada">Canada</option>
+              <option value="Australia">Australia</option>
+              <option value="Germany">Germany</option>
+              <option value="France">France</option>
+              <option value="Netherlands">Netherlands</option>
+              <option value="India">India</option>
+              <option value="Singapore">Singapore</option>
+              <option value="Ireland">Ireland</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Custom Unsubscribe Statement */}
+        <div className="space-y-1.5 pt-2 border-t border-border/60">
+          <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+            <span>Custom Email Unsubscribe Statement</span>
+            <span className="text-[11px] text-muted-foreground">Auto-injected into cold email footers</span>
+          </label>
+          <textarea
+            rows={2}
+            value={unsubscribeText}
+            onChange={(e) => setUnsubscribeText(e.target.value)}
+            placeholder="If you would prefer not to hear from us in the future, please click here to unsubscribe."
+            className="w-full px-3.5 py-2.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all resize-none"
+          />
+        </div>
+
+        {/* Live Email Footer Preview */}
+        <div className="p-4 rounded-xl border border-dashed border-border/80 bg-background/50 space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+            <span className="flex items-center gap-1.5 text-foreground">
+              <Eye size={13} className="text-primary" /> Live Rendered Email Footer Preview
+            </span>
+            <span className="text-[10px] uppercase tracking-wider font-mono">100% CAN-SPAM Compliant</span>
+          </div>
+          <div className="p-3 rounded-lg bg-card border border-border text-[11px] text-muted-foreground font-mono leading-relaxed space-y-1">
+            <div className="border-t border-border/60 pt-2">
+              <p>
+                {legalName || "Your Company Name"} • {address1 || "123 Business St"}, {city || "City"}, {stateProvince || "State"} {postalCode || "00000"}, {country}
+              </p>
+              {taxId && <p className="text-[10px] text-muted-foreground/80">Tax ID: {taxId}</p>}
+              <p className="text-primary underline cursor-pointer mt-1">
+                {unsubscribeText || "Click here to unsubscribe from future outreach."}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Regional Formatting Preferences */}
+        <div className="pt-4 border-t border-border/60 space-y-3">
+          <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <Sliders size={14} className="text-primary" /> Regional & Number Formatting
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground">Date Format</label>
+              <select
+                value={dateFormat}
+                onChange={(e) => setDateFormat(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground cursor-pointer"
+              >
+                <option value="YYYY-MM-DD">YYYY-MM-DD (ISO 8601)</option>
+                <option value="DD/MM/YYYY">DD/MM/YYYY (UK / EU)</option>
+                <option value="MM/DD/YYYY">MM/DD/YYYY (US Standard)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground">Time Format</label>
+              <select
+                value={timeFormat}
+                onChange={(e) => setTimeFormat(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground cursor-pointer"
+              >
+                <option value="24h">24-hour (18:00)</option>
+                <option value="12h">12-hour (6:00 PM)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground">Default Currency</label>
+              <select
+                value={defaultCurrency}
+                onChange={(e) => setDefaultCurrency(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground cursor-pointer"
+              >
+                <option value="USD">USD ($) - US Dollar</option>
+                <option value="EUR">EUR (€) - Euro</option>
+                <option value="GBP">GBP (£) - British Pound</option>
+                <option value="CAD">CAD ($) - Canadian Dollar</option>
+                <option value="AUD">AUD ($) - Australian Dollar</option>
+                <option value="INR">INR (₹) - Indian Rupee</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Save Legal Compliance Action Bar */}
+        <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border">
+          <div className="text-xs text-muted-foreground">
+            {savedLegalSuccess ? (
+              <span className="flex items-center gap-1 text-success">
+                <Check size={14} /> Compliance settings saved & verified!
+              </span>
+            ) : (
+              <span>Injected into all outbound campaign emails automatically</span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveLegal}
+            disabled={!hasLegalChanges || savingLegal}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold text-xs rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+          >
+            {savingLegal ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Saving Compliance...
+              </>
+            ) : savedLegalSuccess ? (
+              <>
+                <Check size={14} /> Saved!
+              </>
+            ) : (
+              <>
+                <Save size={14} /> Save Compliance Profile
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

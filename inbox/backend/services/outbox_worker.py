@@ -7,8 +7,9 @@ from core.backend.api.auth_dep import get_service_client
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SECONDS = 30
-BATCH_SIZE = 10
+import os
+POLL_INTERVAL_SECONDS = int(os.environ.get("OUTBOX_POLL_INTERVAL_SECONDS", "2"))
+BATCH_SIZE = int(os.environ.get("OUTBOX_BATCH_SIZE", "100"))
 MAX_ATTEMPTS = 3
 
 
@@ -216,9 +217,18 @@ def _process_slack_notification(event: dict) -> bool:
         if ws_id and ws_id != 'global':
             try:
                 supabase = get_service_client()
-                s_res = supabase.table('workspace_settings').select('slack_webhook_url').eq('workspace_id', ws_id).execute()
-                if s_res.data and s_res.data[0].get('slack_webhook_url'):
-                    webhook_url = s_res.data[0]['slack_webhook_url']
+                # Check modern workspaces.metadata["webhooks"] first
+                w_res = supabase.table('workspaces').select('metadata').eq('id', ws_id).limit(1).execute()
+                if w_res.data:
+                    meta = w_res.data[0].get('metadata') or {}
+                    wh = meta.get('webhooks') or {}
+                    webhook_url = wh.get('slack_webhook_url')
+
+                # Fallback to legacy workspace_settings
+                if not webhook_url:
+                    s_res = supabase.table('workspace_settings').select('slack_webhook_url').eq('workspace_id', ws_id).execute()
+                    if s_res.data and s_res.data[0].get('slack_webhook_url'):
+                        webhook_url = s_res.data[0]['slack_webhook_url']
             except Exception:
                 pass
                 
@@ -310,11 +320,16 @@ def _process_webhook_notification(event: dict) -> bool:
         logger.error(f"Failed to dispatch webhook: {e}")
         return False
 
+_OUTBOX_HAS_PROCESSING_STATUS: bool = True
+
 def reap_stuck_outbox_events(svc, stuck_timeout_minutes: int = 15) -> int:
     """
     Paranoia Layer 1: Zombie Outbox Event Recovery.
     Resurrects events stuck in 'processing' status due to unexpected worker crashes.
     """
+    global _OUTBOX_HAS_PROCESSING_STATUS
+    if not _OUTBOX_HAS_PROCESSING_STATUS:
+        return 0
     try:
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stuck_timeout_minutes)).isoformat()
@@ -326,8 +341,9 @@ def reap_stuck_outbox_events(svc, stuck_timeout_minutes: int = 15) -> int:
                 .execute()
             stuck_events = res.data or []
         except Exception as query_err:
-            if 'outbox_event_status' in str(query_err) and 'processing' in str(query_err):
+            if 'outbox_event_status' in str(query_err) or '22P02' in str(query_err):
                 # Paranoia Layer 1: Zero-migration fallback when DB enum lacks 'processing'
+                _OUTBOX_HAS_PROCESSING_STATUS = False
                 return 0
             raise
         reaped_count = 0
@@ -346,6 +362,7 @@ def reap_stuck_outbox_events(svc, stuck_timeout_minutes: int = 15) -> int:
 
 
 def poll_outbox_once() -> int:
+    global _OUTBOX_HAS_PROCESSING_STATUS
     svc = get_service_client()
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -372,22 +389,30 @@ def poll_outbox_once() -> int:
             attempts = event.get('attempts', 0) + 1
             success = False
 
-            try:
-                claim_res = svc.table('outbox_events') \
-                    .update({'status': 'processing', 'attempts': attempts}) \
-                    .eq('id', event_id) \
-                    .eq('status', 'pending') \
-                    .execute()
-            except Exception as claim_err:
-                if 'outbox_event_status' in str(claim_err) and 'processing' in str(claim_err):
-                    # Paranoia Layer 1: Zero-migration fallback when DB enum lacks 'processing'
+            if _OUTBOX_HAS_PROCESSING_STATUS:
+                try:
                     claim_res = svc.table('outbox_events') \
-                        .update({'attempts': attempts}) \
+                        .update({'status': 'processing', 'attempts': attempts}) \
                         .eq('id', event_id) \
                         .eq('status', 'pending') \
                         .execute()
-                else:
-                    raise
+                except Exception as claim_err:
+                    if 'outbox_event_status' in str(claim_err) or '22P02' in str(claim_err):
+                        # Paranoia Layer 1: Zero-migration fallback when DB enum lacks 'processing'
+                        _OUTBOX_HAS_PROCESSING_STATUS = False
+                        claim_res = svc.table('outbox_events') \
+                            .update({'attempts': attempts}) \
+                            .eq('id', event_id) \
+                            .eq('status', 'pending') \
+                            .execute()
+                    else:
+                        raise
+            else:
+                claim_res = svc.table('outbox_events') \
+                    .update({'attempts': attempts}) \
+                    .eq('id', event_id) \
+                    .eq('status', 'pending') \
+                    .execute()
             if not getattr(claim_res, 'data', None):
                 continue
 
@@ -572,10 +597,31 @@ def retry_outbox_dead_letter_event(svc, event_id: str, workspace_id: str) -> dic
         return {"status": "error", "message": str(e)}
 
 
+_shutdown_requested = False
+
+
+def request_shutdown(signum=None, frame=None):
+    global _shutdown_requested
+    logger.info(f"Outbox worker shutdown signal received ({signum}). Finishing current cycle...")
+    _shutdown_requested = True
+
+
 async def run_outbox_poller():
-    logger.info(f'Outbox poller started. Polling every {POLL_INTERVAL_SECONDS}s.')
+    global _shutdown_requested
+    import signal
+    try:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, lambda s=sig: request_shutdown(s))
+            except (NotImplementedError, RuntimeError):
+                signal.signal(sig, request_shutdown)
+    except Exception as _sig_err:
+        logger.debug(f"Signal handler registration fallback: {_sig_err}")
+
+    logger.info(f'Outbox poller started. Polling every {POLL_INTERVAL_SECONDS}s with batch size {BATCH_SIZE}.')
     poll_cycles = 0
-    while True:
+    while not _shutdown_requested:
         try:
             count = poll_outbox_once()
             if count > 0:
@@ -592,6 +638,18 @@ async def run_outbox_poller():
                         logger.info(f"[Retention] Periodic background prune cleared {p_res['total_deleted']} items in {p_res['duration_seconds']}s")
                 except Exception as _prune_err:
                     logger.warning(f"[Retention] Periodic prune error non-fatal: {_prune_err}")
+
+            # Paranoia Layer 1: Fast drain when queue has backlog (avoid sleeping if full batch was processed)
+            if count >= BATCH_SIZE and not _shutdown_requested:
+                await asyncio.sleep(0.05)
+                continue
         except Exception as e:
             logger.error(f'Outbox poller loop error: {e}')
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+        
+        # Bounded sleep checking shutdown flag every 100ms
+        for _ in range(max(1, POLL_INTERVAL_SECONDS * 10)):
+            if _shutdown_requested:
+                break
+            await asyncio.sleep(0.1)
+
+    logger.info("Outbox poller has safely stopped.")

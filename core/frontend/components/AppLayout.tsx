@@ -5,15 +5,18 @@ import {
   ChevronRight, ChevronLeft, Target, 
   Settings, User, Mail, Users, LayoutDashboard,
   BrainCircuit, Copy, Link as LinkIcon, Plug, CreditCard,
-  CheckCircle, Globe, AlertTriangle, Shield, Share2, Sparkles
+  CheckCircle, Globe, AlertTriangle, Shield, Share2, Sparkles, RefreshCw,
+  Search
 } from 'lucide-react';
 
 import { ApiKeyModal } from './ApiKeyModal';
+import { CommandPalette } from './CommandPalette';
 import { useKeys } from "@/hooks/useDashboard";
 import { useAuth } from "@/lib/AuthContext";
 import { useTheme } from './ThemeProvider';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { AnimatedThemeToggler } from './ui/animated-theme-toggler';
+import { OfflineBanner } from './OfflineBanner';
 
 import { toast } from 'sonner';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -34,8 +37,29 @@ export function AppLayout() {
   const { signOut, user } = useAuth();
   const { theme, resolvedTheme, setTheme } = useTheme();
   const { keys, saveKeys } = useKeys();
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, isPendingDeletion, myAgencies } = useWorkspace();
+  const { workspaces, activeWorkspaceId, activeWorkspaceTier, isFree, isPro, isEnterprise, setActiveWorkspaceId, isPendingDeletion, myAgencies, refreshWorkspaces } = useWorkspace();
+  const [isRestoringWorkspace, setIsRestoringWorkspace] = useState(false);
   const location = useLocation();
+
+  const handleCancelDeletion = async () => {
+    if (!activeWorkspaceId) return;
+    setIsRestoringWorkspace(true);
+    try {
+      const res = await fetchWithAuth(`/api/workspaces/${activeWorkspaceId}/cancel-deletion`, {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        const errPayload = await res.json().catch(() => null);
+        throw new Error(errPayload?.detail || 'Failed to cancel workspace deletion');
+      }
+      await refreshWorkspaces();
+      toast.success('Workspace deletion cancelled! All data mutations are now active.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not cancel deletion.');
+    } finally {
+      setIsRestoringWorkspace(false);
+    }
+  };
 
   const userRole = (user?.app_metadata?.role || user?.user_metadata?.role || '').toLowerCase();
   const isUserAdmin = userRole === 'admin' || userRole === 'superadmin' || user?.user_metadata?.is_admin === true;
@@ -93,13 +117,29 @@ export function AppLayout() {
 
   return (
     <div className="h-[100dvh] bg-background text-foreground flex flex-col overflow-hidden text-sm font-sans selection:bg-primary/30">
+      <OfflineBanner />
       {isPendingDeletion && (
-        <div className="w-full bg-destructive/90 text-white text-sm font-semibold flex items-center justify-center gap-3 py-3 px-4 sticky top-0 z-50">
-          <AlertTriangle size={18} className="shrink-0" />
-          <span>
-            This workspace is scheduled for deletion. All data mutations are disabled during the 14-day grace period.
-            <a href="/elein/settings" className="underline ml-2 font-bold hover:opacity-80 transition-opacity">View Settings</a>
-          </span>
+        <div className="w-full bg-destructive/95 text-white text-xs font-semibold flex items-center justify-between gap-3 py-2.5 px-4 sticky top-0 z-50 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="shrink-0 animate-pulse text-white" />
+            <span>
+              This workspace is scheduled for statutory deletion (14-day grace period). All data mutations are locked.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCancelDeletion}
+              disabled={isRestoringWorkspace}
+              className="px-3 py-1 rounded bg-white text-destructive hover:bg-white/90 font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <RefreshCw size={11} className={isRestoringWorkspace ? "animate-spin" : ""} />
+              <span>{isRestoringWorkspace ? "Restoring..." : "Cancel Deletion & Restore"}</span>
+            </button>
+            <Link to="/elein/settings" className="underline hover:opacity-80 transition-opacity text-xs ml-1 font-medium">
+              View Settings
+            </Link>
+          </div>
         </div>
       )}
       <div className="flex-1 flex overflow-hidden">
@@ -182,13 +222,32 @@ export function AppLayout() {
                   <div className="flex items-center gap-3 overflow-hidden">
                     {(() => {
                       const activeWs = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+                      const wsTier = (activeWs?.tier || activeWorkspaceTier || 'FREE').toUpperCase();
+                      const isEnt = wsTier === 'ENTERPRISE' || Boolean(activeWs?.is_platform_owner);
+                      const isAg = wsTier === 'AGENCY';
+                      const isPr = wsTier === 'PRO' || wsTier === 'GROWTH';
                       return (
                         <>
-                          <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 text-primary flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm">
+                          <div className={`w-8 h-8 rounded-md flex items-center justify-center text-[11px] font-bold tracking-wider shrink-0 shadow-sm ${
+                            isEnt ? 'bg-purple-500/15 border border-purple-500/30 text-purple-400' :
+                            isAg ? 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-400' :
+                            isPr ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400' :
+                            'bg-primary/10 border border-primary/20 text-primary'
+                          }`}>
                             {activeWs?.name?.substring(0, 2).toUpperCase() || "WS"}
                           </div>
-                          <div className="flex flex-col items-start truncate">
-                            <span className="text-sm font-semibold text-sidebar-foreground truncate">{activeWs?.name || "Loading..."}</span>
+                          <div className="flex flex-col items-start truncate min-w-0">
+                            <div className="flex items-center gap-1.5 truncate max-w-full">
+                              <span className="text-sm font-semibold text-sidebar-foreground truncate">{activeWs?.name || "Loading..."}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0 border ${
+                                isEnt ? 'bg-purple-500/15 text-purple-400 border-purple-500/30' :
+                                isAg ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30' :
+                                isPr ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+                                'bg-muted text-muted-foreground border-border/60'
+                              }`}>
+                                {isEnt ? 'Enterprise VIP' : isAg ? 'Agency Hub' : isPr ? 'Growth Pro' : 'Free Tier'}
+                              </span>
+                            </div>
                             <span className="text-[10px] text-sidebar-foreground/60 font-medium tracking-wide">
                               {activeWs?.account_count || 0} Connected Account{activeWs?.account_count !== 1 ? 's' : ''}
                             </span>
@@ -260,7 +319,44 @@ export function AppLayout() {
           )}
 
           <CreditBadge workspaceId={activeWorkspaceId || ''} isSidebarOpen={isSidebarOpen} />
-          <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-6">
+          
+          {/* Quick Search & Command Palette Trigger (Cmd+K) */}
+          <div className="px-3 py-1">
+            {isSidebarOpen ? (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-sidebar-accent/30 hover:bg-sidebar-accent/60 border border-sidebar-border/40 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-all text-xs cursor-pointer group shadow-2xs"
+                title="Search or execute actions (⌘K)"
+              >
+                <div className="flex items-center gap-2">
+                  <Search size={13} className="text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80 transition-colors" />
+                  <span className="text-[11px] font-medium">Quick search...</span>
+                </div>
+                <kbd className="text-[9px] font-mono font-bold bg-sidebar-border/40 px-1.5 py-0.5 rounded text-sidebar-foreground/50 border border-sidebar-border/60">
+                  ⌘K
+                </kbd>
+              </button>
+            ) : (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+                  }}
+                  className="size-8 rounded-lg hover:bg-sidebar-accent/50 text-sidebar-foreground/60 hover:text-sidebar-foreground flex items-center justify-center transition-colors cursor-pointer border border-transparent hover:border-sidebar-border/50"
+                  title="Quick search (⌘K)"
+                  aria-label="Quick search (⌘K)"
+                >
+                  <Search size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-5">
             {navCategories.map((category, idx) => (
               <div key={idx} className="space-y-1">
                 {isSidebarOpen && (
@@ -366,6 +462,7 @@ export function AppLayout() {
         </main>
       </div>
 
+      <CommandPalette />
       <OnboardingChecklistWidget />
 
       <ApiKeyModal 

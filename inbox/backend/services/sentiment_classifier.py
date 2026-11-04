@@ -225,6 +225,7 @@ def classify_inbound_sentiment_and_intent(
     if not combined:
         return {
             "intent": INTENT_NEUTRAL_QUESTION,
+            "normalized_sentiment": "NEUTRAL",
             "confidence": 0.3,
             "sentiment": "neutral",
             "matched_rules": ["empty_message_neutral_fallback"],
@@ -265,6 +266,7 @@ def classify_inbound_sentiment_and_intent(
 
         return {
             "intent": INTENT_OUT_OF_OFFICE,
+            "normalized_sentiment": "OOO",
             "confidence": 0.95,
             "sentiment": "neutral",
             "matched_rules": matched_rules,
@@ -280,6 +282,7 @@ def classify_inbound_sentiment_and_intent(
     if comp_opt.get("is_company_wide"):
         return {
             "intent": INTENT_NOT_INTERESTED,
+            "normalized_sentiment": "NEGATIVE",
             "confidence": 0.99,
             "sentiment": "negative",
             "matched_rules": [f"company_wide_opt_out:{comp_opt.get('matched_phrase')}"],
@@ -303,6 +306,7 @@ def classify_inbound_sentiment_and_intent(
     if matched_rules:
         return {
             "intent": INTENT_NOT_INTERESTED,
+            "normalized_sentiment": "NEGATIVE",
             "confidence": 0.98,
             "sentiment": "negative",
             "matched_rules": matched_rules,
@@ -319,6 +323,7 @@ def classify_inbound_sentiment_and_intent(
         r"\b(?:are\s+you\s+free|how\s+about|let's\s+speak|let's\s+talk|jump\s+on\s+a\s+call|hop\s+on\s+a\s+call)\b",
         r"\b(?:tuesday|wednesday|thursday|friday|monday)\s+(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm|est|pst|cet|gmt)?)\b",
         r"\b(?:send\s+(?:an?\s+)?invite|send\s+a\s+calendar|book\s+a\s+slot|schedule\s+a\s+call|schedule\s+a\s+demo)\b",
+        r"\b(?:set\s+up\s+a\s+(?:quick\s+)?(?:call|demo|meeting|chat)|schedule\s+a\s+(?:quick\s+)?(?:call|demo|meeting)|let's\s+(?:schedule|set\s+up|book))\b",
     ]
     for pat in meeting_patterns:
         if re.search(pat, combined):
@@ -327,6 +332,7 @@ def classify_inbound_sentiment_and_intent(
     if matched_rules:
         return {
             "intent": INTENT_MEETING_REQUESTED,
+            "normalized_sentiment": "POSITIVE",
             "confidence": 0.94,
             "sentiment": "positive",
             "matched_rules": matched_rules,
@@ -354,6 +360,7 @@ def classify_inbound_sentiment_and_intent(
         ref_conf = ref_contact.get("confidence", 0.88) if ref_contact.get("is_valid_referral") else 0.88
         return {
             "intent": INTENT_WRONG_CONTACT,
+            "normalized_sentiment": "REFERRAL",
             "confidence": max(0.88, ref_conf),
             "sentiment": "neutral",
             "matched_rules": matched_rules,
@@ -378,6 +385,7 @@ def classify_inbound_sentiment_and_intent(
     if matched_rules:
         return {
             "intent": INTENT_POSITIVE_INTEREST,
+            "normalized_sentiment": "POSITIVE",
             "confidence": 0.90,
             "sentiment": "positive",
             "matched_rules": matched_rules,
@@ -388,8 +396,8 @@ def classify_inbound_sentiment_and_intent(
             "referral_details": ref_contact if ref_contact.get("has_referral") else None,
         }
 
-    # 6. OBJECTION PUSHBACK CHECK (Leveraging objection categories)
-    from inbox.backend.services.objection_service import PATTERNS as OBJ_PATTERNS
+    # 6. OBJECTION PUSHBACK CHECK (Leveraging objection categories & dynamic battlecards)
+    from inbox.backend.services.objection_service import PATTERNS as OBJ_PATTERNS, classify_objection
     for cat_name, patterns in OBJ_PATTERNS.items():
         for pat in patterns:
             if re.search(pat, combined):
@@ -397,8 +405,32 @@ def classify_inbound_sentiment_and_intent(
                 break
 
     if matched_rules:
+        # Generate battlecard recommendations automatically (Layer 1 Paranoia)
+        obj_info = classify_objection(clean_body or clean_subj)
+        lead_dict = lead if isinstance(lead, dict) else {}
+        lead_name = lead_dict.get("first_name") or lead_dict.get("name")
+        company_name = lead_dict.get("company_name") or lead_dict.get("company")
+        
+        battlecard = None
+        try:
+            from inbox.backend.services.battlecard_service import generate_battlecard_responses
+            battlecard = generate_battlecard_responses(
+                obj_info.get("objection_type", "COMPETITOR_INCUMBENT"),
+                context={
+                    "lead_name": lead_name,
+                    "company": company_name,
+                    "detected_competitor": obj_info.get("detected_competitor"),
+                    "detected_timing": obj_info.get("detected_timing"),
+                    "detected_referral": obj_info.get("detected_referral"),
+                    "timezone": lead_dict.get("timezone"),
+                }
+            )
+        except Exception as bc_err:
+            logger.debug(f"[SentimentClassifier] Battlecard generation notice: {bc_err}")
+
         return {
             "intent": INTENT_OBJECTION,
+            "normalized_sentiment": "OBJECTION",
             "confidence": 0.86,
             "sentiment": "neutral",
             "matched_rules": matched_rules,
@@ -407,11 +439,15 @@ def classify_inbound_sentiment_and_intent(
             "ooo_details": None,
             "company_wide_opt_out": comp_opt,
             "referral_details": ref_contact if ref_contact.get("has_referral") else None,
+            "battlecard_recommended": True,
+            "suggested_battlecard": battlecard,
+            "objection_category": obj_info.get("objection_type"),
         }
 
     # 7. DEFAULT: NEUTRAL QUESTION OR INQUIRY
     return {
         "intent": INTENT_NEUTRAL_QUESTION,
+        "normalized_sentiment": "QUESTION",
         "confidence": 0.55,
         "sentiment": "neutral",
         "matched_rules": ["default_inquiry"],
@@ -513,36 +549,48 @@ def snooze_campaign_for_ooo_lead(
             logger.debug(f"[OOOSnooze] Lead update fallback: {exc}")
 
         try:
-            # 2. Find and snooze active execution states via campaign_enrollments
-            enr_res = (
-                supabase.table("campaign_enrollments")
-                .select("id")
+            # 2. Find and snooze active execution states (Direct lead_id query with enrollment fallback)
+            states_res = (
+                supabase.table("campaign_execution_states")
+                .select("id, status")
                 .eq("workspace_id", clean_ws)
                 .eq("lead_id", clean_lead)
+                .in_("status", ["pending", "waiting_for_reply", "running", "active"])
                 .execute()
             )
-            enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
-            if enr_ids:
-                states_res = (
-                    supabase.table("campaign_execution_states")
-                    .select("id, status")
+            states_data = getattr(states_res, "data", []) or []
+
+            if not states_data:
+                enr_res = (
+                    supabase.table("campaign_enrollments")
+                    .select("id")
                     .eq("workspace_id", clean_ws)
-                    .in_("enrollment_id", enr_ids)
-                    .in_("status", ["pending", "waiting_for_reply", "running", "active"])
+                    .eq("lead_id", clean_lead)
                     .execute()
                 )
-                data = getattr(states_res, "data", []) or []
-                if isinstance(data, list):
-                    for st in data:
-                        if isinstance(st, dict):
-                            st_id = st.get("id")
-                            if st_id:
-                                supabase.table("campaign_execution_states").update({
-                                    "status": "snoozed_ooo",
-                                    "next_run_at": target_snooze_until,
-                                    "updated_at": now_iso,
-                                }).eq("id", st_id).execute()
-                                updates_made += 1
+                enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                if enr_ids:
+                    states_res = (
+                        supabase.table("campaign_execution_states")
+                        .select("id, status")
+                        .eq("workspace_id", clean_ws)
+                        .in_("enrollment_id", enr_ids)
+                        .in_("status", ["pending", "waiting_for_reply", "running", "active"])
+                        .execute()
+                    )
+                    states_data = getattr(states_res, "data", []) or []
+
+            if isinstance(states_data, list):
+                for st in states_data:
+                    if isinstance(st, dict):
+                        st_id = st.get("id")
+                        if st_id:
+                            supabase.table("campaign_execution_states").update({
+                                "status": "snoozed_ooo",
+                                "next_run_at": target_snooze_until,
+                                "updated_at": now_iso,
+                            }).eq("id", st_id).execute()
+                            updates_made += 1
         except Exception as exc:
             logger.debug(f"[OOOSnooze] Execution states snooze fallback: {exc}")
 
@@ -773,6 +821,12 @@ def apply_inbound_sentiment_actions(
     if intent in (INTENT_MEETING_REQUESTED, INTENT_POSITIVE_INTEREST):
         if supabase:
             try:
+                # Deadlock prevention (Layer 1): Acquire lock on leads table first, then campaign_execution_states
+                supabase.table("leads").update({
+                    "status": "INTERESTED",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", clean_lead).eq("workspace_id", clean_ws).execute()
+
                 # Stop ongoing sequence touches for this engaged prospect via campaign_enrollments
                 enr_res = (
                     supabase.table("campaign_enrollments")
@@ -790,11 +844,6 @@ def apply_inbound_sentiment_actions(
                     }).eq("workspace_id", clean_ws).in_("enrollment_id", enr_ids).in_("status", [
                         "pending", "waiting_for_reply", "running", "active"
                     ]).execute()
-
-                supabase.table("leads").update({
-                    "status": "INTERESTED",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).eq("id", clean_lead).eq("workspace_id", clean_ws).execute()
             except Exception as exc:
                 logger.debug(f"[IntentAction] Positive intent update fallback: {exc}")
         action_summary["action_taken"] = "paused_sequence_marked_interested"
@@ -802,6 +851,12 @@ def apply_inbound_sentiment_actions(
     elif intent == INTENT_NOT_INTERESTED:
         if supabase:
             try:
+                # Deadlock prevention (Layer 1): Acquire lock on leads table first
+                supabase.table("leads").update({
+                    "status": "UNSUBSCRIBED",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", clean_lead).eq("workspace_id", clean_ws).execute()
+
                 # Halt sequence immediately and unsubscribe via campaign_enrollments
                 enr_res = (
                     supabase.table("campaign_enrollments")
@@ -820,10 +875,35 @@ def apply_inbound_sentiment_actions(
                         "pending", "waiting_for_reply", "running", "active", "snoozed_ooo", "awaiting_approval", "paused"
                     ]).execute()
 
-                supabase.table("leads").update({
-                    "status": "UNSUBSCRIBED",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).eq("id", clean_lead).eq("workspace_id", clean_ws).execute()
+                # Paranoia Layer 1 & 2: Insert into workspace suppression_list (DNC) so re-imports or multi-campaigns cannot touch prospect
+                now_iso = datetime.now(timezone.utc).isoformat()
+                if lead_email:
+                    try:
+                        clean_email = str(lead_email).strip().lower()
+                        supabase.table("suppression_list").insert({
+                            "workspace_id": clean_ws,
+                            "email": clean_email,
+                            "value": clean_email,
+                            "reason": "Sentiment intent: prospect not interested / unsubscribed",
+                            "created_at": now_iso,
+                        }).execute()
+                    except Exception as sl_err:
+                        logger.debug(f"[IntentAction] Direct email suppression_list insert notice: {sl_err}")
+
+                linkedin_url = lead.get("linkedin_url")
+                if linkedin_url:
+                    try:
+                        clean_li = str(linkedin_url).strip()
+                        supabase.table("suppression_list").insert({
+                            "workspace_id": clean_ws,
+                            "linkedin_url": clean_li,
+                            "value": clean_li,
+                            "reason": "Sentiment intent: prospect not interested / unsubscribed",
+                            "created_at": now_iso,
+                        }).execute()
+                    except Exception as sl_err2:
+                        logger.debug(f"[IntentAction] Direct linkedin suppression_list insert notice: {sl_err2}")
+
             except Exception as exc:
                 logger.debug(f"[IntentAction] Opt-out update fallback: {exc}")
         action_summary["action_taken"] = "unsubscribed_halted_sequence"
@@ -847,5 +927,57 @@ def apply_inbound_sentiment_actions(
     elif intent == INTENT_WRONG_CONTACT:
         action_summary["action_taken"] = "flagged_referral"
 
+    else:
+        # Paranoia Layer 1 & 2 (GAP-04): Universal Inbound Sequence Pause
+        # Any verified inbound message from a prospect (questions, objections, neutral inquiries, or general replies)
+        # MUST pause the campaign sequence so robotic follow-ups immediately yield to active human conversations.
+        if supabase:
+            try:
+                supabase.table("leads").update({
+                    "status": "replied",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", clean_lead).eq("workspace_id", clean_ws).execute()
+
+                enr_res = (
+                    supabase.table("campaign_enrollments")
+                    .select("id")
+                    .eq("workspace_id", clean_ws)
+                    .eq("lead_id", clean_lead)
+                    .execute()
+                )
+                enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
+                if enr_ids:
+                    intent_label = (intent.lower() if intent else "general").replace(" ", "_")
+                    supabase.table("campaign_execution_states").update({
+                        "status": "paused",
+                        "error_reason": f"replied_inbound_{intent_label}",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("workspace_id", clean_ws).in_("enrollment_id", enr_ids).in_("status", [
+                        "pending", "waiting_for_reply", "running", "active"
+                    ]).execute()
+            except Exception as exc:
+                logger.debug(f"[IntentAction] Universal inbound reply pause fallback: {exc}")
+        action_summary["action_taken"] = f"paused_sequence_inbound_{(intent.lower() if intent else 'general').replace(' ', '_')}"
+
     return action_summary
+
+
+def execute_intent_actions(
+    classification: Dict[str, Any],
+    lead_id: str,
+    workspace_id: str,
+    supabase: Optional[Any] = None,
+    campaign_id: Optional[str] = None,
+    text: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """Compatibility alias wrapping apply_inbound_sentiment_actions."""
+    return apply_inbound_sentiment_actions(
+        supabase=supabase,
+        workspace_id=workspace_id,
+        lead_id=lead_id,
+        classification=classification,
+        campaign_id=campaign_id,
+        text=text or classification.get("raw_text")
+    )
 

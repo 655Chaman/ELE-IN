@@ -210,10 +210,44 @@ class TestRFC8058OneClickUnsubscribe(unittest.TestCase):
     # 4. Human Browser GET Request Confirmation HTML (Layer 0 & 2)
     # =========================================================================
 
-    def test_human_get_request_html_page(self):
+    def test_human_get_renders_two_step_confirmation_prompt(self):
         """
-        Send HTTP GET to /api/elein/unsubscribe?token=...
-        Assert HTTP 200, Content-Type 'text/html', and confirmation message rendered.
+        Send HTTP GET to /api/elein/unsubscribe?token=... without confirm flag.
+        Assert HTTP 200, Content-Type 'text/html', and two-step confirmation prompt rendered.
+        Verifies FLAW-SEC-09: process_one_click_unsubscribe must NOT be executed on initial GET
+        so that enterprise security prefetchers (Proofpoint, Defender) do not unsubscribe leads.
+        """
+        token = generate_unsubscribe_token(
+            workspace_id=self.workspace_id,
+            lead_id=self.lead_id,
+            email=self.email,
+        )
+
+        with patch("campaigns.backend.routers.unsubscribe.process_one_click_unsubscribe") as mock_process:
+            response = self.client.get(f"/api/elein/unsubscribe?token={token}")
+
+            # Assert HTTP 200 OK
+            self.assertEqual(response.status_code, 200)
+
+            # Assert Content-Type text/html
+            content_type = response.headers.get("content-type", "")
+            self.assertIn("text/html", content_type)
+
+            # Assert two-step prompt rendered
+            html_text = response.text
+            self.assertIn("Confirm Unsubscription", html_text)
+            self.assertIn("Are you sure you want to unsubscribe from this campaign?", html_text)
+            self.assertIn(self.email.lower(), html_text)
+            self.assertIn("Confirm Unsubscribe", html_text)
+
+            # Assert processing logic was NOT called (protecting against prefetch scanners)
+            mock_process.assert_not_called()
+
+    def test_human_get_request_html_page_with_explicit_confirm(self):
+        """
+        Send HTTP GET to /api/elein/unsubscribe?token=...&confirm=true.
+        Assert HTTP 200, Content-Type 'text/html', confirmation message rendered,
+        and process_one_click_unsubscribe executed.
         """
         token = generate_unsubscribe_token(
             workspace_id=self.workspace_id,
@@ -229,7 +263,7 @@ class TestRFC8058OneClickUnsubscribe(unittest.TestCase):
                 "email": self.email,
             }
 
-            response = self.client.get(f"/api/elein/unsubscribe?token={token}")
+            response = self.client.get(f"/api/elein/unsubscribe?token={token}&confirm=true")
 
             # Assert HTTP 200 OK
             self.assertEqual(response.status_code, 200)
@@ -246,6 +280,32 @@ class TestRFC8058OneClickUnsubscribe(unittest.TestCase):
             self.assertIn("RFC 8058 One-Click Compliant", html_text)
 
             # Assert process_one_click_unsubscribe was executed
+            mock_process.assert_called_once_with(
+                workspace_id=self.workspace_id,
+                lead_id=self.lead_id,
+                email=self.email.lower(),
+            )
+
+    def test_browser_post_returns_html_confirmation(self):
+        """
+        Submit browser form POST to /api/elein/unsubscribe?format=html.
+        Assert HTTP 200, Content-Type 'text/html', and process_one_click_unsubscribe executed.
+        """
+        token = generate_unsubscribe_token(
+            workspace_id=self.workspace_id,
+            lead_id=self.lead_id,
+            email=self.email,
+        )
+
+        with patch("campaigns.backend.routers.unsubscribe.process_one_click_unsubscribe") as mock_process:
+            response = self.client.post(
+                f"/api/elein/unsubscribe?token={token}&format=html",
+                headers={"Accept": "text/html"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("text/html", response.headers.get("content-type", ""))
+            self.assertIn("Unsubscribed", response.text)
             mock_process.assert_called_once_with(
                 workspace_id=self.workspace_id,
                 lead_id=self.lead_id,

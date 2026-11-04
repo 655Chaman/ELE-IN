@@ -98,6 +98,11 @@ export function ConversationCanvas({
                   {selectedThread?.campaign_name || 'Active Campaign'}
                 </strong>
               </span>
+              {selectedThread?.all_account_names && selectedThread.all_account_names.length > 0 && (
+                <span className="ml-2 text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border/80">
+                  Fleet: {selectedThread.all_account_names.join(', ')}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -258,16 +263,23 @@ export function ConversationCanvas({
                   {msg.message_text}
                 </p>
                 <div
-                  className={`mt-1.5 text-xs flex items-center justify-end gap-1 ${
+                  className={`mt-1.5 text-xs flex items-center justify-between gap-2 ${
                     isOutbound
                       ? 'text-primary-foreground/75 dark:text-muted-foreground'
                       : 'text-muted-foreground'
                   }`}
                 >
-                  {new Date(msg.created_at).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {isOutbound && msg.sender_account_name ? (
+                    <span className="text-[10px] font-medium opacity-90 bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded">
+                      via {msg.sender_account_name}
+                    </span>
+                  ) : <span />}
+                  <span>
+                    {new Date(msg.created_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
                 </div>
               </div>
             </div>

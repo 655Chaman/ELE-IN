@@ -169,6 +169,8 @@ export function applyVariableFallbacksToTree(
   rootNodes: SeqTreeNode[],
   fallbackOverrides: Record<string, string>
 ): SeqTreeNode[] {
+  const visited = new Set<string>()
+
   function rewriteText(text: string): string {
     if (!text || typeof text !== "string") return text
     return text.replace(/\{\{([a-zA-Z0-9_]+)(\|[^}]*)?\}\}/g, (match, varName, existingFallback) => {
@@ -184,7 +186,10 @@ export function applyVariableFallbacksToTree(
     })
   }
 
-  function transformNode(node: SeqTreeNode): SeqTreeNode {
+  function transformNode(node: SeqTreeNode, depth = 0): SeqTreeNode {
+    if (!node || !node.id || visited.has(node.id) || depth > 50) return node
+    visited.add(node.id)
+
     const newData: Record<string, any> = { ...node.data }
     for (const [k, v] of Object.entries(newData)) {
       if (typeof v === "string") {
@@ -196,7 +201,7 @@ export function applyVariableFallbacksToTree(
     if (node.children) {
       for (const [k, branch] of Object.entries(node.children)) {
         newChildren[k] = Array.isArray(branch)
-          ? branch.map(child => transformNode(child))
+          ? branch.map(child => transformNode(child, depth + 1))
           : []
       }
     }
@@ -208,7 +213,7 @@ export function applyVariableFallbacksToTree(
     }
   }
 
-  return rootNodes.map(r => transformNode(r))
+  return (rootNodes || []).map(r => transformNode(r))
 }
 
 // ─── Deep Recursive Sanitizer (Layer 1 Security) ─────────────────────────────
@@ -216,6 +221,15 @@ const SENSITIVE_KEY_REGEX = /(token|key|secret|password|auth|bearer|cookie|crede
 const STRICT_TENANT_UUID_REGEX = /(workspace_id|account_id|sender_id|lead_id|lead_list_id|execution_state_id|enrollment_id|persona_id|asset_id|user_id)$/i
 const PRIVATE_IP_OR_METADATA_REGEX = /https?:\/\/(localhost|127\.0\.0\.1|169\.254\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/i
 const SECRET_TOKEN_STRING_REGEX = /(sk_live_[a-zA-Z0-9]+|sk_test_[a-zA-Z0-9]+|ghp_[a-zA-Z0-9]+|AKIA[0-9A-Z]{16}|xoxb-[a-zA-Z0-9-]+|Bearer\s+[a-zA-Z0-9_\-\.]+)/gi
+const FORMULA_INJECTION_PREFIX_REGEX = /^[\s\t\r\n]*([=@\t\r]|([+\-][A-Za-z_]))/
+
+export function sanitizeFormulaString(val: string): string {
+  if (!val || typeof val !== "string") return val
+  if (FORMULA_INJECTION_PREFIX_REGEX.test(val)) {
+    return `'${val.replace(/^[\s\t\r\n]+/, "")}`
+  }
+  return val
+}
 
 export function deepSanitizeValue(value: unknown): unknown {
   if (value === null || value === undefined) return value
@@ -233,6 +247,8 @@ export function deepSanitizeValue(value: unknown): unknown {
     // Neutralize dangerous JavaScript/HTML injection
     clean = clean.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     clean = clean.replace(/javascript\s*:/gi, "blocked-script:")
+    // Neutralize spreadsheet formula execution triggers
+    clean = sanitizeFormulaString(clean)
     return clean
   }
 
@@ -415,7 +431,7 @@ export function exportBlueprint(
   const stats = calculateBlueprintStats(cleanRoots, cleanNotes)
 
   const finalMetadata: EleInBlueprintMetadata = {
-    name: safeMeta.name?.trim() || "Exported Workflow Blueprint",
+    name: safeMeta.name?.trim() ? String(deepSanitizeValue(safeMeta.name.trim())) : "Exported Workflow Blueprint",
     description: safeMeta.description?.trim() ? String(deepSanitizeValue(safeMeta.description.trim())) : "",
     version: safeMeta.version || "1.0.0",
     schemaVersion: "elein-blueprint-v1",
@@ -423,7 +439,7 @@ export function exportBlueprint(
     branding: {
       agencyName: safeMeta.branding?.agencyName ? String(deepSanitizeValue(safeMeta.branding.agencyName)) : "Ele-in Studio",
       authorName: safeMeta.branding?.authorName ? String(deepSanitizeValue(safeMeta.branding.authorName)) : "Sequence Architect",
-      accentColor: safeMeta.branding?.accentColor || "#6366f1",
+      accentColor: sanitizeHexColor(safeMeta.branding?.accentColor, "#6366f1"),
       badge: safeMeta.branding?.badge ? String(deepSanitizeValue(safeMeta.branding.badge)) : "Verified Blueprint",
       website: safeMeta.branding?.website ? String(deepSanitizeValue(safeMeta.branding.website)) : undefined,
     },
@@ -814,6 +830,15 @@ export function getCanvasSnapshots(): CanvasSnapshot[] {
   }
 }
 
+export function sanitizeHexColor(color?: string, fallback = "#6366f1"): string {
+  if (!color || typeof color !== "string") return fallback
+  const trimmed = color.trim()
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(trimmed)) {
+    return trimmed
+  }
+  return fallback
+}
+
 export function saveCanvasSnapshot(
   nodes: SeqTreeNode[],
   stickyNotes: StickyNote[],
@@ -832,11 +857,22 @@ export function saveCanvasSnapshot(
     stickyNotes: JSON.parse(JSON.stringify(stickyNotes)),
   }
 
-  const updated = [newSnapshot, ...snapshots].slice(0, MAX_VAULT_SNAPSHOTS)
-  try {
-    localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(updated))
-  } catch (e) {
-    console.warn("[Rollback Vault] Failed to persist snapshot to localStorage", e)
+  let updated = [newSnapshot, ...snapshots].slice(0, MAX_VAULT_SNAPSHOTS)
+  let attempts = 0
+  while (attempts < 5) {
+    try {
+      localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(updated))
+      break
+    } catch (e) {
+      attempts++
+      if (updated.length > 1) {
+        // Adaptive eviction: drop oldest snapshot to stay within browser quota
+        updated = updated.slice(0, -1)
+      } else {
+        console.warn("[Rollback Vault] Browser quota exceeded; unable to persist snapshot", e)
+        break
+      }
+    }
   }
   return newSnapshot
 }
@@ -1055,14 +1091,22 @@ export async function parseBlueprintFile(file: File): Promise<EleInBlueprint> {
   return validation.parsedBlueprint!
 }
 
-export function parseBlueprintJsonString(jsonStr: string): EleInBlueprint {
+export function parseBlueprintJsonString(jsonStr: string): EleInBlueprint & { _wasAutoRepaired?: boolean } {
+  if (typeof jsonStr !== "string") {
+    throw new Error("Invalid payload: input must be a string.")
+  }
+  if (jsonStr.length > 500000) {
+    throw new Error("Blueprint JSON payload exceeds maximum allowable length of 500KB.")
+  }
   let parsed: any
+  let wasAutoRepaired = false
   try {
     parsed = JSON.parse(jsonStr)
   } catch (firstErr: any) {
     try {
       const repaired = repairTruncatedJson(jsonStr)
       parsed = JSON.parse(repaired)
+      wasAutoRepaired = true
     } catch {
       throw new Error(`JSON Syntax Error: ${firstErr.message}. Verify trailing brackets.`)
     }
@@ -1072,5 +1116,9 @@ export function parseBlueprintJsonString(jsonStr: string): EleInBlueprint {
   if (!validation.isValid) {
     throw new Error(validation.errors.join("\n"))
   }
-  return validation.parsedBlueprint!
+  const result = validation.parsedBlueprint!
+  if (wasAutoRepaired) {
+    (result as any)._wasAutoRepaired = true
+  }
+  return result
 }

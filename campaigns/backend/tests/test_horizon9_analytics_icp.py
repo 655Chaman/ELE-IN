@@ -12,7 +12,10 @@ from campaigns.backend.routers.master_view import (
     get_funnel_leads,
     FunnelLeadsRequest
 )
-import pypdf
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 from campaigns.backend.utils.pdf_generator import generate_pdf_report, sanitize_pdf_text
 from knowledge.backend.services.bayesian_icp_service import (
     _extract_signals,

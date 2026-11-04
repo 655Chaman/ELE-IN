@@ -18,11 +18,19 @@ interface ConnectModalProps {
 }
 
 export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
-  const [activeTab, setActiveTab] = useState<"token" | "extension">("token")
-  const [cookieInput, setCookieInput] = useState("")
-  const [name, setName] = useState("")
+  const getSavedDraft = () => {
+    try {
+      const draft = sessionStorage.getItem("elein_connect_modal_draft") || localStorage.getItem("elein_connect_modal_draft")
+      if (draft) return JSON.parse(draft)
+    } catch (_) {}
+    return null
+  }
+
+  const [activeTab, setActiveTab] = useState<"token" | "extension">(() => getSavedDraft()?.activeTab || "token")
+  const [cookieInput, setCookieInput] = useState(() => getSavedDraft()?.cookieInput || "")
+  const [name, setName] = useState(() => getSavedDraft()?.name || "")
   const [isWarmup, setIsWarmup] = useState(true)
-  const [proxyId, setProxyId] = useState("auto")
+  const [proxyId, setProxyId] = useState(() => getSavedDraft()?.proxyId || "auto")
   const [error, setError] = useState("")
   const [validating, setValidating] = useState(false)
   const [validated, setValidated] = useState<{ valid: boolean; profile_url?: string; name?: string } | null>(null)
@@ -30,9 +38,24 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
   const [guideMethod, setGuideMethod] = useState<"devtools" | "editthiscookie">("devtools")
 
   const { data: proxies } = useSWR("/api/elein/proxies/health", fetcher)
+  const safeProxies = Array.isArray(proxies) ? proxies : []
   const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_use_custom_proxies?: boolean } }>('/api/elein/workspaces/billing', fetcher)
   const { openPaywall } = usePaywall()
   const isProxyLocked = Boolean(billing && !billing.tier_limits?.can_use_custom_proxies)
+
+  // Layer 2 Paranoia: Persist draft to sessionStorage and localStorage to protect against accidental refreshes/re-renders
+  useEffect(() => {
+    try {
+      const payload = JSON.stringify({
+        activeTab,
+        cookieInput,
+        name,
+        proxyId
+      })
+      sessionStorage.setItem("elein_connect_modal_draft", payload)
+      localStorage.setItem("elein_connect_modal_draft", payload)
+    } catch (_) {}
+  }, [activeTab, cookieInput, name, proxyId])
 
   // Layer 2 Paranoia: Close on Escape key (unless network validation is actively in-flight)
   useEffect(() => {
@@ -106,17 +129,17 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
 
     // 2. Cookie header format (e.g. li_at=AQED...; JSESSIONID=...)
     if (cleaned.includes("li_at=")) {
-      const matches = Array.from(cleaned.matchAll(/([a-zA-Z0-9_-]+)=([^;,\s]+)/g))
+      const matches = Array.from(cleaned.matchAll(/([a-zA-Z0-9_-]+)=([^;,\s]+)/g)) as RegExpExecArray[]
       if (matches.length > 0) {
         const cookies = matches.map(([_, cName, val]) => ({
           domain: ".linkedin.com",
           name: cName,
-          value: val.replace(/^["']|["']$/g, ''),
+          value: (val || '').replace(/^["']|["']$/g, ''),
           path: "/",
           secure: true,
           httpOnly: cName === "li_at"
         }))
-        const hasLiAt = cookies.some(c => c.name === "li_at")
+        const hasLiAt = cookies.some((c: any) => c.name === "li_at")
         if (hasLiAt) {
           return {
             valid: true,
@@ -196,7 +219,11 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
       if (!result.valid) {
         setValidating(false)
         setValidated({ valid: false })
-        setError(result.error || "Cookie session is invalid or expired. Please refresh linkedin.com and re-copy cookies.")
+        if (result.error && (result.error.includes("302") || result.error.includes("redirect"))) {
+          setError("LinkedIn session expired or was revoked (HTTP 302 redirect). Please log in to linkedin.com in your browser, copy a fresh li_at cookie, and paste it again.")
+        } else {
+          setError(result.error || "Cookie session is invalid or expired. Please refresh linkedin.com and re-copy cookies.")
+        }
         return
       }
 
@@ -219,6 +246,10 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
       }
 
       await onAdd(account)
+      try {
+        sessionStorage.removeItem("elein_connect_modal_draft")
+        localStorage.removeItem("elein_connect_modal_draft")
+      } catch (_) {}
       setValidating(false)
 
       setTimeout(() => onClose(), 600)
@@ -368,7 +399,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="auto">Auto-Assign Proxy (Recommended)</SelectItem>
-                        {proxies?.map((p: any) => (
+                        {safeProxies.map((p: any) => (
                           <SelectItem key={p.id} value={p.id}>
                             {p.provider || "Residential"} - {p.country_code || "US"} ({p.host})
                           </SelectItem>

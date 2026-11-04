@@ -2,9 +2,10 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useSWR, { mutate } from 'swr';
 import {
-  MessageSquare, RefreshCw, AlertTriangle, X
+  MessageSquare, RefreshCw, AlertTriangle, AlertCircle, X
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 import { fetcher, fetchWithAuth } from '@/lib/apiClient';
 import { ElesiumLogo } from './components/ElesiumLogo';
 import { usePaywall } from '@/contexts/PaywallContext';
@@ -59,11 +60,17 @@ export function EleInInbox() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
+  // ── Sub-Second Real-Time WebSocket Channel with Adaptive Fallback (Phase I) ──
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [realtimeRetryCount, setRealtimeRetryCount] = useState(0);
+  const realtimeRetryCountRef = useRef(0);
+  const realtimeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // ── SWR Data Queries ──
-  const { data: threads, mutate: mutateThreads } = useSWR<ThreadSummary[]>(
+  const { data: threads, error: threadsError, mutate: mutateThreads } = useSWR<ThreadSummary[]>(
     '/api/elein/inbox/threads',
     fetcher,
-    { refreshInterval: isTabVisible ? 12_000 : 60_000, revalidateOnFocus: true }
+    { refreshInterval: isTabVisible ? (isRealtimeConnected ? 30_000 : 4_000) : 60_000, revalidateOnFocus: true }
   );
   const { data: billingData } = useSWR<{ tier?: string }>(
     '/api/elein/workspaces/billing',
@@ -83,8 +90,58 @@ export function EleInInbox() {
         )}`
       : null,
     fetcher,
-    { refreshInterval: isTabVisible ? 8_000 : 60_000, revalidateOnFocus: true }
+    { refreshInterval: isTabVisible ? (isRealtimeConnected ? 30_000 : 3_000) : 60_000, revalidateOnFocus: true }
   );
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    const channelName = `inbox-sync:${activeWorkspaceId}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `workspace_id=eq.${activeWorkspaceId}`,
+        },
+        () => {
+          // Debounce burst updates (300ms) to prevent network storms and UI freeze
+          if (realtimeDebounceTimerRef.current) clearTimeout(realtimeDebounceTimerRef.current);
+          realtimeDebounceTimerRef.current = setTimeout(() => {
+            mutateMessages();
+            mutateThreads();
+          }, 300);
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setIsRealtimeConnected(true);
+          realtimeRetryCountRef.current = 0;
+          setRealtimeRetryCount(0);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setIsRealtimeConnected(false);
+          // Exponential backoff reconnect: 1s, 2s, 4s, 8s, up to 30s
+          const currentCount = realtimeRetryCountRef.current;
+          const delay = Math.min(30_000, Math.pow(2, currentCount) * 1000);
+          reconnectTimer = setTimeout(() => {
+            realtimeRetryCountRef.current += 1;
+            setRealtimeRetryCount(realtimeRetryCountRef.current);
+            mutateMessages();
+            mutateThreads();
+          }, delay);
+        }
+      });
+
+    return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (realtimeDebounceTimerRef.current) clearTimeout(realtimeDebounceTimerRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [activeWorkspaceId, mutateMessages, mutateThreads]);
 
   const { data: approvalCount } = useSWR<{ count: number }>(
     '/api/approvals?status=pending&limit=1',
@@ -114,12 +171,13 @@ export function EleInInbox() {
 
   // ── Search & Filter State ──
   const [searchQuery, setSearchQuery] = useState('');
-  const [outcomeFilter, setOutcomeFilter] = useState<'ALL' | 'INBOUND' | OutcomeType>('ALL');
+  const [outcomeFilter, setOutcomeFilter] = useState<'ALL' | 'UNREAD' | 'INBOUND' | OutcomeType>('ALL');
   const [dealStageFilter, setDealStageFilter] = useState<'ALL' | DealStage>('ALL');
 
-  // Pipeline outcomes cached by workspace
+  // Pipeline outcomes & read status cached by workspace
   const activeWorkspace = activeWorkspaceId || 'default';
   const outcomesStorageKey = `elein_inbox_outcomes_${activeWorkspace}`;
+  const readStorageKey = `elein_inbox_read_${activeWorkspace}`;
 
   const [threadOutcomes, setThreadOutcomes] = useState<Record<string, OutcomeType>>(() => {
     if (typeof window === 'undefined') return {};
@@ -130,6 +188,33 @@ export function EleInInbox() {
       return {};
     }
   });
+
+  const [readTimestamps, setReadTimestamps] = useState<Record<string, number>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const saved = localStorage.getItem(`elein_inbox_read_${activeWorkspaceId || 'default'}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const markThreadAsRead = useCallback((threadKey: string) => {
+    setReadTimestamps((prev) => {
+      const next = { ...prev, [threadKey]: Date.now() };
+      try {
+        localStorage.setItem(readStorageKey, JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to persist read timestamp', e);
+      }
+      return next;
+    });
+
+    mutateThreads(
+      (prev) => prev?.map((t) => (t.thread_key === threadKey ? { ...t, unread_count: 0 } : t)),
+      false
+    );
+  }, [readStorageKey, mutateThreads]);
 
   const handleSetOutcome = (threadKey: string, outcome: OutcomeType | null) => {
     setThreadOutcomes((prev) => {
@@ -154,8 +239,17 @@ export function EleInInbox() {
     }
   };
 
-  // ── Production Inbox: Live Threads Only ──
-  const safeThreads = Array.isArray(threads) ? threads : [];
+  // ── Production Inbox: Live Threads with Optimistic Read Synchronization ──
+  const safeThreads = useMemo(() => {
+    const list = Array.isArray(threads) ? threads : [];
+    return list.map((t) => {
+      const lastRead = readTimestamps[t.thread_key];
+      if (lastRead && lastRead >= new Date(t.created_at).getTime()) {
+        return { ...t, unread_count: 0 };
+      }
+      return t;
+    });
+  }, [threads, readTimestamps]);
 
   // ── Resizable Thread List Width ──
   const [threadListWidth, setThreadListWidth] = useState<number>(() => {
@@ -415,6 +509,7 @@ export function EleInInbox() {
       setSelectedThreadKey(thread.thread_key);
       setSelectedSender(thread.sender_name);
       setSelectedLeadId(thread.lead_id || null);
+      markThreadAsRead(thread.thread_key);
 
       const cachedDraft = draftsByThreadRef.current[thread.thread_key] || '';
       setReplyText(cachedDraft);
@@ -422,7 +517,7 @@ export function EleInInbox() {
       previousDraftRef.current = '';
       setActiveAIIntent(null);
     },
-    [selectedThreadKey, replyText]
+    [selectedThreadKey, replyText, markThreadAsRead]
   );
 
   // ── Send Reply with Paranoia Safeguards & 4s Undo ──
@@ -440,12 +535,14 @@ export function EleInInbox() {
   };
 
   const triggerSendQueue = (finalText: string) => {
-    if (!selectedSender) return;
+    if (!selectedSender || isSendingRef.current) return;
+    isSendingRef.current = true;
 
     const currentSender = selectedSender;
     const currentLead = selectedLeadId;
     const currentThread = selectedThreadKey;
     const currentAccountId = selectedThreadObj?.account_id || activeAccountId || undefined;
+    const clientDraftId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}`;
 
     // Clear textarea immediately for responsive feel
     setReplyText('');
@@ -462,11 +559,14 @@ export function EleInInbox() {
         messageText: finalText,
       },
       async () => {
-        await executeActualSend(finalText, currentSender, currentLead, currentAccountId);
+        await executeActualSend(finalText, currentSender, currentLead, currentAccountId, clientDraftId, currentThread);
       },
       (restoredText) => {
         // On Undo Send
-        setReplyText(restoredText);
+        isSendingRef.current = false;
+        if (selectedThreadKey === currentThread) {
+          setReplyText(restoredText);
+        }
         if (currentThread) {
           draftsByThreadRef.current[currentThread] = restoredText;
         }
@@ -478,10 +578,25 @@ export function EleInInbox() {
     sentDraft: string,
     senderName: string,
     leadId: string | null,
-    targetAccountId?: string
+    targetAccountId?: string,
+    clientDraftId?: string,
+    originThreadKey?: string | null
   ) => {
     isSendingRef.current = true;
     setIsSending(true);
+
+    // Paranoia Layer 2: Optimistic UI message display to eliminate 3-4s blank/void pause
+    const optimisticMsg: Message = {
+      id: clientDraftId || `opt-${Date.now()}`,
+      message_text: sentDraft,
+      direction: 'OUTBOUND',
+      created_at: new Date().toISOString(),
+      lead_id: leadId || undefined,
+      account_id: targetAccountId || activeAccountId || undefined,
+    };
+    if (originThreadKey && originThreadKey === selectedThreadKey) {
+      mutateMessages((prev = []) => [...prev, optimisticMsg], false);
+    }
 
     try {
       setSessionErrorWarning(null);
@@ -493,6 +608,8 @@ export function EleInInbox() {
           lead_id: leadId,
           message_text: sentDraft,
           account_id: targetAccountId || activeAccountId || undefined,
+          client_draft_id: clientDraftId,
+          idempotency_key: clientDraftId,
         }),
       });
 
@@ -519,8 +636,17 @@ export function EleInInbox() {
         throw new Error(detail);
       }
     } catch (error: any) {
+      // Revalidate to roll back optimistic message if delivery failed
+      mutateMessages();
       toast.error(error?.message || 'Failed to send reply. Draft restored.');
-      setReplyText(sentDraft);
+      // Paranoia Layer 2: Only restore active composer draft if operator is still on the same thread
+      if (selectedThreadKey === originThreadKey) {
+        setReplyText(sentDraft);
+      }
+      // Paranoia Layer 2: Retain draft in thread dictionary so switching back restores it
+      if (originThreadKey) {
+        draftsByThreadRef.current[originThreadKey] = sentDraft;
+      }
     } finally {
       isSendingRef.current = false;
       setIsSending(false);
@@ -571,6 +697,8 @@ export function EleInInbox() {
             name: selectedSender,
           },
           campaign_context: '',
+          objection_type: activeObjection?.objection_type || undefined,
+          detected_competitor: activeObjection?.detected_competitor || undefined,
         }),
         signal: controller.signal,
       });
@@ -782,8 +910,11 @@ export function EleInInbox() {
       }
 
       if (outcomeFilter !== 'ALL') {
-        if (outcomeFilter === 'INBOUND' && t.direction !== 'inbound') return false;
-        if (outcomeFilter !== 'INBOUND') {
+        if (outcomeFilter === 'UNREAD') {
+          if ((t.unread_count ?? 0) <= 0) return false;
+        } else if (outcomeFilter === 'INBOUND') {
+          if (t.direction !== 'inbound') return false;
+        } else {
           const threadOutcome = threadOutcomes[t.thread_key];
           if (threadOutcome !== outcomeFilter) return false;
         }
@@ -812,6 +943,7 @@ export function EleInInbox() {
   const counts = useMemo(() => {
     const res: Record<string, number> = {
       ALL: safeThreads.length,
+      UNREAD: safeThreads.filter((t) => (t.unread_count ?? 0) > 0).length,
       INBOUND: safeThreads.filter((t) => t.direction === 'inbound').length,
       INTERESTED: 0,
       MEETING_BOOKED: 0,
@@ -905,6 +1037,30 @@ export function EleInInbox() {
       toast.success('Deal stage advanced to Closed Won.');
     },
   });
+
+  if (threadsError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-background text-foreground">
+        <div className="flex flex-col items-center justify-center text-center p-10 max-w-md bg-card border border-destructive/20 rounded-xl shadow-sm">
+          <div className="w-16 h-16 rounded-xl bg-destructive/10 flex items-center justify-center mb-6 border border-destructive/20 text-destructive">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-xl font-bold mb-2">Unable to load messages</h2>
+          <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+            The server could not be reached ({threadsError?.message || 'Connection timeout'}). Check backend status or retry.
+          </p>
+          <button
+            type="button"
+            onClick={() => mutateThreads()}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-xs"
+          >
+            <RefreshCw size={14} />
+            <span>Retry Connection</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (threads !== undefined && safeThreads.length === 0) {
     return (

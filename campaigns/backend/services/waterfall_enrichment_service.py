@@ -282,6 +282,15 @@ def execute_waterfall_enrichment(
                     "status": "success" if deduct_res.get("success") else "failed",
                     "reason": deduct_res.get("reason")
                 }
+                # Paranoia Layer 1: Fail closed if credit deduction was rejected (stops free data exfiltration)
+                if not deduct_res.get("success"):
+                    from fastapi import HTTPException
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Payment required: Insufficient credits to complete waterfall enrichment ({deduct_res.get('reason', 'insufficient_credits')}). Please top up your credits."
+                    )
+            except HTTPException:
+                raise
             except Exception as deduct_err:
                 logger.warning(f"Credit deduction error in waterfall enrichment: {deduct_err}")
                 credit_deduction_info = {"deducted": 0, "status": "error", "reason": str(deduct_err)}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react"
+import React, { useState, useRef, useEffect, useMemo, useContext } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "motion/react"
 import {
@@ -6,14 +6,15 @@ import {
   Sparkles, Layers, ArrowRight, RefreshCw, Palette, ExternalLink,
   Tag, Clock, MessageSquare, CheckCircle2, FileText, Undo2,
   History, Trash2, Camera, ShieldAlert, ShieldCheck, Mail, Sliders,
-  BookmarkPlus, Search, Compass, Bookmark, Cloud, CloudUpload
+  BookmarkPlus, Search, Compass, Bookmark, Cloud, CloudUpload, Building2
 } from "lucide-react"
 import useSWR from "swr"
 import { fetcher } from "@/lib/apiClient"
 import { ElesiumLogo } from "@/components/ElesiumLogo"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { useHRTreeStore, type SeqTreeNode, type StickyNote } from "@campaigns/eiTreeStore"
+import { WorkspaceContext } from "@/contexts/WorkspaceContext"
+import { useHRTreeStore, saveDraftToLocalStorage, type SeqTreeNode, type StickyNote } from "@campaigns/eiTreeStore"
 import {
   type EleInBlueprint,
   type EleInBlueprintMetadata,
@@ -36,6 +37,7 @@ import {
   clearCanvasSnapshots,
   auditBlueprintVariables,
   applyVariableFallbacksToTree,
+  sanitizeHexColor,
   COMMON_SMART_FALLBACKS
 } from "@/lib/blueprintSchema"
 import {
@@ -164,7 +166,16 @@ function CampaignBlueprintModalContent({
   const [validationResult, setValidationResult] = useState<BlueprintValidationResult | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isParsing, setIsParsing] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [pendingReplaceConfirm, setPendingReplaceConfirm] = useState<EleInBlueprint | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // ─── Workspace Context Stamp (Layer 2 Paranoia) ─────────────────────────────
+  const workspaceContext = useContext(WorkspaceContext)
+  const activeWorkspaceName = useMemo(() => {
+    if (!workspaceContext) return null
+    return workspaceContext.workspaces?.find(w => w.id === workspaceContext.activeWorkspaceId)?.name || null
+  }, [workspaceContext])
 
   // ─── Variable Reconciliation State ──────────────────────────────────────────
   const [fallbackOverrides, setFallbackOverrides] = useState<Record<string, string>>({})
@@ -173,7 +184,7 @@ function CampaignBlueprintModalContent({
   const [snapshots, setSnapshots] = useState<CanvasSnapshot[]>([])
 
   // ─── Accounts & Pre-Flight Check ───────────────────────────────────────────
-  const { data: accounts } = useSWR<any[]>("/api/elein/accounts", fetcher, { revalidateOnFocus: false })
+  const { data: accounts, isLoading: isLoadingAccounts } = useSWR<any[]>("/api/elein/accounts", fetcher, { revalidateOnFocus: false })
 
   const activeAccounts = useMemo(() => {
     if (!accounts || !Array.isArray(accounts)) return []
@@ -203,23 +214,35 @@ function CampaignBlueprintModalContent({
       setBlueprintName(formState?.campaignName || "High-Impact Outbound Sequence")
       setSnapshots(getCanvasSnapshots())
       setSavedBlueprints(getSavedWorkspaceBlueprints())
+      // Layer 2 Paranoia: Non-destructive default when canvas already has active steps
+      if (rootNodes && rootNodes.length > 0) {
+        setImportMode("append")
+      } else {
+        setImportMode("replace")
+      }
       if (preloadedBlueprint) {
         setImportedBlueprint(preloadedBlueprint)
         setValidationResult(validateBlueprint(preloadedBlueprint))
         setActiveTab("import")
       }
     }
-  }, [isOpen, initialTab, preloadedBlueprint, formState?.campaignName])
+  }, [isOpen, initialTab, preloadedBlueprint, formState?.campaignName, rootNodes])
 
-  // Escape key handler for accessible modal dismissal
+  // Escape key handler for accessible modal dismissal (Layer 2 Paranoia)
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
+      if (e.key === "Escape") {
+        if (pendingReplaceConfirm) {
+          setPendingReplaceConfirm(null)
+        } else {
+          onClose()
+        }
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, pendingReplaceConfirm])
 
   // Refresh variable audit whenever importedBlueprint changes
   const variableAudit = useMemo(() => {
@@ -299,7 +322,14 @@ function CampaignBlueprintModalContent({
       setValidationResult(res)
       if (res.isValid) {
         setImportedBlueprint(blueprint)
-        toast.success(`Validated blueprint: "${blueprint.metadata.name}"`)
+        if ((blueprint as any)._wasAutoRepaired) {
+          toast.success(`Validated & auto-repaired: "${blueprint.metadata.name}"`, {
+            description: "Missing trailing brackets/quotes from your clipboard were automatically healed.",
+            duration: 6000,
+          })
+        } else {
+          toast.success(`Validated blueprint: "${blueprint.metadata.name}"`)
+        }
       } else {
         toast.error("Validation error", {
           description: res.errors[0] || "Unknown format issue",
@@ -331,48 +361,88 @@ function CampaignBlueprintModalContent({
     toast.success("Applied smart fallbacks to sequence templates")
   }
 
-  // ─── Execute Import from Modal ──────────────────────────────────────────────
+  // ─── Execute Import from Modal (Layer 0, 1 & 2 Paranoia) ───────────────────
+  const executeImport = (targetBlueprint: EleInBlueprint, mode: ImportMode) => {
+    setIsImporting(true)
+    try {
+      // Layer 0 + Layer 2 Paranoia: Ensure user-configured fallback overrides are applied
+      let blueprintToImport = targetBlueprint
+      if (fallbackOverrides && Object.keys(fallbackOverrides).length > 0 && targetBlueprint.sequence?.rootNodes) {
+        const updatedRoots = applyVariableFallbacksToTree(
+          targetBlueprint.sequence.rootNodes,
+          fallbackOverrides
+        )
+        blueprintToImport = {
+          ...targetBlueprint,
+          sequence: {
+            ...targetBlueprint.sequence,
+            rootNodes: updatedRoots,
+          },
+        }
+      }
+
+      const bpName = blueprintToImport.metadata?.name || "Workflow Blueprint"
+
+      // 1. Layer 2 Paranoia: Automatically save canvas snapshot to rollback vault
+      saveCanvasSnapshot(
+        rootNodes,
+        stickyNotes,
+        `Pre-import: ${bpName}`
+      )
+      setSnapshots(getCanvasSnapshots())
+
+      // Capture previous state for immediate in-toast Undo
+      const previousRoots = [...rootNodes]
+      const previousNotes = [...stickyNotes]
+
+      const { nodes, stickyNotes: newNotes } = prepareImportNodes(
+        blueprintToImport,
+        rootNodes,
+        stickyNotes,
+        mode
+      )
+
+      loadTree(nodes, newNotes)
+
+      // Synchronously persist draft state to prevent data loss on immediate tab close
+      try {
+        saveDraftToLocalStorage(useHRTreeStore.getState())
+      } catch {}
+
+      setPendingReplaceConfirm(null)
+      onClose()
+
+      toast.success(
+        mode === "replace"
+          ? `Replaced sequence with "${bpName}"`
+          : `Appended "${bpName}" to sequence`,
+        {
+          description: `${nodes.length} total steps active on canvas. Snapshot saved to vault.`,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              loadTree(previousRoots, previousNotes)
+              toast.info("Import reverted back to previous canvas state.")
+            },
+          },
+          duration: 9000,
+        }
+      )
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   const handleConfirmImport = (targetBlueprint = importedBlueprint, mode = importMode) => {
     if (!targetBlueprint) return
 
-    // 1. Layer 2 Paranoia: Automatically save canvas snapshot to rollback vault
-    saveCanvasSnapshot(
-      rootNodes,
-      stickyNotes,
-      `Pre-import: ${targetBlueprint.metadata.name || "Workflow Blueprint"}`
-    )
-    setSnapshots(getCanvasSnapshots())
+    // Layer 2 Paranoia: If user attempts to replace a non-empty canvas, trigger the confirmation dialog
+    if (mode === "replace" && rootNodes && rootNodes.length > 0) {
+      setPendingReplaceConfirm(targetBlueprint)
+      return
+    }
 
-    // Capture previous state for immediate in-toast Undo
-    const previousRoots = [...rootNodes]
-    const previousNotes = [...stickyNotes]
-
-    const { nodes, stickyNotes: newNotes } = prepareImportNodes(
-      targetBlueprint,
-      rootNodes,
-      stickyNotes,
-      mode
-    )
-
-    loadTree(nodes, newNotes)
-    onClose()
-
-    toast.success(
-      mode === "replace"
-        ? `Replaced sequence with "${targetBlueprint.metadata.name}"`
-        : `Appended "${targetBlueprint.metadata.name}" to sequence`,
-      {
-        description: `${nodes.length} total steps active on canvas. Snapshot saved to vault.`,
-        action: {
-          label: "Undo",
-          onClick: () => {
-            loadTree(previousRoots, previousNotes)
-            toast.info("Import reverted back to previous canvas state.")
-          },
-        },
-        duration: 9000,
-      }
-    )
+    executeImport(targetBlueprint, mode)
   }
 
   // ─── Quick Load from Gallery ────────────────────────────────────────────────
@@ -380,7 +450,7 @@ function CampaignBlueprintModalContent({
     setImportedBlueprint(bp)
     setValidationResult(validateBlueprint(bp))
     setActiveTab("import")
-    toast.info(`Inspecting "${bp.metadata.name}" in Import Hub`)
+    toast.info(`Inspecting "${bp.metadata?.name || 'Blueprint'}" in Import Hub`)
   }
 
   const handleDirectLoadFromGallery = (bp: EleInBlueprint) => {
@@ -509,13 +579,19 @@ function CampaignBlueprintModalContent({
               <ElesiumLogo className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-semibold text-foreground tracking-tight">
                   Sequence Blueprint Engine
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
                   Make / n8n Spec
                 </span>
+                {activeWorkspaceName && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted/60 text-muted-foreground border border-border/80 flex items-center gap-1.5">
+                    <Building2 size={11} className="text-primary shrink-0" />
+                    <span>Workspace: <strong className="text-foreground font-semibold">{activeWorkspaceName}</strong></span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 Export, import, browse curated templates, and safeguard workflow blueprints
@@ -671,18 +747,19 @@ function CampaignBlueprintModalContent({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredGalleryItems.map(bp => {
+                  {filteredGalleryItems.map((bp, bpIdx) => {
                     const safeRoots = bp?.sequence?.rootNodes || []
                     const safeNotes = bp?.sequence?.stickyNotes || []
                     const stats = bp?.metadata?.stats || calculateBlueprintStats(safeRoots, safeNotes)
-                    const accent = bp?.metadata?.branding?.accentColor || "#6366f1"
+                    const accent = sanitizeHexColor(bp?.metadata?.branding?.accentColor, "#6366f1")
                     const isCloudSynced = Boolean(bp?.metadata?.id)
                     const isUserSaved = savedBlueprints.some(sb => (sb?.metadata?.name || "") === (bp?.metadata?.name || ""))
                     const bpName = bp?.metadata?.name || "Untitled Blueprint"
+                    const cardKey = bp?.metadata?.id || `${bpName}-${bp?.metadata?.version || "1.0"}-${bpIdx}`
 
                     return (
                       <div
-                        key={bpName}
+                        key={cardKey}
                         className="rounded-xl border p-4 flex flex-col justify-between gap-3 bg-card/70 hover:border-primary/50 transition-all relative overflow-hidden group shadow-2xs"
                         style={{ borderColor: `${accent}30` }}
                       >
@@ -803,6 +880,7 @@ function CampaignBlueprintModalContent({
                   })}
                 </div>
               )}
+
             </div>
           ) : activeTab === "export" ? (
             /* ══════════════════════════════════════════════════════════════════════
@@ -1005,14 +1083,21 @@ function CampaignBlueprintModalContent({
 
                 {/* Export Action Buttons */}
                 <div className="flex flex-col gap-2 pt-2 mt-auto">
+                  {rootNodes.length === 0 && (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                      <AlertTriangle size={15} className="shrink-0" />
+                      <span>Sequence canvas is empty. Add steps to your sequence before exporting.</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
+                      disabled={rootNodes.length === 0}
                       onClick={() => {
                         downloadBlueprintFile(generatedExport, `${blueprintName || "elein_workflow"}.json`, "json")
                         toast.success("Downloaded sequence blueprint (.json)")
                       }}
-                      className="h-10 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                      className="h-10 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Download Universal JSON Blueprint"
                     >
                       <Download size={14} />
@@ -1021,11 +1106,12 @@ function CampaignBlueprintModalContent({
 
                     <button
                       type="button"
+                      disabled={rootNodes.length === 0}
                       onClick={() => {
                         downloadBlueprintFile(generatedExport, `${blueprintName || "elein_workflow"}.elein`, "elein")
                         toast.success("Downloaded native blueprint (.elein)")
                       }}
-                      className="h-10 px-3 rounded-xl bg-card hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 border border-border transition-colors cursor-pointer shadow-2xs"
+                      className="h-10 px-3 rounded-xl bg-card hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 border border-border transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Download Ele-in Native Blueprint (.elein)"
                     >
                       <Download size={14} className="text-primary" />
@@ -1034,6 +1120,7 @@ function CampaignBlueprintModalContent({
 
                     <button
                       type="button"
+                      disabled={rootNodes.length === 0}
                       onClick={async () => {
                         const ok = await copyBlueprintToClipboard(generatedExport)
                         if (ok) {
@@ -1044,7 +1131,7 @@ function CampaignBlueprintModalContent({
                           toast.error("Failed to copy to clipboard")
                         }
                       }}
-                      className="h-10 px-3 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 border border-border transition-colors cursor-pointer"
+                      className="h-10 px-3 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 border border-border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                       <span>{isCopied ? "Copied" : "Copy JSON"}</span>
@@ -1181,6 +1268,7 @@ function CampaignBlueprintModalContent({
                 <div className="space-y-3">
                   <textarea
                     value={pastedJson}
+                    maxLength={500000}
                     onChange={e => setPastedJson(e.target.value)}
                     placeholder="Paste exported .elein or JSON blueprint text here..."
                     rows={7}
@@ -1233,6 +1321,15 @@ function CampaignBlueprintModalContent({
                       </div>
                     </div>
 
+                    {Boolean((importedBlueprint as any)?._wasAutoRepaired) && (
+                      <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-xs text-emerald-400 animate-in fade-in duration-150">
+                        <Sparkles size={13} className="text-emerald-400 shrink-0" />
+                        <span>
+                          Auto-Repair Notice: Trailing brackets and quotes were automatically healed from your clipboard payload.
+                        </span>
+                      </div>
+                    )}
+
                     {/* Stats summary */}
                     <div className="grid grid-cols-4 gap-2 pt-2 border-t border-border/50 text-center">
                       <div className="bg-background/60 p-2 rounded-lg">
@@ -1274,42 +1371,57 @@ function CampaignBlueprintModalContent({
                           </span>
                         </div>
 
-                        {requiredChannels.includes("linkedin") && !hasActiveLinkedIn && (
-                          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
-                            <AlertTriangle size={15} className="text-amber-400 shrink-0 mt-0.5" />
-                            <div className="space-y-1">
-                              <span className="font-semibold text-amber-300">
-                                LinkedIn Account Required
-                              </span>
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                This blueprint contains LinkedIn outreach steps (e.g. Connection Request, InMail, Profile Visits), but no active LinkedIn accounts are connected in this workspace. Outreach will hold execution until a sender is attached.
-                              </p>
-                            </div>
+                        {isLoadingAccounts ? (
+                          <div className="p-3 rounded-lg bg-muted/40 border border-border/40 flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+                            <RefreshCw size={13} className="animate-spin text-primary shrink-0" />
+                            <span>Verifying sender accounts in workspace...</span>
                           </div>
-                        )}
+                        ) : (
+                          <>
+                            {requiredChannels.includes("linkedin") && !hasActiveLinkedIn && (
+                              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
+                                <AlertTriangle size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                  <span className="font-semibold text-amber-300">
+                                    LinkedIn Account Required
+                                  </span>
+                                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                    This blueprint contains LinkedIn outreach steps (e.g. Connection Request, InMail, Profile Visits), but no active LinkedIn accounts are connected in this workspace. Outreach will hold execution until a sender is attached.
+                                  </p>
+                                  <a href="/elein/accounts" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary underline hover:text-primary/80">
+                                    Connect LinkedIn Account <ExternalLink size={10} />
+                                  </a>
+                                </div>
+                              </div>
+                            )}
 
-                        {requiredChannels.includes("email") && !hasActiveEmail && (
-                          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
-                            <Mail size={15} className="text-amber-400 shrink-0 mt-0.5" />
-                            <div className="space-y-1">
-                              <span className="font-semibold text-amber-300">
-                                Email Sender Pod Required
-                              </span>
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                This blueprint contains Email outreach steps, but no active Email sender accounts or SMTP pods are connected.
-                              </p>
-                            </div>
-                          </div>
-                        )}
+                            {requiredChannels.includes("email") && !hasActiveEmail && (
+                              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
+                                <Mail size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                  <span className="font-semibold text-amber-300">
+                                    Email Sender Pod Required
+                                  </span>
+                                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                    This blueprint contains Email outreach steps, but no active Email sender accounts or SMTP pods are connected.
+                                  </p>
+                                  <a href="/elein/accounts" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary underline hover:text-primary/80">
+                                    Connect Email Sender <ExternalLink size={10} />
+                                  </a>
+                                </div>
+                              </div>
+                            )}
 
-                        {((!requiredChannels.includes("linkedin") || hasActiveLinkedIn) &&
-                          (!requiredChannels.includes("email") || hasActiveEmail)) && (
-                          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-xs text-emerald-400">
-                            <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                            <span>
-                              Pre-flight verified: Active sender accounts are configured for required channels ({requiredChannels.join(", ")}).
-                            </span>
-                          </div>
+                            {((!requiredChannels.includes("linkedin") || hasActiveLinkedIn) &&
+                              (!requiredChannels.includes("email") || hasActiveEmail)) && (
+                              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-xs text-emerald-400">
+                                <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+                                <span>
+                                  Pre-flight verified: Active sender accounts are configured for required channels ({requiredChannels.join(", ")}).
+                                </span>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
@@ -1321,14 +1433,48 @@ function CampaignBlueprintModalContent({
                           <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                             <Sliders size={13} className="text-primary" />
                             <span>Template Variable Reconciliation & Fallbacks</span>
+                            {(() => {
+                              const unmappedCount = variableAudit.filter(v => !(fallbackOverrides[v.name] || v.currentFallback)?.trim()).length
+                              if (unmappedCount > 0) {
+                                return (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    {unmappedCount} unmapped
+                                  </span>
+                                )
+                              }
+                              return (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  All protected
+                                </span>
+                              )
+                            })()}
                           </span>
-                          <button
-                            type="button"
-                            onClick={handleApplyFallbacks}
-                            className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors cursor-pointer"
-                          >
-                            Apply Fallbacks to Sequence
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const autoFilled: Record<string, string> = { ...fallbackOverrides }
+                                for (const item of variableAudit) {
+                                  if (!autoFilled[item.name]?.trim()) {
+                                    autoFilled[item.name] = item.currentFallback || item.suggestedFallback || "there"
+                                  }
+                                }
+                                setFallbackOverrides(autoFilled)
+                                toast.success("Auto-filled recommended smart fallbacks for all variables")
+                              }}
+                              className="px-2 py-1 rounded-md text-[10px] font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors cursor-pointer flex items-center gap-1"
+                            >
+                              <Sparkles size={11} className="text-primary" />
+                              <span>Auto-Fill Defaults</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleApplyFallbacks}
+                              className="px-2 py-1 rounded-md text-[10px] font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors cursor-pointer"
+                            >
+                              Apply to Blueprint
+                            </button>
+                          </div>
                         </div>
 
                         <div className="bg-background/50 border border-border/60 rounded-xl p-2.5 space-y-2 max-h-48 overflow-y-auto">
@@ -1378,15 +1524,22 @@ function CampaignBlueprintModalContent({
 
                   {/* Mode Selector */}
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold text-foreground">
-                      Import Destination Mode
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">
+                        Import Destination Mode
+                      </label>
+                      {rootNodes && rootNodes.length > 0 && (
+                        <span className="text-[11px] text-muted-foreground">
+                          Canvas currently has <strong className="text-foreground font-semibold">{rootNodes.length} active step{rootNodes.length > 1 ? "s" : ""}</strong>
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <label
                         className={cn(
                           "p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-colors",
                           importMode === "replace"
-                            ? "border-primary bg-primary/10"
+                            ? "border-amber-500/60 bg-amber-500/10 dark:bg-amber-500/15"
                             : "border-border hover:bg-muted/40"
                         )}
                       >
@@ -1396,9 +1549,11 @@ function CampaignBlueprintModalContent({
                             name="importMode"
                             checked={importMode === "replace"}
                             onChange={() => setImportMode("replace")}
-                            className="text-primary focus:ring-primary"
+                            className="text-amber-500 focus:ring-amber-500"
                           />
-                          <span className="text-xs font-bold text-foreground">Replace Canvas</span>
+                          <span className={cn("text-xs font-bold", importMode === "replace" ? "text-amber-400" : "text-foreground")}>
+                            Replace Canvas
+                          </span>
                         </div>
                         <span className="text-[11px] text-muted-foreground pl-5">
                           Clears current steps and loads the blueprint from root node. A snapshot is automatically saved to the vault.
@@ -1428,6 +1583,21 @@ function CampaignBlueprintModalContent({
                         </span>
                       </label>
                     </div>
+
+                    {/* Layer 2 Paranoia Warning: Replacing an active canvas */}
+                    {importMode === "replace" && rootNodes && rootNodes.length > 0 && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200 animate-in fade-in duration-150">
+                        <AlertTriangle size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-amber-300">
+                            Warning: Replaces {rootNodes.length} Active Canvas Step{rootNodes.length > 1 ? "s" : ""}
+                          </span>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Confirming will overwrite your existing canvas workflow. A rollback snapshot will be captured in the vault, and confirmation is required before proceeding.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Import Button */}
@@ -1435,17 +1605,38 @@ function CampaignBlueprintModalContent({
                     <button
                       type="button"
                       onClick={onClose}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+                      disabled={isImporting}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
+                      disabled={isImporting || !importedBlueprint}
                       onClick={() => handleConfirmImport()}
-                      className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                      className={cn(
+                        "px-5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                        importMode === "replace" && rootNodes && rootNodes.length > 0
+                          ? "bg-amber-600 hover:bg-amber-700 text-white"
+                          : "bg-primary hover:bg-primary/90 text-primary-foreground"
+                      )}
                     >
-                      <ArrowRight size={14} />
-                      <span>Confirm & Import Sequence</span>
+                      {isImporting ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin text-current" />
+                          <span>Importing Sequence...</span>
+                        </>
+                      ) : importMode === "replace" && rootNodes && rootNodes.length > 0 ? (
+                        <>
+                          <AlertTriangle size={14} />
+                          <span>Replace Canvas ({rootNodes.length} Steps)...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowRight size={14} />
+                          <span>Confirm & Import Sequence</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1561,6 +1752,55 @@ function CampaignBlueprintModalContent({
             </div>
           )}
         </div>
+
+        {/* Global Blueprint Overwrite Confirmation Dialog (Layer 2 Human Paranoia) */}
+        {pendingReplaceConfirm && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+            <div 
+              className="bg-card border border-border shadow-2xl rounded-2xl p-6 max-w-md w-full animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2.5 text-amber-500 mb-2">
+                <AlertTriangle size={20} className="shrink-0" />
+                <h3 className="text-sm font-bold text-foreground">Replace Current Sequence?</h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed mb-5">
+                You currently have <span className="font-semibold text-foreground">{rootNodes.length} step(s)</span> active on your canvas. Loading <span className="font-semibold text-foreground">&quot;{pendingReplaceConfirm.metadata?.name || 'this blueprint'}&quot;</span> in Replace mode will clear them.
+              </p>
+              <div className="flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPendingReplaceConfirm(null)}
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const bp = pendingReplaceConfirm
+                    setPendingReplaceConfirm(null)
+                    executeImport(bp, "append")
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold border border-border transition-colors cursor-pointer"
+                >
+                  Append Alongside
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const bp = pendingReplaceConfirm
+                    setPendingReplaceConfirm(null)
+                    executeImport(bp, "replace")
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  Confirm Replace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   )

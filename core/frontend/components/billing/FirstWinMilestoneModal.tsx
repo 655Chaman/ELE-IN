@@ -54,6 +54,18 @@ export const FirstWinMilestoneModal: React.FC<FirstWinMilestoneModalProps> = ({
     oto_expired?: boolean;
   }>('/api/elein/workspaces/billing', fetcher);
 
+  const isOwner = billingData?.tier === 'ENTERPRISE';
+
+  // Owner auto-bypass: If mounted directly, complete without rendering milestone modal
+  useEffect(() => {
+    if (isOpen && isOwner) {
+      if (onSuccess) onSuccess();
+      onClose();
+    }
+  }, [isOpen, isOwner, onSuccess, onClose]);
+
+  if (isOpen && isOwner) return null;
+
   // Paranoia Layer 1: Persistent 48-hour OTO expiry timestamp anchored to server telemetry
   useEffect(() => {
     if (!isOpen) return;

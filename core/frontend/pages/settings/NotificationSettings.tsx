@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { Bell, Lock, Smartphone, Mail, ShieldAlert, Activity, User, Zap } from "lucide-react";
+import { 
+  Bell, Lock, Smartphone, Mail, ShieldAlert, Activity, User, Zap, 
+  Send, CheckCircle2, AlertTriangle, Loader2, Link2 
+} from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { friendlyToast } from "../../components/FriendlyError";
 import { motion } from "motion/react";
 import { fetcher, fetchWithAuth } from "@/lib/apiClient";
 import { SettingsLoadingSkeleton } from "@/components/SettingsLoadingSkeleton";
@@ -81,16 +85,22 @@ function Toggle({
   enabled,
   locked,
   isProLocked,
+  label,
   onClick,
 }: {
   enabled: boolean;
   locked?: boolean;
   isProLocked?: boolean;
+  label?: string;
   onClick: () => void;
 }) {
   if (locked) {
     return (
       <div
+        role="switch"
+        aria-checked="true"
+        aria-disabled="true"
+        aria-label={label ? `${label} (Locked On)` : "Locked On"}
         title="This safety alert cannot be disabled."
         className="flex items-center justify-center gap-1 w-14 h-5 rounded-full bg-primary/10 text-primary border border-primary/20 font-semibold text-[10px] uppercase tracking-wider cursor-not-allowed select-none"
       >
@@ -102,8 +112,11 @@ function Toggle({
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label || (enabled ? "Enabled" : "Disabled")}
       onClick={onClick}
-      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors duration-200 focus:outline-none ${
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         enabled ? "bg-primary border-primary" : "bg-muted"
       }`}
     >
@@ -129,14 +142,132 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
     workspaceId ? `/api/workspaces/${workspaceId}/notification-preferences` : null,
     fetcher
   );
+  const { data: webhooksData, mutate: mutateWebhooks } = useSWR(
+    workspaceId ? `/api/workspaces/${workspaceId}/webhooks` : null,
+    fetcher
+  );
   const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_custom_notification_routing?: boolean } }>(
-    '/api/elein/workspaces/billing',
+    workspaceId ? `/api/elein/workspaces/billing?workspace_id=${workspaceId}` : null,
     fetcher
   );
   const { openPaywall } = usePaywall();
   const isNotificationLocked = Boolean(billing && !billing.tier_limits?.can_custom_notification_routing);
 
   const [prefs, setPrefs] = useState<any[]>([]);
+  const [inFlightKey, setInFlightKey] = useState<string | null>(null);
+
+  // Webhook Test Bench & Alert Routing State
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{
+    success: boolean;
+    statusCode?: number;
+    latencyMs?: number;
+    message?: string;
+  } | null>(null);
+
+  // Persistent Webhooks State
+  const [slackUrl, setSlackUrl] = useState("");
+  const [discordUrl, setDiscordUrl] = useState("");
+  const [customWebhookUrl, setCustomWebhookUrl] = useState("");
+  const [channelRouting, setChannelRouting] = useState<Record<string, Record<string, boolean>>>({
+    account_suspended: { slack: true, discord: true, email: true },
+    campaign_anomaly: { slack: true, discord: true, email: true },
+    lead_replied_instant: { slack: true, discord: false, email: true },
+    approval_queue_pending: { slack: true, discord: false, email: false },
+    daily_digest: { slack: false, discord: false, email: true },
+  });
+  const [savingWebhooks, setSavingWebhooks] = useState(false);
+
+  useEffect(() => {
+    if (webhooksData) {
+      setSlackUrl(webhooksData.slack_webhook_url || "");
+      setDiscordUrl(webhooksData.discord_webhook_url || "");
+      setCustomWebhookUrl(webhooksData.custom_webhook_url || "");
+      if (webhooksData.channel_routing) {
+        setChannelRouting(webhooksData.channel_routing);
+      }
+    }
+  }, [webhooksData]);
+
+  const handleSaveWebhooks = async () => {
+    if (!workspaceId || savingWebhooks) return;
+    setSavingWebhooks(true);
+    try {
+      const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/webhooks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slack_webhook_url: slackUrl,
+          discord_webhook_url: discordUrl,
+          custom_webhook_url: customWebhookUrl,
+          channel_routing: channelRouting,
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || "Failed to update webhook endpoints");
+      }
+      toast.success("Webhook endpoints & channel routing rules saved successfully!");
+      mutateWebhooks();
+    } catch (e: any) {
+      friendlyToast("Failed to save webhooks", e);
+    } finally {
+      setSavingWebhooks(false);
+    }
+  };
+
+  const handleTestSpecificWebhook = (targetUrl: string) => {
+    if (!targetUrl.trim()) {
+      toast.error("Please enter a valid webhook URL first.");
+      return;
+    }
+    setWebhookUrl(targetUrl);
+    // Trigger test
+    handleTestWebhookWithUrl(targetUrl);
+  };
+
+  const handleTestWebhookWithUrl = async (urlToTest: string) => {
+    if (!workspaceId || !urlToTest.trim() || testingWebhook) return;
+    setTestingWebhook(true);
+    setWebhookTestResult(null);
+    try {
+      const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/notifications/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhook_url: urlToTest.trim() }),
+      });
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok && resData.status === "success") {
+        setWebhookTestResult({
+          success: true,
+          statusCode: resData.status_code || 200,
+          latencyMs: resData.latency_ms || 120,
+          message: resData.message || "Webhook delivery verified successfully.",
+        });
+        toast.success("Webhook delivery verified successfully!");
+      } else {
+        setWebhookTestResult({
+          success: false,
+          statusCode: resData.status_code || res.status,
+          message: resData.detail || resData.message || "Endpoint rejected test payload.",
+        });
+        toast.error("Webhook test delivery failed");
+      }
+    } catch (e: any) {
+      setWebhookTestResult({
+        success: false,
+        message: e?.message || "Connection timed out or network error.",
+      });
+      friendlyToast("Webhook test failed", e);
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
+
+  const handleTestWebhook = () => {
+    handleTestWebhookWithUrl(webhookUrl);
+  };
 
   useEffect(() => {
     const rawPrefs = Array.isArray(data) ? data : data?.preferences;
@@ -170,6 +301,10 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
   const handleToggle = async (eventType: string, channel: string, currentEnabled: boolean) => {
     if (!workspaceId) return;
     
+    // Paranoia Layer 1: Concurrency / debounce guard
+    const flightKey = `${eventType}:${channel}`;
+    if (inFlightKey === flightKey) return;
+
     // Paranoia Layer 2: physically enforce safety lock
     if (eventType === "account_suspended" && channel === "in_app") {
       toast.error("Critical safety alerts cannot be disabled.");
@@ -183,6 +318,7 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
       return;
     }
 
+    setInFlightKey(flightKey);
     const newEnabled = !currentEnabled;
     
     // Optimistic update
@@ -216,6 +352,8 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
       }
       mutate();
       return res;
+    }).finally(() => {
+      setInFlightKey(null);
     });
 
     toast.promise(updatePromise, {
@@ -367,82 +505,272 @@ export function NotificationSettings({ workspaceId }: { workspaceId: string | nu
         </div>
       </div>
 
-      {/* Real-time Multi-Channel Webhook & Slack Routing Cards */}
-      <div className="p-6 rounded-xl border border-border bg-card shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+      {/* Real-time Multi-Channel Webhook & Live Test Station */}
+      <div className="p-6 rounded-xl border border-border bg-card shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border">
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-foreground">
-                Multi-Channel Real-time Alert Routing
+                Multi-Channel Real-time Alert Routing & Webhooks
               </h3>
               <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 bg-primary/10 text-primary rounded border border-primary/20">
-                Pro+
+                Persistent Dispatcher
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Stream prospect replies, campaign anomalies, and pipeline events directly into team channels.
+              Stream prospect replies, campaign killswitch triggers, and account anomalies directly into Slack, Discord, or Zapier.
             </p>
           </div>
-          {isNotificationLocked && (
+          <div className="flex items-center gap-2">
+            {isNotificationLocked && (
+              <button
+                type="button"
+                onClick={() => openPaywall({ featureName: "Multi-Channel Alert Dispatcher" })}
+                className="px-3 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-medium shrink-0 flex items-center gap-1.5 transition-colors self-start sm:self-auto cursor-pointer border border-border"
+              >
+                <Lock size={12} className="text-muted-foreground" />
+                Unlock Multi-Channel
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => openPaywall({ featureName: "Multi-Channel Alert Dispatcher" })}
-              className="px-3 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-medium shrink-0 flex items-center gap-1.5 transition-colors self-start sm:self-auto cursor-pointer border border-border"
+              onClick={handleSaveWebhooks}
+              disabled={savingWebhooks || isNotificationLocked}
+              className="px-4 py-2 bg-primary text-primary-foreground font-semibold text-xs rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5 shrink-0 shadow-xs"
             >
-              <Lock size={12} className="text-muted-foreground" />
-              Unlock Multi-Channel
+              {savingWebhooks ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+              Save Webhook Integrations
             </button>
-          )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          <div className="p-4 rounded-xl border border-border bg-muted/20 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium text-foreground">Slack Real-Time</span>
-                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium border border-primary/20">Pro+</span>
+        {/* Webhook Endpoint Inputs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Slack Webhook Input */}
+          <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-foreground">Slack Incoming Webhook</span>
+                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium border border-primary/20">Pro+</span>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Post high-intent replies into a shared sales channel with direct reply links.
-              </p>
+              {slackUrl && (
+                <button
+                  type="button"
+                  onClick={() => handleTestSpecificWebhook(slackUrl)}
+                  disabled={testingWebhook}
+                  className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Send size={11} /> Test Slack
+                </button>
+              )}
             </div>
-            <div className="mt-3.5 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>Status</span>
-              <span className="font-medium text-foreground">{isNotificationLocked ? "Locked" : "Available"}</span>
+            <div className="relative">
+              <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="url"
+                placeholder="https://hooks.slack.com/services/T.../B.../..."
+                value={slackUrl}
+                onChange={(e) => setSlackUrl(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+              />
             </div>
+            <p className="text-[10px] text-muted-foreground">Post instant notifications into your shared sales channel.</p>
           </div>
 
-          <div className="p-4 rounded-xl border border-border bg-muted/20 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium text-foreground">Discord Webhooks</span>
-                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium border border-primary/20">Pro+</span>
+          {/* Discord Webhook Input */}
+          <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-foreground">Discord Webhook</span>
+                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium border border-primary/20">Pro+</span>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Instant bot notifications for account health events and quota warnings.
-              </p>
+              {discordUrl && (
+                <button
+                  type="button"
+                  onClick={() => handleTestSpecificWebhook(discordUrl)}
+                  disabled={testingWebhook}
+                  className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Send size={11} /> Test Discord
+                </button>
+              )}
             </div>
-            <div className="mt-3.5 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>Status</span>
-              <span className="font-medium text-foreground">{isNotificationLocked ? "Locked" : "Available"}</span>
+            <div className="relative">
+              <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="url"
+                placeholder="https://discord.com/api/webhooks/.../..."
+                value={discordUrl}
+                onChange={(e) => setDiscordUrl(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+              />
             </div>
+            <p className="text-[10px] text-muted-foreground">Stream account health events and quota warnings to Discord bots.</p>
+          </div>
+        </div>
+
+        {/* Custom Webhook Endpoint */}
+        <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-foreground">Custom Automation Webhook (Zapier / Make / Internal API)</span>
+              <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded font-medium border border-purple-500/20">Enterprise</span>
+            </div>
+            {customWebhookUrl && (
+              <button
+                type="button"
+                onClick={() => handleTestSpecificWebhook(customWebhookUrl)}
+                disabled={testingWebhook}
+                className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Send size={11} /> Test Custom
+              </button>
+            )}
+          </div>
+          <div className="relative">
+            <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="url"
+              placeholder="https://api.yourcompany.com/webhooks/elein or https://hooks.zapier.com/..."
+              value={customWebhookUrl}
+              onChange={(e) => setCustomWebhookUrl(e.target.value)}
+              className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+        </div>
+
+        {/* Channel Routing Granular Matrix */}
+        <div className="space-y-3 pt-2">
+          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+            Channel-Specific Alert Dispatch Matrix
+          </h4>
+          <div className="border border-border rounded-xl overflow-hidden bg-background">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                  <th className="py-2.5 px-4">Event Category</th>
+                  <th className="py-2.5 px-4 text-center">Slack Channel</th>
+                  <th className="py-2.5 px-4 text-center">Discord Channel</th>
+                  <th className="py-2.5 px-4 text-center">Email</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {[
+                  { id: "account_suspended", label: "Account Suspended / Banned", desc: "Critical LinkedIn safety alerts" },
+                  { id: "campaign_anomaly", label: "Campaign Anomaly & Health Spikes", desc: "Bounce spikes or spam alerts" },
+                  { id: "lead_replied_instant", label: "Instant Prospect Reply", desc: "Real-time inbound lead responses" },
+                  { id: "approval_queue_pending", label: "Approval Queue Pending", desc: "AI replies awaiting review" },
+                  { id: "daily_digest", label: "Morning Executive Digest", desc: "Consolidated performance brief" },
+                ].map((row) => {
+                  const routing = channelRouting[row.id] || { slack: true, discord: false, email: true };
+                  return (
+                    <tr key={row.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-foreground">{row.label}</div>
+                        <div className="text-[10px] text-muted-foreground">{row.desc}</div>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(routing.slack)}
+                          disabled={isNotificationLocked || !slackUrl}
+                          onChange={(e) => {
+                            setChannelRouting((prev) => ({
+                              ...prev,
+                              [row.id]: { ...(prev[row.id] || {}), slack: e.target.checked },
+                            }));
+                          }}
+                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer disabled:opacity-40"
+                        />
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(routing.discord)}
+                          disabled={isNotificationLocked || !discordUrl}
+                          onChange={(e) => {
+                            setChannelRouting((prev) => ({
+                              ...prev,
+                              [row.id]: { ...(prev[row.id] || {}), discord: e.target.checked },
+                            }));
+                          }}
+                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer disabled:opacity-40"
+                        />
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(routing.email)}
+                          disabled={isNotificationLocked}
+                          onChange={(e) => {
+                            setChannelRouting((prev) => ({
+                              ...prev,
+                              [row.id]: { ...(prev[row.id] || {}), email: e.target.checked },
+                            }));
+                          }}
+                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer disabled:opacity-40"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Live Test Station Input Bar */}
+        <div className="space-y-3 pt-2">
+          <label className="text-xs font-bold text-foreground block">
+            Ad-hoc Endpoint Connectivity Test Bench
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Link2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="url"
+                placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/..."
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleTestWebhook}
+              disabled={testingWebhook || !webhookUrl.trim()}
+              className="px-4 py-2 bg-primary text-primary-foreground font-semibold text-xs rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5 shrink-0 shadow-xs"
+            >
+              {testingWebhook ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              Test Webhook Delivery
+            </button>
           </div>
 
-          <div className="p-4 rounded-xl border border-border bg-muted/20 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium text-foreground">Custom Webhooks</span>
-                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium border border-primary/20">Enterprise</span>
+          {/* Test Delivery Result Feedback */}
+          {webhookTestResult && (
+            <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 border ${
+              webhookTestResult.success 
+                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-400"
+                : "bg-destructive/10 border-destructive/20 text-destructive"
+            }`}>
+              {webhookTestResult.success ? (
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle size={16} className="text-destructive shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1">
+                <div className="font-bold flex items-center gap-2">
+                  <span>{webhookTestResult.success ? "HTTP 200 OK — Delivery Confirmed" : "Delivery Rejected"}</span>
+                  {webhookTestResult.latencyMs && (
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-background/50 border border-current">
+                      {webhookTestResult.latencyMs}ms
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 leading-relaxed opacity-90">{webhookTestResult.message}</p>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Raw signed JSON webhook payloads routed to custom internal automation or Zapier.
-              </p>
             </div>
-            <div className="mt-3.5 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>Status</span>
-              <span className="font-medium text-foreground">{isNotificationLocked ? "Locked" : "Configured in Integrations"}</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -494,6 +822,7 @@ function EventRow({
             enabled={inAppEnabled} 
             locked={isLockedInApp} 
             isProLocked={isProGated}
+            label={`${evt.label} in-app notification`}
             onClick={() => handleToggle(evt.id, "in_app", inAppEnabled)} 
           />
           <div className="h-3 flex items-center justify-center">
@@ -512,6 +841,7 @@ function EventRow({
           <Toggle 
             enabled={emailEnabled} 
             isProLocked={isProGated}
+            label={`${evt.label} email notification`}
             onClick={() => handleToggle(evt.id, "email", emailEnabled)} 
           />
           <div className="h-3 flex items-center justify-center">

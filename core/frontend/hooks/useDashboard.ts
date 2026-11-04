@@ -62,7 +62,9 @@ export interface KeyConfig {
 }
 
 export function useKeys() {
-  const { data: keys, mutate } = useSWR(`/api/settings/`, fetcher)
+  const { data: keys, mutate } = useSWR(`/api/settings/`, (url: string) => fetcher(url).catch(() => ({})), {
+    shouldRetryOnError: false
+  })
   
   const saveKeys = async (newKeys: KeyConfig) => {
     await fetchWithAuth(`/api/settings/`, {
