@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Response
 from pydantic import BaseModel, Field
 
 from core.backend.api.auth_dep import get_current_workspace, get_service_client
+from core.backend.services.tier_guard import require_tier
 from campaigns.backend.services.warmup_service import (
     list_warmup_mailboxes,
     create_warmup_mailbox,
@@ -20,7 +21,11 @@ from integrations.backend.services.mailbox_warmup_service import execute_warmup_
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/warmup", tags=["email_warmup"])
+router = APIRouter(
+    prefix="/warmup",
+    tags=["email_warmup"],
+    dependencies=[Depends(require_tier("can_advanced_warmup", "PRO"))]
+)
 
 
 # Pydantic Schemas

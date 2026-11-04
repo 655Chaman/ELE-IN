@@ -273,28 +273,31 @@ export function EleInCampaigns() {
   // ─── Modals State ───
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null)
 
-  // Layer 2 Human Paranoia: Escape key dismissal for confirmation modal
+  // Layer 2 Human Paranoia: Escape key dismissal for confirmation modal (Capture phase to prevent cascade)
   useEffect(() => {
     if (!confirmModal || !confirmModal.isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.stopPropagation();
         setConfirmModal(null);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [confirmModal?.isOpen]);
 
-  // Layer 2 Human Paranoia: Escape key dismissal for batch selection
+  // Layer 2 Human Paranoia: Escape key dismissal for batch selection (Guarded against open modals)
   useEffect(() => {
+    if (confirmModal?.isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && selectedIds.size > 0) {
+        e.stopPropagation();
         setSelectedIds(new Set())
       }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [selectedIds.size])
+  }, [selectedIds.size, confirmModal?.isOpen])
   const [preflightCampaign, setPreflightCampaign] = useState<{ id: string; name: string } | null>(null)
   const [selectedCertCampaign, setSelectedCertCampaign] = useState<{ id: string; name: string } | null>(null)
   const [banditCampaign, setBanditCampaign] = useState<{ id: string; name: string } | null>(null)
@@ -455,19 +458,19 @@ export function EleInCampaigns() {
   
   const { data: workerStatus } = useSWR('/api/elein/worker/status', fetcher, { refreshInterval: 30000 })
 
-  // Check unsaved drafts
+  // Check unsaved drafts (Safe against Safari Private Browsing SecurityError)
   useEffect(() => {
-    const draftStr = localStorage.getItem("elein_unsaved_draft")
-    if (draftStr) {
-      try {
+    try {
+      const draftStr = localStorage.getItem("elein_unsaved_draft")
+      if (draftStr) {
         const draft = JSON.parse(draftStr)
         if (draft.nodes && draft.nodes.length > 0) {
           setDraftExists(true)
           setDraftTime(new Date(draft.timestamp).toLocaleString())
         }
-      } catch(e) {
-        console.error('Draft parse error:', e)
       }
+    } catch(e) {
+      console.error('Draft parse error:', e)
     }
   }, [])
 
@@ -573,11 +576,13 @@ export function EleInCampaigns() {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
-  // Layer 2 Human Paranoia: Escape key resets filters when search yields zero matches
+  // Layer 2 Human Paranoia: Escape key resets filters when search yields zero matches (Isolated from modals & batch selections)
   useEffect(() => {
+    if (confirmModal?.isOpen || selectedIds.size > 0) return;
     if (filtered.length === 0 && (search || statusFilter !== 'ALL')) {
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
+          e.stopPropagation();
           setSearch("");
           setStatusFilter("ALL");
           setPage(1);
@@ -586,7 +591,7 @@ export function EleInCampaigns() {
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
     }
-  }, [filtered.length, search, statusFilter]);
+  }, [filtered.length, search, statusFilter, confirmModal?.isOpen, selectedIds.size]);
 
   // ─── Single Campaign Toggle (Optimistic Mutation + Immediate Rollback - EPF Phase 3) ───
   const executeToggleStatus = useCallback(async (id: string, action: 'activate' | 'pause') => {
@@ -1068,7 +1073,7 @@ export function EleInCampaigns() {
   };
 
   return (
-    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
+    <div className="max-w-[1280px] mx-auto p-6 sm:p-8 font-sans">
       {/* ─── HEADER COMMAND DECK ────────────────────────────────────────────── */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1658,25 +1663,25 @@ export function EleInCampaigns() {
                           <th className={cn("px-4 w-28", densityPadding)}>Status</th>
                         )}
                         {visibleColumns.includes('enrolled') && (
-                          <th className={cn("px-4 w-24 text-right hidden sm:table-cell", densityPadding)}>Enrolled</th>
+                          <th className={cn("px-4 w-24 text-right", densityPadding)}>Enrolled</th>
                         )}
                         {visibleColumns.includes('connected') && (
-                          <th className={cn("px-4 w-24 text-right hidden md:table-cell", densityPadding)}>Connected</th>
+                          <th className={cn("px-4 w-24 text-right", densityPadding)}>Connected</th>
                         )}
                         {visibleColumns.includes('acceptance') && (
-                          <th className={cn("px-4 w-28 text-right hidden lg:table-cell", densityPadding)}>Acceptance</th>
+                          <th className={cn("px-4 w-28 text-right", densityPadding)}>Acceptance</th>
                         )}
                         {visibleColumns.includes('replied') && (
-                          <th className={cn("px-4 w-24 text-right hidden lg:table-cell", densityPadding)}>Replied</th>
+                          <th className={cn("px-4 w-24 text-right", densityPadding)}>Replied</th>
                         )}
                         {visibleColumns.includes('replyRate') && (
-                          <th className={cn("px-4 w-28 text-right hidden xl:table-cell", densityPadding)}>Reply Rate</th>
+                          <th className={cn("px-4 w-28 text-right", densityPadding)}>Reply Rate</th>
                         )}
                         {visibleColumns.includes('booked') && (
-                          <th className={cn("px-4 w-24 text-right hidden xl:table-cell", densityPadding)}>Booked</th>
+                          <th className={cn("px-4 w-24 text-right", densityPadding)}>Booked</th>
                         )}
                         {visibleColumns.includes('senders') && (
-                          <th className={cn("px-4 w-28 text-center hidden 2xl:table-cell", densityPadding)}>Senders</th>
+                          <th className={cn("px-4 w-28 text-center", densityPadding)}>Senders</th>
                         )}
                         <th className={cn("px-5 w-36 text-right", densityPadding)}>Action</th>
                       </tr>
@@ -1762,49 +1767,55 @@ export function EleInCampaigns() {
 
                           {/* Enrolled */}
                           {visibleColumns.includes('enrolled') && (
-                            <td className={cn("px-4 text-right font-mono text-foreground hidden sm:table-cell", densityPadding, densityText)}>
+                            <td className={cn("px-4 text-right font-mono text-foreground", densityPadding, densityText)}>
                               <NumberTicker value={enrolled} />
                             </td>
                           )}
 
                           {/* Connected */}
                           {visibleColumns.includes('connected') && (
-                            <td className={cn("px-4 text-right font-mono text-foreground hidden md:table-cell", densityPadding, densityText)}>
+                            <td className={cn("px-4 text-right font-mono text-foreground", densityPadding, densityText)}>
                               <NumberTicker value={connected} />
                             </td>
                           )}
 
                           {/* Acceptance Rate */}
                           {visibleColumns.includes('acceptance') && (
-                            <td className={cn("px-4 text-right font-mono text-foreground hidden lg:table-cell", densityPadding, densityText)}>
-                              <NumberTicker value={acceptanceRate} />%
+                            <td className={cn("px-4 text-right font-mono text-foreground", densityPadding, densityText)}>
+                              <span className="inline-flex items-baseline">
+                                <NumberTicker value={acceptanceRate} />
+                                <span className="text-[10px] text-muted-foreground ml-0.5">%</span>
+                              </span>
                             </td>
                           )}
 
                           {/* Replied */}
                           {visibleColumns.includes('replied') && (
-                            <td className={cn("px-4 text-right font-mono text-foreground hidden lg:table-cell", densityPadding, densityText)}>
+                            <td className={cn("px-4 text-right font-mono text-foreground", densityPadding, densityText)}>
                               <NumberTicker value={replied} />
                             </td>
                           )}
 
                           {/* Reply Rate */}
                           {visibleColumns.includes('replyRate') && (
-                            <td className={cn("px-4 text-right font-mono text-foreground hidden xl:table-cell", densityPadding, densityText)}>
-                              <NumberTicker value={replyRate} />%
+                            <td className={cn("px-4 text-right font-mono text-foreground", densityPadding, densityText)}>
+                              <span className="inline-flex items-baseline">
+                                <NumberTicker value={replyRate} />
+                                <span className="text-[10px] text-muted-foreground ml-0.5">%</span>
+                              </span>
                             </td>
                           )}
 
                           {/* Booked */}
                           {visibleColumns.includes('booked') && (
-                            <td className={cn("px-4 text-right font-mono font-semibold text-primary hidden xl:table-cell", densityPadding, densityText)}>
+                            <td className={cn("px-4 text-right font-mono font-semibold text-primary", densityPadding, densityText)}>
                               <NumberTicker value={booked} />
                             </td>
                           )}
 
                           {/* Senders */}
                           {visibleColumns.includes('senders') && (
-                            <td className={cn("px-4 text-center text-muted-foreground hidden 2xl:table-cell", densityPadding, densityText)} onClick={(e) => e.stopPropagation()}>
+                            <td className={cn("px-4 text-center text-muted-foreground", densityPadding, densityText)} onClick={(e) => e.stopPropagation()}>
                               {c.senders && c.senders.length > 0 ? (
                                 <div className="flex justify-center -space-x-1.5 overflow-hidden">
                                   {c.senders.slice(0, 3).map((s: any, idx: number) => (

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { motion } from 'motion/react'
 import { X, Sliders, Shield, AlertTriangle, RefreshCw, Server, ArrowRight } from 'lucide-react'
 import useSWR from 'swr'
@@ -35,13 +35,48 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
   )
   const isProxyLocked = Boolean(billing && !billing.tier_limits?.can_use_custom_proxies)
 
-  // Layer 2 Paranoia: Close on Escape key when not loading
+  const modalContainerRef = useRef<HTMLDivElement>(null)
+
+  // Layer 2 Paranoia: Close on Escape key when not loading & Tab focus trapping
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading) onClose()
+      if (e.key === 'Escape' && !loading) {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+        return
+      }
+
+      if (e.key === 'Tab' && modalContainerRef.current) {
+        const focusable = Array.from(
+          modalContainerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter((el: HTMLElement) => el.offsetParent !== null)
+
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [onClose, loading])
 
   // Paranoia Layer 2: Detect unsaved changes (dirty checking)
@@ -110,6 +145,10 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.2 }}
+        ref={modalContainerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-account-title"
         className="w-full max-w-lg rounded-2xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
       >
         {/* Modal Header */}
@@ -119,7 +158,7 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
               <Sliders size={16} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-foreground">Edit Account Settings</h2>
+              <h2 id="edit-account-title" className="text-sm font-bold text-foreground">Edit Account Settings</h2>
               <p className="text-[11px] text-muted-foreground truncate max-w-[280px]">
                 {account.name} {account.profileUrl ? `· ${account.profileUrl}` : ''}
               </p>
@@ -129,6 +168,7 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
             type="button"
             disabled={loading}
             onClick={onClose}
+            aria-label="Close dialog"
             className="w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center cursor-pointer disabled:opacity-50"
           >
             <X size={15} />

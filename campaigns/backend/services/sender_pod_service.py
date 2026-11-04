@@ -527,12 +527,12 @@ def select_pod_sender(
         .execute()
     candidate_accounts = candidates_res.data or []
 
-    # Enforce workspace isolation on candidate accounts
+    # Enforce workspace isolation on candidate accounts (Paranoia Layer 1 & 2: Zero Null Leakage)
     if workspace_id:
         clean_ws = str(workspace_id).strip()
         candidate_accounts = [
             acc for acc in candidate_accounts
-            if not acc.get("workspace_id") or str(acc.get("workspace_id")).strip() == clean_ws
+            if acc.get("workspace_id") and str(acc.get("workspace_id")).strip() == clean_ws
         ]
 
     # Filter out quarantined, degraded, or ineligible accounts, or accounts with quarantined proxies
@@ -1126,18 +1126,22 @@ def reassign_lead_sender(
     except Exception as lock_err:
         logger.warning(f"Failed to upsert campaign_lead_sender_locks: {lock_err}")
 
-    # 2. Update campaign_enrollments
+    # 2. Update campaign_enrollments (Paranoia Layer 1: Scope by workspace_id)
     try:
         q = supabase.table("campaign_enrollments").update({"account_id": str(new_account_id)}).eq("lead_id", str(lead_id))
+        if workspace_id:
+            q = q.eq("workspace_id", str(workspace_id))
         if campaign_id:
             q = q.eq("campaign_id", str(campaign_id))
         q.execute()
     except Exception as enr_err:
         logger.warning(f"Failed to update campaign_enrollments: {enr_err}")
 
-    # 3. Update active execution states
+    # 3. Update active execution states (Paranoia Layer 1: Scope by workspace_id)
     try:
         q_st = supabase.table("campaign_execution_states").update({"account_id": str(new_account_id)}).eq("opportunity_id", str(lead_id))
+        if workspace_id:
+            q_st = q_st.eq("workspace_id", str(workspace_id))
         if campaign_id:
             q_st = q_st.eq("campaign_id", str(campaign_id))
         q_st.execute()

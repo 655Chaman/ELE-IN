@@ -301,26 +301,43 @@ export function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
+  const previousActiveElement = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
-        setIsOpen((open) => !open)
+        setIsOpen((open) => {
+          if (!open) {
+            previousActiveElement.current = document.activeElement as HTMLElement | null
+          }
+          return !open
+        })
       }
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && isOpen) {
+        e.preventDefault()
+        e.stopPropagation()
         setIsOpen(false)
       }
     }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+    window.addEventListener("keydown", handleKeyDown, true)
+    return () => window.removeEventListener("keydown", handleKeyDown, true)
+  }, [isOpen])
 
   useEffect(() => {
     if (isOpen) {
       setSearch("")
       setSelectedIndex(0)
-      setTimeout(() => inputRef.current?.focus(), 100)
+      setTimeout(() => inputRef.current?.focus(), 50)
+    } else {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+      previousActiveElement.current = null
     }
   }, [isOpen])
 
@@ -378,6 +395,16 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", handleNavigation)
   }, [isOpen, filteredItems, selectedIndex])
 
+  // Paranoia: Keep active command item scrolled into view during arrow navigation
+  useEffect(() => {
+    if (!isOpen || filteredItems.length === 0) return
+    const activeItem = filteredItems[selectedIndex]
+    if (activeItem) {
+      const el = document.getElementById(activeItem.id)
+      el?.scrollIntoView({ block: "nearest" })
+    }
+  }, [selectedIndex, filteredItems, isOpen])
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -390,6 +417,9 @@ export function CommandPalette() {
             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
           />
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Global Command Palette"
             initial={{ opacity: 0, scale: 0.96, y: -16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -16 }}

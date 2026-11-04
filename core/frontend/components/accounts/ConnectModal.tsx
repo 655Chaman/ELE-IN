@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { Linkedin } from "../icons/Linkedin"
 import { 
@@ -25,14 +25,23 @@ interface ConnectModalProps {
 export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
   const getSavedDraft = () => {
     try {
+      // Purge any legacy plaintext cookie tokens from persistent storage
+      sessionStorage.removeItem("elein_connect_modal_draft_cookie")
+      localStorage.removeItem("elein_connect_modal_draft_cookie")
+
       const draft = sessionStorage.getItem("elein_connect_modal_draft") || localStorage.getItem("elein_connect_modal_draft")
-      if (draft) return JSON.parse(draft)
+      if (draft) {
+        const parsed = JSON.parse(draft)
+        // Ensure sensitive tokens are never retained or restored from disk
+        delete parsed.cookieInput
+        return parsed
+      }
     } catch (_) {}
     return null
   }
 
   const [activeTab, setActiveTab] = useState<"token" | "extension">(() => getSavedDraft()?.activeTab || "token")
-  const [cookieInput, setCookieInput] = useState(() => getSavedDraft()?.cookieInput || "")
+  const [cookieInput, setCookieInput] = useState("")
   const [name, setName] = useState(() => getSavedDraft()?.name || "")
   const [isWarmup, setIsWarmup] = useState(true)
   const [proxyId, setProxyId] = useState(() => getSavedDraft()?.proxyId || "auto")
@@ -42,25 +51,35 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
   const [showGuide, setShowGuide] = useState(false)
   const [guideMethod, setGuideMethod] = useState<"devtools" | "editthiscookie">("devtools")
 
+  const activeControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      // Cancel in-flight validation if modal unmounts
+      if (activeControllerRef.current) {
+        activeControllerRef.current.abort()
+      }
+    }
+  }, [])
+
   const { data: proxies } = useSWR("/api/elein/proxies/health", fetcher)
   const safeProxies = Array.isArray(proxies) ? proxies : []
   const { data: billing } = useSWR<{ tier?: string; tier_limits?: { can_use_custom_proxies?: boolean } }>('/api/elein/workspaces/billing', fetcher)
   const { openPaywall } = usePaywall()
   const isProxyLocked = Boolean(billing && !billing.tier_limits?.can_use_custom_proxies)
 
-  // Layer 2 Paranoia: Persist draft to sessionStorage and localStorage to protect against accidental refreshes/re-renders
+  // Layer 2 Paranoia: Persist non-sensitive configuration ONLY (never write li_at session cookie to storage)
   useEffect(() => {
     try {
       const payload = JSON.stringify({
         activeTab,
-        cookieInput,
         name,
         proxyId
       })
       sessionStorage.setItem("elein_connect_modal_draft", payload)
       localStorage.setItem("elein_connect_modal_draft", payload)
     } catch (_) {}
-  }, [activeTab, cookieInput, name, proxyId])
+  }, [activeTab, name, proxyId])
 
   // Keyboard accessibility: Hardened Focus Trap, Double-Tap Esc Guard & Stepper (EPF Phase 2)
   const isFormDirty = Boolean(cookieInput.trim() || name.trim())
@@ -216,6 +235,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
 
     // Layer 1 Paranoia: 25-second timeout guard against hung proxy tunnels
     const controller = new AbortController()
+    activeControllerRef.current = controller
     const timer = setTimeout(() => controller.abort(), 25000)
     // Paranoia Layer 0 & 2: Normalize "auto" selector to undefined so backend invokes automatic proxy assignment
     const resolvedProxyId = proxyId && proxyId !== "auto" ? proxyId : undefined
@@ -228,6 +248,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
         signal: controller.signal,
       })
       clearTimeout(timer)
+      activeControllerRef.current = null
 
       if (!res.ok) {
         const errPayload = await res.json().catch(() => null)
@@ -347,12 +368,15 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
               </button>
             </div>
 
-            {/* Tab Switcher: 2-Tab Choice with Keyboard Steppers */}
-            <div role="tablist" className="flex gap-2 mt-4 p-1 bg-muted/50 rounded-lg border border-border/60">
+            {/* Tab Switcher: 2-Tab Choice with Keyboard Steppers & W3C APG Semantics */}
+            <div role="tablist" aria-label="Account connection methods" className="flex gap-2 mt-4 p-1 bg-muted/50 rounded-lg border border-border/60">
               <button
                 type="button"
                 role="tab"
+                id="tab-token"
+                aria-controls="panel-token"
                 aria-selected={activeTab === "token"}
+                tabIndex={activeTab === "token" ? 0 : -1}
                 onClick={() => { setActiveTab("token"); setError(""); }}
                 className={cn(
                   "flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all text-center flex items-center justify-center gap-1.5",
@@ -369,7 +393,10 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
               <button
                 type="button"
                 role="tab"
+                id="tab-extension"
+                aria-controls="panel-extension"
                 aria-selected={activeTab === "extension"}
+                tabIndex={activeTab === "extension" ? 0 : -1}
                 onClick={() => { setActiveTab("extension"); setError(""); }}
                 className={cn(
                   "flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all text-center flex items-center justify-center gap-1.5",
@@ -390,7 +417,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
 
             {/* TAB 1: PASTE TOKEN / COOKIES (Instant 15s Flow) */}
             {activeTab === "token" && (
-              <div className="space-y-4">
+              <div id="panel-token" role="tabpanel" aria-labelledby="tab-token" className="space-y-4">
                 {/* Account Label & Proxy Selection */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -626,7 +653,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
 
             {/* TAB 2: 1-CLICK EXTENSION SYNC */}
             {activeTab === "extension" && (
-              <div className="space-y-4 py-1">
+              <div id="panel-extension" role="tabpanel" aria-labelledby="tab-extension" className="space-y-4 py-1">
                 <div className="p-4 rounded-xl border border-border bg-card space-y-3">
                   <div className="flex items-center gap-2 text-foreground font-semibold text-xs">
                     <Zap size={15} className="text-primary" />

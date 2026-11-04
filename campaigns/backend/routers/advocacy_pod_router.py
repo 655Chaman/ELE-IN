@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.backend.api.auth_dep import get_current_workspace, get_service_client
+from core.backend.services.tier_guard import require_tier
 from campaigns.backend.services.advocacy_pod_service import (
     create_pod,
     list_pods,
@@ -17,7 +18,11 @@ from campaigns.backend.services.advocacy_pod_service import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/advocacy", tags=["advocacy_pods_and_viral_booster"])
+router = APIRouter(
+    prefix="/advocacy",
+    tags=["advocacy_pods_and_viral_booster"],
+    dependencies=[Depends(require_tier("can_use_community_messaging", "PRO"))]
+)
 
 
 # ── Pydantic Request Models ────────────────────────────────────────────────────

@@ -2223,14 +2223,20 @@ class EleInOrchestrator:
 
                 norm_created_at = _normalize_to_utc_iso(state.get("enrollment_created_at") or state.get("enrolled_at"))
                 inbound_query = self.supabase.table("messages") \
-                    .select("id") \
+                    .select("id, intent") \
                     .eq("lead_id", target_lead_id) \
                     .or_("direction.eq.inbound,and(direction.eq.outbound,node_id.is.null)")
                 if norm_created_at:
                     inbound_query = inbound_query.gt("created_at", norm_created_at)
 
-                inbound_msg_res = inbound_query.limit(1).execute()
-                if isinstance(inbound_msg_res.data, list) and len(inbound_msg_res.data) > 0:
+                inbound_msg_res = inbound_query.limit(5).execute()
+                inbound_msgs = getattr(inbound_msg_res, "data", []) or []
+                # Paranoia Layer 1: Exclude automated non-terminal notices (Out-of-Office, bounces) so snoozes can resume
+                terminal_replies = [
+                    m for m in inbound_msgs 
+                    if str(m.get("intent") or "").upper() not in ("OUT_OF_OFFICE", "BOUNCE", "AUTOREPLY", "AUTO_OOO")
+                ]
+                if terminal_replies:
                     logger.info(f"Reply or manual intervention detected for lead {target_lead_id}! Pausing campaign execution.")
                     self.update_state(
                         state["id"], 
@@ -2885,6 +2891,23 @@ class EleInOrchestrator:
                 "role_based_email_blocked",
             )
             if any(term in str(skip_reason).lower() for term in terminal_reasons) or action_result.get("status") == "suppressed":
+                # Paranoia Layer 1: Check if DAG has a configured fallback edge (e.g. Email Failed -> LinkedIn)
+                outgoing_edges = self.get_outgoing_edges(edges, current_node["id"])
+                failed_edge = next((e for e in outgoing_edges if (e.get("sourceHandle") or "").upper() in ("FAILED", "ERROR")), None)
+                if failed_edge:
+                    next_node_id = failed_edge.get("target_node_id") or failed_edge.get("target")
+                    logger.info(f"[Orchestrator] Routing deliverability skip '{skip_reason}' along DAG fallback edge: {next_node_id}")
+                    self.update_state(
+                        state["id"],
+                        next_node_id,
+                        "pending",
+                        datetime.now(timezone.utc) + timedelta(seconds=15),
+                        lease_token=lease_token,
+                        variables=out_vars,
+                        enrollment_id=state.get("enrollment_id"),
+                    )
+                    return
+
                 logger.info(f"[Orchestrator] Lead {state.get('opportunity_id') or state.get('id')} skipped terminally ({skip_reason}). Halting execution state.")
                 self.update_state(
                     state["id"],
@@ -3192,11 +3215,11 @@ class EleInOrchestrator:
                     
                 try:
                     acc_res = self.supabase.table("accounts").select(
-                        "id, workspace_id, status, status_changed_at, proxy_id, execution_channel, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id)"
+                        "id, workspace_id, status, status_changed_at, proxy_id, execution_channel, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id, is_active, status, quarantined_until)"
                     ).eq("id", chosen_sender_id).execute()
                 except Exception:
                     acc_res = self.supabase.table("accounts").select(
-                        "id, workspace_id, status, status_changed_at, proxy_id, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id)"
+                        "id, workspace_id, status, status_changed_at, proxy_id, session_cookies_encrypted, is_warmup, warmup_max_connections, warmup_max_messages, proxies(id, protocol, host, port, username, country_code, workspace_id, is_active, status, quarantined_until)"
                     ).eq("id", chosen_sender_id).execute()
                 account_row = acc_res.data[0] if acc_res.data else None
                 
@@ -3266,7 +3289,21 @@ class EleInOrchestrator:
                             if enroll_res.data:
                                 campaign_id = enroll_res.data[0]["campaign_id"]
                         if campaign_id:
-                            # Find healthy backup account
+                            # Paranoia Layer 1 & 2: Check if lead has already received touches from chosen_sender_id
+                            has_prior_touch = False
+                            if "enrollment_id" in state and requires_linkedin:
+                                try:
+                                    prev_touches = self.supabase.table("campaign_node_executions").select("id").eq("enrollment_id", state["enrollment_id"]).eq("status", "success").limit(1).execute()
+                                    if prev_touches.data and len(prev_touches.data) > 0:
+                                        has_prior_touch = True
+                                except Exception:
+                                    pass
+
+                            if has_prior_touch and requires_linkedin:
+                                logger.info(f"[ThreadAffinity] Lead {state.get('id')} has prior touch from sender {chosen_sender_id}. Preserving affinity, deferring until recovery.")
+                                return {"status": "skipped", "reason": "THREAD_SENDER_COOLDOWN"}
+
+                            # Find healthy backup account for fresh leads
                             backups_res = self.supabase.table("campaign_accounts").select(
                                 "account_id, accounts!inner(status)"
                             ).eq("campaign_id", campaign_id).eq("accounts.status", "ACTIVE").neq("account_id", chosen_sender_id).limit(1).execute()
@@ -3277,7 +3314,7 @@ class EleInOrchestrator:
                                     self.supabase.table("campaign_enrollments").update({"account_id": new_account_id}).eq("id", state["enrollment_id"]).execute()
                                 state["account_id"] = new_account_id
                                 self._record_observability(state, {"id": current_node_id}, "rate_limited", error_reason=f"Account {chosen_sender_id} was unhealthy. Automatically reassigned lead to fallback account {new_account_id}.")
-                                return {"status": "skipped"} # VULNERABILITY FIXED: Reschedule in 45 seconds instead of stalling until tomorrow
+                                return {"status": "skipped"}
                                 
                     # Fallback to existing stall behavior
                     if acc_status == "DISCONNECTED":
@@ -3337,7 +3374,7 @@ class EleInOrchestrator:
                             self.supabase.table("accounts").update({"status": "NEEDS_ATTENTION", "session_locked_until": None, "last_health_check_at": now}).eq("id", chosen_sender_id).execute()
                             if dek_bytes: del dek_bytes
                             return {"status": "account_disconnected", "reason": "PROXY_UNAVAILABLE", "account_id": chosen_sender_id}
-                        elif not proxy_url and not os.environ.get("ALLOW_BARE_DATACENTER_IP") and not os.environ.get("PYTEST_CURRENT_TEST"):
+                        elif not proxy_url:
                             logger.error(
                                 f"[Orchestrator] Sender {chosen_sender_id} has no residential proxy assigned. "
                                 f"Failing closed to protect LinkedIn account from datacenter IP flag."
@@ -3502,8 +3539,31 @@ class EleInOrchestrator:
                                         logger.debug(f"Failed to update campaign_node_executions on crash recovery: {upd_err}")
                                     return {"status": "fast_forward", "branch": fast_forward_payload.get("branch"), "variables": fast_forward_payload.get("variables")}
 
-                                # Reclaim the node execution lock and allow retry with attempts tracked incrementally.
-                                upd_res = self.supabase.table("campaign_node_executions").update({"status": "running"}).eq("idempotency_key", idemp_key).eq("status", "running").execute()
+                                # Paranoia Layer 1: Verify if the existing 'running' record is locked by an active in-flight worker
+                                now_utc = datetime.now(timezone.utc)
+                                existing_row = collision_res.data[0] if collision_res.data else {}
+                                locked_until_raw = existing_row.get("locked_until")
+                                updated_at_raw = existing_row.get("updated_at")
+                                is_active_worker = False
+                                if locked_until_raw:
+                                    try:
+                                        from dateutil.parser import parse
+                                        is_active_worker = parse(str(locked_until_raw)) > now_utc
+                                    except Exception:
+                                        pass
+                                elif updated_at_raw:
+                                    try:
+                                        from dateutil.parser import parse
+                                        is_active_worker = (now_utc - parse(str(updated_at_raw))).total_seconds() < 300
+                                    except Exception:
+                                        pass
+
+                                if is_active_worker:
+                                    logger.info(f"Node execution {idemp_key} currently locked by active in-flight worker. Deferring to prevent duplicate touch.")
+                                    return {"status": "deferred", "next_run_delta_seconds": 60}
+
+                                # Reclaim the node execution lock from genuine crash and allow retry
+                                upd_res = self.supabase.table("campaign_node_executions").update({"status": "running", "updated_at": now_utc.isoformat()}).eq("idempotency_key", idemp_key).eq("status", "running").execute()
                                 if not upd_res.data:
                                     return {"status": "error", "error": "Concurrent worker collision during crash recovery.", "requires_approval": False}
                                 logger.warning(f"Idempotency hit ({idemp_key}): Recovering from previous worker crash mid-execution. Retrying incrementally.")
@@ -3518,6 +3578,12 @@ class EleInOrchestrator:
             # --- 5. Execute Action ---
             from campaigns.backend.services.elein_executor import EleInNodeExecutor
             lead_identifier = state.get("lead_id") or state.get("opportunity_id") or opportunity_id
+            
+            def assert_lease_active():
+                if lease_revoked.is_set():
+                    raise RuntimeError(f"Lease {lease_token} for state {state['id']} was revoked by another worker.")
+
+            resolved_data["_lease_check_fn"] = assert_lease_active
             resolved_data["_workspace_id"] = state.get("workspace_id")
             resolved_data["_lead_id"] = lead_identifier
             resolved_data["lead_id"] = lead_identifier

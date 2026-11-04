@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 
 interface PendingDispatch {
@@ -7,10 +7,26 @@ interface PendingDispatch {
   leadId: string | null;
   messageText: string;
   timeoutId: NodeJS.Timeout;
+  dispatchFn: () => Promise<void>;
 }
 
 export function useUndoSend() {
   const pendingQueueRef = useRef<Map<string, PendingDispatch>>(new Map());
+
+  // Paranoia Layer 1 & 2: Flush pending dispatches if user closes or refreshes the tab mid-countdown
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (pendingQueueRef.current.size > 0) {
+        pendingQueueRef.current.forEach((item) => {
+          clearTimeout(item.timeoutId);
+          item.dispatchFn().catch(() => {});
+        });
+        pendingQueueRef.current.clear();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   const queueSend = useCallback(
     (
@@ -40,6 +56,7 @@ export function useUndoSend() {
         leadId: payload.leadId,
         messageText: payload.messageText,
         timeoutId,
+        dispatchFn: onActualDispatch,
       });
 
       toast.info(`Sending reply in ${Math.round(delayMs / 1000)}s... /* ds-allow-hardcode */`, {

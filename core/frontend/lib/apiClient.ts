@@ -166,19 +166,21 @@ export async function fetchWithAuth(path: string, options: AuthRequestInit = {})
           detailStr.includes('pro tier')
 
         if (isTierGated) {
-          const reqTier = (
-            detail?.required_tier ||
-            errJson?.required_tier ||
-            (detailStr.includes('enterprise') ? 'ENTERPRISE' : 'PRO')
+          // Paranoia Layer 1: Strictly prioritize structured required_tier, avoid naive substring checks
+          const explicitTier = detail?.required_tier || errJson?.required_tier;
+          const inferredTier = (
+            explicitTier 
+              ? explicitTier 
+              : (detailStr.includes('enterprise only') || detailStr.includes('enterprise tier') || detailStr.includes('sender pod') || detailStr.includes('canary') ? 'ENTERPRISE' : 'PRO')
           ).toUpperCase()
 
-          const featName = detail?.featureName || detail?.feature || errJson?.feature || detail?.message || errJson?.message || 'Enterprise Feature'
-          const reasonStr = detail?.message || errJson?.message || `${reqTier} Tier Upgrade Required`
+          const featName = detail?.featureName || detail?.feature || errJson?.feature || detail?.message || errJson?.message || 'Premium Feature'
+          const reasonStr = detail?.message || errJson?.message || `${inferredTier} Tier Upgrade Required`
 
           window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
             detail: {
               type: 'tier',
-              minTier: reqTier,
+              minTier: inferredTier,
               featureName: featName,
               reason: reasonStr
             }
@@ -228,8 +230,21 @@ export async function fetchWithAuth(path: string, options: AuthRequestInit = {})
         return res
       } else if (isTierLimit) {
         if (typeof window !== 'undefined') {
+          const isEnterpriseExclusive = 
+            detailStr.includes('sender pod') || 
+            detailStr.includes('canary') || 
+            detailStr.includes('soc2') || 
+            detailStr.includes('cname') || 
+            detailStr.includes('dedicated proxy') ||
+            detailStr.includes('webhook endpoint limit');
+
           window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
-            detail: { type: 'tier', reason: errData?.detail || 'Upgrade required to continue' }
+            detail: { 
+              type: 'tier', 
+              minTier: isEnterpriseExclusive ? 'ENTERPRISE' : 'PRO',
+              featureName: isEnterpriseExclusive ? 'Enterprise VIP Infrastructure' : 'Growth Pro Expansion',
+              reason: (typeof errData?.detail === 'string' ? errData.detail : errData?.detail?.message) || 'Upgrade required to continue' 
+            }
           }))
         }
         return res

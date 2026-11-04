@@ -66,7 +66,21 @@ export function AppLayout() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'x') {
+      // Guard against typing in text inputs, textareas, contenteditable, or ARIA textboxes
+      const target = e.target as HTMLElement | null;
+      if (
+        target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.getAttribute('role') === 'textbox'
+        )
+      ) {
+        return;
+      }
+
+      // Sidebar toggle shortcut: Cmd+B / Ctrl+B or Cmd+\ (VS Code / Linear convention; never hijacks Cmd+X Cut)
+      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'b' || e.key === '\\')) {
         e.preventDefault();
         setIsSidebarOpen(prev => !prev);
       }
@@ -117,6 +131,12 @@ export function AppLayout() {
 
   return (
     <div className="h-[100dvh] bg-background text-foreground flex flex-col overflow-hidden text-sm font-sans selection:bg-primary/30">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:shadow-2xl focus:font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Skip to main content
+      </a>
       <OfflineBanner />
       {isEnterprise && (
         <div className="w-full bg-slate-950/95 border-b border-emerald-500/20 text-slate-200 text-xs px-4 py-1.5 flex items-center justify-between gap-4 font-mono tracking-tight shrink-0 z-40 backdrop-blur-md">
@@ -203,8 +223,8 @@ export function AppLayout() {
               <button 
                 type="button"
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="p-1 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
-                title="Toggle Sidebar (Cmd+X)"
+                className="p-1 text-sidebar-foreground/75 hover:text-sidebar-foreground transition-colors"
+                title="Toggle Sidebar (Cmd+B)"
                 aria-label="Collapse sidebar"
               >
                 <ChevronLeft size={16} />
@@ -216,7 +236,7 @@ export function AppLayout() {
           {isSidebarOpen ? (
             <div className="px-3 pt-4 pb-2">
               <div className="flex items-center justify-between px-1 mb-1.5">
-                <p className="text-[9px] font-semibold text-sidebar-foreground/60 uppercase tracking-widest">
+                <p className="text-[9px] font-semibold text-sidebar-foreground/80 uppercase tracking-widest">
                   Current Workspace
                 </p>
                 {myAgencies && myAgencies.some(a => a.role === 'owner' || a.role === 'admin') && (
@@ -226,7 +246,7 @@ export function AppLayout() {
                       e.preventDefault();
                       navigate('/elein/agency');
                     }}
-                    className="text-sidebar-foreground/60 hover:text-primary transition-colors flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest"
+                    className="text-sidebar-foreground/80 hover:text-primary transition-colors flex items-center gap-1 text-[9px] font-semibold uppercase tracking-widest"
                     title="Agency Management"
                   >
                     <Building2 size={10} />
@@ -283,7 +303,7 @@ export function AppLayout() {
                                 {isEnt ? 'Enterprise VIP' : isAg ? 'Agency Hub' : isPr ? 'Growth Pro' : 'Free Tier'}
                               </span>
                             </div>
-                            <span className="text-[10px] text-sidebar-foreground/60 font-medium tracking-wide">
+                            <span className="text-[10px] text-sidebar-foreground/80 font-medium tracking-wide">
                               {activeWs?.account_count || 0} Connected Account{activeWs?.account_count !== 1 ? 's' : ''}
                             </span>
                           </div>
@@ -395,7 +415,7 @@ export function AppLayout() {
             {navCategories.map((category, idx) => (
               <div key={idx} className="space-y-1">
                 {isSidebarOpen && (
-                  <p className="px-3 text-[9px] font-semibold text-sidebar-foreground/60 uppercase tracking-widest mb-3">
+                  <p className="px-3 text-[9px] font-semibold text-sidebar-foreground/80 uppercase tracking-widest mb-3">
                     {category.title}
                   </p>
                 )}
@@ -407,7 +427,7 @@ export function AppLayout() {
                     const className = `w-full flex items-center gap-3 px-3 py-1.5 group relative rounded-lg ${
                       isActive 
                         ? 'text-sidebar-foreground'
-                        : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
+                        : 'text-sidebar-foreground/80 hover:text-sidebar-foreground'
                     }`;
 
                     const innerContent = (
@@ -419,7 +439,7 @@ export function AppLayout() {
                             transition={{ type: "spring", bounce: 0.2, duration: 0.45 }}
                           />
                         )}
-                        <div className={`shrink-0 relative z-10 ${isActive ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'} transition-colors`}>
+                        <div className={`shrink-0 relative z-10 ${isActive ? 'text-primary' : 'text-sidebar-foreground/80 group-hover:text-sidebar-foreground'} transition-colors`}>
                           {item.icon}
                         </div>
                         {isSidebarOpen && <span className="whitespace-nowrap text-[12px] font-medium relative z-10">{item.label}</span>}
@@ -492,7 +512,7 @@ export function AppLayout() {
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto overflow-x-clip bg-background relative">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto overflow-x-clip bg-background relative focus:outline-none">
           <Outlet context={{ activeMarket, setActiveMarket }} />
         </main>
       </div>

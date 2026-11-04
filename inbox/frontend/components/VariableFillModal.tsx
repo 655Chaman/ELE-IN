@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Check, X } from 'lucide-react';
 
 interface VariableFillModalProps {
@@ -16,8 +16,67 @@ export function VariableFillModal({
   onApplyAndSend,
   defaultValues = {},
 }: VariableFillModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+
   const [variables, setVariables] = useState<string[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true });
+      }
+      previousActiveElement.current = null;
+      return;
+    }
+
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && containerRef.current) {
+        const focusable = Array.from(
+          containerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter((el) => el.offsetParent !== null);
+
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -44,15 +103,27 @@ export function VariableFillModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-md rounded-xl bg-card border border-border p-5 shadow-2xl space-y-4">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div 
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="var-modal-title"
+        className="w-full max-w-md rounded-xl bg-card border border-border p-5 shadow-2xl space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-lg bg-warning/10 border border-warning/20 flex items-center justify-center text-warning">
               <AlertTriangle size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-foreground">
+              <h3 id="var-modal-title" className="text-sm font-bold text-foreground">
                 Unresolved Template Variables
               </h3>
               <p className="text-xs text-muted-foreground">
@@ -61,8 +132,10 @@ export function VariableFillModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground p-1 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close dialog"
+            className="text-muted-foreground hover:text-foreground p-1 rounded-lg transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             <X size={16} />
           </button>
@@ -84,7 +157,7 @@ export function VariableFillModal({
                   setValues((prev) => ({ ...prev, [variable]: e.target.value }))
                 }
                 placeholder={`Value for ${variable}...`}
-                className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/60 transition-colors"
+                className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                 autoFocus={variable === variables[0]}
               />
             </div>
@@ -95,7 +168,7 @@ export function VariableFillModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             Review Draft
           </button>
@@ -104,14 +177,14 @@ export function VariableFillModal({
             <button
               type="button"
               onClick={() => onApplyAndSend(text)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground border border-border transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground border border-border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               Send Unresolved
             </button>
             <button
               type="button"
               onClick={handleApply}
-              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs flex items-center gap-1.5 cursor-pointer transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <Check size={13} />
               <span>Fill &amp; Send</span>

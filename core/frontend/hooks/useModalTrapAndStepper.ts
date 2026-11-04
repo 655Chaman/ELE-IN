@@ -78,9 +78,26 @@ export function useModalTrapAndStepper<TStep extends string = string>({
 
   // 1. Capture and restore previously active element + lock body scroll
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      // Modal just closed or unmounted: restore focus gracefully
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      } else {
+        // Fallback target: prevent focus dropping to <body> and causing scroll jumping
+        const fallbackTarget = document.getElementById("main-content") || document.querySelector("main")
+        if (fallbackTarget && typeof fallbackTarget.focus === "function") {
+          fallbackTarget.focus({ preventScroll: true })
+        }
+      }
+      previousActiveElement.current = null
+      return
+    }
 
-    // React 18 StrictMode Safety: Only save previousActiveElement if it's outside the container
+    // Modal just opened: save active element before focusing inside modal
     const active = document.activeElement as HTMLElement | null
     if (active && (!containerRef.current || !containerRef.current.contains(active))) {
       previousActiveElement.current = active
@@ -112,14 +129,6 @@ export function useModalTrapAndStepper<TStep extends string = string>({
       clearTimeout(timer)
       if (preventBodyScroll) {
         document.body.style.overflow = originalOverflow
-      }
-      // Paranoia: Verify element is still attached to DOM before focusing
-      if (
-        previousActiveElement.current &&
-        document.contains(previousActiveElement.current) &&
-        typeof previousActiveElement.current.focus === "function"
-      ) {
-        previousActiveElement.current.focus({ preventScroll: true })
       }
     }
   }, [isOpen, initialFocusRef, preventBodyScroll])
@@ -309,9 +318,22 @@ export function useModalTrapAndStepper<TStep extends string = string>({
 
   useEffect(() => {
     if (!isOpen) return
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", handleKeyDown, true)
+    return () => window.removeEventListener("keydown", handleKeyDown, true)
   }, [isOpen, handleKeyDown])
+
+  useEffect(() => {
+    return () => {
+      // Final unmount cleanup: restore focus to trigger or main landmark if unmounted while open
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+    }
+  }, [])
 
   return {
     containerRef,

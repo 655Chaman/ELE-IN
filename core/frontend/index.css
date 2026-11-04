@@ -7,7 +7,7 @@
 
 @theme {
   --font-sans: "Inter", system-ui, sans-serif;
-  --font-heading: "Inter", system-ui, sans-serif;
+  --font-heading: "Space Grotesk", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 }
 
@@ -37,6 +37,14 @@
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading tracking-tight;
+  }
+
+  /* Universal button pointer ergonomics (Tailwind v4 reset) */
+  button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"] {
+    cursor: pointer;
+  }
+  button:disabled, [role="button"][aria-disabled="true"], input:disabled {
+    cursor: not-allowed;
   }
 
   /* Hide number input arrows */
@@ -70,6 +78,14 @@
 
   .premium-interactive {
     @apply transition-colors duration-200 cursor-pointer hover:bg-muted hover:border-foreground/20;
+  }
+
+  .btn-tactile {
+    @apply active:scale-[0.98] transition-transform duration-75 ease-out;
+  }
+
+  .focus-ring-standard {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 
   @keyframes fade-in-up {

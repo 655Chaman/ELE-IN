@@ -10041,28 +10041,43 @@ def api_simulate_sequence_dag(
     leads = payload.sample_leads
     if not leads and db and workspace_id:
         try:
-            l_res = db.table("leads").select("id, first_name, last_name, company, title, email, linkedin_url, custom_variables").eq("workspace_id", workspace_id).limit(5).execute()
-            leads = getattr(l_res, "data", []) or []
-        except Exception:
+            l_res = db.table("leads").select("id, first_name, last_name, company_name, job_title, email, linkedin_url, variables, metadata").eq("workspace_id", workspace_id).limit(5).execute()
+            raw_leads = getattr(l_res, "data", []) or []
+            leads = [
+                {
+                    "id": l.get("id"),
+                    "first_name": l.get("first_name"),
+                    "last_name": l.get("last_name"),
+                    "company": l.get("company_name") or l.get("company"),
+                    "title": l.get("job_title") or l.get("title"),
+                    "email": l.get("email"),
+                    "linkedin_url": l.get("linkedin_url"),
+                    "custom_variables": l.get("variables") or l.get("metadata") or {}
+                }
+                for l in raw_leads
+            ]
+        except Exception as e_leads:
+            logger.debug(f"[Simulation] Failed to load sample leads from DB: {e_leads}")
             leads = []
 
     # If sender_profiles is omitted or empty, fetch active senders from workspace
     senders = payload.sender_profiles
     if not senders and db and workspace_id:
         try:
-            s_res = db.table("accounts").select("id, email, name, daily_limit, current_sent_count").eq("workspace_id", workspace_id).in_("status", ["ACTIVE", "CONNECTED"]).limit(5).execute()
+            s_res = db.table("accounts").select("id, name, linkedin_profile_url, daily_connection_limit, daily_message_limit, status").eq("workspace_id", workspace_id).in_("status", ["ACTIVE", "CONNECTED"]).limit(5).execute()
             rows = getattr(s_res, "data", []) or []
             senders = [
                 {
                     "id": r.get("id"),
-                    "email": r.get("email"),
+                    "email": r.get("name") or "sender@workspace.internal",
                     "name": r.get("name"),
-                    "daily_quota": r.get("daily_limit") or 50,
+                    "daily_quota": r.get("daily_connection_limit") or 50,
                     "channels": ["EMAIL", "LINKEDIN"]
                 }
                 for r in rows
             ]
-        except Exception:
+        except Exception as e_senders:
+            logger.debug(f"[Simulation] Failed to load sample senders from DB: {e_senders}")
             senders = []
 
     seed = (payload.simulation_options or {}).get("spintax_seed", 42)
@@ -10187,14 +10202,22 @@ def api_export_workspace_leads(
     leads = []
     if db:
         try:
-            q = db.table("leads").select("id, first_name, last_name, company, title, email, linkedin_url, status").eq("workspace_id", workspace_id)
+            q = db.table("leads").select("id, first_name, last_name, company_name, job_title, email, linkedin_url, status, metadata").eq("workspace_id", workspace_id)
             if list_id and isinstance(list_id, str) and list_id.strip():
                 try:
                     q = q.eq("list_id", list_id.strip())
                 except Exception:
                     pass
             res = q.limit(1000).execute()
-            leads = getattr(res, "data", []) or []
+            raw_leads = getattr(res, "data", []) or []
+            leads = [
+                {
+                    **l,
+                    "company": l.get("company_name") or l.get("company"),
+                    "title": l.get("job_title") or l.get("title")
+                }
+                for l in raw_leads
+            ]
         except Exception as e:
             logger.error(f"Error exporting leads from database: {e}")
             leads = []

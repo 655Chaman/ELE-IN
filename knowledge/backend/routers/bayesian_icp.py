@@ -20,8 +20,13 @@ from knowledge.backend.services.bayesian_icp_service import (
     compute_bayesian_icp_score
 )
 from core.backend.services.credit_service import check_tier_access
+from core.backend.services.tier_guard import require_tier
 
-router = APIRouter(prefix="/api/knowledge/icp", tags=["Bayesian ICP"])
+router = APIRouter(
+    prefix="/api/knowledge/icp",
+    tags=["Bayesian ICP"],
+    dependencies=[Depends(require_tier("can_use_bayesian_icp", "PRO"))]
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

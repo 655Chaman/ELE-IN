@@ -185,10 +185,11 @@ export function LeadTable({
       {lists.map((list, i) => (
         <motion.div
           key={list.id}
+          layout
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, x: -20, transition: { duration: 0.25 } }}
-          transition={{ delay: i * 0.05 }}
+          transition={{ layout: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, delay: i * 0.04 }}
         >
           <div 
             className="relative overflow-hidden flex items-center justify-between gap-4 px-4 sm:px-5 py-3.5 border border-border/50 bg-card/40 backdrop-blur-sm hover:border-border hover:bg-card/70 transition-all rounded-xl shadow-xs group" 

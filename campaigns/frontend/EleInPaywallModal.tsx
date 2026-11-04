@@ -151,20 +151,20 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
               <Sparkles size={28} />
             </div>
             <div>
-              <h3 className="text-2xl font-bold tracking-tight">Don't Lose Your Campaign Setup</h3>
+              <h3 className="text-2xl font-bold tracking-tight">Preserve Orchestrated Dispatch Velocity</h3>
               <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto leading-relaxed">
-                Your sequence for <strong className="text-foreground">"{campaignName}"</strong> is fully configured and ready to generate replies.
+                Autonomous outbound pipeline for <strong className="text-foreground">"{campaignName}"</strong> is validated and primed for deterministic pipeline delivery.
               </p>
             </div>
 
             <div className="p-4 rounded-lg bg-muted/30 border border-border/50 text-left space-y-2 text-xs">
               <div className="flex items-center gap-2 text-foreground font-medium">
                 <Check size={14} className="text-primary" />
-                <span>Not ready for Annual? Flexible Monthly plan available at ₹7,999/mo.</span>
+                <span>Elastic Monthly Allocation: Instant Ledger Settlement at ₹7,999/mo.</span>
               </div>
               <div className="flex items-center gap-2 text-foreground font-medium">
                 <Check size={14} className="text-primary" />
-                <span>Your nodes, AI prompt prompts, and lead enrollments remain 100% safe.</span>
+                <span>Sequence DAG nodes, Bayesian persona vectors, and lead queues securely retained.</span>
               </div>
             </div>
 
@@ -176,7 +176,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                 className="w-full py-3.5 px-4 rounded-lg bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition shadow-sm flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} className="fill-current" />}
-                Switch to Flexible Monthly (₹7,999/mo) <ArrowRight size={16} />
+                Activate Elastic Monthly Allocation (₹7,999/mo) <ArrowRight size={16} />
               </button>
 
               <button
@@ -186,18 +186,21 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                   setStep(0);
                   onClose();
                 }}
-                className="text-xs text-muted-foreground/70 hover:text-rose-500 transition pt-2 block mx-auto cursor-pointer"
+                className="text-xs text-muted-foreground/70 hover:text-foreground transition pt-2 block mx-auto cursor-pointer"
               >
-                I'll risk pausing outreach on "{campaignName}" for now
+                Archive sequence nodes to local workspace draft
               </button>
             </div>
           </div>
         ) : (
           <>
             {/* Tier Switcher Pill Navigation */}
-            <div className="flex items-center justify-center gap-2 mb-4">
+            <div role="tablist" aria-label="Subscription plan tiers" className="flex items-center justify-center gap-2 mb-4">
               <button
                 type="button"
+                role="tab"
+                aria-selected={selectedTier === 'growth'}
+                tabIndex={selectedTier === 'growth' ? 0 : -1}
                 onClick={() => setSelectedTier('growth')}
                 className={`px-3 py-1 rounded-full text-xs font-bold transition-all border cursor-pointer ${
                   selectedTier === 'growth'
@@ -209,6 +212,9 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={selectedTier === 'enterprise'}
+                tabIndex={selectedTier === 'enterprise' ? 0 : -1}
                 onClick={() => setSelectedTier('enterprise')}
                 className={`px-3 py-1 rounded-full text-xs font-bold transition-all border cursor-pointer ${
                   selectedTier === 'enterprise'
@@ -237,7 +243,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
                     }`}>
                       {selectedTier === 'enterprise' ? 'Enterprise Infrastructure' : 'Target Ready'}
                     </span>
-                    <h2 className="text-xl font-bold tracking-tight">Launch "{campaignName}"</h2>
+                    <h2 id="paywall-title" className="text-xl font-bold tracking-tight">Launch "{campaignName}"</h2>
                   </div>
                 </div>
 

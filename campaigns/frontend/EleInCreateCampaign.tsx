@@ -2264,10 +2264,18 @@ function EleInCreateCampaignInner() {
 
     if (targetStep === 3) return { allowed: true, maxAllowedStep: 3 }
 
-    // Prerequisite for Step 4 (Preview/Launch): Curfew window must be valid
+    // Prerequisite for Step 4 (Preview/Launch): Curfew window must be valid (Paranoia Layer 1: parse minutes to prevent ASCII string comparison bugs)
+    const parseTimeToMinutes = (t: string) => {
+      const parts = String(t || "").trim().split(":")
+      const h = parseInt(parts[0], 10) || 0
+      const m = parseInt(parts[1], 10) || 0
+      return h * 60 + m
+    }
     const startTime = form.schedule?.startTime || "09:00"
     const endTime = form.schedule?.endTime || "17:00"
-    if (startTime >= endTime) {
+    const startMins = parseTimeToMinutes(startTime)
+    const endMins = parseTimeToMinutes(endTime)
+    if (startMins >= endMins) {
       return {
         allowed: false,
         maxAllowedStep: 3,
@@ -2662,10 +2670,12 @@ function EleInCreateCampaignInner() {
         throw new Error(errorDetail);
       }
       const data = await res.json();
+      const campaignIdToEnroll = state.campaignId || data.id;
+      let enrollmentFailed = false;
+      let enrollmentErrorMsg = "";
       
       if (state.leadListId) {
         try {
-          const campaignIdToEnroll = state.campaignId || data.id;
           const enrollRes = await fetchWithAuth(`/api/elein/campaigns/${campaignIdToEnroll}/enroll_list`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2679,8 +2689,9 @@ function EleInCreateCampaignInner() {
             })
           });
           if (!enrollRes.ok) {
+            enrollmentFailed = true;
             const errJson = await enrollRes.json().catch(() => ({}));
-            toast.error(`Campaign saved, but failed to enroll leads: ${errJson.detail || "Enrollment failed"}`);
+            enrollmentErrorMsg = errJson.detail || errJson.error || "Enrollment rejected by server";
           } else {
             // Paranoia Layer 1 & 2 (B3-F08): Transparent breakdown of enrolled vs skipped leads
             const enrollData = await enrollRes.json().catch(() => ({}));
@@ -2696,8 +2707,25 @@ function EleInCreateCampaignInner() {
           }
         } catch (enrollErr: any) {
           console.error("Failed to enroll list", enrollErr);
-          toast.error(`Campaign saved, but failed to enroll leads: ${enrollErr.message || "Network error"}`);
+          enrollmentFailed = true;
+          enrollmentErrorMsg = enrollErr.message || "Network error during enrollment";
         }
+      }
+
+      // Paranoia Layer 1 & 2 (FLAW-PAR-03): If lead enrollment failed, NEVER orphan the campaign with 0 leads or delete the user's draft!
+      if (enrollmentFailed) {
+        isSavingRef.current = false;
+        // Bind campaign ID so subsequent attempt updates rather than recreates
+        useHRTreeStore.setState((s: any) => ({ ...s, campaignId: campaignIdToEnroll }));
+        toast.error(`Campaign saved, but lead enrollment failed: ${enrollmentErrorMsg}`, {
+          description: "Your campaign and form setup have been preserved in your draft. Click Retry to enroll your audience.",
+          duration: 9000,
+          action: {
+            label: "Retry Enrollment",
+            onClick: () => handleSaveDraft(status),
+          },
+        });
+        return;
       }
 
       toast.success(status === "ACTIVE" ? `Campaign "${campaignName}" launched!` : `Campaign "${campaignName}" saved as draft.`, {

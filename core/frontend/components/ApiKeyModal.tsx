@@ -31,6 +31,7 @@ export function ApiKeyModal({ isOpen, onClose, onSave, initialKeys }: ApiKeyModa
   })
 
   const modalRef = useRef<HTMLDivElement>(null)
+  const previousActiveElement = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (initialKeys) {
@@ -45,15 +46,68 @@ export function ApiKeyModal({ isOpen, onClose, onSave, initialKeys }: ApiKeyModa
     }
   }, [initialKeys])
 
-  // Focus trap and escape to close
+  // Hardened Focus Trap & Escape Isolation (W3C APG Dialog)
   useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
+    if (!isOpen) {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+      previousActiveElement.current = null
+      return
     }
-    document.addEventListener("keydown", handleKeyDown)
-    modalRef.current?.focus()
-    return () => document.removeEventListener("keydown", handleKeyDown)
+
+    previousActiveElement.current = document.activeElement as HTMLElement | null
+
+    const timer = setTimeout(() => {
+      modalRef.current?.focus()
+    }, 40)
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+        return
+      }
+
+      if (e.key === "Tab" && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter(el => el.offsetParent !== null)
+
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first || document.activeElement === modalRef.current) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown, true)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener("keydown", handleKeyDown, true)
+    }
   }, [isOpen, onClose])
 
   if (!isOpen) return null

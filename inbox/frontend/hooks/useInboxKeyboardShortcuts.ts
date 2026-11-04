@@ -43,31 +43,36 @@ export function useInboxKeyboardShortcuts({
         return;
       }
 
-      // If user is currently typing in an input, textarea, or contenteditable, don't trigger single-key nav
+      // If user is currently typing in an input, textarea, contenteditable, or ARIA textbox, don't trigger single-key nav
       const target = e.target as HTMLElement | null;
       if (
         target &&
         (target.tagName === 'INPUT' ||
           target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
+          target.tagName === 'SELECT' ||
+          target.isContentEditable ||
+          target.getAttribute('role') === 'textbox')
       ) {
         return;
       }
 
+      // Paranoia Layer 1 (FLAW-A11Y-03): Strictly guard bare single keys against modifiers (Cmd+R reload, AltGr special chars)
+      const isBareKey = !e.metaKey && !e.ctrlKey && !e.altKey;
+
       // Superhuman-style single key triage:
-      if (e.key === 'j' || e.key === 'ArrowDown') {
+      if (isBareKey && (e.key === 'j' || e.key === 'ArrowDown')) {
         e.preventDefault();
         onNextThread?.();
-      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      } else if (isBareKey && (e.key === 'k' || e.key === 'ArrowUp')) {
         e.preventDefault();
         onPrevThread?.();
-      } else if (e.key === 'e') {
+      } else if (isBareKey && e.key === 'e') {
         e.preventDefault();
         onArchiveThread?.();
-      } else if (e.key === 'r') {
+      } else if (isBareKey && e.key === 'r') {
         e.preventDefault();
         onFocusComposer?.();
-      } else if (e.key === 'h') {
+      } else if (isBareKey && e.key === 'h') {
         e.preventDefault();
         onSnoozeThread?.();
       }

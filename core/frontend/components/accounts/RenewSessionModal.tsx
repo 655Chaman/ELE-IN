@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, CheckCircle2, AlertCircle, RefreshCw, KeyRound, ShieldCheck, Clipboard } from 'lucide-react'
 import { toast } from 'sonner'
@@ -18,14 +18,60 @@ export function RenewSessionModal({ accountId, accountName, profileUrl, onClose,
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const previousActiveElement = useRef<HTMLElement | null>(null)
 
-  // Layer 2 Paranoia: Close on Escape key
+  // Layer 2 Paranoia: Hardened Focus Trap & Escape Isolation
   React.useEffect(() => {
+    previousActiveElement.current = document.activeElement as HTMLElement | null
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading) onClose()
+      if (e.key === 'Escape' && !loading) {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+        return
+      }
+
+      if (e.key === 'Tab' && containerRef.current) {
+        const focusable = Array.from(
+          containerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter(el => el.offsetParent !== null)
+
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+    }
   }, [onClose, loading])
 
   // ─── Three-Layer Paranoia: Client-side Universal Cookie Normalizer & Format Sniffer ───
@@ -201,6 +247,7 @@ export function RenewSessionModal({ accountId, accountName, profileUrl, onClose,
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
     >
       <motion.div
+        ref={containerRef}
         initial={{ opacity: 0, scale: 0.97, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 8 }}

@@ -296,7 +296,7 @@ export function ConversationCanvas({
             );
           }
 
-          const isOutbound = msg.direction === 'outbound';
+          const isOutbound = String(msg.direction || '').toLowerCase() === 'outbound';
 
           return (
             <div

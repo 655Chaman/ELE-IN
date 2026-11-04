@@ -22,11 +22,13 @@ export function NumberTicker({
   const ref = useRef<HTMLSpanElement>(null)
   const numValue = typeof value === "number" ? value : parseFloat(String(value))
   const safeValue = Number.isFinite(numValue) ? numValue : 0
+  const prevValueRef = useRef(safeValue)
 
+  // Calibrate spring physics to crisp 220ms trajectory (stiffness: 280, damping: 28, zeta ~ 0.83)
   const motionValue = useMotionValue(direction === "down" ? safeValue : 0)
   const springValue = useSpring(motionValue, {
-    damping: 60,
-    stiffness: 100,
+    damping: 28,
+    stiffness: 280,
   })
   const isInView = useInView(ref, { once: true, margin: "0px" })
 
@@ -47,6 +49,7 @@ export function NumberTicker({
     if (isInView) {
       const timer = setTimeout(() => {
         motionValue.set(direction === "down" ? 0 : safeValue)
+        prevValueRef.current = safeValue
       }, delay * 1000)
       return () => clearTimeout(timer)
     }

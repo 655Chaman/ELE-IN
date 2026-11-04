@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from core.backend.api.auth_dep import get_current_workspace, get_service_client
+from core.backend.services.tier_guard import require_tier
 from campaigns.backend.services.crm_attribution_service import (
     list_synced_accounts,
     upsert_synced_account,
@@ -18,7 +19,11 @@ from campaigns.backend.services.crm_attribution_service import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/crm-sync", tags=["crm_sync_and_attribution"])
+router = APIRouter(
+    prefix="/crm-sync",
+    tags=["crm_sync_and_attribution"],
+    dependencies=[Depends(require_tier("can_deal_pipeline", "PRO"))]
+)
 
 
 # Pydantic Schemas

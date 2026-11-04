@@ -565,6 +565,9 @@ function CampaignBlueprintModalContent({
       }}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="blueprint-modal-title"
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -580,7 +583,7 @@ function CampaignBlueprintModalContent({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-semibold text-foreground tracking-tight">
+                <h2 id="blueprint-modal-title" className="text-base font-semibold text-foreground tracking-tight">
                   Sequence Blueprint Engine
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
@@ -610,7 +613,7 @@ function CampaignBlueprintModalContent({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-border bg-muted/40 px-6 pt-2 gap-2">
+        <div role="tablist" aria-label="Blueprint Engine navigation" className="flex border-b border-border bg-muted/40 px-6 pt-2 gap-2">
           <button
             type="button"
             onClick={() => setActiveTab("gallery")}

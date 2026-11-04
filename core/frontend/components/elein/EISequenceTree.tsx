@@ -1797,7 +1797,9 @@ export function EISequenceTree({
           target.tagName === 'TEXTAREA' ||
           target.isContentEditable ||
           target.tagName === 'SELECT' ||
-          (target.closest('[role="dialog"]') !== null && !target.closest('.canvas-tree-root'))
+          target.getAttribute('role') === 'textbox' ||
+          (target.closest('[role="dialog"]') !== null && !target.closest('.canvas-tree-root')) ||
+          target.closest('.modal-content-container') !== null
         )
       ) {
         return;
@@ -1884,25 +1886,7 @@ export function EISequenceTree({
 
       if (flatNodes.length === 0) return;
 
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        if (!selectedNodeId) {
-          useHRTreeStore.getState().selectNode(flatNodes[0].id);
-        } else {
-          const idx = flatNodes.findIndex(n => n.id === selectedNodeId);
-          if (idx === -1) {
-            useHRTreeStore.getState().selectNode(flatNodes[0].id);
-          } else {
-            const nextIdx = e.shiftKey
-              ? (idx - 1 + flatNodes.length) % flatNodes.length
-              : (idx + 1) % flatNodes.length;
-            useHRTreeStore.getState().selectNode(flatNodes[nextIdx].id);
-          }
-        }
-        return;
-      }
-
-      // Arrow navigation
+      // Arrow navigation (W3C APG tree pattern: arrow keys navigate nodes; Tab enters/exits canvas)
       if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         if (!selectedNodeId) {
           if (flatNodes.length > 0) {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
 
@@ -21,13 +21,74 @@ export function ConfirmModal({
   confirmText = "Confirm", 
   cancelText = "Cancel" 
 }: ConfirmModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true });
+      }
+      previousActiveElement.current = null;
+      return;
+    }
+
+    // Save triggering element
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
+
+    // Focus Cancel button by default (W3C APG confirmation modal safety standard)
+    const timer = setTimeout(() => {
+      cancelButtonRef.current?.focus();
+    }, 30);
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+
+      // Hardened focus trap
+      if (e.key === 'Tab' && containerRef.current) {
+        const focusable = Array.from(
+          containerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter(el => el.offsetParent !== null);
+
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [isOpen, onClose]);
 
   return (
@@ -43,6 +104,7 @@ export function ConfirmModal({
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-4">
             <motion.div
+              ref={containerRef}
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -74,6 +136,7 @@ export function ConfirmModal({
 
                 <div className="flex items-center gap-3 w-full">
                   <button
+                    ref={cancelButtonRef}
                     type="button"
                     onClick={onClose}
                     className="flex-1 px-4 py-3 rounded-lg bg-card hover:bg-muted border border-border text-foreground text-[15px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring"

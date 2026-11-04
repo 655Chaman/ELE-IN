@@ -95,9 +95,9 @@ def get_master_kek_candidates() -> List[bytes]:
     if jwt:
         candidates.append(jwt)
 
-    sb = os.environ.get("SUPABASE_KEY")
-    if sb:
-        candidates.append(sb)
+    sb_service = os.environ.get("SUPABASE_SERVICE_KEY")
+    if sb_service:
+        candidates.append(sb_service)
 
     # 4. Developer fallback seed
     candidates.append("elein_master_envelope_kek_seed_2026_dev_only")

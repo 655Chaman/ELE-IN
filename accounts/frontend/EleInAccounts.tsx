@@ -403,7 +403,7 @@ export function EleInAccounts() {
     : (accounts[0]?.id || null)
 
   return (
-    <div className="max-w-[1240px] mx-auto p-6 sm:p-8 font-sans">
+    <div className="max-w-[1280px] mx-auto p-6 sm:p-8 font-sans">
       
       {/* ─── HEADER COMMAND DECK ────────────────────────────────────────────── */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">

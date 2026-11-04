@@ -323,8 +323,8 @@ class EleInNodeExecutor:
         self.campaign_id = campaign_id
 
     def _deduct_credits(self, amount: int = 1, idempotency_key: Optional[str] = None, action_type: str = "sendgrid_email") -> bool:
-        if not self.workspace_id or not self.supabase:
-            return True
+        if not self.workspace_id or not self.supabase or self.workspace_id == "default-workspace":
+            return False
         try:
             res = self.supabase.rpc('deduct_credits_safely', {
                 'p_workspace_id': self.workspace_id,
@@ -333,13 +333,13 @@ class EleInNodeExecutor:
                 'p_idempotency_key': idempotency_key
             }).execute()
             if res.data and not res.data.get('success'):
+                logger.warning(f"[Billing] Credit deduction rejected: {res.data.get('reason')}")
                 return False
-            return True
+            return bool(res.data and res.data.get('success', True))
         except Exception as e:
-            logger.warning(f"Credit deduction warning in EleInNodeExecutor: {e}")
-            if "insufficient" in str(e).lower():
-                return False
-            return True
+            logger.error(f"[Billing] Credit deduction error in EleInNodeExecutor: {e}")
+            # Paranoia Layer 1: Strict fail-closed accounting. Never allow unpaid execution on errors
+            return False
 
     def _refund_credits(self, amount: int = 1, idempotency_key: Optional[str] = None, reason: str = "execution_failed"):
         if not self.workspace_id or not self.supabase or not idempotency_key:
@@ -5654,6 +5654,11 @@ Respond ONLY with valid JSON."""
         Layer 2: Standardizes output branch to Branch.THEN.value ('then'). Prevents blank/malformed sends.
         """
         try:
+            # Paranoia Layer 1 & 2: Pre-dispatch lease active assertion
+            lease_check = data.get("_lease_check_fn")
+            if callable(lease_check):
+                lease_check()
+
             lead_dict = linkedin_url if isinstance(linkedin_url, dict) else {}
             lead_id = data.get("_lead_id") or data.get("lead_id") or lead_dict.get("id") or lead_dict.get("lead_id")
             to_email = data.get("email") or data.get("to_email") or data.get("to") or lead_dict.get("email")

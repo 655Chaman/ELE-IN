@@ -285,7 +285,7 @@ export function EleInLeads() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground px-4 sm:px-8 py-8 sm:py-10 max-w-5xl mx-auto font-sans">
+    <div className="min-h-[100dvh] bg-background text-foreground px-4 sm:px-8 py-8 sm:py-10 max-w-[1280px] mx-auto font-sans">
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

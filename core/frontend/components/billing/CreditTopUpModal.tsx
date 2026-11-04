@@ -131,8 +131,8 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
             <Coins size={24} />
           </div>
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Micro Top-Up</span>
-            <h2 className="text-xl font-bold tracking-tight text-foreground">Workspace Platform Credits</h2>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Ledger Allocation</span>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Autonomous Compute Ledger</h2>
           </div>
         </div>
 
@@ -169,10 +169,10 @@ export const CreditTopUpModal: React.FC<CreditTopUpModalProps> = ({
               <div>
                 <div className="font-bold text-sm text-foreground flex items-center gap-2">
                   <Coins size={15} className="text-primary" />
-                  <span>1,000 Instant Credits</span>
+                  <span>1,000 Compute Credits</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Covers ~200 AI reply drafts or 200 Apollo contact enrichments.
+                  Allocates compute units for ~200 Bayesian neural reply drafts or waterfall enrichment hops.
                 </p>
               </div>
               <div className="text-right">

@@ -589,7 +589,7 @@ export function EleInInbox() {
     const optimisticMsg: Message = {
       id: clientDraftId || `opt-${Date.now()}`,
       message_text: sentDraft,
-      direction: 'OUTBOUND',
+      direction: 'outbound',
       created_at: new Date().toISOString(),
       lead_id: leadId || undefined,
       account_id: targetAccountId || activeAccountId || undefined,
@@ -791,6 +791,7 @@ export function EleInInbox() {
       return;
     }
 
+    const previousStage = currentDealStage;
     setDealStagesByLead((prev) => ({ ...prev, [currentLeadKey]: newStage }));
 
     if (!selectedLeadId) {
@@ -815,10 +816,18 @@ export function EleInInbox() {
         toast.success(`Deal Stage: ${DEAL_STAGES[newStage].label}`);
         mutateThreads();
       } else {
-        toast.error('Failed to update deal stage on server');
+        // Paranoia Layer 1 & 2: Rollback optimistic update on server rejection
+        setDealStagesByLead((prev) => ({ ...prev, [currentLeadKey]: previousStage }));
+        toast.error('Failed to update deal stage on server', {
+          description: `Reverted to ${DEAL_STAGES[previousStage]?.label || previousStage}`,
+        });
       }
     } catch (e: any) {
-      toast.error('Network error updating deal stage: ' + (e?.message || ''));
+      // Paranoia Layer 1 & 2: Rollback optimistic update on network drop
+      setDealStagesByLead((prev) => ({ ...prev, [currentLeadKey]: previousStage }));
+      toast.error('Network error updating deal stage', {
+        description: `Reverted to ${DEAL_STAGES[previousStage]?.label || previousStage}`,
+      });
     }
   };
 

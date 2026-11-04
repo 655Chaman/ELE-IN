@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase"
 import { useState, useRef, useEffect, useMemo } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import useSWR from "swr"
+import { AnimatePresence } from "motion/react"
 import {
   ArrowLeft, Activity, Users, CheckCircle2,
   AlertTriangle, Clock, RefreshCw, Play, Pause, Search, LayoutDashboard, Share2,
@@ -1259,14 +1260,16 @@ export function EleInCampaignDetail() {
       </div>
 
       {/* Execution Trace Drawer */}
-      {selectedLeadForTrace && (
-        <LeadTraceDrawer 
-          campaignId={campaign.id} 
-          enrollmentId={selectedLeadForTrace.enrollment_id} 
-          leadName={`${selectedLeadForTrace.kdm_first || ''} ${selectedLeadForTrace.kdm_last || ''}`.trim() || 'Lead'} 
-          onClose={() => setSelectedLeadForTrace(null)} 
-        />
-      )}
+      <AnimatePresence>
+        {selectedLeadForTrace && (
+          <LeadTraceDrawer 
+            campaignId={campaign.id} 
+            enrollmentId={selectedLeadForTrace.enrollment_id} 
+            leadName={`${selectedLeadForTrace.kdm_first || ''} ${selectedLeadForTrace.kdm_last || ''}`.trim() || 'Lead'} 
+            onClose={() => setSelectedLeadForTrace(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
