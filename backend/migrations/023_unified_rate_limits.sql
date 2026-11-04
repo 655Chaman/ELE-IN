@@ -91,7 +91,7 @@ BEGIN
     WHERE id = p_account_id;
 
     IF v_is_warmup = true AND p_action_type IN ('connection_request', 'message', 'inmail') THEN
-        v_warmup_limit := 15 + ( GREATEST(0, (CURRENT_DATE - warmup_start_date::date)) / 3 ) * 5;
+        v_warmup_limit := 15 + ( GREATEST(0, (CURRENT_DATE - v_warmup_start_date::date)) / 3 ) * 5;
         RETURN LEAST(v_warmup_limit, v_global_limit);
     END IF;
 

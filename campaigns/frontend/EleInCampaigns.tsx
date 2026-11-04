@@ -11,7 +11,9 @@ import {
   MoreVertical, Settings,
   Briefcase, Link as LinkIcon, Info, X, Loader2,
   Copy, CheckSquare, Square,
-  ArrowUpDown, AlertCircle, Award
+  ArrowUpDown, AlertCircle, Award,
+  Database, Sparkles, Cpu, Layers, CheckCircle2,
+  Zap, Clock, Compass, RefreshCw, SlidersHorizontal, TrendingUp, Bot
 } from "lucide-react"
 
 import { NumberTicker } from "@/components/ui/number-ticker"
@@ -31,6 +33,8 @@ import { CalendarConciergeStudioModal } from "@/components/campaigns/CalendarCon
 import { usePaywall } from "@/contexts/PaywallContext"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatusPill } from "@/components/StatusPill"
+import { TableViewOptions, type TableDensity, type TableColumnDef } from "@/components/tables/TableViewOptions"
+import { cn } from "@/lib/utils"
 
 const STATUS_CONFIG: Record<string, any> = {
   ACTIVE: { label: "Active", dot: "bg-success", text: "text-success", badgeBg: "bg-success/10 border-success/20" },
@@ -78,9 +82,154 @@ function EmptyCampaignCard({ id, icon: Icon, title, desc, onSelect }: any) {
   );
 }
 
+const SEQUENCE_PLAYBOOKS = [
+  {
+    id: 'founder',
+    title: 'Founder-to-Founder',
+    target: 'Early-stage CEOs & Technical Co-Founders',
+    avgReplyRate: '18.4%',
+    nodes: [
+      { step: '01', type: 'ACTION', title: 'Personalized Connection Note', desc: 'Synthesizes recent company news, tech stack and shared mutuals.' },
+      { step: '02', type: 'DELAY', title: 'Smart Delay • 48 Hours', desc: 'Monitors acceptance & visits profile without sending push notifications.' },
+      { step: '03', type: 'ACTION', title: 'Curiosity-Driven Follow-Up', desc: 'Shares 1 high-leverage peer insight without hard selling.' },
+      { step: '04', type: 'AI_AGENT', title: 'Sentiment Response Classifier', desc: 'Tags interested replies and auto-books to Google Calendar.' },
+    ]
+  },
+  {
+    id: 'abm',
+    title: 'Enterprise Multithreading',
+    target: 'VP Sales, RevOps & Head of Pipeline',
+    avgReplyRate: '21.0%',
+    nodes: [
+      { step: '01', type: 'ACTION', title: 'Multi-Account Warm Visit', desc: 'Two team accounts view target profiles 12 hours prior to outreach.' },
+      { step: '02', type: 'ACTION', title: 'Connection with Custom Metric', desc: 'Calculates prospect department leakage using public headcount data.' },
+      { step: '03', type: 'DELAY', title: 'Dynamic Delay • 72 Hours', desc: 'Skips weekends and local holidays in recipient timezone.' },
+      { step: '04', type: 'ACTION', title: 'Direct Case-Study Audio Note', desc: 'Generates conversational dynamic voice drop tailored to title.' },
+    ]
+  },
+  {
+    id: 'talent',
+    title: 'Elite Executive Headhunting',
+    target: 'Principal Engineers & Engineering Directors',
+    avgReplyRate: '28.5%',
+    nodes: [
+      { step: '01', type: 'ACTION', title: 'Technical Thesis InMail / Invite', desc: 'Mentions open-source contributions and specific architecture challenges.' },
+      { step: '02', type: 'DELAY', title: 'Wait for Inactivity • 3 Days', desc: 'Auto-checks if prospect changed jobs or recently posted on LinkedIn.' },
+      { step: '03', type: 'ACTION', title: 'Founder Direct Forward Note', desc: 'Presents compensation benchmark and immediate technical roadmap.' },
+      { step: '04', type: 'AI_AGENT', title: 'Candidate Concierge', desc: 'Answers questions about team culture and equity instantly.' },
+    ]
+  }
+];
+
+const DEMO_CAMPAIGNS: Campaign[] = [
+  {
+    id: "demo-saas-founders",
+    name: "Tier-1 SaaS Founders & AI Execs [Demo]",
+    description: "High-touch multi-channel sequence targeting seed & Series-A technical founders.",
+    status: "ACTIVE",
+    leads_total: 420,
+    leads_running: 68,
+    leads_pending: 280,
+    leads_completed: 72,
+    replies: 24,
+    conversion_rate: 0.184,
+    senders: [{ id: "sender-1", name: "Alex Chen (Founder)" }, { id: "sender-2", name: "Sarah Miller (VP Growth)" }],
+    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: "demo-yc-alumni",
+    name: "Y Combinator W24 Alumni Outreach [Demo]",
+    description: "Warm hyper-personalized intro leveraging cohort batch synergy.",
+    status: "ACTIVE",
+    leads_total: 185,
+    leads_running: 34,
+    leads_pending: 110,
+    leads_completed: 41,
+    replies: 12,
+    conversion_rate: 0.210,
+    senders: [{ id: "sender-1", name: "Alex Chen (Founder)" }],
+    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+  {
+    id: "demo-enterprise-revops",
+    name: "Enterprise VP RevOps & Pipeline Architecture [Demo]",
+    description: "Account-based multithreaded playbook targeting $50M+ ARR companies.",
+    status: "PAUSED",
+    leads_total: 650,
+    leads_running: 0,
+    leads_pending: 520,
+    leads_completed: 130,
+    replies: 45,
+    conversion_rate: 0.148,
+    senders: [{ id: "sender-2", name: "Sarah Miller (VP Growth)" }],
+    created_at: new Date(Date.now() - 86400000 * 10).toISOString(),
+  },
+];
+
+const CAMPAIGN_COLUMNS: TableColumnDef[] = [
+  { id: 'name', label: 'Campaign Name', locked: true },
+  { id: 'status', label: 'Status' },
+  { id: 'enrolled', label: 'Enrolled', responsiveBreakpoint: 'sm' },
+  { id: 'connected', label: 'Connected', responsiveBreakpoint: 'md' },
+  { id: 'acceptance', label: 'Acceptance Rate', responsiveBreakpoint: 'lg' },
+  { id: 'replied', label: 'Replied', responsiveBreakpoint: 'lg' },
+  { id: 'replyRate', label: 'Reply Rate', responsiveBreakpoint: 'xl' },
+  { id: 'booked', label: 'Booked', responsiveBreakpoint: 'xl' },
+  { id: 'senders', label: 'Senders', responsiveBreakpoint: '2xl' },
+  { id: 'actions', label: 'Actions', locked: true },
+]
+
+const DEFAULT_CAMPAIGN_COLUMNS = ['status', 'enrolled', 'connected', 'acceptance', 'replied', 'replyRate', 'booked', 'senders']
+
 export function EleInCampaigns() {
   const navigate = useNavigate()
   const resetTree = useHRTreeStore(state => state.reset)
+
+  // ─── Table View & Density State ───
+  const [density, setDensity] = useState<TableDensity>(() => {
+    try {
+      const saved = localStorage.getItem('elein_campaigns_density')
+      if (saved === 'compact' || saved === 'standard' || saved === 'comfortable') return saved
+    } catch {}
+    return 'standard'
+  })
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('elein_campaigns_columns')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return DEFAULT_CAMPAIGN_COLUMNS
+  })
+
+  const handleDensityChange = (newDensity: TableDensity) => {
+    setDensity(newDensity)
+    try {
+      localStorage.setItem('elein_campaigns_density', newDensity)
+    } catch {}
+  }
+
+  const handleToggleColumn = (colId: string) => {
+    setVisibleColumns(prev => {
+      const next = prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]
+      try {
+        localStorage.setItem('elein_campaigns_columns', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }
+
+  const handleResetViewOptions = () => {
+    setDensity('standard')
+    setVisibleColumns(DEFAULT_CAMPAIGN_COLUMNS)
+    try {
+      localStorage.setItem('elein_campaigns_density', 'standard')
+      localStorage.setItem('elein_campaigns_columns', JSON.stringify(DEFAULT_CAMPAIGN_COLUMNS))
+    } catch {}
+  }
+
+  const densityPadding = density === 'compact' ? 'py-2' : density === 'comfortable' ? 'py-5' : 'py-3.5'
+  const densityText = density === 'comfortable' ? 'text-sm' : 'text-xs'
 
   // ─── Filter & Search State ───
   const [search, setSearch] = useState("")
@@ -108,9 +257,18 @@ export function EleInCampaigns() {
   const [isBatchOperating, setIsBatchOperating] = useState(false)
   const [batchActionType, setBatchActionType] = useState<string | null>(null)
 
-  // ─── Duplication & Toggle State ───
+  // ─── Duplication & Optimistic Toggle State (EPF Phase 3) ───
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
-  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [activeTogglingIds, setActiveTogglingIds] = useState<Set<string>>(new Set())
+  const inFlightTogglesRef = useRef<Map<string, { controller: AbortController; timestamp: number }>>(new Map())
+  const [isDemoFleetSeeded, setIsDemoFleetSeeded] = useState(() => {
+    try {
+      return sessionStorage.getItem('elein_demo_fleet_active') === 'true';
+    } catch {
+      return false;
+    }
+  })
+  const [activePlaybookTab, setActivePlaybookTab] = useState<'founder' | 'abm' | 'talent'>('founder')
 
   // ─── Modals State ───
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null)
@@ -249,10 +407,30 @@ export function EleInCampaigns() {
 
   const { data: dashboardData, mutate } = useSWR("/api/elein/dashboard/stats", fetcher)
   const campaigns: Campaign[] = useMemo(() => {
-    if (Array.isArray(dashboardData?.recent_campaigns)) return dashboardData.recent_campaigns;
-    if (Array.isArray(dashboardData?.campaigns)) return dashboardData.campaigns;
-    return [];
-  }, [dashboardData]);
+    let list: Campaign[] = [];
+    if (Array.isArray(dashboardData?.recent_campaigns)) list = dashboardData.recent_campaigns;
+    else if (Array.isArray(dashboardData?.campaigns)) list = dashboardData.campaigns;
+
+    if (list.length === 0 && isDemoFleetSeeded) {
+      return DEMO_CAMPAIGNS;
+    }
+    return list;
+  }, [dashboardData, isDemoFleetSeeded]);
+
+  const handleSeedDemoFleet = useCallback(() => {
+    setIsDemoFleetSeeded(true);
+    try { sessionStorage.setItem('elein_demo_fleet_active', 'true'); } catch {}
+    toast.success("Sandbox demo fleet active!", {
+      description: "3 pre-configured campaigns loaded into your workspace view. You can test density modes, column visibility, and filters.",
+      duration: 4500,
+    });
+  }, []);
+
+  const handleClearDemoFleet = useCallback(() => {
+    setIsDemoFleetSeeded(false);
+    try { sessionStorage.removeItem('elein_demo_fleet_active'); } catch {}
+    toast.info("Demo fleet cleared. Restored clean workspace.");
+  }, []);
 
   const { data: masterViewStats } = useSWR(
     "/api/master-view/stats",
@@ -395,54 +573,137 @@ export function EleInCampaigns() {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
-  // ─── Single Campaign Toggle ───
-  const executeToggleStatus = async (id: string, action: 'activate' | 'pause') => {
-    setTogglingId(id);
-    try {
-      const res = await fetchWithAuth(`/api/elein/campaigns/${id}/${action}`, { method: 'PATCH' });
-      if (!res.ok) {
-        let errMsg = `Failed to ${action} campaign`;
-        try {
-          const errJson = await res.json();
-          errMsg = errJson.detail || errMsg;
-        } catch {
-          const text = await res.text();
-          if (text) errMsg = text;
+  // Layer 2 Human Paranoia: Escape key resets filters when search yields zero matches
+  useEffect(() => {
+    if (filtered.length === 0 && (search || statusFilter !== 'ALL')) {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setSearch("");
+          setStatusFilter("ALL");
+          setPage(1);
         }
-        if (res.status === 403 || errMsg.includes("exceeds limit") || errMsg.includes("Free Tier") || errMsg.includes("Campaign limit reached") || errMsg.toLowerCase().includes("forbidden")) {
-          const feature = errMsg.toLowerCase().includes("enrichment") || errMsg.toLowerCase().includes("scraping")
-            ? "Enrichment & Scraping Nodes"
-            : "Active Campaigns Limit";
-          openPaywall({ featureName: feature });
-          mutate();
-          throw new Error(errMsg);
-        }
-        if (errMsg === "no_active_senders") {
-          toast.error("No active sender accounts found for this campaign. Please connect or activate a LinkedIn account first.");
-          mutate();
-          throw new Error("No active sender accounts found. Please connect or activate a LinkedIn account first.");
-        }
-        if (errMsg === "insufficient_credits") {
-          openPaywall({ featureName: "Campaign Activation Credits" });
-          toast.info("Insufficient credits to activate campaign. Please top up your credits.");
-          mutate();
-          throw new Error("Insufficient credits to activate campaign.");
-        }
-        throw new Error(errMsg);
-      }
-      toast.success(action === 'activate' ? `Campaign activated` : `Campaign paused`);
-      mutate();
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update campaign status");
-      mutate();
-      throw e;
-    } finally {
-      setTogglingId(null);
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
     }
-  }
+  }, [filtered.length, search, statusFilter]);
+
+  // ─── Single Campaign Toggle (Optimistic Mutation + Immediate Rollback - EPF Phase 3) ───
+  const executeToggleStatus = useCallback(async (id: string, action: 'activate' | 'pause') => {
+    const currentCampaign = campaigns.find(c => c.id === id);
+    if (!currentCampaign) return;
+
+    const now = Date.now();
+    const existingFlight = inFlightTogglesRef.current.get(id);
+
+    // Layer 2 Paranoia: Rapid double-click debounce gate (350ms)
+    if (existingFlight && (now - existingFlight.timestamp) < 350) {
+      return;
+    }
+
+    if (existingFlight) {
+      existingFlight.controller.abort();
+    }
+
+    const controller = new AbortController();
+    inFlightTogglesRef.current.set(id, { controller, timestamp: now });
+    setActiveTogglingIds(prev => new Set(prev).add(id));
+
+    const targetStatus = action === 'activate' ? 'ACTIVE' : 'PAUSED';
+    const previousStatus = currentCampaign.status;
+
+    const optimisticMutator = (currentData: any) => {
+      if (!currentData) return currentData;
+      const updateList = (list: any[]) =>
+        Array.isArray(list)
+          ? list.map(c => c.id === id ? { ...c, status: targetStatus } : c)
+          : list;
+
+      return {
+        ...currentData,
+        recent_campaigns: updateList(currentData.recent_campaigns),
+        campaigns: updateList(currentData.campaigns),
+      };
+    };
+
+    try {
+      await mutate(
+        async (currentCache: any) => {
+          const res = await fetchWithAuth(`/api/elein/campaigns/${id}/${action}`, {
+            method: 'PATCH',
+            signal: controller.signal,
+          });
+
+          if (!res.ok) {
+            let errDetail = `Server returned ${res.status}`;
+            try {
+              const errJson = await res.json();
+              errDetail = errJson.detail || errDetail;
+            } catch {
+              const text = await res.text();
+              if (text) errDetail = text;
+            }
+            throw new Error(errDetail);
+          }
+
+          const updatedServerCampaign = await res.json().catch(() => null);
+          const updateConfirmed = (list: any[]) =>
+            Array.isArray(list)
+              ? list.map(c => c.id === id ? { ...c, status: targetStatus, ...(updatedServerCampaign || {}) } : c)
+              : list;
+
+          return {
+            ...currentCache,
+            recent_campaigns: updateConfirmed(currentCache?.recent_campaigns),
+            campaigns: updateConfirmed(currentCache?.campaigns),
+          };
+        },
+        {
+          optimisticData: optimisticMutator(dashboardData),
+          rollbackOnError: true,
+          populateCache: true,
+          revalidate: false,
+        }
+      );
+
+      toast.success(
+        action === 'activate' ? "Campaign activated — scheduler is live" : "Campaign paused — timers frozen safely",
+        { duration: 2500 }
+      );
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+
+      console.error(`[OptimisticToggle Error] ${id}:`, err);
+      const msg = err.message || "Failed to update campaign";
+      if (msg.includes("exceeds limit") || msg.includes("Free Tier")) {
+        openPaywall({ featureName: "Active Campaigns Limit" });
+      } else if (msg === "no_active_senders") {
+        toast.error("Cannot activate: No active LinkedIn senders assigned to this campaign.");
+        return;
+      }
+
+      toast.error(`Failed to ${action} "${currentCampaign.name}". Reverted to ${previousStatus}.`, {
+        description: msg.length > 80 ? `${msg.slice(0, 80)}...` : msg,
+        duration: 7000,
+        action: {
+          label: "Retry",
+          onClick: () => executeToggleStatus(id, action),
+        },
+      });
+    } finally {
+      if (inFlightTogglesRef.current.get(id)?.controller === controller) {
+        inFlightTogglesRef.current.delete(id);
+        setActiveTogglingIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    }
+  }, [campaigns, dashboardData, mutate, openPaywall]);
   
   const toggleStatus = async (id: string) => {
-    if (togglingId || isBatchOperating) return;
+    if (activeTogglingIds.has(id) || isBatchOperating) return;
     const campaign = campaigns.find(c => c.id === id);
     if (!campaign) return;
     const action = campaign.status === 'ACTIVE' ? 'pause' : 'activate';
@@ -469,7 +730,7 @@ export function EleInCampaigns() {
     }
 
     setPreflightCampaign({ id: campaign.id, name: campaign.name });
-  }
+  };
 
   // ─── 1-Click Duplicate Campaign (Layer 0 & Layer 1) ───
   const handleDuplicateCampaign = async (id: string, originalName: string) => {
@@ -593,34 +854,77 @@ export function EleInCampaigns() {
     });
   };
 
-  // ─── Batch Operations (Layer 0, 1 & 2 - UI-07) ───
+  // ─── Batch Operations (Layer 0, 1 & 2 - UI-07 + EPF Phase 3 Optimistic Mutations) ───
   const handleBatchPause = async () => {
     if (selectedIds.size === 0 || isBatchOperating) return;
+
+    const targets = Array.from(selectedIds).filter(id => {
+      const camp = campaigns.find(c => c.id === id);
+      return camp && camp.status === 'ACTIVE';
+    });
+
+    if (targets.length === 0) return;
+
     setIsBatchOperating(true);
     setBatchActionType("pause");
 
+    const optimisticMutator = (currentData: any) => {
+      if (!currentData) return currentData;
+      const updateList = (list: any[]) =>
+        Array.isArray(list)
+          ? list.map(c => targets.includes(c.id) ? { ...c, status: 'PAUSED' } : c)
+          : list;
+      return {
+        ...currentData,
+        recent_campaigns: updateList(currentData.recent_campaigns),
+        campaigns: updateList(currentData.campaigns),
+      };
+    };
+
     try {
-      const targets = Array.from(selectedIds).filter(id => {
-        const camp = campaigns.find(c => c.id === id);
-        return camp && camp.status === 'ACTIVE';
-      });
+      await mutate(
+        async (currentCache: any) => {
+          const results = await Promise.allSettled(
+            targets.map(async (id) => {
+              const res = await fetchWithAuth(`/api/elein/campaigns/${id}/pause`, { method: 'PATCH' });
+              if (!res.ok) throw new Error("Failed to pause campaign");
+              return id;
+            })
+          );
+          const fulfilledIds = results
+            .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+            .map(r => r.value);
+          const failedCount = results.length - fulfilledIds.length;
 
-      const results = await Promise.allSettled(
-        targets.map(async (id) => {
-          const res = await fetchWithAuth(`/api/elein/campaigns/${id}/pause`, { method: 'PATCH' });
-          if (!res.ok) throw new Error("Failed to pause campaign");
-          return id;
-        })
+          if (failedCount > 0) {
+            toast.warning(`Paused ${fulfilledIds.length} campaigns; ${failedCount} failed to pause.`);
+          } else {
+            toast.success(`Paused ${fulfilledIds.length} campaign${fulfilledIds.length === 1 ? '' : 's'}`);
+          }
+
+          const updateList = (list: any[]) =>
+            Array.isArray(list)
+              ? list.map(c => fulfilledIds.includes(c.id) ? { ...c, status: 'PAUSED' } : c)
+              : list;
+
+          return {
+            ...currentCache,
+            recent_campaigns: updateList(currentCache?.recent_campaigns),
+            campaigns: updateList(currentCache?.campaigns),
+          };
+        },
+        {
+          optimisticData: optimisticMutator(dashboardData),
+          rollbackOnError: true,
+          populateCache: true,
+          revalidate: false,
+        }
       );
-      const successCount = results.filter(r => r.status === "fulfilled").length;
-
-      toast.success(`Paused ${successCount} campaign${successCount === 1 ? '' : 's'}`);
     } catch (e: any) {
-      toast.error(e?.message || "Encountered an error pausing campaigns.");
+      toast.error(e?.message || "Encountered an error pausing campaigns. Reverted.");
     } finally {
       setIsBatchOperating(false);
       setBatchActionType(null);
-      mutate();
     }
   };
 
@@ -665,29 +969,64 @@ export function EleInCampaigns() {
     setIsBatchOperating(true);
     setBatchActionType("resume");
 
-    try {
-      const results = await Promise.allSettled(
-        validCandidates.map(async (id) => {
-          const res = await fetchWithAuth(`/api/elein/campaigns/${id}/activate`, { method: 'PATCH' });
-          if (!res.ok) throw new Error("Failed to activate campaign");
-          return id;
-        })
-      );
-      const successCount = results.filter(r => r.status === "fulfilled").length;
-      const failedCount = results.filter(r => r.status === "rejected").length;
+    const optimisticMutator = (currentData: any) => {
+      if (!currentData) return currentData;
+      const updateList = (list: any[]) =>
+        Array.isArray(list)
+          ? list.map(c => validCandidates.includes(c.id) ? { ...c, status: 'ACTIVE' } : c)
+          : list;
+      return {
+        ...currentData,
+        recent_campaigns: updateList(currentData.recent_campaigns),
+        campaigns: updateList(currentData.campaigns),
+      };
+    };
 
-      if (successCount > 0) {
-        toast.success(`Activated ${successCount} campaign${successCount === 1 ? '' : 's'}`);
-      }
-      if (failedCount > 0) {
-        toast.warning(`${failedCount} campaign${failedCount === 1 ? '' : 's'} could not be activated (check sender assignments or credits).`);
-      }
+    try {
+      await mutate(
+        async (currentCache: any) => {
+          const results = await Promise.allSettled(
+            validCandidates.map(async (id) => {
+              const res = await fetchWithAuth(`/api/elein/campaigns/${id}/activate`, { method: 'PATCH' });
+              if (!res.ok) throw new Error("Failed to activate campaign");
+              return id;
+            })
+          );
+          const fulfilledIds = results
+            .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+            .map(r => r.value);
+          const failedCount = results.length - fulfilledIds.length;
+
+          if (fulfilledIds.length > 0) {
+            toast.success(`Activated ${fulfilledIds.length} campaign${fulfilledIds.length === 1 ? '' : 's'}`);
+          }
+          if (failedCount > 0) {
+            toast.warning(`${failedCount} campaign${failedCount === 1 ? '' : 's'} could not be activated.`);
+          }
+
+          const updateList = (list: any[]) =>
+            Array.isArray(list)
+              ? list.map(c => fulfilledIds.includes(c.id) ? { ...c, status: 'ACTIVE' } : c)
+              : list;
+
+          return {
+            ...currentCache,
+            recent_campaigns: updateList(currentCache?.recent_campaigns),
+            campaigns: updateList(currentCache?.campaigns),
+          };
+        },
+        {
+          optimisticData: optimisticMutator(dashboardData),
+          rollbackOnError: true,
+          populateCache: true,
+          revalidate: false,
+        }
+      );
     } catch (e: any) {
-      toast.error(e?.message || "Encountered an error activating campaigns.");
+      toast.error(e?.message || "Encountered an error activating campaigns. Reverted.");
     } finally {
       setIsBatchOperating(false);
       setBatchActionType(null);
-      mutate();
     }
   };
 
@@ -826,6 +1165,37 @@ export function EleInCampaigns() {
         </div>
       )}
 
+      {/* ─── DEMO FLEET ATTENTION BANNER (EPF Phase 3) ────────────────────────── */}
+      {isDemoFleetSeeded && (
+        <div className="mb-4 border border-primary/30 bg-primary/5 px-4 py-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+            <div>
+              <span className="font-bold text-foreground">Sandbox Demo Fleet Active: </span>
+              <span className="text-muted-foreground">Displaying 3 pre-configured campaigns with live analytics to explore sorting, density modes, and filters.</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleClearDemoFleet}
+              className="px-3 py-1.5 rounded-lg bg-background hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Trash2 size={12} className="text-muted-foreground" />
+              <span>Clear Demo Fleet</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/elein/campaigns/new?blank=true')}
+              className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Plus size={12} />
+              <span>Create Real Campaign</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─── DRAFT RESTORATION BANNER ────────────────────────────────────────── */}
       {draftExists && (
         <div className="mb-4 border border-border bg-card px-4 py-2.5 rounded-xl flex items-center justify-between text-xs">
@@ -863,38 +1233,163 @@ export function EleInCampaigns() {
         </div>
       )}
 
-      {/* ─── ZERO STATE OR CAMPAIGN GRID ─────────────────────────────────────── */}
+      {/* ─── ZERO STATE OR CAMPAIGN GRID (EPF Phase 3 - 10/10 Micro-Delight) ─────────── */}
       {campaigns.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 md:py-24 max-w-4xl mx-auto text-center w-full">
-          <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground mb-2">Start outreach</h2>
-          <p className="text-sm text-muted-foreground mb-8 max-w-md">
-            Choose a campaign objective to generate your sequence, or start from a blank canvas.
+        <div className="flex flex-col items-center justify-center py-10 md:py-16 max-w-5xl mx-auto w-full px-4">
+          {/* Top Pill & Headline */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-primary text-xs font-semibold mb-4 shadow-2xs">
+            <Sparkles size={13} className="text-primary animate-pulse" />
+            <span>Outreach Cadence Architecture</span>
+          </div>
+
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground text-center mb-2">
+            Design your outreach engine
+          </h2>
+          <p className="text-xs md:text-sm text-muted-foreground text-center mb-8 max-w-xl leading-relaxed">
+            Select an objective playbook or explore an interactive sequence simulation. Experience how multi-agent delay, sentiment classification, and adaptive follow-ups drive conversion.
           </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full">
+
+          {/* Interactive Mini-DAG Sequence Blueprint Simulator (EPF Phase 3) */}
+          <div className="w-full bg-card border border-border rounded-2xl p-5 md:p-6 mb-8 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-5 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Compass size={16} className="text-primary" />
+                <span className="text-xs font-bold text-foreground tracking-wide uppercase">
+                  Interactive Cadence Simulator
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground font-mono">
+                  {SEQUENCE_PLAYBOOKS.find(p => p.id === activePlaybookTab)?.avgReplyRate} avg. replies
+                </span>
+              </div>
+
+              {/* Playbook Selection Tabs */}
+              <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border/40">
+                {SEQUENCE_PLAYBOOKS.map((playbook) => {
+                  const isActive = activePlaybookTab === playbook.id;
+                  return (
+                    <button
+                      key={playbook.id}
+                      type="button"
+                      onClick={() => setActivePlaybookTab(playbook.id as any)}
+                      className={`relative px-3 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-background text-foreground shadow-xs border border-border/80"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {playbook.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Visual Mini-DAG Node Flow */}
+            {(() => {
+              const currentPlaybook = SEQUENCE_PLAYBOOKS.find(p => p.id === activePlaybookTab) || SEQUENCE_PLAYBOOKS[0];
+              return (
+                <div>
+                  <div className="text-xs text-muted-foreground mb-4 flex items-center justify-between">
+                    <span>
+                      Target Audience: <strong className="text-foreground">{currentPlaybook.target}</strong>
+                    </span>
+                    <span className="font-mono text-[11px] text-primary">Live Multi-Touch Preview</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 relative">
+                    {currentPlaybook.nodes.map((node) => (
+                      <div
+                        key={node.step}
+                        className="relative rounded-xl border border-border/80 bg-background/80 hover:border-primary/50 transition-all p-3.5 flex flex-col justify-between group"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-mono text-[10px] text-muted-foreground font-semibold px-1.5 py-0.5 bg-muted rounded">
+                              Step {node.step}
+                            </span>
+                            {node.type === 'ACTION' ? (
+                              <Zap size={13} className="text-primary group-hover:scale-110 transition-transform" />
+                            ) : node.type === 'DELAY' ? (
+                              <Clock size={13} className="text-warning group-hover:scale-110 transition-transform" />
+                            ) : (
+                              <Bot size={13} className="text-success group-hover:scale-110 transition-transform" />
+                            )}
+                          </div>
+                          <h4 className="text-xs font-bold text-foreground mb-1 group-hover:text-primary transition-colors">
+                            {node.title}
+                          </h4>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {node.desc}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="font-medium text-foreground/80">
+                            {node.type === 'ACTION' ? 'Direct Touch' : node.type === 'DELAY' ? 'Safety Interval' : 'AI Automation'}
+                          </span>
+                          <span className="text-primary">Verified</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Bottom Actions inside Simulator */}
+            <div className="mt-6 pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Sparkles size={13} className="text-primary" />
+                <span>Want to test with realistic mock data before connecting LinkedIn?</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSeedDemoFleet}
+                  className="px-3.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                >
+                  <Database size={13} className="text-primary" />
+                  <span>Seed Sandbox Demo Fleet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/elein/campaigns/new?goal=' + (activePlaybookTab === 'founder' ? 'get_customers' : activePlaybookTab === 'talent' ? 'hire_people' : 'get_intros'));
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                >
+                  <span>Build This Campaign</span>
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 3 Core Objective Starter Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full mb-6">
             <EmptyCampaignCard 
               id="get_customers"
               icon={Users}
               title="Get customers"
-              desc="Message people who can buy. Goal: book a meeting."
+              desc="Target enterprise buyers, founders, and VP decision-makers with high-intent outreach."
               onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
             />
             <EmptyCampaignCard 
               id="hire_people"
               icon={Briefcase}
               title="Hire people"
-              desc="Message people you want on the team. Goal: a hire."
+              desc="Recruit high-signal engineers, designers, and operators with personal founder outreach."
               onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
             />
             <EmptyCampaignCard 
               id="get_intros"
               icon={LinkIcon}
               title="Get intros"
-              desc="Message people who can open a door, such as an investor, partner, or their network."
+              desc="Network with angels, venture funds, podcast hosts, and prospective distribution partners."
               onSelect={(id: string) => { navigate('/elein/campaigns/new?goal=' + id); }}
             />
           </div>
-          
+
           <button
             type="button"
             onClick={() => {
@@ -902,7 +1397,7 @@ export function EleInCampaigns() {
               try { localStorage.removeItem("elein_unsaved_draft"); } catch (_) {}
               navigate('/elein/campaigns/new?blank=true');
             }}
-            className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-4 mt-8 transition-colors cursor-pointer"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors cursor-pointer"
           >
             Or start from a blank canvas
           </button>
@@ -1003,6 +1498,16 @@ export function EleInCampaigns() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Table View & Density Options (EPF Phase 1) */}
+              <TableViewOptions
+                density={density}
+                onDensityChange={handleDensityChange}
+                columns={CAMPAIGN_COLUMNS}
+                visibleColumns={visibleColumns}
+                onToggleColumn={handleToggleColumn}
+                onResetToDefaults={handleResetViewOptions}
+              />
             </div>
           </div>
 
@@ -1065,20 +1570,60 @@ export function EleInCampaigns() {
             )}
           </AnimatePresence>
 
-          {/* ─── CAMPAIGNS DATA TABLE ─────────────────────────────────────────── */}
+          {/* ─── CAMPAIGNS DATA TABLE (Filter Zero - EPF Phase 3) ──────────────── */}
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-10 text-center rounded-xl border border-border bg-card">
-              <h3 className="text-sm font-semibold text-foreground mb-1">No matching campaigns found</h3>
-              <p className="text-xs text-muted-foreground max-w-sm mb-4">
-                No campaigns matched your current filter criteria.
+            <div className="flex flex-col items-center justify-center p-10 md:p-14 text-center rounded-xl border border-dashed border-border bg-card/60 backdrop-blur-xs">
+              <div className="w-12 h-12 rounded-xl bg-muted/60 border border-border flex items-center justify-center mb-4 text-muted-foreground">
+                <Search size={22} className="text-muted-foreground" />
+              </div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">
+                No campaigns match active filters
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-md mb-4 leading-relaxed">
+                {search && statusFilter !== 'ALL' ? (
+                  <span>
+                    No campaigns found matching <span className="font-semibold text-foreground font-mono bg-muted px-1.5 py-0.5 rounded border border-border">"{search}"</span> with status <span className="font-semibold text-foreground">{statusFilter}</span>.
+                  </span>
+                ) : search ? (
+                  <span>
+                    No campaigns found containing <span className="font-semibold text-foreground font-mono bg-muted px-1.5 py-0.5 rounded border border-border">"{search}"</span> across your fleet.
+                  </span>
+                ) : (
+                  <span>
+                    You currently have 0 campaigns in <span className="font-semibold text-foreground">{statusFilter}</span> status.
+                  </span>
+                )}
               </p>
-              <button
-                type="button"
-                onClick={() => { setSearch(""); setStatusFilter("ALL"); }}
-                className="px-3.5 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs font-medium hover:bg-muted cursor-pointer"
-              >
-                Clear Filters
-              </button>
+              <div className="flex items-center gap-2 flex-wrap justify-center">
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-medium text-foreground transition-colors cursor-pointer"
+                  >
+                    <X size={12} className="text-muted-foreground" />
+                    <span>Clear "{search}"</span>
+                  </button>
+                )}
+                {statusFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('ALL')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-xs font-medium text-foreground transition-colors cursor-pointer"
+                  >
+                    <RefreshCw size={12} className="text-muted-foreground" />
+                    <span>Show All Statuses</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setSearch(""); setStatusFilter("ALL"); setPage(1); }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  <span>Reset All Filters</span>
+                  <kbd className="font-mono text-[10px] bg-primary-foreground/20 px-1 py-0.2 rounded">Esc</kbd>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1094,7 +1639,7 @@ export function EleInCampaigns() {
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-muted/30 border-b border-border text-muted-foreground text-xs font-medium">
                       <tr>
-                        <th className="px-4 py-3 w-10 text-center">
+                        <th className={cn("px-4 w-10 text-center", densityPadding)}>
                           <button
                             type="button"
                             onClick={handleToggleSelectAll}
@@ -1108,16 +1653,32 @@ export function EleInCampaigns() {
                             )}
                           </button>
                         </th>
-                        <th className="px-5 py-3 min-w-[200px]">Campaign Name</th>
-                        <th className="px-4 py-3 w-28">Status</th>
-                        <th className="px-4 py-3 w-24 text-right">Enrolled</th>
-                        <th className="px-4 py-3 w-24 text-right">Connected</th>
-                        <th className="px-4 py-3 w-28 text-right">Acceptance</th>
-                        <th className="px-4 py-3 w-24 text-right">Replied</th>
-                        <th className="px-4 py-3 w-28 text-right">Reply Rate</th>
-                        <th className="px-4 py-3 w-24 text-right">Booked</th>
-                        <th className="px-4 py-3 w-28 text-center">Senders</th>
-                        <th className="px-5 py-3 w-36 text-right">Action</th>
+                        <th className={cn("px-5 min-w-[200px]", densityPadding)}>Campaign Name</th>
+                        {visibleColumns.includes('status') && (
+                          <th className={cn("px-4 w-28", densityPadding)}>Status</th>
+                        )}
+                        {visibleColumns.includes('enrolled') && (
+                          <th className={cn("px-4 w-24 text-right hidden sm:table-cell", densityPadding)}>Enrolled</th>
+                        )}
+                        {visibleColumns.includes('connected') && (
+                          <th className={cn("px-4 w-24 text-right hidden md:table-cell", densityPadding)}>Connected</th>
+                        )}
+                        {visibleColumns.includes('acceptance') && (
+                          <th className={cn("px-4 w-28 text-right hidden lg:table-cell", densityPadding)}>Acceptance</th>
+                        )}
+                        {visibleColumns.includes('replied') && (
+                          <th className={cn("px-4 w-24 text-right hidden lg:table-cell", densityPadding)}>Replied</th>
+                        )}
+                        {visibleColumns.includes('replyRate') && (
+                          <th className={cn("px-4 w-28 text-right hidden xl:table-cell", densityPadding)}>Reply Rate</th>
+                        )}
+                        {visibleColumns.includes('booked') && (
+                          <th className={cn("px-4 w-24 text-right hidden xl:table-cell", densityPadding)}>Booked</th>
+                        )}
+                        {visibleColumns.includes('senders') && (
+                          <th className={cn("px-4 w-28 text-center hidden 2xl:table-cell", densityPadding)}>Senders</th>
+                        )}
+                        <th className={cn("px-5 w-36 text-right", densityPadding)}>Action</th>
                       </tr>
                     </thead>
                   <tbody className="divide-y divide-border">
@@ -1150,7 +1711,7 @@ export function EleInCampaigns() {
                           onClick={() => navigate(`/elein/campaigns/${c.id}`)}
                         >
                           {/* Checkbox */}
-                          <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <td className={cn("px-4 text-center", densityPadding)} onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
                               onClick={(e) => handleToggleSelectOne(c.id, e)}
@@ -1165,94 +1726,110 @@ export function EleInCampaigns() {
                           </td>
 
                           {/* Campaign Name & Date */}
-                          <td className="px-5 py-3.5">
+                          <td className={cn("px-5", densityPadding)}>
                             <div className="block">
-                              <p className="font-medium text-foreground text-xs group-hover:underline underline-offset-2">
+                              <p className={cn("font-medium text-foreground group-hover:underline underline-offset-2", densityText)}>
                                 {c.name}
                               </p>
-                              <p className="text-xs text-muted-foreground mt-0.5">{dateStr}</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">{dateStr}</p>
                             </div>
                           </td>
 
                           {/* Status */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex flex-col gap-1">
-                              <StatusPill 
-                                status={c.status.toLowerCase()} 
-                                size="xs" 
-                                pulse={c.status === 'ACTIVE'} 
-                              />
-                              {hasZeroSenders && (
-                                <span 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/elein/campaigns/new?edit=${c.id}`);
-                                  }}
-                                  className="text-[11px] text-amber-500 hover:text-amber-400 underline w-fit font-medium"
-                                  title="Campaign active but 0 sender accounts assigned"
-                                >
-                                  0 senders assigned
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Enrolled */}
-                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
-                            <NumberTicker value={enrolled} />
-                          </td>
-
-                          {/* Connected */}
-                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
-                            <NumberTicker value={connected} />
-                          </td>
-
-                          {/* Acceptance Rate */}
-                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
-                            <NumberTicker value={acceptanceRate} />%
-                          </td>
-
-                          {/* Replied */}
-                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
-                            <NumberTicker value={replied} />
-                          </td>
-
-                          {/* Reply Rate */}
-                          <td className="px-4 py-3.5 text-right font-mono text-xs text-foreground">
-                            <NumberTicker value={replyRate} />%
-                          </td>
-
-                          {/* Booked */}
-                          <td className="px-4 py-3.5 text-right font-mono text-xs font-semibold text-primary">
-                            <NumberTicker value={booked} />
-                          </td>
-
-                          {/* Senders */}
-                          <td className="px-4 py-3.5 text-center text-muted-foreground text-xs" onClick={(e) => e.stopPropagation()}>
-                            {c.senders && c.senders.length > 0 ? (
-                              <div className="flex justify-center -space-x-1.5 overflow-hidden">
-                                {c.senders.slice(0, 3).map((s: any, idx: number) => (
-                                  <div 
-                                    key={idx} 
-                                    className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-muted border border-border text-foreground flex items-center justify-center text-xs font-mono font-medium" 
-                                    title={s.name}
+                          {visibleColumns.includes('status') && (
+                            <td className={cn("px-4", densityPadding)}>
+                              <div className="flex flex-col gap-1">
+                                <StatusPill 
+                                  status={c.status.toLowerCase()} 
+                                  size="xs" 
+                                  pulse={c.status === 'ACTIVE'} 
+                                />
+                                {hasZeroSenders && (
+                                  <span 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate(`/elein/campaigns/new?edit=${c.id}`);
+                                    }}
+                                    className="text-[11px] text-amber-500 hover:text-amber-400 underline w-fit font-medium"
+                                    title="Campaign active but 0 sender accounts assigned"
                                   >
-                                    {s.name ? s.name.substring(0, 2).toUpperCase() : "IN"}
-                                  </div>
-                                ))}
-                                {c.senders.length > 3 && (
-                                  <div className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-muted text-muted-foreground flex items-center justify-center text-xs font-mono">
-                                    +{c.senders.length - 3}
-                                  </div>
+                                    0 senders assigned
+                                  </span>
                                 )}
                               </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">None</span>
-                            )}
-                          </td>
+                            </td>
+                          )}
+
+                          {/* Enrolled */}
+                          {visibleColumns.includes('enrolled') && (
+                            <td className={cn("px-4 text-right font-mono text-foreground hidden sm:table-cell", densityPadding, densityText)}>
+                              <NumberTicker value={enrolled} />
+                            </td>
+                          )}
+
+                          {/* Connected */}
+                          {visibleColumns.includes('connected') && (
+                            <td className={cn("px-4 text-right font-mono text-foreground hidden md:table-cell", densityPadding, densityText)}>
+                              <NumberTicker value={connected} />
+                            </td>
+                          )}
+
+                          {/* Acceptance Rate */}
+                          {visibleColumns.includes('acceptance') && (
+                            <td className={cn("px-4 text-right font-mono text-foreground hidden lg:table-cell", densityPadding, densityText)}>
+                              <NumberTicker value={acceptanceRate} />%
+                            </td>
+                          )}
+
+                          {/* Replied */}
+                          {visibleColumns.includes('replied') && (
+                            <td className={cn("px-4 text-right font-mono text-foreground hidden lg:table-cell", densityPadding, densityText)}>
+                              <NumberTicker value={replied} />
+                            </td>
+                          )}
+
+                          {/* Reply Rate */}
+                          {visibleColumns.includes('replyRate') && (
+                            <td className={cn("px-4 text-right font-mono text-foreground hidden xl:table-cell", densityPadding, densityText)}>
+                              <NumberTicker value={replyRate} />%
+                            </td>
+                          )}
+
+                          {/* Booked */}
+                          {visibleColumns.includes('booked') && (
+                            <td className={cn("px-4 text-right font-mono font-semibold text-primary hidden xl:table-cell", densityPadding, densityText)}>
+                              <NumberTicker value={booked} />
+                            </td>
+                          )}
+
+                          {/* Senders */}
+                          {visibleColumns.includes('senders') && (
+                            <td className={cn("px-4 text-center text-muted-foreground hidden 2xl:table-cell", densityPadding, densityText)} onClick={(e) => e.stopPropagation()}>
+                              {c.senders && c.senders.length > 0 ? (
+                                <div className="flex justify-center -space-x-1.5 overflow-hidden">
+                                  {c.senders.slice(0, 3).map((s: any, idx: number) => (
+                                    <div 
+                                      key={idx} 
+                                      className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-muted border border-border text-foreground flex items-center justify-center text-xs font-mono font-medium" 
+                                      title={s.name}
+                                    >
+                                      {s.name ? s.name.substring(0, 2).toUpperCase() : "IN"}
+                                    </div>
+                                  ))}
+                                  {c.senders.length > 3 && (
+                                    <div className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-muted text-muted-foreground flex items-center justify-center text-xs font-mono">
+                                      +{c.senders.length - 3}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">None</span>
+                              )}
+                            </td>
+                          )}
 
                           {/* Row Action Station */}
-                          <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <td className={cn("px-5 text-right", densityPadding)} onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5 relative">
                               {/* Inspect Button */}
                               <button
@@ -1268,11 +1845,11 @@ export function EleInCampaigns() {
                               <button
                                 type="button"
                                 onClick={() => toggleStatus(c.id)}
-                                disabled={!!togglingId || isBatchOperating}
+                                disabled={activeTogglingIds.has(c.id) || isBatchOperating}
                                 className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
                                 title={c.status === "ACTIVE" ? "Pause Campaign" : "Resume Campaign"}
                               >
-                                {togglingId === c.id ? (
+                                {activeTogglingIds.has(c.id) ? (
                                   <Loader2 size={14} className="animate-spin" />
                                 ) : c.status === "ACTIVE" ? (
                                   <Pause size={14} />
@@ -1505,10 +2082,10 @@ export function EleInCampaigns() {
 
               {/* Hub Content Scrollable Grid */}
               <div className="p-6 overflow-y-auto space-y-5">
-                {/* Section 1: Get More Replies */}
+                {/* Section 1: Algorithmic Response Velocity */}
                 <div>
                   <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
-                    1. Increase Replies & Bookings
+                    1. Algorithmic Response Velocity & Bandit Optimization
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     <button
@@ -1517,9 +2094,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">A/B Test Messages</h4>
+                        <h4 className="text-sm font-medium text-foreground">Multi-Armed Bandit Strategy Optimizer</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Test multiple message variations to see which one books more meetings.
+                          Thompson sampling and algorithmic copy variance routing to maximize verified meeting conversion velocity.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1531,9 +2108,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Auto-Snooze & Intent Filters</h4>
+                        <h4 className="text-sm font-medium text-foreground">7-Class Inbound Intent & Auto-Snooze Engine</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Spot interested replies instantly and snooze leads who are out of the office.
+                          Sub-second zero-shot sentiment classification with autonomous out-of-office pause and CRM re-routing.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1545,9 +2122,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Active Hours Scheduling</h4>
+                        <h4 className="text-sm font-medium text-foreground">AI Send-Time Optimization (STO) & Anti-Bot Jitter</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Deliver messages during hours when your leads are active on LinkedIn.
+                          Algorithmic prospect activity modeling with humanized dispersion windows to guarantee top-of-inbox delivery.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1559,9 +2136,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">1-Click Meeting Link</h4>
+                        <h4 className="text-sm font-medium text-foreground">Frictionless Calendar Bridge & Availability Sync</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Add a direct booking link so interested leads can schedule without email back-and-forth.
+                          Direct real-time slot resolution preventing scheduling friction and eliminating back-and-forth roundtrips.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1569,10 +2146,10 @@ export function EleInCampaigns() {
                   </div>
                 </div>
 
-                {/* Section 2: Multi-Channel Follow-ups */}
+                {/* Section 2: Deterministic Omnichannel Orchestration */}
                 <div>
                   <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
-                    2. Multi-Channel Follow-ups & Triggers
+                    2. Deterministic Omnichannel Orchestration & ABM
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     <button
@@ -1581,9 +2158,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Email if No LinkedIn Reply</h4>
+                        <h4 className="text-sm font-medium text-foreground">Omnichannel Fallback & Mailbox Cascade</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Send an automated email follow-up if a lead does not respond on LinkedIn.
+                          Autonomous bridge routing silent LinkedIn prospects to warmed SMTP clusters with thread preservation.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1595,9 +2172,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Target Multiple People at One Company</h4>
+                        <h4 className="text-sm font-medium text-foreground">Account-Based Multithreading (ABM) Engine</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Reach decision-makers and champions at the same target account simultaneously.
+                          Coordinated multi-stakeholder outreach across target accounts with anti-collision lead locks.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1609,9 +2186,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Job Change Alerts</h4>
+                        <h4 className="text-sm font-medium text-foreground">Executive Mobility Telemetry (Boomerang Radar)</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Get notified and reach out when previous prospects or champions move to new companies.
+                          Automated career transition surveillance triggering timely outreach as champions move to new ICP accounts.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1623,9 +2200,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Message Event Attendees</h4>
+                        <h4 className="text-sm font-medium text-foreground">High-Intent Event Cohort Ingestion</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Reach leads attending relevant industry webinars and LinkedIn events.
+                          Real-time attendee enrichment and instant sequence enrollment for industry summits and webinars.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1633,10 +2210,10 @@ export function EleInCampaigns() {
                   </div>
                 </div>
 
-                {/* Section 3: Safety & Deliverability */}
+                {/* Section 3: Deliverability Infrastructure */}
                 <div>
                   <h3 className="text-xs font-medium text-muted-foreground border-b border-border pb-1.5 mb-2.5">
-                    3. Account Safety & Domain Health
+                    3. Deliverability Infrastructure & Anti-Ban Protocols
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     <button
@@ -1645,9 +2222,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">LinkedIn Profile Warmup</h4>
+                        <h4 className="text-sm font-medium text-foreground">Algorithmic Warmup & Behavioral Conditioning</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Auto-visit profiles and like recent posts before connecting to keep accounts safe.
+                          Progressive human-mimicry activity curves and engagement priming to protect sender network health.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1659,9 +2236,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Email Spam & Domain Check</h4>
+                        <h4 className="text-sm font-medium text-foreground">Autonomous DMARC / DKIM / SPF Sentry</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Verify SPF, DKIM, and DMARC settings to keep your emails out of the spam folder.
+                          Continuous DNS drift auditing, RFC 8058 compliance, and automated mailbox burnout rotation.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />
@@ -1673,9 +2250,9 @@ export function EleInCampaigns() {
                       className="w-full text-left p-4 rounded-lg border border-border bg-background hover:bg-muted/40 transition-colors cursor-pointer flex items-start justify-between gap-3 group"
                     >
                       <div>
-                        <h4 className="text-sm font-medium text-foreground">Competitor Technology Triggers</h4>
+                        <h4 className="text-sm font-medium text-foreground">Technographic Displacement Radar</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          Reach target accounts when they install or remove competing sales software.
+                          Immediate competitor rip-and-replace signals detecting sales stack churn across target accounts.
                         </p>
                       </div>
                       <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground shrink-0 mt-0.5 transition-transform group-hover:translate-x-0.5" />

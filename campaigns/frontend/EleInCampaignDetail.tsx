@@ -29,6 +29,17 @@ import { AbmMultithreadStudioModal } from "@/components/campaigns/AbmMultithread
 import { OmnichannelRetargetingStudioModal } from "@/components/campaigns/OmnichannelRetargetingStudioModal"
 import { BoomerangRevivalStudioModal } from "@/components/campaigns/BoomerangRevivalStudioModal"
 import { StatusPill } from "@/components/StatusPill"
+import { TableViewOptions, type TableDensity, type TableColumnDef } from "@/components/tables/TableViewOptions"
+
+const PROSPECT_COLUMNS: TableColumnDef[] = [
+  { id: 'name', label: 'Prospect & Title', locked: true },
+  { id: 'company', label: 'Company', responsiveBreakpoint: 'sm' },
+  { id: 'status', label: 'Execution Status', responsiveBreakpoint: 'sm' },
+  { id: 'lastRun', label: 'Last Scheduled / Run', responsiveBreakpoint: 'md' },
+  { id: 'actions', label: 'Actions', locked: true },
+]
+
+const DEFAULT_PROSPECT_COLUMNS = ['company', 'status', 'lastRun']
 
 export function EleInCampaignDetail() {
   const { id } = useParams()
@@ -52,6 +63,52 @@ export function EleInCampaignDetail() {
     id ? `/api/elein/campaigns/${id}/leads` : null,
     fetcher
   )
+
+  // ─── Table View Density & Column Visibility (EPF Phase 1) ───
+  const [prospectDensity, setProspectDensity] = useState<TableDensity>(() => {
+    try {
+      const saved = localStorage.getItem('elein_prospects_density')
+      if (saved === 'compact' || saved === 'standard' || saved === 'comfortable') return saved
+    } catch {}
+    return 'standard'
+  })
+
+  const [visibleProspectColumns, setVisibleProspectColumns] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('elein_prospects_columns')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return DEFAULT_PROSPECT_COLUMNS
+  })
+
+  const handleProspectDensityChange = (newDensity: TableDensity) => {
+    setProspectDensity(newDensity)
+    try {
+      localStorage.setItem('elein_prospects_density', newDensity)
+    } catch {}
+  }
+
+  const handleToggleProspectColumn = (colId: string) => {
+    setVisibleProspectColumns(prev => {
+      const next = prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]
+      try {
+        localStorage.setItem('elein_prospects_columns', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }
+
+  const handleResetProspectView = () => {
+    setProspectDensity('standard')
+    setVisibleProspectColumns(DEFAULT_PROSPECT_COLUMNS)
+    try {
+      localStorage.setItem('elein_prospects_density', 'standard')
+      localStorage.setItem('elein_prospects_columns', JSON.stringify(DEFAULT_PROSPECT_COLUMNS))
+    } catch {}
+  }
+
+  const prospectDensityPadding = prospectDensity === 'compact' ? 'py-2 px-3' : prospectDensity === 'comfortable' ? 'py-5 px-5' : 'py-3.5 px-5'
+  const prospectDensityText = prospectDensity === 'comfortable' ? 'text-sm' : 'text-xs'
 
   const [toggling, setToggling] = useState(false)
   const [search, setSearch] = useState("")
@@ -926,6 +983,16 @@ export function EleInCampaignDetail() {
               <span>Export CSV</span>
             </button>
 
+            {/* Table View & Density Options (EPF Phase 1) */}
+            <TableViewOptions
+              density={prospectDensity}
+              onDensityChange={handleProspectDensityChange}
+              columns={PROSPECT_COLUMNS}
+              visibleColumns={visibleProspectColumns}
+              onToggleColumn={handleToggleProspectColumn}
+              onResetToDefaults={handleResetProspectView}
+            />
+
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
               <input 
@@ -985,17 +1052,23 @@ export function EleInCampaignDetail() {
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-muted/30 text-muted-foreground uppercase text-[10px] tracking-wider font-semibold border-b border-border/60">
               <tr>
-                <th className="px-5 py-3.5">Prospect & Title</th>
-                <th className="px-5 py-3.5">Company</th>
-                <th className="px-5 py-3.5">Execution Status</th>
-                <th className="px-5 py-3.5">Last Scheduled / Run</th>
-                <th className="px-5 py-3.5 text-right">Actions</th>
+                <th className={cn(prospectDensityPadding)}>Prospect & Title</th>
+                {visibleProspectColumns.includes('company') && (
+                  <th className={cn("hidden sm:table-cell", prospectDensityPadding)}>Company</th>
+                )}
+                {visibleProspectColumns.includes('status') && (
+                  <th className={cn("hidden sm:table-cell", prospectDensityPadding)}>Execution Status</th>
+                )}
+                {visibleProspectColumns.includes('lastRun') && (
+                  <th className={cn("hidden md:table-cell", prospectDensityPadding)}>Last Scheduled / Run</th>
+                )}
+                <th className={cn("text-right", prospectDensityPadding)}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
               {paginatedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={2 + visibleProspectColumns.length} className="px-6 py-12 text-center text-muted-foreground">
                     <div className="max-w-xs mx-auto space-y-2">
                       <p className="font-semibold text-foreground">No leads found</p>
                       <p className="text-[11px]">
@@ -1047,13 +1120,16 @@ export function EleInCampaignDetail() {
                       role="button"
                       aria-label={`View execution trace for ${leadName}`}
                     >
-                      <td className="px-5 py-3.5">
+                      <td className={cn(prospectDensityPadding)}>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-xs shrink-0">
+                          <div className={cn(
+                            "rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-xs shrink-0",
+                            prospectDensity === 'compact' ? "w-6 h-6 text-[10px]" : prospectDensity === 'comfortable' ? "w-9 h-9 text-sm" : "w-8 h-8 text-xs"
+                          )}>
                             {(lead.kdm_first?.[0] || leadName[0] || "?").toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-foreground group-hover:text-primary transition-colors truncate">
+                            <p className={cn("font-bold text-foreground group-hover:text-primary transition-colors truncate", prospectDensityText)}>
                               {leadName}
                             </p>
                             <p className="text-[11px] text-muted-foreground truncate max-w-[220px]">
@@ -1063,24 +1139,30 @@ export function EleInCampaignDetail() {
                         </div>
                       </td>
 
-                      <td className="px-5 py-3.5 text-muted-foreground font-medium">
-                        {lead.company_name || " - "}
-                      </td>
+                      {visibleProspectColumns.includes('company') && (
+                        <td className={cn("text-muted-foreground font-medium hidden sm:table-cell", prospectDensityPadding, prospectDensityText)}>
+                          {lead.company_name || " - "}
+                        </td>
+                      )}
 
-                      <td className="px-5 py-3.5">
-                        <StatusPill 
-                          status={status === 'completed' || status === 'exited' ? 'completed' : status === 'error' || status === 'failed' ? 'failed' : status === 'running' ? 'running' : 'pending'} 
-                          size="xs" 
-                          label={lead.status || 'Pending'} 
-                          pulse={status === 'running'} 
-                        />
-                      </td>
+                      {visibleProspectColumns.includes('status') && (
+                        <td className={cn("hidden sm:table-cell", prospectDensityPadding)}>
+                          <StatusPill 
+                            status={status === 'completed' || status === 'exited' ? 'completed' : status === 'error' || status === 'failed' ? 'failed' : status === 'running' ? 'running' : 'pending'} 
+                            size="xs" 
+                            label={lead.status || 'Pending'} 
+                            pulse={status === 'running'} 
+                          />
+                        </td>
+                      )}
 
-                      <td className="px-5 py-3.5 text-muted-foreground text-[11px] font-mono">
-                        {new Date(lead.updated_at || lead.next_run_at || new Date().toISOString()).toLocaleDateString()}
-                      </td>
+                      {visibleProspectColumns.includes('lastRun') && (
+                        <td className={cn("text-muted-foreground font-mono hidden md:table-cell", prospectDensityPadding, prospectDensityText)}>
+                          {new Date(lead.updated_at || lead.next_run_at || new Date().toISOString()).toLocaleDateString()}
+                        </td>
+                      )}
 
-                      <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className={cn("text-right", prospectDensityPadding)} onClick={(e) => e.stopPropagation()}>
                         <div className="inline-flex items-center gap-1">
                           {lead.linkedin_url && (
                             <a

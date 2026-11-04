@@ -21,6 +21,12 @@ import { toast } from "sonner";
 import { fetchWithAuth as apiFetch } from "../../lib/apiClient";
 import { usePaywall } from "../../contexts/PaywallContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useModalTrapAndStepper } from "../../hooks/useModalTrapAndStepper";
+
+const DELIVERABILITY_STEPS = ["dns", "pool", "rewriter"] as const;
+type DeliverabilityTab = typeof DELIVERABILITY_STEPS[number];
+const DEFAULT_SAMPLE_EMAIL =
+  "Hi Sarah,\n\nWanted to share our newest AI SDR case study: https://elein.ai/case-study\n\nIf you have 10 mins this Thursday, grab a slot on my calendar: https://cal.com/acme/15min\n\nBest,\nAlex";
 
 export interface DnsCheckResult {
   valid: boolean;
@@ -119,23 +125,40 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
   const [poolResult, setPoolResult] = useState<PoolEvaluationResponse | null>(null);
 
   // Link Rewriting Preview State
-  const [sampleEmailBody, setSampleEmailBody] = useState<string>(
-    "Hi Sarah,\n\nWanted to share our newest AI SDR case study: https://elein.ai/case-study\n\nIf you have 10 mins this Thursday, grab a slot on my calendar: https://cal.com/acme/15min\n\nBest,\nAlex"
-  );
+  const [sampleEmailBody, setSampleEmailBody] = useState<string>(DEFAULT_SAMPLE_EMAIL);
 
   const abortRef = useRef<AbortController | null>(null);
 
-  // Keyboard accessibility: Escape dismisses modal
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const isFormDirty = Boolean(
+    (domain && domain !== initialDomain) ||
+    (sampleEmailBody && sampleEmailBody !== DEFAULT_SAMPLE_EMAIL)
+  );
+
+  const handlePrimarySubmit = () => {
+    if (activeTab === "dns") {
+      handleVerifyDns(domain);
+    } else if (activeTab === "pool") {
+      handleEvaluatePool();
+    } else {
+      toast.success("Active deliverability configuration confirmed.");
+      onClose();
+    }
+  };
+
+  // Keyboard accessibility: Hardened Focus Trap, W3C Steppers & Double-Tap Esc Guard (EPF Phase 2)
+  const { containerRef, handleBackdropClick } = useModalTrapAndStepper<DeliverabilityTab>({
+    isOpen,
+    onClose,
+    steps: DELIVERABILITY_STEPS,
+    currentStep: activeTab,
+    onStepChange: setActiveTab,
+    onSubmit: handlePrimarySubmit,
+    isLoading: isVerifying || isEvaluatingPool,
+    isDirty: isFormDirty,
+    onDirtyDismissPrevented: () => {
+      toast.warning("Unsaved changes in Deliverability Studio. Press Esc again to discard and exit.");
+    },
+  });
 
   const handleCopy = (text: string, label: string) => {
     if (!text) return;
@@ -338,13 +361,15 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 overflow-hidden"
-      onClick={onClose}
+      onClick={handleBackdropClick}
     >
       <div
+        ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="deliverability-studio-title"
-        className="relative w-full max-w-4xl max-h-[90vh] max-h-[90dvh] flex flex-col rounded-xl bg-background border border-border shadow-2xl overflow-hidden text-foreground"
+        tabIndex={-1}
+        className="relative w-full max-w-4xl max-h-[90vh] max-h-[90dvh] flex flex-col rounded-xl bg-background border border-border shadow-2xl overflow-hidden text-foreground outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Strip */}
@@ -362,17 +387,23 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-            aria-label="Close Deliverability Studio"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/40 px-2 py-1 rounded-md border border-border/50">
+              <span>Execute:</span>
+              <kbd className="font-mono text-[9px] px-1 py-0.2 bg-muted rounded border border-border/60">⌘↵</kbd>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              aria-label="Close Deliverability Studio"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation with Keyboard Steppers */}
         <div
           role="tablist"
           aria-label="Deliverability Studio Navigation"
@@ -391,6 +422,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
           >
             <Globe className="w-3.5 h-3.5" />
             <span>SPF, DKIM &amp; DMARC Preflight</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘1</kbd>
           </button>
           <button
             type="button"
@@ -405,6 +437,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
           >
             <RotateCw className="w-3.5 h-3.5" />
             <span>Inbox Warmup &amp; Rotation Pool</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘2</kbd>
           </button>
           <button
             type="button"
@@ -419,6 +452,7 @@ export const DeliverabilityStudioModal: React.FC<DeliverabilityStudioModalProps>
           >
             <LinkIcon className="w-3.5 h-3.5" />
             <span>Custom Tracking Domain Rewriter</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘3</kbd>
           </button>
         </div>
 

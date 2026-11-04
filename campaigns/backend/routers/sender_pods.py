@@ -98,8 +98,9 @@ def get_campaign_pod_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Layer 0: Returns pod metrics and account fleet for a single campaign.
+    Layer 0: Returns pod metrics and account fleet for a single campaign. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     try:
         all_pods = get_workspace_sender_pods(workspace_id=workspace_id, supabase=supabase)
         match = next((p for p in all_pods if p["campaign_id"] == campaign_id), None)
@@ -122,8 +123,9 @@ def select_pod_sender_endpoint(
 ):
     """
     Layer 0 & Layer 2: Tests or executes optimal sender selection for an outreach action.
-    Strictly checks thread affinity first, then applies capacity/warmup balancing.
+    Strictly checks thread affinity first, then applies capacity/warmup balancing. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     req = payload or PodDispatchRequest()
     try:
         result = select_pod_sender(
@@ -154,8 +156,9 @@ def trigger_pod_failover_endpoint(
 ):
     """
     Layer 1 & Layer 2: Triggers instant dynamic failover for an account in this pod.
-    Quarantines the failing account and safely reassigns in-flight enrollments.
+    Quarantines the failing account and safely reassigns in-flight enrollments. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     try:
         result = trigger_pod_failover(
             failed_account_id=payload.failed_account_id,
@@ -189,8 +192,9 @@ def quarantine_account_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Layer 1: Isolates a sender account from all active pod rotations.
+    Layer 1: Isolates a sender account from all active pod rotations. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     req = payload or PodQuarantineRequest()
     try:
         result = quarantine_sender_account(
@@ -201,6 +205,8 @@ def quarantine_account_endpoint(
             reason=req.reason or "MANUAL_QUARANTINE"
         )
         return {"status": "success", "data": result}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error quarantining account {account_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to quarantine account.")
@@ -213,8 +219,9 @@ def release_account_quarantine_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Layer 1: Releases quarantine on an account and restores it to active pod rotation.
+    Layer 1: Releases quarantine on an account and restores it to active pod rotation. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     try:
         result = release_quarantine(
             account_id=account_id,
@@ -222,6 +229,8 @@ def release_account_quarantine_endpoint(
             supabase=supabase
         )
         return {"status": "success", "data": result}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error releasing quarantine on account {account_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to release quarantine.")
@@ -234,8 +243,9 @@ def emergency_pause_pod_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Layer 2: Emergency freeze on all dispatches for this campaign pod.
+    Layer 2: Emergency freeze on all dispatches for this campaign pod. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     try:
         result = emergency_pause_pod(
             campaign_id=campaign_id,
@@ -243,6 +253,8 @@ def emergency_pause_pod_endpoint(
             supabase=supabase
         )
         return {"status": "success", "data": result}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error emergency pausing campaign pod {campaign_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to pause pod.")
@@ -255,8 +267,9 @@ def resume_pod_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Layer 2: Resumes outreach dispatches for an emergency-paused campaign pod.
+    Layer 2: Resumes outreach dispatches for an emergency-paused campaign pod. Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     try:
         result = resume_pod(
             campaign_id=campaign_id,
@@ -264,6 +277,8 @@ def resume_pod_endpoint(
             supabase=supabase
         )
         return {"status": "success", "data": result}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error resuming campaign pod {campaign_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to resume pod.")
@@ -277,8 +292,9 @@ def update_pod_strategy_endpoint(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Layer 0: Updates dispatch strategy (CAPACITY_WEIGHTED, ROUND_ROBIN, WARMUP_CONSTRAINED).
+    Layer 0: Updates dispatch strategy (CAPACITY_WEIGHTED, ROUND_ROBIN, WARMUP_CONSTRAINED). Requires Enterprise tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_sender_pods", supabase, min_tier="ENTERPRISE")
     strategy = payload.strategy.upper()
     if strategy not in DISPATCH_STRATEGIES:
         raise HTTPException(

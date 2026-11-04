@@ -118,6 +118,41 @@ export function AppLayout() {
   return (
     <div className="h-[100dvh] bg-background text-foreground flex flex-col overflow-hidden text-sm font-sans selection:bg-primary/30">
       <OfflineBanner />
+      {isEnterprise && (
+        <div className="w-full bg-slate-950/95 border-b border-emerald-500/20 text-slate-200 text-xs px-4 py-1.5 flex items-center justify-between gap-4 font-mono tracking-tight shrink-0 z-40 backdrop-blur-md">
+          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold uppercase text-[10px] tracking-wider shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Enterprise VIP Telemetry
+            </div>
+            <div className="hidden sm:flex items-center gap-1.5 text-muted-foreground text-[11px] shrink-0">
+              <span className="text-slate-400">PROXY POOL:</span>
+              <span className="text-emerald-400 font-semibold">DEDICATED RESIDENTIAL (100% HEALTH)</span>
+            </div>
+            <div className="hidden md:flex items-center gap-1.5 text-muted-foreground text-[11px] shrink-0">
+              <span className="text-slate-400">SENDER PODS:</span>
+              <span className="text-emerald-400 font-semibold">AFFINITY LOCKED</span>
+            </div>
+            <div className="hidden lg:flex items-center gap-1.5 text-muted-foreground text-[11px] shrink-0">
+              <span className="text-slate-400">DISPATCH CONCURRENCY:</span>
+              <span className="text-emerald-400 font-semibold">UNLIMITED WORKERS</span>
+            </div>
+            <div className="hidden xl:flex items-center gap-1.5 text-muted-foreground text-[11px] shrink-0">
+              <span className="text-slate-400">DNS SENTRY:</span>
+              <span className="text-emerald-400 font-semibold">RFC 8058 ALIGNED</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <Link
+              to="/elein/accounts"
+              className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 transition-colors"
+            >
+              <span>Manage Pods</span>
+              <ChevronRight size={11} />
+            </Link>
+          </div>
+        </div>
+      )}
       {isPendingDeletion && (
         <div className="w-full bg-destructive/95 text-white text-xs font-semibold flex items-center justify-between gap-3 py-2.5 px-4 sticky top-0 z-50 backdrop-blur-md">
           <div className="flex items-center gap-2">

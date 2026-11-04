@@ -5629,9 +5629,26 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
         elif os.environ.get("PYTEST_CURRENT_TEST"):
             tier = "ENTERPRISE" if permission_flag.startswith("can_use_sender_pods") or permission_flag.startswith("can_use_ghidra") else "PRO"
         else:
-            tier = "FREE"
+            # Layer 1 Fallback: Query workspaces table directly
+            from core.backend.api.auth_dep import get_service_client
+            svc = get_service_client()
+            ws_res = svc.table("workspaces").select("tier").eq("id", workspace_id).execute()
+            if ws_res.data and ws_res.data[0].get("tier"):
+                tier = normalize_tier(ws_res.data[0]["tier"])
+            else:
+                tier = "FREE"
     except Exception:
-        tier = "ENTERPRISE" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
+        # Layer 1 Fallback: Query workspaces table directly
+        try:
+            from core.backend.api.auth_dep import get_service_client
+            svc = get_service_client()
+            ws_res = svc.table("workspaces").select("tier").eq("id", workspace_id).execute()
+            if ws_res.data and ws_res.data[0].get("tier"):
+                tier = normalize_tier(ws_res.data[0]["tier"])
+            else:
+                tier = "ENTERPRISE" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
+        except Exception:
+            tier = "ENTERPRISE" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
 
     tier_perm = TIER_LIMITS.get(tier, {}).get(permission_flag, False)
     if not tier_perm:
@@ -8216,12 +8233,14 @@ class SpintaxPreviewRequest(BaseModel):
 def analyze_spintax_endpoint(
     req: SpintaxAnalyzeRequest,
     workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """
     Paranoia Layer 0, 1 & 2 (Issue 7):
     Analyzes spintax template entropy, diversity ratio against campaign lead volume,
-    and returns ESP deliverability recommendations.
+    and returns ESP deliverability recommendations. Requires Pro/Growth tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_spintax_engine", supabase, min_tier="PRO")
     from campaigns.backend.services.template_spintax_guard import calculate_spintax_entropy
     return calculate_spintax_entropy(
         text=req.template,
@@ -8261,11 +8280,13 @@ def generate_spintax_endpoint(
 def preview_spintax_endpoint(
     req: SpintaxPreviewRequest,
     workspace_id: str = Depends(get_current_workspace),
+    supabase: Client = Depends(get_supabase_client),
 ):
     """
     Paranoia Layer 0 & 2 (Issue 7):
-    Returns an array of distinct, rendered spintax preview variants.
+    Returns an array of distinct, rendered spintax preview variants. Requires Pro/Growth tier.
     """
+    _check_workspace_tier_permission(workspace_id, "can_use_spintax_engine", supabase, min_tier="PRO")
     from campaigns.backend.services.template_spintax_guard import preview_spintax_variants
     return preview_spintax_variants(
         text=req.template,

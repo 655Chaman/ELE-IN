@@ -149,20 +149,47 @@ export async function fetchWithAuth(path: string, options: AuthRequestInit = {})
       try {
         const errJson = await res.clone().json()
         const detail = errJson?.detail
-        if (detail?.error === 'FEATURE_TIER_GATED' || detail?.required_tier) {
+        const detailStr = (typeof detail === 'string' ? detail : JSON.stringify(errJson || '')).toLowerCase()
+        
+        // Paranoia Layer 1: Check for Feature Tier Gating (Enterprise / Growth / Pro)
+        const isTierGated = 
+          detail?.error === 'FEATURE_TIER_GATED' ||
+          errJson?.error === 'FEATURE_TIER_GATED' ||
+          errJson?.code === 'FEATURE_TIER_GATED' ||
+          Boolean(detail?.required_tier) ||
+          Boolean(errJson?.required_tier) ||
+          detailStr.includes('feature_tier_gated') ||
+          detailStr.includes('tier') ||
+          detailStr.includes('upgrade') ||
+          detailStr.includes('enterprise') ||
+          detailStr.includes('growth') ||
+          detailStr.includes('pro tier')
+
+        if (isTierGated) {
+          const reqTier = (
+            detail?.required_tier ||
+            errJson?.required_tier ||
+            (detailStr.includes('enterprise') ? 'ENTERPRISE' : 'PRO')
+          ).toUpperCase()
+
+          const featName = detail?.featureName || detail?.feature || errJson?.feature || detail?.message || errJson?.message || 'Enterprise Feature'
+          const reasonStr = detail?.message || errJson?.message || `${reqTier} Tier Upgrade Required`
+
           window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
             detail: {
               type: 'tier',
-              minTier: detail.required_tier || 'PRO',
-              featureName: detail.message || 'Advanced Feature',
-              reason: detail.message || 'Tier Upgrade Required'
+              minTier: reqTier,
+              featureName: featName,
+              reason: reasonStr
             }
           }))
           return res
         }
       } catch (_e) {
-        // Fall through to credit top-up if not JSON
+        // Fall through to credit top-up if body is unparseable
       }
+      
+      // Genuinely credit balance exhausted
       window.dispatchEvent(new CustomEvent('elein:paywall-trigger', {
         detail: { type: 'credits', reason: 'Credit balance exhausted' }
       }))

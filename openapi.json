@@ -2058,7 +2058,7 @@
           "sender-pods"
         ],
         "summary": "Get Campaign Pod Endpoint",
-        "description": "Layer 0: Returns pod metrics and account fleet for a single campaign.",
+        "description": "Layer 0: Returns pod metrics and account fleet for a single campaign. Requires Enterprise tier.",
         "operationId": "get_campaign_pod_endpoint_api_campaigns_pods__campaign_id__get",
         "parameters": [
           {
@@ -2103,7 +2103,7 @@
           "sender-pods"
         ],
         "summary": "Select Pod Sender Endpoint",
-        "description": "Layer 0 & Layer 2: Tests or executes optimal sender selection for an outreach action.\nStrictly checks thread affinity first, then applies capacity/warmup balancing.",
+        "description": "Layer 0 & Layer 2: Tests or executes optimal sender selection for an outreach action.\nStrictly checks thread affinity first, then applies capacity/warmup balancing. Requires Enterprise tier.",
         "operationId": "select_pod_sender_endpoint_api_campaigns_pods__campaign_id__dispatch_post",
         "parameters": [
           {
@@ -2165,7 +2165,7 @@
           "sender-pods"
         ],
         "summary": "Trigger Pod Failover Endpoint",
-        "description": "Layer 1 & Layer 2: Triggers instant dynamic failover for an account in this pod.\nQuarantines the failing account and safely reassigns in-flight enrollments.",
+        "description": "Layer 1 & Layer 2: Triggers instant dynamic failover for an account in this pod.\nQuarantines the failing account and safely reassigns in-flight enrollments. Requires Enterprise tier.",
         "operationId": "trigger_pod_failover_endpoint_api_campaigns_pods__campaign_id__failover_post",
         "parameters": [
           {
@@ -2220,7 +2220,7 @@
           "sender-pods"
         ],
         "summary": "Quarantine Account Endpoint",
-        "description": "Layer 1: Isolates a sender account from all active pod rotations.",
+        "description": "Layer 1: Isolates a sender account from all active pod rotations. Requires Enterprise tier.",
         "operationId": "quarantine_account_endpoint_api_campaigns_pods_accounts__account_id__quarantine_post",
         "parameters": [
           {
@@ -2282,7 +2282,7 @@
           "sender-pods"
         ],
         "summary": "Release Account Quarantine Endpoint",
-        "description": "Layer 1: Releases quarantine on an account and restores it to active pod rotation.",
+        "description": "Layer 1: Releases quarantine on an account and restores it to active pod rotation. Requires Enterprise tier.",
         "operationId": "release_account_quarantine_endpoint_api_campaigns_pods_accounts__account_id__release_post",
         "parameters": [
           {
@@ -2327,7 +2327,7 @@
           "sender-pods"
         ],
         "summary": "Emergency Pause Pod Endpoint",
-        "description": "Layer 2: Emergency freeze on all dispatches for this campaign pod.",
+        "description": "Layer 2: Emergency freeze on all dispatches for this campaign pod. Requires Enterprise tier.",
         "operationId": "emergency_pause_pod_endpoint_api_campaigns_pods__campaign_id__emergency_pause_post",
         "parameters": [
           {
@@ -2372,7 +2372,7 @@
           "sender-pods"
         ],
         "summary": "Resume Pod Endpoint",
-        "description": "Layer 2: Resumes outreach dispatches for an emergency-paused campaign pod.",
+        "description": "Layer 2: Resumes outreach dispatches for an emergency-paused campaign pod. Requires Enterprise tier.",
         "operationId": "resume_pod_endpoint_api_campaigns_pods__campaign_id__resume_post",
         "parameters": [
           {
@@ -2417,7 +2417,7 @@
           "sender-pods"
         ],
         "summary": "Update Pod Strategy Endpoint",
-        "description": "Layer 0: Updates dispatch strategy (CAPACITY_WEIGHTED, ROUND_ROBIN, WARMUP_CONSTRAINED).",
+        "description": "Layer 0: Updates dispatch strategy (CAPACITY_WEIGHTED, ROUND_ROBIN, WARMUP_CONSTRAINED). Requires Enterprise tier.",
         "operationId": "update_pod_strategy_endpoint_api_campaigns_pods__campaign_id__strategy_patch",
         "parameters": [
           {
@@ -11190,7 +11190,7 @@
           "elein"
         ],
         "summary": "Analyze Spintax Endpoint",
-        "description": "Paranoia Layer 0, 1 & 2 (Issue 7):\nAnalyzes spintax template entropy, diversity ratio against campaign lead volume,\nand returns ESP deliverability recommendations.",
+        "description": "Paranoia Layer 0, 1 & 2 (Issue 7):\nAnalyzes spintax template entropy, diversity ratio against campaign lead volume,\nand returns ESP deliverability recommendations. Requires Pro/Growth tier.",
         "operationId": "analyze_spintax_endpoint_api_elein_spintax_analyze_post",
         "requestBody": {
           "content": {
@@ -11278,7 +11278,7 @@
           "elein"
         ],
         "summary": "Preview Spintax Endpoint",
-        "description": "Paranoia Layer 0 & 2 (Issue 7):\nReturns an array of distinct, rendered spintax preview variants.",
+        "description": "Paranoia Layer 0 & 2 (Issue 7):\nReturns an array of distinct, rendered spintax preview variants. Requires Pro/Growth tier.",
         "operationId": "preview_spintax_endpoint_api_elein_spintax_preview_post",
         "requestBody": {
           "content": {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, CalendarClock, Check, ChevronDown, Clock,
   MessageSquare, Target,
-  UserCheck, X
+  UserCheck, X, Sparkles, Inbox, Command, CornerDownLeft, ArrowRight, ShieldCheck, Zap
 } from 'lucide-react';
 import { ElesiumLogo } from '@/components/ElesiumLogo';
 import { DEAL_STAGES, type DealStage, type Message, type ThreadSummary } from '../types';
@@ -49,14 +49,65 @@ export function ConversationCanvas({
 
   if (!selectedSender) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center bg-background select-none">
-        <div className="w-16 h-16 rounded-xl bg-muted/40 border border-border flex items-center justify-center mb-4">
-          <MessageSquare size={32} className="opacity-40 text-primary" />
+      <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 text-center bg-background select-none overflow-y-auto">
+        <div className="relative max-w-md w-full p-8 rounded-3xl border border-border/80 bg-gradient-to-b from-card/80 via-card/40 to-background shadow-xs flex flex-col items-center text-center">
+          {/* Subtle Ambient Glow */}
+          <div className="absolute -top-12 inset-x-0 flex justify-center pointer-events-none">
+            <div className="w-48 h-24 bg-primary/10 rounded-full blur-2xl" />
+          </div>
+
+          {/* Central Emblem */}
+          <div className="relative w-16 h-16 rounded-2xl bg-card border border-border/80 flex items-center justify-center mb-5 shadow-xs">
+            <Inbox size={28} className="text-primary" />
+            <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-success" />
+            </span>
+          </div>
+
+          {/* Header */}
+          <h3 className="text-lg font-bold text-foreground mb-1.5 tracking-tight">
+            Unified Outreach Inbox
+          </h3>
+          <p className="text-xs text-muted-foreground leading-relaxed max-w-sm mb-6">
+            All prospective replies, connection requests, and booking links stream into this hub. Select a conversation on the left to triage.
+          </p>
+
+          {/* Keyboard Command Quick Sheet (Superhuman Style) */}
+          <div className="w-full bg-muted/40 border border-border/60 rounded-xl p-3.5 mb-5 space-y-2 text-left">
+            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Command size={11} className="text-primary" />
+              <span>Keyboard Acceleration Matrix</span>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Cycle Conversations</span>
+              <div className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-foreground">J</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-foreground">K</kbd>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Draft AI Response</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-foreground">R</kbd>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Send Message</span>
+              <div className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-foreground">⌘</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-foreground">↵</kbd>
+              </div>
+            </div>
+          </div>
+
+          {/* Liveness Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border/60 bg-muted/30 text-[11px] text-muted-foreground">
+            <Zap size={12} className="text-success" />
+            <span>Real-time webhook listener active</span>
+          </div>
         </div>
-        <h3 className="text-sm font-semibold text-foreground mb-1">Select a Conversation</h3>
-        <p className="text-xs text-muted-foreground max-w-xs mb-3">
-          Choose a contact on the left to read messages and draft AI replies.
-        </p>
       </div>
     );
   }

@@ -11,6 +11,11 @@ import { fetchWithAuth, fetcher } from "@/lib/apiClient"
 import useSWR from "swr"
 import { usePaywall } from "@/contexts/PaywallContext"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { toast } from "sonner"
+import { useModalTrapAndStepper } from "@/hooks/useModalTrapAndStepper"
+
+const CONNECT_STEPS = ["token", "extension"] as const
+type ConnectTab = typeof CONNECT_STEPS[number]
 
 interface ConnectModalProps {
   onClose: () => void
@@ -57,16 +62,31 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
     } catch (_) {}
   }, [activeTab, cookieInput, name, proxyId])
 
-  // Layer 2 Paranoia: Close on Escape key (unless network validation is actively in-flight)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !validating) {
-        onClose()
-      }
+  // Keyboard accessibility: Hardened Focus Trap, Double-Tap Esc Guard & Stepper (EPF Phase 2)
+  const isFormDirty = Boolean(cookieInput.trim() || name.trim())
+
+  const handlePrimarySubmit = () => {
+    if (parsedCookieInfo?.valid && !validating) {
+      handleValidateAndConnect()
     }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [onClose, validating])
+  }
+
+  const { containerRef, handleBackdropClick } = useModalTrapAndStepper<ConnectTab>({
+    isOpen: true,
+    onClose,
+    steps: CONNECT_STEPS,
+    currentStep: activeTab,
+    onStepChange: (tab) => {
+      setActiveTab(tab)
+      setError("")
+    },
+    onSubmit: handlePrimarySubmit,
+    isLoading: validating,
+    isDirty: isFormDirty,
+    onDirtyDismissPrevented: () => {
+      toast.warning("Unsaved account data. Press Esc again to discard and exit.")
+    },
+  })
 
   // ─── Three-Layer Paranoia: Client-side Cookie Normalizer & Live Format Sniffer ───
   const parsedCookieInfo = useMemo(() => {
@@ -282,13 +302,21 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onClick={handleBackdropClick}
+    >
       <motion.div
+        ref={containerRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connect-account-title"
         initial={{ opacity: 0, scale: 0.97, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className="w-full max-w-xl"
+        className="w-full max-w-xl outline-none"
       >
         <div className="rounded-xl bg-card border border-border text-card-foreground shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]">
           
@@ -300,7 +328,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
                   <Linkedin size={20} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                  <h2 id="connect-account-title" className="text-lg font-semibold tracking-tight text-foreground">
                     Connect LinkedIn Account
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -319,10 +347,12 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
               </button>
             </div>
 
-            {/* Tab Switcher: Stupidly Simple 2-Tab Choice */}
-            <div className="flex gap-2 mt-4 p-1 bg-muted/50 rounded-lg border border-border/60">
+            {/* Tab Switcher: 2-Tab Choice with Keyboard Steppers */}
+            <div role="tablist" className="flex gap-2 mt-4 p-1 bg-muted/50 rounded-lg border border-border/60">
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === "token"}
                 onClick={() => { setActiveTab("token"); setError(""); }}
                 className={cn(
                   "flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all text-center flex items-center justify-center gap-1.5",
@@ -333,10 +363,13 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
               >
                 <Clipboard size={13} />
                 <span>Paste Token / Cookies (15s)</span>
+                <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘1</kbd>
               </button>
 
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === "extension"}
                 onClick={() => { setActiveTab("extension"); setError(""); }}
                 className={cn(
                   "flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all text-center flex items-center justify-center gap-1.5",
@@ -347,6 +380,7 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
               >
                 <Zap size={13} />
                 <span>1-Click Extension Sync</span>
+                <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘2</kbd>
               </button>
             </div>
           </div>
@@ -581,7 +615,10 @@ export default function ConnectModal({ onClose, onAdd }: ConnectModalProps) {
                       <span>Validating Session via Dedicated Proxy...</span>
                     </>
                   ) : (
-                    <span>Validate & Connect Account</span>
+                    <span className="flex items-center gap-1.5">
+                      <span>Validate &amp; Connect Account</span>
+                      <kbd className="font-mono text-[9px] px-1.5 py-0.2 bg-black/20 text-white rounded border border-white/20">⌘↵</kbd>
+                    </span>
                   )}
                 </button>
               </div>

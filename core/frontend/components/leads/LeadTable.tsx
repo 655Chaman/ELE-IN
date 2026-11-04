@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react"
-import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download, RotateCw, Sliders, Send } from "lucide-react"
+import { Users, FileSpreadsheet, Compass, Search, Link2, Trash2, ChevronRight, AlertCircle, Plus, Download, RotateCw, Sliders, Send, Sparkles, Database, CheckCircle2 } from "lucide-react"
 import { TableSkeleton } from "../EleInSkeleton"
 import type { LeadList } from "./leads.types"
 import { StatusPill } from "@/components/StatusPill"
@@ -64,30 +64,113 @@ export function LeadTable({
           </motion.div>
         ) : lists.length === 0 ? (
           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
-            <div className="flex flex-col items-center justify-center py-20 border border-border/50 bg-card/40 backdrop-blur-sm text-center px-8 rounded-xl shadow-sm">
-              <div className="w-14 h-14 rounded-lg border border-border/60 bg-muted/40 flex items-center justify-center mb-5">
-                <Users size={22} className="text-primary" />
+            <div className="flex flex-col items-center justify-center py-12 md:py-16 border border-border/80 bg-card rounded-2xl shadow-xs px-6 max-w-4xl mx-auto">
+              {/* Top Badge & Header */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-primary text-xs font-semibold mb-4 shadow-2xs">
+                <Sparkles size={13} className="text-primary animate-pulse" />
+                <span>Audience Intelligence Launchpad</span>
               </div>
-              <h2 className="text-lg font-semibold tracking-tight text-foreground mb-2">
-                No lead lists found
+
+              <h2 className="text-xl md:text-2xl font-bold tracking-tight text-foreground text-center mb-2">
+                Build your high-intent prospect pipeline
               </h2>
-              <p className="text-xs text-muted-foreground leading-relaxed max-w-sm mb-4">
-                Import contacts from a CSV file, paste LinkedIn URLs, or sync directly from Sales Navigator to begin outreach.
+              <p className="text-xs md:text-sm text-muted-foreground text-center max-w-lg mb-8 leading-relaxed">
+                Import target accounts through your preferred channel. EleIn automatically validates vanity URLs, cleanses duplicates, and monitors profile health.
               </p>
-              <a
-                href="/template_leads.csv"
-                download
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6"
-              >
-                <Download size={12} /> Download CSV template
-              </a>
-              <button 
-                type="button"
-                onClick={onAddLeads}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 rounded-lg text-xs font-bold text-primary-foreground transition-all shadow-sm"
-              >
-                <Plus size={14} /> Import a lead list
-              </button>
+
+              {/* 3 Interactive Ingestion Vector Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-8">
+                {/* Vector 1: CSV Upload */}
+                <div className="p-5 rounded-xl border border-border bg-background/70 hover:border-primary/40 hover:bg-card/90 transition-all flex flex-col justify-between group text-left">
+                  <div>
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mb-3.5 group-hover:scale-105 transition-transform">
+                      <FileSpreadsheet size={20} className="text-primary" />
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <h3 className="text-sm font-semibold text-foreground">CSV / Excel Upload</h3>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mb-4">
+                      Upload your spreadsheet with auto column-mapping for names, companies, and LinkedIn profiles.
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <button
+                      type="button"
+                      onClick={onAddLeads}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Plus size={13} />
+                      <span>Upload CSV</span>
+                    </button>
+                    <a
+                      href="/template_leads.csv"
+                      download
+                      className="w-full flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1"
+                    >
+                      <Download size={11} />
+                      <span>Download Template</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Vector 2: Sales Navigator */}
+                <div className="p-5 rounded-xl border border-border bg-background/70 hover:border-primary/40 hover:bg-card/90 transition-all flex flex-col justify-between group text-left">
+                  <div>
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mb-3.5 group-hover:scale-105 transition-transform">
+                      <Compass size={20} className="text-primary" />
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <h3 className="text-sm font-semibold text-foreground">Sales Navigator Sync</h3>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mb-4">
+                      Paste saved search or account list URLs. Scrapes prospects with current titles and seniority levels.
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-border/60">
+                    <button
+                      type="button"
+                      onClick={onAddLeads}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <Compass size={13} className="text-primary" />
+                      <span>Sync Search URL</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Vector 3: Direct LinkedIn URLs */}
+                <div className="p-5 rounded-xl border border-border bg-background/70 hover:border-primary/40 hover:bg-card/90 transition-all flex flex-col justify-between group text-left">
+                  <div>
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mb-3.5 group-hover:scale-105 transition-transform">
+                      <Link2 size={20} className="text-primary" />
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <h3 className="text-sm font-semibold text-foreground">LinkedIn URLs</h3>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mb-4">
+                      Paste a quick batch of LinkedIn vanity profile URLs for immediate waterfall discovery and verification.
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-border/60">
+                    <button
+                      type="button"
+                      onClick={onAddLeads}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <Link2 size={13} className="text-primary" />
+                      <span>Paste Profiles</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rate Limit Protection Notice */}
+              <div className="w-full p-3 rounded-xl border border-border/60 bg-muted/30 flex items-center gap-2.5 text-xs text-muted-foreground">
+                <CheckCircle2 size={15} className="text-success shrink-0" />
+                <span>
+                  <strong className="text-foreground font-medium">Automatic Duplicate & Commercial Limit Filter:</strong> Leads enrolled across multiple lists are deduplicated so prospects never receive redundant touches.
+                </span>
+              </div>
             </div>
           </motion.div>
         ) : (

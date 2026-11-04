@@ -10,6 +10,10 @@ import { cn } from "@/lib/utils"
 import { fetchWithAuth } from "@/lib/apiClient"
 import { toast } from "sonner"
 import { AccountShieldVerificationModal } from "@/components/accounts/AccountShieldVerificationModal"
+import { useModalTrapAndStepper } from "@/hooks/useModalTrapAndStepper"
+
+const PREFLIGHT_STEPS = ["checklist", "simulator", "warmup", "shield"] as const
+type PreflightTab = typeof PREFLIGHT_STEPS[number]
 
 export interface PreflightCheckItem {
   id: string
@@ -92,17 +96,28 @@ export function CampaignPreflightModal({
   const [isLaunching, setIsLaunching] = useState(false)
   const isLaunchingRef = useRef(false)
 
-  // Escape key listener for accessible dismissal
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose()
-      }
+  const handlePrimarySubmit = () => {
+    if (loading || isLaunching || isBlocked) return
+    if (isWarningState && !acknowledgeWarnings) {
+      setAcknowledgeWarnings(true)
+      return
     }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, onClose])
+    if (data?.can_launch) {
+      handleLaunchClick()
+    }
+  }
+
+  // Keyboard accessibility: Hardened Focus Trap, Nested Dialog Suppression & Steppers (EPF Phase 2)
+  const { containerRef, handleBackdropClick } = useModalTrapAndStepper<PreflightTab>({
+    isOpen,
+    onClose,
+    steps: PREFLIGHT_STEPS,
+    currentStep: activeTab,
+    onStepChange: setActiveTab,
+    onSubmit: handlePrimarySubmit,
+    isLoading: loading || isLaunching,
+    hasNestedModal: showShieldModal, // PAUSES PARENT TRAP & ESCAPE WHEN HARDWARE SHIELD MODAL IS ACTIVE
+  })
 
   // Fetch preflight check on modal open
   const runCheck = async () => {
@@ -218,11 +233,11 @@ export function CampaignPreflightModal({
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+      onClick={handleBackdropClick}
     >
       <motion.div
+        ref={containerRef}
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
@@ -230,7 +245,7 @@ export function CampaignPreflightModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="campaign-preflight-title"
-        className="relative w-full max-w-4xl h-[90dvh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-foreground"
+        className="relative w-full max-w-4xl h-[90dvh] max-h-[90dvh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-foreground outline-none"
       >
         {/* Cockpit HUD Header */}
         <div className="relative px-6 py-4 border-b border-border bg-card flex items-center justify-between shrink-0">
@@ -294,6 +309,10 @@ export function CampaignPreflightModal({
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/40 px-2 py-1 rounded-md border border-border/50">
+              <span>Launch:</span>
+              <kbd className="font-mono text-[9px] px-1 py-0.2 bg-muted rounded border border-border/60">⌘↵</kbd>
+            </div>
             <button
               type="button"
               onClick={runCheck}
@@ -315,7 +334,7 @@ export function CampaignPreflightModal({
           </div>
         </div>
 
-        {/* Tab Navigator */}
+        {/* Tab Navigator with Stepper Shortcuts */}
         <div role="tablist" className="flex items-center gap-1 px-6 pt-2 border-b border-border bg-card text-xs font-medium shrink-0 overflow-x-auto">
           <button
             type="button"
@@ -331,6 +350,7 @@ export function CampaignPreflightModal({
           >
             <Shield size={13} />
             <span>5-Pillar Flight Checks</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘1</kbd>
             {data && (
               <span className={cn(
                 "text-[10px] px-1.5 py-0.2 rounded font-mono font-bold",
@@ -355,6 +375,7 @@ export function CampaignPreflightModal({
           >
             <Users size={13} />
             <span>Live Prospect POV</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘2</kbd>
             {data?.sample_previews && data.sample_previews.length > 0 && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             )}
@@ -374,6 +395,7 @@ export function CampaignPreflightModal({
           >
             <Clock size={13} />
             <span>Pacing &amp; Curfew Horizon</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘3</kbd>
           </button>
 
           <button
@@ -390,6 +412,7 @@ export function CampaignPreflightModal({
           >
             <ShieldCheck size={13} />
             <span>Residential IP Shield</span>
+            <kbd className="hidden sm:inline-block font-mono text-[9px] px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border border-border/60">⌘4</kbd>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono font-bold border border-emerald-500/20">
               Active
             </span>

@@ -1104,7 +1104,7 @@ class EleInNodeExecutor:
         if self.supabase and (linkedin_url or data.get("_lead_id") or data.get("lead_id")):
             lead_id = data.get("_lead_id") or data.get("lead_id")
             try:
-                safe_cols = "id, title, job_title, company, company_name, industry, location, email, phone, metadata, custom_fields"
+                safe_cols = "id, job_title, company_name, industry, location, email, metadata, variables"
                 query = self.supabase.table("leads").select(safe_cols)
                 if self.workspace_id:
                     query = query.eq("workspace_id", self.workspace_id)
@@ -1115,7 +1115,10 @@ class EleInNodeExecutor:
                 else:
                     res = None
                 if res and isinstance(res.data, list) and len(res.data) > 0 and isinstance(res.data[0], dict):
-                    row_val = self._extract_from_container(res.data[0], field_names)
+                    row_data = dict(res.data[0])
+                    row_data["title"] = row_data.get("job_title")
+                    row_data["company"] = row_data.get("company_name")
+                    row_val = self._extract_from_container(row_data, field_names)
                     if row_val is not None:
                         return row_val
             except Exception as _fld_err:

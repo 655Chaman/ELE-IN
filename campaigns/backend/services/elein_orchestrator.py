@@ -2784,7 +2784,6 @@ class EleInOrchestrator:
                 return
 
         if action_result.get("status") == "pool_exhausted":
-            import random
             backoff_secs = random.randint(30, 60)
             next_retry = datetime.now(timezone.utc) + timedelta(seconds=backoff_secs)
             logger.info(f"Browser pool exhausted for lead {state.get('opportunity_id')}. Rescheduling in {backoff_secs}s.")
@@ -2899,7 +2898,6 @@ class EleInOrchestrator:
                 return
 
             # Paranoia Layer 1 (AUDIT-05): Desynchronize thundering herd with randomized backoff jitter (30s - 90s)
-            import random
             jitter_seconds = random.randint(30, 90)
             self.update_state(state["id"], current_node["id"], "pending", datetime.now(timezone.utc) + timedelta(seconds=jitter_seconds), lease_token=lease_token)
             return
@@ -3377,18 +3375,45 @@ class EleInOrchestrator:
                 idempotency_raw = f"{state.get('enrollment_id')}_{current_node_id}"
                 idemp_key = hashlib.sha256(idempotency_raw.encode('utf-8')).hexdigest()
                 
+                camp_ver_id = state.get("campaign_version_id")
+                if not camp_ver_id and state.get("enrollment_id"):
+                    try:
+                        enr_res = self.supabase.table("campaign_enrollments").select("campaign_version_id").eq("id", state["enrollment_id"]).execute()
+                        if enr_res.data and enr_res.data[0].get("campaign_version_id"):
+                            camp_ver_id = enr_res.data[0]["campaign_version_id"]
+                    except Exception:
+                        pass
+                if not camp_ver_id and state.get("campaign_id"):
+                    try:
+                        ver_res = self.supabase.table("campaign_versions").select("id").eq("campaign_id", state["campaign_id"]).order("version", desc=True).limit(1).execute()
+                        if ver_res.data:
+                            camp_ver_id = ver_res.data[0]["id"]
+                    except Exception:
+                        pass
+
                 try:
-                    self.supabase.table("campaign_node_executions").insert({
+                    node_exec_payload = {
                         "idempotency_key": idemp_key,
                         "status": "running",
                         "node_id": current_node_id,
                         "workspace_id": state.get("workspace_id"),
                         "enrollment_id": state.get("enrollment_id"),
-                        "campaign_version_id": state.get("campaign_version_id"),
-                        "account_id": chosen_sender_id,
+                        "campaign_version_id": camp_ver_id,
                         "node_type": action,
                         "attempt": attempt_count
-                    }).execute()
+                    }
+                    for ins_attempt in range(3):
+                        try:
+                            self.supabase.table("campaign_node_executions").insert(node_exec_payload).execute()
+                            break
+                        except Exception as ins_err:
+                            err_s = str(ins_err)
+                            if "23505" in err_s:
+                                raise
+                            if ins_attempt < 2 and any(t in err_s for t in ("35", "Connection", "timeout", "timed out", "reset", "EAGAIN")):
+                                time.sleep(0.3 * (ins_attempt + 1))
+                                continue
+                            raise
                 except Exception as e:
                     # Collision detected!
                     # Check unique constraint (code 23505)
