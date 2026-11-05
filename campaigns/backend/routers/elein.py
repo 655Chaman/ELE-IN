@@ -245,9 +245,14 @@ def update_workspace_profile(
 from core.backend.services.credit_service import TIER_LIMITS
 
 @router.get("/workspaces/billing", response_model=dict)
-def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_id: str = Depends(get_current_workspace)):
+def get_billing_info(supabase: Client = Depends(get_service_client), workspace_id: str = Depends(get_current_workspace)):
+    svc = get_service_client() or supabase
     try:
-        rpc_result = supabase.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
+        rpc_result = None
+        try:
+            rpc_result = svc.rpc('get_credit_balance', {'p_workspace_id': workspace_id}).execute()
+        except Exception as rpc_err:
+            logger.warning(f"get_credit_balance RPC warning in billing info: {rpc_err}")
         raw_data = getattr(rpc_result, "data", None)
         data = raw_data if isinstance(raw_data, dict) else {}
         
@@ -257,7 +262,7 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
         
         active_campaigns = 0
         try:
-            camp_res = supabase.table("campaigns").select("id", count="exact").eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
+            camp_res = svc.table("campaigns").select("id", count="exact").eq("workspace_id", workspace_id).eq("status", "ACTIVE").execute()
             if camp_res.count:
                 active_campaigns = camp_res.count
         except Exception:
@@ -268,7 +273,7 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
         oto_expires_at = None
         oto_expired = False
         try:
-            inbound_check = supabase.table("messages").select("created_at").eq("workspace_id", workspace_id).eq("direction", "inbound").order("created_at", desc=False).limit(1).execute()
+            inbound_check = svc.table("messages").select("created_at").eq("workspace_id", workspace_id).eq("direction", "inbound").order("created_at", desc=False).limit(1).execute()
             if inbound_check.data:
                 first_win_at = inbound_check.data[0].get("created_at")
                 if first_win_at:
@@ -280,8 +285,8 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
         except Exception:
             pass
 
-        # Check platform owner override
-        ws_res = supabase.table("workspaces").select("tier, owner_id").eq("id", workspace_id).execute()
+        # Check platform owner override and workspace tier
+        ws_res = svc.table("workspaces").select("tier, owner_id").eq("id", workspace_id).execute()
         ws_row = ws_res.data[0] if ws_res.data else {}
         db_tier = normalize_tier(ws_row.get("tier") or plan)
         owner_override = os.environ.get("PLATFORM_OWNER_ID")
@@ -308,21 +313,22 @@ def get_billing_info(supabase: Client = Depends(get_supabase_client), workspace_
             "is_platform_owner": is_platform_owner,
             "first_win_at": first_win_at,
             "oto_expires_at": oto_expires_at,
-            "oto_expired": oto_expired
+            "oto_expired": oto_expired,
         }
     except Exception as e:
-        # If column doesn't exist yet, return safe defaults
+        logger.error(f"Error fetching billing info: {e}", exc_info=True)
         return {
-            "data_cleaning_credits": 1000,
-            "credits_remaining": 1000,
+            "data_cleaning_credits": 0,
+            "credits_remaining": 0,
+            "balance": 0,
             "plan_name": "Free Tier",
             "active_campaigns": 0,
             "tier": "FREE",
-            "tier_limits": TIER_LIMITS['FREE'],
+            "tier_limits": TIER_LIMITS["FREE"],
             "is_platform_owner": False,
             "first_win_at": None,
             "oto_expires_at": None,
-            "oto_expired": False
+            "oto_expired": False,
         }
 
 

@@ -1217,11 +1217,12 @@ async def get_billing_history(workspace_id: str = Depends(get_current_workspace)
 @router.get("/credits/balance")
 async def get_credit_balance_endpoint(
     workspace_id: str = Depends(get_current_workspace),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_service_client)
 ):
+    svc = get_service_client() or supabase
     try:
         # Check if caller workspace belongs to platform owner or has ENTERPRISE tier
-        ws_res = supabase.table("workspaces").select("tier, owner_id").eq("id", workspace_id).execute()
+        ws_res = svc.table("workspaces").select("tier, owner_id").eq("id", workspace_id).execute()
         ws_row = ws_res.data[0] if ws_res.data else {}
         owner_override = os.environ.get("PLATFORM_OWNER_ID")
         is_platform_owner = bool(owner_override and ws_row.get("owner_id") == owner_override)
@@ -1234,22 +1235,22 @@ async def get_credit_balance_endpoint(
                 "is_platform_owner": True
             }
 
-        result = supabase.rpc('get_credit_balance', {
+        result = svc.rpc('get_credit_balance', {
             'p_workspace_id': workspace_id
         }).execute()
-        res_data = result.data or {"balance": 0, "tier": "FREE", "used_this_month": 0}
+        res_data = result.data or {"balance": 0, "tier": normalize_tier(ws_row.get("tier", "FREE")), "used_this_month": 0}
         if isinstance(res_data, dict):
             res_data["is_platform_owner"] = False
+            if not res_data.get("tier") or res_data.get("tier") == "FREE":
+                res_data["tier"] = normalize_tier(ws_row.get("tier", "FREE"))
         return res_data
     except Exception as e:
         logger.warning(f"[Billing] get_credit_balance RPC failed, falling back to direct table query: {e}")
         try:
-            ws_res = supabase.table("workspaces").select("tier, data_cleaning_credits").eq("id", workspace_id).execute()
+            ws_res = svc.table("workspaces").select("tier, data_cleaning_credits").eq("id", workspace_id).execute()
             if ws_res.data:
                 ws_row = ws_res.data[0]
-                raw_tier = (ws_row.get("tier") or "FREE").upper()
-                if raw_tier == "GROWTH":
-                    raw_tier = "PRO"
+                raw_tier = normalize_tier(ws_row.get("tier") or "FREE")
                 return {
                     "balance": ws_row.get("data_cleaning_credits", 0) or 0,
                     "tier": raw_tier,
