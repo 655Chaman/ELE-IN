@@ -467,7 +467,14 @@ class DAGSimulationService:
                     condition_choice = mock_branches.get(node_type) or mock_branches.get(current_node_id) or "default"
                     chosen_target = None
                     for tgt, edge_obj in out_edges:
-                        edge_label = str(edge_obj.get("label") or edge_obj.get("branch") or "").strip()
+                        edge_label = str(
+                            edge_obj.get("sourceHandle")
+                            or edge_obj.get("source_handle")
+                            or edge_obj.get("condition")
+                            or edge_obj.get("label")
+                            or edge_obj.get("branch")
+                            or ""
+                        ).strip()
                         if condition_choice.lower() in edge_label.lower():
                             chosen_target = tgt
                             break

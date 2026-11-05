@@ -420,23 +420,73 @@ export const DAGSimulationDrawer: React.FC<DAGSimulationDrawerProps> = ({
     setTimeout(() => setCopiedIndex(null), 2000)
   }
 
-  // Layer 2 Paranoia & WCAG A11y: Escape key listener and body scroll lock
+  const drawerContainerRef = React.useRef<HTMLDivElement>(null)
+  const previousActiveElement = React.useRef<HTMLElement | null>(null)
+
+  // Layer 2 Paranoia & WCAG A11y: Escape key listener, Tab focus trap, focus restoration and body scroll lock
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+      previousActiveElement.current = null
+      return
+    }
+
+    previousActiveElement.current = document.activeElement as HTMLElement | null
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopPropagation()
         onClose()
+        return
+      }
+
+      if (e.key === "Tab" && drawerContainerRef.current) {
+        const focusable = Array.from(
+          drawerContainerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter(el => el.offsetParent !== null)
+
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first || !drawerContainerRef.current.contains(document.activeElement)) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last || !drawerContainerRef.current.contains(document.activeElement)) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
       }
     }
 
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
-    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", handleKeyDown, true)
 
     return () => {
       document.body.style.overflow = prevOverflow
-      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("keydown", handleKeyDown, true)
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
     }
   }, [isOpen, onClose])
 
@@ -460,6 +510,7 @@ export const DAGSimulationDrawer: React.FC<DAGSimulationDrawerProps> = ({
 
           {/* Slide-over Drawer Panel */}
           <motion.div
+            ref={drawerContainerRef}
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
