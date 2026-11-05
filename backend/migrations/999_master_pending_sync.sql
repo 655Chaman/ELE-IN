@@ -3071,11 +3071,25 @@ CREATE TABLE IF NOT EXISTS public.impossible_travel_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ DEFAULT now();
-ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMPTZ DEFAULT now();
-ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
-ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS channel TEXT;
-ALTER TABLE public.impossible_travel_logs ADD COLUMN IF NOT EXISTS time_delta_seconds NUMERIC(10, 2);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'impossible_travel_logs' AND column_name = 'detected_at') THEN
+        ALTER TABLE public.impossible_travel_logs ADD COLUMN detected_at TIMESTAMPTZ DEFAULT now();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'impossible_travel_logs' AND column_name = 'flagged_at') THEN
+        ALTER TABLE public.impossible_travel_logs ADD COLUMN flagged_at TIMESTAMPTZ DEFAULT now();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'impossible_travel_logs' AND column_name = 'created_at') THEN
+        ALTER TABLE public.impossible_travel_logs ADD COLUMN created_at TIMESTAMPTZ DEFAULT now();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'impossible_travel_logs' AND column_name = 'channel') THEN
+        ALTER TABLE public.impossible_travel_logs ADD COLUMN channel TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'impossible_travel_logs' AND column_name = 'time_delta_seconds') THEN
+        ALTER TABLE public.impossible_travel_logs ADD COLUMN time_delta_seconds NUMERIC(10, 2);
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'impossible_travel_logs columns notice: %', SQLERRM;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_impossible_travel_acc_time 
     ON public.impossible_travel_logs(account_id, detected_at DESC);
