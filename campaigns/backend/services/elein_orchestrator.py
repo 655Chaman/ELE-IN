@@ -2126,6 +2126,8 @@ class EleInOrchestrator:
             capture_error(e, context={"service": "elein_orchestrator", "event_type": "node_executed"})
 
     def process_lead(self, state: Dict[str, Any], lease_token: str):
+        if isinstance(state, dict) and state.get("workspace_id"):
+            self.current_workspace_id = state["workspace_id"]
         nodes = state["nodes"]
         edges = state["edges"]
 
@@ -3803,7 +3805,7 @@ class EleInOrchestrator:
         
         success = False
         try:
-            res = self.supabase.rpc("release_lead_claim", {
+            rpc_payload = {
                 "p_state_id": state_id,
                 "p_lease_token": lease_token,
                 "p_next_status": status,
@@ -3812,7 +3814,12 @@ class EleInOrchestrator:
                 "p_variables": variables,
                 "p_error_reason": error_reason,
                 "p_attempts": attempts
-            }).execute()
+            }
+            ws_id = getattr(self, "current_workspace_id", None) or getattr(self, "workspace_id", None)
+            if ws_id:
+                rpc_payload["p_workspace_id"] = str(ws_id)
+
+            res = self.supabase.rpc("release_lead_claim", rpc_payload).execute()
             if not res.data:
                 logger.warning(f"Failed to advance state {state_id} - lease {lease_token} may have expired.")
                 return False
