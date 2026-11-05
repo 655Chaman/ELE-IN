@@ -76,19 +76,73 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
     }
   };
 
-  // Paranoia Layer 1 & 2 (FLAW-FE-16): Handle Escape key dismissal gracefully
+  const modalContainerRef = React.useRef<HTMLDivElement>(null);
+  const previousActiveElement = React.useRef<HTMLElement | null>(null);
+
+  // Paranoia Layer 1 & 2 (FLAW-FE-16): Handle Escape key dismissal, Tab focus trap & Focus restoration
   React.useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === 'function'
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true });
+      }
+      previousActiveElement.current = null;
+      return;
+    }
+
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         handleCloseClick();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalContainerRef.current) {
+        const focusable = Array.from(
+          modalContainerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter((el: HTMLElement) => el.offsetParent !== null);
+
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === 'function'
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true });
+      }
+    };
   }, [isOpen, isVerifying, showExitIntent, step]);
 
   if (!isOpen) return null;
@@ -127,6 +181,7 @@ export const EleInPaywallModal: React.FC<EleInPaywallModalProps> = ({
       aria-labelledby="paywall-title"
     >
       <motion.div 
+        ref={modalContainerRef}
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}

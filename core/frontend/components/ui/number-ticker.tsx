@@ -47,8 +47,13 @@ export function NumberTicker({
     }
 
     if (isInView) {
+      const targetVal = direction === "down" ? 0 : safeValue
+      // Avoid SWR 30s background re-validation ticking spam if value has not changed
+      if (prevValueRef.current === safeValue && motionValue.get() === targetVal) {
+        return
+      }
       const timer = setTimeout(() => {
-        motionValue.set(direction === "down" ? 0 : safeValue)
+        motionValue.set(targetVal)
         prevValueRef.current = safeValue
       }, delay * 1000)
       return () => clearTimeout(timer)

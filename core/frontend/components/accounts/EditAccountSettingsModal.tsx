@@ -36,9 +36,12 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
   const isProxyLocked = Boolean(billing && !billing.tier_limits?.can_use_custom_proxies)
 
   const modalContainerRef = useRef<HTMLDivElement>(null)
+  const previousActiveElement = useRef<HTMLElement | null>(null)
 
-  // Layer 2 Paranoia: Close on Escape key when not loading & Tab focus trapping
+  // Layer 2 Paranoia: Close on Escape key when not loading, Tab focus trapping & Focus restoration
   React.useEffect(() => {
+    previousActiveElement.current = document.activeElement as HTMLElement | null
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !loading) {
         e.preventDefault()
@@ -76,7 +79,16 @@ export function EditAccountSettingsModal({ account, onClose, onSuccess }: EditAc
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+    }
   }, [onClose, loading])
 
   // Paranoia Layer 2: Detect unsaved changes (dirty checking)

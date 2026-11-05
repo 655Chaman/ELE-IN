@@ -311,7 +311,7 @@ export function AppLayout() {
                       );
                     })()}
                   </div>
-                  <ChevronDown size={14} className={`text-sidebar-foreground/40 transition-transform duration-200 group-hover:text-sidebar-foreground/80 shrink-0 ${isWorkspaceDropdownOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={14} className={`text-sidebar-foreground/70 transition-transform duration-200 group-hover:text-sidebar-foreground shrink-0 ${isWorkspaceDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 
                 {isWorkspaceDropdownOpen && (
@@ -383,14 +383,14 @@ export function AppLayout() {
                 onClick={() => {
                   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
                 }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-sidebar-accent/30 hover:bg-sidebar-accent/60 border border-sidebar-border/40 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-all text-xs cursor-pointer group shadow-2xs"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-sidebar-accent/30 hover:bg-sidebar-accent/60 border border-sidebar-border/40 text-sidebar-foreground/80 hover:text-sidebar-foreground transition-all text-xs cursor-pointer group shadow-2xs"
                 title="Search or execute actions (⌘K)"
               >
                 <div className="flex items-center gap-2">
-                  <Search size={13} className="text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80 transition-colors" />
+                  <Search size={13} className="text-sidebar-foreground/75 group-hover:text-sidebar-foreground transition-colors" />
                   <span className="text-[11px] font-medium">Quick search...</span>
                 </div>
-                <kbd className="text-[9px] font-mono font-bold bg-sidebar-border/40 px-1.5 py-0.5 rounded text-sidebar-foreground/50 border border-sidebar-border/60">
+                <kbd className="text-[9px] font-mono font-bold bg-sidebar-border/40 px-1.5 py-0.5 rounded text-sidebar-foreground/80 border border-sidebar-border/60">
                   ⌘K
                 </kbd>
               </button>
@@ -401,7 +401,7 @@ export function AppLayout() {
                   onClick={() => {
                     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
                   }}
-                  className="size-8 rounded-lg hover:bg-sidebar-accent/50 text-sidebar-foreground/60 hover:text-sidebar-foreground flex items-center justify-center transition-colors cursor-pointer border border-transparent hover:border-sidebar-border/50"
+                  className="size-8 rounded-lg hover:bg-sidebar-accent/50 text-sidebar-foreground/80 hover:text-sidebar-foreground flex items-center justify-center transition-colors cursor-pointer border border-transparent hover:border-sidebar-border/50"
                   title="Quick search (⌘K)"
                   aria-label="Quick search (⌘K)"
                 >
@@ -486,13 +486,13 @@ export function AppLayout() {
               {isSidebarOpen && <span className="text-[12px]">Panic Pause All</span>}
             </button>
             <div className={`w-full flex items-center ${isSidebarOpen ? 'justify-between px-3' : 'justify-center'}`}>
-               {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-sidebar-foreground/60 tracking-widest">Theme</span>}
+               {isSidebarOpen && <span className="text-[10px] uppercase font-semibold text-sidebar-foreground/80 tracking-widest">Theme</span>}
                <AnimatedThemeToggler variant="circle" theme={resolvedTheme} onThemeChange={setTheme} />
             </div>
             
             <Link 
               to="/mfa-setup"
-              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/80 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
               title={!isSidebarOpen ? "Personal Security (2FA)" : undefined}
             >
               <div className="shrink-0"><Shield size={14} strokeWidth={1.5} /></div>
@@ -502,7 +502,7 @@ export function AppLayout() {
             <button 
               type="button"
               onClick={() => signOut()}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sidebar-foreground/80 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
               title={!isSidebarOpen ? "Sign Out" : undefined}
             >
               <div className="shrink-0"><User size={14} strokeWidth={1.5} /></div>

@@ -374,7 +374,7 @@ export function EleInInbox() {
       return;
     }
 
-    const firstInboundThread = threads.find((t) => t.direction === 'inbound');
+    const firstInboundThread = threads.find((t) => String(t.direction || '').toLowerCase() === 'inbound');
     if (firstInboundThread) {
       const timer = setTimeout(() => {
         openMilestoneModal({
@@ -558,8 +558,8 @@ export function EleInInbox() {
         leadId: currentLead,
         messageText: finalText,
       },
-      async () => {
-        await executeActualSend(finalText, currentSender, currentLead, currentAccountId, clientDraftId, currentThread);
+      async (isKeepalive = false) => {
+        await executeActualSend(finalText, currentSender, currentLead, currentAccountId, clientDraftId, currentThread, isKeepalive);
       },
       (restoredText) => {
         // On Undo Send
@@ -580,7 +580,8 @@ export function EleInInbox() {
     leadId: string | null,
     targetAccountId?: string,
     clientDraftId?: string,
-    originThreadKey?: string | null
+    originThreadKey?: string | null,
+    isKeepalive = false
   ) => {
     isSendingRef.current = true;
     setIsSending(true);
@@ -602,6 +603,7 @@ export function EleInInbox() {
       setSessionErrorWarning(null);
       const res = await fetchWithAuth('/api/elein/inbox/reply', {
         method: 'POST',
+        keepalive: isKeepalive,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sender_name: senderName,
@@ -677,7 +679,7 @@ export function EleInInbox() {
 
     try {
       const thread_messages = (messages || []).map((m) => ({
-        sender_name: m.direction === 'outbound' ? 'You' : selectedSender,
+        sender_name: String(m.direction || '').toLowerCase() === 'outbound' ? 'You' : selectedSender,
         message_text: m.message_text,
         direction: m.direction,
         created_at: m.created_at,
@@ -922,7 +924,7 @@ export function EleInInbox() {
         if (outcomeFilter === 'UNREAD') {
           if ((t.unread_count ?? 0) <= 0) return false;
         } else if (outcomeFilter === 'INBOUND') {
-          if (t.direction !== 'inbound') return false;
+          if (String(t.direction || '').toLowerCase() !== 'inbound') return false;
         } else {
           const threadOutcome = threadOutcomes[t.thread_key];
           if (threadOutcome !== outcomeFilter) return false;
@@ -953,7 +955,7 @@ export function EleInInbox() {
     const res: Record<string, number> = {
       ALL: safeThreads.length,
       UNREAD: safeThreads.filter((t) => (t.unread_count ?? 0) > 0).length,
-      INBOUND: safeThreads.filter((t) => t.direction === 'inbound').length,
+      INBOUND: safeThreads.filter((t) => String(t.direction || '').toLowerCase() === 'inbound').length,
       INTERESTED: 0,
       MEETING_BOOKED: 0,
       FOLLOW_UP: 0,

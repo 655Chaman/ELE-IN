@@ -1500,6 +1500,14 @@ const parseHourFromTime = (t: string | undefined, fallback: number): number => {
   return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
 };
 
+const parseTimeToMinutes = (t: string | undefined, fallback: number = 0): number => {
+  if (!t || typeof t !== "string") return fallback;
+  const parts = t.trim().split(":");
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : fallback;
+};
+
 function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v: any) => void }) {
   const [localTz, setLocalTz] = useState<string>("");
   const [isStoStudioOpen, setIsStoStudioOpen] = useState<boolean>(false);
@@ -1743,7 +1751,7 @@ function StepSchedule({ state, onChange }: { state: any; onChange: (k: string, v
                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                />
              </div>
-             {(state.schedule?.startTime || "09:00") >= (state.schedule?.endTime || "17:00") && (
+             {parseTimeToMinutes(state.schedule?.startTime, 9 * 60) >= parseTimeToMinutes(state.schedule?.endTime, 17 * 60) && (
                <div className="flex items-center justify-between p-3 rounded-lg bg-destructive/10 border border-destructive/25 text-destructive text-xs mt-2">
                  <div className="flex items-center gap-2">
                    <AlertCircle size={15} className="shrink-0 text-destructive" />
@@ -2265,16 +2273,10 @@ function EleInCreateCampaignInner() {
     if (targetStep === 3) return { allowed: true, maxAllowedStep: 3 }
 
     // Prerequisite for Step 4 (Preview/Launch): Curfew window must be valid (Paranoia Layer 1: parse minutes to prevent ASCII string comparison bugs)
-    const parseTimeToMinutes = (t: string) => {
-      const parts = String(t || "").trim().split(":")
-      const h = parseInt(parts[0], 10) || 0
-      const m = parseInt(parts[1], 10) || 0
-      return h * 60 + m
-    }
     const startTime = form.schedule?.startTime || "09:00"
     const endTime = form.schedule?.endTime || "17:00"
-    const startMins = parseTimeToMinutes(startTime)
-    const endMins = parseTimeToMinutes(endTime)
+    const startMins = parseTimeToMinutes(startTime, 9 * 60)
+    const endMins = parseTimeToMinutes(endTime, 17 * 60)
     if (startMins >= endMins) {
       return {
         allowed: false,
@@ -2875,7 +2877,7 @@ function EleInCreateCampaignInner() {
     if (step === 3) {
       const startTime = state.schedule?.startTime || "09:00";
       const endTime = state.schedule?.endTime || "17:00";
-      if (startTime >= endTime) {
+      if (parseTimeToMinutes(startTime, 9 * 60) >= parseTimeToMinutes(endTime, 17 * 60)) {
         toast.error("Invalid Curfew Window", {
           description: `Sending start time (${startTime}) must precede end time (${endTime}). Overnight schedules are not supported.`
         });

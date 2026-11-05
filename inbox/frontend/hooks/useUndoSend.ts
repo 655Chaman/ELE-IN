@@ -7,19 +7,20 @@ interface PendingDispatch {
   leadId: string | null;
   messageText: string;
   timeoutId: NodeJS.Timeout;
-  dispatchFn: () => Promise<void>;
+  dispatchFn: (isKeepalive?: boolean) => Promise<void>;
 }
 
 export function useUndoSend() {
   const pendingQueueRef = useRef<Map<string, PendingDispatch>>(new Map());
 
   // Paranoia Layer 1 & 2: Flush pending dispatches if user closes or refreshes the tab mid-countdown
+  // Environmental resilience: Passes keepalive=true so browser does not terminate in-flight teardown requests
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (pendingQueueRef.current.size > 0) {
         pendingQueueRef.current.forEach((item) => {
           clearTimeout(item.timeoutId);
-          item.dispatchFn().catch(() => {});
+          item.dispatchFn(true).catch(() => {});
         });
         pendingQueueRef.current.clear();
       }
@@ -35,7 +36,7 @@ export function useUndoSend() {
         leadId: string | null;
         messageText: string;
       },
-      onActualDispatch: () => Promise<void>,
+      onActualDispatch: (isKeepalive?: boolean) => Promise<void>,
       onUndo: (restoredText: string) => void,
       delayMs: number = 4000
     ) => {

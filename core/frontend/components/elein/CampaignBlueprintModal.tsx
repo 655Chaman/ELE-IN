@@ -228,20 +228,76 @@ function CampaignBlueprintModalContent({
     }
   }, [isOpen, initialTab, preloadedBlueprint, formState?.campaignName, rootNodes])
 
-  // Escape key handler for accessible modal dismissal (Layer 2 Paranoia)
+  const modalContainerRef = useRef<HTMLDivElement>(null)
+  const previousActiveElement = useRef<HTMLElement | null>(null)
+
+  // Hardened Focus Trap, Escape key isolation & Focus restoration (Layer 2 Paranoia)
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+      previousActiveElement.current = null
+      return
+    }
+
+    previousActiveElement.current = document.activeElement as HTMLElement | null
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopPropagation()
         if (pendingReplaceConfirm) {
           setPendingReplaceConfirm(null)
         } else {
           onClose()
         }
+        return
+      }
+
+      if (e.key === "Tab" && modalContainerRef.current) {
+        const focusable = Array.from(
+          modalContainerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+          )
+        ).filter((el: HTMLElement) => el.offsetParent !== null)
+
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
       }
     }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", handleKeyDown, true)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true)
+      if (
+        previousActiveElement.current &&
+        document.contains(previousActiveElement.current) &&
+        typeof previousActiveElement.current.focus === "function"
+      ) {
+        previousActiveElement.current.focus({ preventScroll: true })
+      }
+    }
   }, [isOpen, onClose, pendingReplaceConfirm])
 
   // Refresh variable audit whenever importedBlueprint changes
@@ -565,6 +621,7 @@ function CampaignBlueprintModalContent({
       }}
     >
       <motion.div
+        ref={modalContainerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="blueprint-modal-title"
