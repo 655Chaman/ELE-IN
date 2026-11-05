@@ -34,6 +34,11 @@ class TestStage20LeadsCampaignHandshakeAndUXTelemetry(unittest.TestCase):
         self.mock_supabase = MagicMock()
         self.workspace_id = "ws_test_stage20"
         self.list_id = "list_camp_handshake_1"
+        self.svc_patcher = patch("campaigns.backend.routers.elein.get_service_client", return_value=self.mock_supabase)
+        self.svc_patcher.start()
+
+    def tearDown(self):
+        self.svc_patcher.stop()
 
     # =========================================================================
     # Layer 0: Foundational Layer (Campaign Join & Coalescence)

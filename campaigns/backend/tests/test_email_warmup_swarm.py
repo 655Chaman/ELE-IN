@@ -1,3 +1,4 @@
+import copy
 import pytest
 from starlette.testclient import TestClient
 
@@ -13,8 +14,18 @@ from campaigns.backend.services.warmup_service import (
     toggle_warmup_status,
     get_warmup_telemetry,
     normalize_domain,
-    sanitize_text
+    sanitize_text,
+    _IN_MEMORY_WARMUP_ACCOUNTS
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_in_memory_warmup_stores():
+    """Isolates in-memory warmup state across test cases and test files."""
+    orig_accounts = copy.deepcopy(_IN_MEMORY_WARMUP_ACCOUNTS)
+    yield
+    _IN_MEMORY_WARMUP_ACCOUNTS.clear()
+    _IN_MEMORY_WARMUP_ACCOUNTS.extend(orig_accounts)
 
 
 class FailingTableMock:
@@ -29,6 +40,19 @@ class FailingTableMock:
 
 class FailingSupabaseMock:
     def table(self, table_name: str):
+        if table_name == "workspaces":
+            class WorkspacesMock:
+                def select(self, *args, **kwargs):
+                    return self
+                def eq(self, *args, **kwargs):
+                    return self
+                def single(self):
+                    return self
+                def execute(self):
+                    class Res:
+                        data = [{"tier": "PRO"}]
+                    return Res()
+            return WorkspacesMock()
         return FailingTableMock()
 
 
@@ -101,6 +125,8 @@ class TestWarmupServiceFleetOperations:
         assert toggled["warmup_status"] == "paused"
 
     def test_simulate_swarm_cycle(self):
+        create_warmup_mailbox("ws-test-warmup", "swarm_sender_1@b2b.org", "Sender 1", supabase=None)
+        create_warmup_mailbox("ws-test-warmup", "swarm_sender_2@b2b.org", "Sender 2", supabase=None)
         result = simulate_swarm_cycle(workspace_id="ws-test-warmup", supabase=None)
         assert result["success"] is True
         assert result["exchanges_sent"] >= 1

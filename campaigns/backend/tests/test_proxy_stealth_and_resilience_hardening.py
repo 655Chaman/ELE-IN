@@ -95,6 +95,7 @@ class TestProxyStealthAndResilienceHardening(unittest.TestCase):
             "session_cookies_encrypted": "hexdata"
         }]
         mock_supabase.table().select().eq().execute.return_value = mock_accounts_res
+        mock_supabase.table().select().eq().order().limit().execute.return_value = mock_accounts_res
         
         mock_proxies_res = MagicMock()
         mock_proxies_res.data = [{
@@ -143,6 +144,7 @@ class TestProxyStealthAndResilienceHardening(unittest.TestCase):
             "session_cookies_encrypted": "hexdata"
         }]
         mock_supabase.table().select().eq().execute.return_value = mock_accounts_res
+        mock_supabase.table().select().eq().order().limit().execute.return_value = mock_accounts_res
         
         mock_proxies_res = MagicMock()
         mock_proxies_res.data = [{
@@ -282,7 +284,7 @@ class TestProxyStealthAndResilienceHardening(unittest.TestCase):
             self.assertEqual(summary["synced"], 1)
             self.assertEqual(summary["errors"], 0)
             mock_supabase.rpc.assert_called_with("store_account_secret", {"p_secret": "bW9jay1kZWstYnl0ZXM="})
-            upsert_args = mock_supabase.table().upsert.call_args[0][0]
+            upsert_args = mock_supabase.table().insert.call_args[0][0] if mock_supabase.table().insert.call_args else mock_supabase.table().upsert.call_args[0][0]
             self.assertEqual(upsert_args["secret_ref"], "vault-ref-webshare-1")
             self.assertIn("password_encrypted", upsert_args)
 

@@ -148,6 +148,19 @@ def extract_ip_subnet(host_or_ip: Optional[str]) -> Optional[str]:
             pass
         if "." in raw:
             parts = raw.lower().split(".")
+            if len(parts) >= 3:
+                two_part_suffix = f"{parts[-2]}.{parts[-1]}"
+                known_multi_part = {
+                    "co.uk", "org.uk", "gov.uk", "ac.uk", "net.uk", "sch.uk",
+                    "com.au", "net.au", "org.au", "edu.au", "gov.au",
+                    "co.in", "net.in", "org.in", "gen.in", "firm.in", "ind.in",
+                    "co.jp", "ne.jp", "or.jp", "go.jp", "ac.jp",
+                    "co.nz", "net.nz", "org.nz",
+                    "com.br", "net.br", "org.br",
+                    "co.za", "org.za", "web.za"
+                }
+                if two_part_suffix in known_multi_part or (parts[-2] in {"co", "com", "org", "net", "gov", "edu", "ac", "ne", "or"} and len(parts[-1]) == 2):
+                    return f"{parts[-3]}.{parts[-2]}.{parts[-1]}"
             if len(parts) >= 2:
                 return f"{parts[-2]}.{parts[-1]}"
     return raw.lower()

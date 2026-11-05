@@ -63,6 +63,19 @@ class FailingTableMock:
 class FailingSupabaseMock:
     """Supabase client simulator when database is completely down or unmigrated."""
     def table(self, table_name: str):
+        if table_name == "workspaces":
+            class WorkspacesMock:
+                def select(self, *args, **kwargs):
+                    return self
+                def eq(self, *args, **kwargs):
+                    return self
+                def single(self):
+                    return self
+                def execute(self):
+                    res = MagicMock()
+                    res.data = [{"tier": "PRO"}]
+                    return res
+            return WorkspacesMock()
         return FailingTableMock()
 
 
@@ -103,8 +116,12 @@ class WorkingSupabaseMock:
     """Healthy Supabase client simulator with preloaded table datasets."""
     def __init__(self, data_by_table: Optional[Dict[str, List[Dict[str, Any]]]] = None):
         self.data_by_table = data_by_table or {}
+        if "workspaces" not in self.data_by_table:
+            self.data_by_table["workspaces"] = [{"id": "ws-test-advocacy", "tier": "PRO"}]
 
     def table(self, table_name: str):
+        if table_name == "workspaces" and "workspaces" not in self.data_by_table:
+            return WorkingTableMock([{"id": "ws-test-advocacy", "tier": "PRO"}])
         return WorkingTableMock(self.data_by_table.get(table_name, []))
 
 

@@ -267,9 +267,9 @@ class TestStage28SenderPodsAndDeliverabilityParanoiaHardening(unittest.TestCase)
             elif tbl_name == "accounts":
                 t.select.return_value.in_.return_value.execute.return_value = MagicMock(
                     data=[
-                        {"id": "acc_bad_w1", "status": "ACTIVE"},
-                        {"id": "acc_bad_w2", "status": "ACTIVE"},
-                        {"id": "acc_bad_w3", "status": "ACTIVE"}
+                        {"id": "acc_bad_w1", "status": "ACTIVE", "workspace_id": self.workspace_id},
+                        {"id": "acc_bad_w2", "status": "ACTIVE", "workspace_id": self.workspace_id},
+                        {"id": "acc_bad_w3", "status": "ACTIVE", "workspace_id": self.workspace_id}
                     ]
                 )
             elif tbl_name == "sender_pod_audit_logs":

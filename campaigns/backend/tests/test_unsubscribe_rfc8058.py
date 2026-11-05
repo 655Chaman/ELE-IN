@@ -184,15 +184,21 @@ class TestRFC8058Unsubscribe(unittest.TestCase):
         with patch("campaigns.backend.routers.unsubscribe.process_one_click_unsubscribe") as mock_process:
             mock_process.return_value = {"status": "success", "unsubscribed": True}
 
-            # Test /api/elein/unsubscribe
-            resp = self.client.get(f"/api/elein/unsubscribe?token={token}")
+            # Test /api/elein/unsubscribe prompt card (anti-scanner defense)
+            resp_prompt = self.client.get(f"/api/elein/unsubscribe?token={token}")
+            self.assertEqual(resp_prompt.status_code, 200)
+            self.assertIn("text/html", resp_prompt.headers["content-type"])
+            self.assertIn("Confirm Unsubscription", resp_prompt.text)
+
+            # Test /api/elein/unsubscribe with confirm=true
+            resp = self.client.get(f"/api/elein/unsubscribe?token={token}&confirm=true")
             self.assertEqual(resp.status_code, 200)
             self.assertIn("text/html", resp.headers["content-type"])
             self.assertIn("You have been successfully unsubscribed from this campaign.", resp.text)
             self.assertIn(self.email, resp.text)
 
-            # Test root /unsubscribe
-            resp2 = self.client.get(f"/unsubscribe?token={token}")
+            # Test root /unsubscribe with confirm=true
+            resp2 = self.client.get(f"/unsubscribe?token={token}&confirm=true")
             self.assertEqual(resp2.status_code, 200)
             self.assertIn("text/html", resp2.headers["content-type"])
             self.assertIn("You have been successfully unsubscribed from this campaign.", resp2.text)

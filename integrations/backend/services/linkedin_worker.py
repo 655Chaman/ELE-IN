@@ -512,6 +512,18 @@ class LinkedInWorker:
                     csi: function() {}
                 };
             }
+
+            // Paranoia Layer 1: WebRTC STUN/TURN Leak Protection (Eradicates FLAW-22)
+            // Force iceTransportPolicy = 'relay' to prevent exposing local host/datacenter IP candidates
+            if (typeof RTCPeerConnection !== 'undefined') {
+                const origRTC = RTCPeerConnection;
+                window.RTCPeerConnection = function(config, constraints) {
+                    const cfg = config ? Object.assign({}, config) : {};
+                    cfg.iceTransportPolicy = 'relay';
+                    return new origRTC(cfg, constraints);
+                };
+                window.RTCPeerConnection.prototype = origRTC.prototype;
+            }
         """.replace("V_REPLACE", vendor).replace("R_REPLACE", renderer).replace("LANG_REPLACE", languages_json)
         
         context.add_init_script(script)
