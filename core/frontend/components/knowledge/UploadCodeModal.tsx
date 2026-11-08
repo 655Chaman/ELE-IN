@@ -1,5 +1,5 @@
 import { useState, useRef } from "react"
-import { Cpu, Terminal, Shield, UploadCloud, FileCode2, Binary, Lock, CheckCircle2, AlertCircle } from "lucide-react"
+import { Cpu, Terminal, Shield, UploadCloud, FileCode2, Binary, Lock, CheckCircle2, AlertCircle, Globe, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { friendlyToast } from "../FriendlyError"
 import { fetchWithAuth, fetcher } from "@/lib/apiClient"
@@ -13,6 +13,24 @@ export function UploadCodeModal({ mutateAssets }: { mutateAssets: () => void }) 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [targetUrl, setTargetUrl] = useState("")
+  const [isProfiling, setIsProfiling] = useState(false)
+  const [profileResult, setProfileResult] = useState<{
+    profile: {
+      domain: string
+      url: string
+      frameworks: string[]
+      integrations: string[]
+      storage_mechanisms: string[]
+      discovered_endpoints: string[]
+      wasm_detected: boolean
+    }
+    battlecards: Array<{
+      trigger: string
+      playbook: string
+    }>
+  } | null>(null)
+
   const { openPaywall } = usePaywall()
 
   const { data: billingData } = useSWR<{ tier?: string }>('/api/elein/workspaces/billing', fetcher)
@@ -101,6 +119,47 @@ export function UploadCodeModal({ mutateAssets }: { mutateAssets: () => void }) 
     const file = e.dataTransfer.files?.[0]
     if (!file) return
     uploadCodeFile(file)
+  }
+
+  const handleProfileUrl = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const clean = targetUrl.trim()
+    if (!clean) {
+      toast.error("Please enter a target URL to profile.")
+      return
+    }
+    if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+      toast.error("Invalid URL: must start with http:// or https://")
+      return
+    }
+
+    setIsProfiling(true)
+    try {
+      const res = await fetchWithAuth("/api/assets/knowledge/profile-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: clean })
+      })
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        let detail = errorText
+        try {
+          const parsed = JSON.parse(errorText)
+          detail = parsed.detail || detail
+        } catch (_) {}
+        throw new Error(detail)
+      }
+
+      const data = await res.json()
+      setProfileResult(data)
+      toast.success(`Successfully profiled ${data.profile?.domain || clean}! Generated ${data.battlecards?.length || 0} battlecards saved to playbooks.`)
+      mutateAssets()
+    } catch (err: any) {
+      friendlyToast("Failed to profile target URL", err)
+    } finally {
+      setIsProfiling(false)
+    }
   }
 
   return (
@@ -211,6 +270,138 @@ export function UploadCodeModal({ mutateAssets }: { mutateAssets: () => void }) 
           <span>·</span>
           <span>Max 25MB</span>
         </div>
+      </div>
+
+      {/* ── Live Target Web-App Profiler Card ── */}
+      <div className="rounded-xl border border-border/50 bg-card/40 p-5 space-y-4 text-left">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 flex items-center justify-center shrink-0">
+              <Globe size={16} />
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
+                <span>Live Target Web-App Profiler</span>
+                <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
+                  On-The-Fly AST
+                </span>
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Decompile any prospect or competitor web-app to discover client scripts, frameworks, and auto-generate battlecards.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleProfileUrl} className="flex gap-2">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
+              <Globe size={14} />
+            </div>
+            <input
+              type="url"
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              placeholder="https://app.prospect-or-competitor.com"
+              disabled={isProfiling}
+              className="w-full bg-background border border-border/60 rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isProfiling || !targetUrl.trim()}
+            className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:pointer-events-none shrink-0"
+          >
+            {isProfiling ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Decompiling Bundles...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} />
+                <span>Profile & Generate Battlecards</span>
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Profiler Output Results */}
+        {profileResult && (
+          <div className="mt-4 pt-4 border-t border-border/40 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-foreground">
+                  Architecture Fingerprint:
+                </span>
+                <span className="text-xs font-mono text-cyan-500 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                  {profileResult.profile.domain}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProfileResult(null)}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+
+            {/* Badges */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {profileResult.profile.wasm_detected ? (
+                <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-mono flex items-center gap-1">
+                  <Binary size={11} /> Wasm Module Detected
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-muted/50 border border-border/40 text-muted-foreground text-[10px] font-mono">
+                  Pure JS Client
+                </span>
+              )}
+
+              {profileResult.profile.frameworks.map((fw) => (
+                <span key={fw} className="px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-mono">
+                  {fw}
+                </span>
+              ))}
+
+              {profileResult.profile.integrations.map((itg) => (
+                <span key={itg} className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+                  {itg}
+                </span>
+              ))}
+
+              {profileResult.profile.discovered_endpoints?.length > 0 && (
+                <span className="px-2 py-0.5 rounded-md bg-muted/60 border border-border/40 text-muted-foreground text-[10px] font-mono">
+                  {profileResult.profile.discovered_endpoints.length} API Routes Mapped
+                </span>
+              )}
+            </div>
+
+            {/* Generated Battlecards */}
+            {profileResult.battlecards?.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-500">
+                  <CheckCircle2 size={13} />
+                  <span>Synthesized & Saved to Objection Playbooks:</span>
+                </div>
+                <div className="space-y-2">
+                  {profileResult.battlecards.map((b, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-background/80 border border-border/50 text-xs space-y-1">
+                      <div className="font-semibold text-foreground flex items-center justify-between">
+                        <span className="text-cyan-400">Trigger: {b.trigger}</span>
+                        <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Saved</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        {b.playbook}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

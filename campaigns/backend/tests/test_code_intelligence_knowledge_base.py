@@ -21,7 +21,12 @@ from knowledge.backend.services.code_intelligence_service import (
     WASM_MAGIC
 )
 from knowledge.backend.services.knowledge_service import KnowledgeService
-from knowledge.backend.routers.assets import add_knowledge_code, retry_knowledge_asset
+from knowledge.backend.routers.assets import (
+    add_knowledge_code,
+    retry_knowledge_asset,
+    profile_knowledge_target_url,
+    UrlProfileRequest
+)
 
 
 class TestCodeIntelligenceKnowledgeBase(unittest.IsolatedAsyncioTestCase):
@@ -341,6 +346,155 @@ class TestCodeIntelligenceKnowledgeBase(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(resp["status"], "retrying")
             self.assertEqual(resp["asset_id"], self.asset_id)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STAGE 2: TARGET URL CODE PROFILER & BATTLECARD GENERATION
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @patch("requests.get")
+    def test_profile_target_url_extracts_scripts_and_tech_stack(self, mock_get):
+        """
+        Layer 0 & 1: Target URL profiler discovers script references, fetches bundles,
+        and analyzes client architecture using AST patterns.
+        """
+        html_page = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="/_next/static/chunks/main-app.js"></script>
+        </head>
+        <body>
+            <div id="root"></div>
+            <script>
+                // inline script
+                console.log("Analytics init");
+                fetch('/api/v2/telemetry/event');
+            </script>
+        </body>
+        </html>
+        """
+        js_bundle = """
+        import React from 'react';
+        import * as Sentry from '@sentry/browser';
+        import { loadStripe } from '@stripe/stripe-js';
+        fetch('/api/v1/auth/login');
+        """
+
+        def side_effect(url, **kwargs):
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            if "main-app.js" in url:
+                mock_resp.text = js_bundle
+            else:
+                mock_resp.text = html_page
+            return mock_resp
+
+        mock_get.side_effect = side_effect
+
+        with patch("core.backend.core.validators.is_safe_ssrf_url", return_value=True):
+            profile = CodeIntelligenceService.profile_target_url("https://linear.app")
+
+            self.assertEqual(profile["domain"], "linear.app")
+            self.assertIn("React", profile["frameworks"])
+            self.assertIn("Sentry", profile["integrations"])
+            self.assertIn("Stripe", profile["integrations"])
+            self.assertIn("/api/v1/auth/login", profile["discovered_endpoints"])
+            self.assertIn("/api/v2/telemetry/event", profile["discovered_endpoints"])
+            self.assertIn("# Technical Architecture & Code Intelligence: linear.app", profile["markdown_profile"])
+
+    def test_generate_technical_battlecards_persists_to_objections(self):
+        """
+        Layer 0 & 2: Transforms extracted tech profile into actionable Objection Playbooks
+        and persists them directly via PersonaService.create_objection.
+        """
+        tech_profile = {
+            "domain": "acme-corp.com",
+            "frameworks": ["React", "Next.js"],
+            "integrations": ["PostHog"],
+            "storage_mechanisms": ["localStorage"],
+            "discovered_endpoints": ["/api/v1/checkout"],
+            "wasm_detected": False
+        }
+
+        mock_supabase = MagicMock()
+
+        with patch("admin.backend.services.persona_service.PersonaService.create_objection") as mock_create_obj:
+            battlecards = CodeIntelligenceService.generate_technical_battlecard(
+                target_name="acme-corp.com",
+                tech_profile=tech_profile,
+                workspace_id=self.workspace_id,
+                supabase=mock_supabase
+            )
+
+            self.assertGreaterEqual(len(battlecards), 3)
+            triggers = [b["trigger"] for b in battlecards]
+            self.assertTrue(any("React" in t for t in triggers))
+            self.assertTrue(any("LinkedIn Bot Detection" in t for t in triggers))
+            self.assertTrue(any("PostHog" in t for t in triggers))
+
+            # Verify PersonaService.create_objection was invoked for persistence
+            self.assertEqual(mock_create_obj.call_count, len(battlecards))
+            first_call_args = mock_create_obj.call_args_list[0]
+            self.assertEqual(first_call_args[1]["workspace_id"], self.workspace_id)
+            self.assertIn("trigger", first_call_args[1]["data"])
+            self.assertIn("playbook", first_call_args[1]["data"])
+
+    def test_profile_url_endpoint_validates_ssrf_and_schema(self):
+        """
+        Layer 1 & 2: Validates URL format and rejects unsafe loopback/private IP SSRF requests.
+        """
+        mock_supabase = MagicMock()
+
+        # Test invalid scheme
+        invalid_req = UrlProfileRequest(url="ftp://internal-service.local/dump")
+        with self.assertRaises(HTTPException) as ctx1:
+            profile_knowledge_target_url(
+                payload=invalid_req,
+                supabase=mock_supabase,
+                workspace_id=self.workspace_id
+            )
+        self.assertEqual(ctx1.exception.status_code, 400)
+        self.assertIn("must begin with http:// or https://", ctx1.exception.detail)
+
+        # Test SSRF rejection
+        ssrf_req = UrlProfileRequest(url="http://127.0.0.1:8000/secret")
+        with patch("core.backend.core.validators.is_safe_ssrf_url", return_value=False):
+            with self.assertRaises(HTTPException) as ctx2:
+                profile_knowledge_target_url(
+                    payload=ssrf_req,
+                    supabase=mock_supabase,
+                    workspace_id=self.workspace_id
+                )
+            self.assertEqual(ctx2.exception.status_code, 400)
+            self.assertIn("Target URL rejected due to security safety constraints", ctx2.exception.detail)
+
+        # Test valid profiling flow
+        valid_req = UrlProfileRequest(url="https://github.com")
+        mock_profile = {
+            "domain": "github.com",
+            "url": "https://github.com",
+            "frameworks": ["React"],
+            "integrations": [],
+            "storage_mechanisms": [],
+            "discovered_endpoints": [],
+            "wasm_detected": False,
+            "markdown_profile": "# GitHub Profile"
+        }
+        mock_battlecards = [{"trigger": "Test", "playbook": "Test"}]
+
+        with patch("core.backend.core.validators.is_safe_ssrf_url", return_value=True), \
+             patch("knowledge.backend.services.code_intelligence_service.CodeIntelligenceService.profile_target_url", return_value=mock_profile), \
+             patch("knowledge.backend.services.code_intelligence_service.CodeIntelligenceService.generate_technical_battlecard", return_value=mock_battlecards):
+
+            res = profile_knowledge_target_url(
+                payload=valid_req,
+                supabase=mock_supabase,
+                workspace_id=self.workspace_id
+            )
+
+            self.assertEqual(res["status"], "success")
+            self.assertEqual(res["profile"]["domain"], "github.com")
+            self.assertEqual(len(res["battlecards"]), 1)
 
 
 if __name__ == "__main__":

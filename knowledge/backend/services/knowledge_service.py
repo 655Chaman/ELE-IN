@@ -216,6 +216,17 @@ class KnowledgeService:
                 
             if resp.status_code == 200:
                 html = resp.text
+
+                # Deep Code & Technical Architecture Profiling (REA AST Engine)
+                tech_markdown = ""
+                try:
+                    from knowledge.backend.services.code_intelligence_service import CodeIntelligenceService
+                    tech_prof = CodeIntelligenceService.profile_target_url(url, html=html)
+                    if tech_prof.get("frameworks") or tech_prof.get("integrations") or tech_prof.get("discovered_endpoints"):
+                        tech_markdown = tech_prof.get("markdown_profile", "")
+                except Exception as tp_err:
+                    logger.debug(f"[KB] URL tech profiling skipped: {tp_err}")
+
                 try:
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(html, "html.parser")
@@ -230,6 +241,9 @@ class KnowledgeService:
                     text = re.sub(r'\s+', ' ', clean).strip()
 
                 text = re.sub(r'\n{3,}', '\n\n', text).strip()
+                if tech_markdown:
+                    text = f"{text}\n\n{tech_markdown}"
+
                 if len(text) >= 50:
                     logger.info(f"[KB] Tier 2 (Direct HTTP) successfully extracted {len(text)} chars from {url}")
                     return text
@@ -319,6 +333,21 @@ class KnowledgeService:
             )
             KnowledgeService._finalize_asset_processing(supabase, asset_id, workspace_id, "synced")
             logger.info(f"[KB] URL asset {asset_id} synced")
+
+            # Auto-generate Technical Objection Playbooks from URL profile
+            try:
+                from knowledge.backend.services.code_intelligence_service import CodeIntelligenceService
+                from urllib.parse import urlparse
+                domain = urlparse(url).netloc or "target"
+                tech_prof = CodeIntelligenceService.profile_target_url(url)
+                CodeIntelligenceService.generate_technical_battlecard(
+                    target_name=domain,
+                    tech_profile=tech_prof,
+                    workspace_id=workspace_id,
+                    supabase=supabase
+                )
+            except Exception as bc_err:
+                logger.debug(f"[KB] Auto-battlecard generation skipped: {bc_err}")
 
         except Exception as e:
             logger.error(f"[KB] process_url_bg failed for {asset_id}: {e}")

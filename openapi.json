@@ -15640,6 +15640,50 @@
         }
       }
     },
+    "/api/assets/knowledge/profile-url": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Profile Knowledge Target Url",
+        "description": "Reverse-engineers and profiles target web-app URL using REA AST & client-bundle inspection.\nExtracts frameworks, APIs, Wasm, integrations, and auto-generates technical objection battlecards.",
+        "operationId": "profile_knowledge_target_url_api_assets_knowledge_profile_url_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrlProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Profile Knowledge Target Url Api Assets Knowledge Profile Url Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assets/knowledge/assets/{asset_id}": {
       "delete": {
         "tags": [
@@ -32120,6 +32164,19 @@
           "company_name"
         ],
         "title": "UpsertAccountPayload"
+      },
+      "UrlProfileRequest": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "UrlProfileRequest"
       },
       "UrlUpload": {
         "properties": {

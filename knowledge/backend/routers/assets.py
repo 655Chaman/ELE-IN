@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,9 @@ from core.backend.services.job_queue import enqueue_job
 import base64
 
 class UrlUpload(BaseModel):
+    url: str
+
+class UrlProfileRequest(BaseModel):
     url: str
 
 class TextUpload(BaseModel):
@@ -319,6 +322,45 @@ async def add_knowledge_url(
         raise HTTPException(status_code=500, detail="Failed to enqueue URL processing job. Please try again.")
 
     return {"status": "success", "asset": asset}
+
+@router.post("/knowledge/profile-url", response_model=Dict[str, Any])
+def profile_knowledge_target_url(
+    payload: UrlProfileRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """
+    Reverse-engineers and profiles target web-app URL using REA AST & client-bundle inspection.
+    Extracts frameworks, APIs, Wasm, integrations, and auto-generates technical objection battlecards.
+    """
+    clean_url = (payload.url or "").strip()
+    if not clean_url or not clean_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL: must begin with http:// or https://")
+
+    from core.backend.core.validators import is_safe_ssrf_url
+    if not is_safe_ssrf_url(clean_url):
+        raise HTTPException(status_code=400, detail="Target URL rejected due to security safety constraints (SSRF protection).")
+
+    try:
+        from knowledge.backend.services.code_intelligence_service import CodeIntelligenceService
+        profile = CodeIntelligenceService.profile_target_url(clean_url)
+        target_name = profile.get("domain", "target")
+        battlecards = CodeIntelligenceService.generate_technical_battlecard(
+            target_name=target_name,
+            tech_profile=profile,
+            workspace_id=workspace_id,
+            supabase=supabase
+        )
+        return {
+            "status": "success",
+            "profile": profile,
+            "battlecards": battlecards
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[CodeIntelligence] Failed profiling URL {clean_url}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to profile URL: {str(e)}")
 
 @router.delete("/knowledge/assets/{asset_id}")
 def delete_knowledge_asset(
