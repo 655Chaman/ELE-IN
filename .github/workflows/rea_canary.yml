@@ -1,8 +1,8 @@
-name: REA Voyager Canary & Schema Drift Detection
+name: REA Voyager Canary & Schema Drift Sentinel
 
 on:
   schedule:
-    # Runs every Thursday at 23:00 UTC (LinkedIn typically deploys schema updates mid-to-late week)
+    # Runs every Thursday at 23:00 UTC (pre-empting Friday morning campaign worker dispatch)
     - cron: '0 23 * * 4'
   workflow_dispatch:
     inputs:
@@ -10,6 +10,20 @@ on:
         description: 'Directory or unpacked extension to analyze'
         required: false
         default: 'extension'
+      create_github_issue:
+        description: 'Create an automated GitHub issue if schema drift is detected'
+        type: boolean
+        required: false
+        default: true
+      fail_on_critical:
+        description: 'Fail CI job if CRITICAL bot/challenge drift is detected'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   canary-audit:
@@ -29,15 +43,68 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Execute REA Canary Analysis Pipeline
+      - name: Set up Java Development Kit (OpenJDK 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Execute REA Canary Sentinel Pipeline
+        id: run_canary
+        env:
+          GITHUB_STEP_SUMMARY: ${{ github.step_summary }}
         run: |
           chmod +x bin/rea-canary-voyager.sh
           TARGET_DIR="${{ github.event.inputs.target_dir || 'extension' }}"
-          ./bin/rea-canary-voyager.sh "$TARGET_DIR" /tmp/rea_canary_output.json
+          ./bin/rea-canary-voyager.sh "$TARGET_DIR" \
+            /tmp/rea_canary_output.json \
+            /tmp/rea_canary_drift.json \
+            /tmp/rea_canary_summary.md
 
-      - name: Upload Canary Report Artifact
+      - name: Evaluate Schema Drift Severity & Dispatch Alert
+        if: always() && steps.run_canary.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CREATE_ISSUE: ${{ github.event.inputs.create_github_issue != 'false' }}
+        run: |
+          if [ -f /tmp/rea_canary_drift.json ]; then
+            SEVERITY=$(python3 -c "import json; d = json.load(open('/tmp/rea_canary_drift.json')); print(d.get('schema_drift', {}).get('severity', 'UNKNOWN'))")
+            echo "DRIFT_SEVERITY=${SEVERITY}" >> "$GITHUB_ENV"
+            echo "[REA-SENTINEL] Detected Schema Drift Severity: ${SEVERITY}"
+
+            if [ "$SEVERITY" = "CRITICAL" ] || [ "$SEVERITY" = "HIGH" ]; then
+              if [ "$CREATE_ISSUE" = "true" ] && [ -n "$GH_TOKEN" ]; then
+                # EPF Layer 2: De-duplicate issues to prevent spamming
+                EXISTING_ISSUE=$(gh issue list --state open --search "Sentinel Alert: LinkedIn Voyager Schema Drift" --json number -q '.[0].number' || echo "")
+                if [ -n "$EXISTING_ISSUE" ]; then
+                  echo "[REA-SENTINEL] Open alert issue #${EXISTING_ISSUE} already exists. Adding tracking comment."
+                  gh issue comment "$EXISTING_ISSUE" --body-file /tmp/rea_canary_summary.md || true
+                else
+                  echo "[REA-SENTINEL] Creating new GitHub alert issue..."
+                  gh issue create \
+                    --title "🚨 [Sentinel Alert] LinkedIn Voyager Schema Drift Detected (${SEVERITY})" \
+                    --body-file /tmp/rea_canary_summary.md \
+                    --label "security,sentinel-alert,area:integrations" || true
+                fi
+              fi
+            fi
+          fi
+
+      - name: Upload Canary Cryptographic Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rea-voyager-canary-report
-          path: /tmp/rea_canary_output.json
+          name: rea-voyager-sentinel-report
+          path: |
+            /tmp/rea_canary_output.json
+            /tmp/rea_canary_drift.json
+            /tmp/rea_canary_summary.md
+          retention-days: 30
+
+      - name: Enforce Critical Tripwire Gate
+        if: github.event.inputs.fail_on_critical == 'true'
+        run: |
+          if [ "${{ env.DRIFT_SEVERITY }}" = "CRITICAL" ]; then
+            echo "❌ [FATAL] Critical anti-bot challenge mutation detected! Failing CI per fail_on_critical gate."
+            exit 2
+          fi

@@ -263,3 +263,4 @@ update_step_senders_error.cjs
 uploads/
 scratch/
 .puppeteer_data/
+state/
