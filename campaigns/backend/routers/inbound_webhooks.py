@@ -4,9 +4,11 @@ import os
 import uuid
 import json
 import hmac
+import hashlib
+import base64
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Union, List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -487,24 +489,44 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
 
     # 2. Timestamp freshness and replay protection
     timestamp_hdr = None
+    sig_hdr = None
     if hasattr(request, "headers") and hasattr(request.headers, "get"):
-        timestamp_hdr = _extract_header_or_none(
-            request.headers.get("X-Webhook-Timestamp") or 
-            request.headers.get("EleIn-Timestamp") or 
-            request.headers.get("X-Timestamp") or 
-            request.headers.get("Calendly-Webhook-Timestamp") or 
-            request.headers.get("Cal-Signature-Timestamp") or
-            request.headers.get("x-webhook-timestamp") or 
-            request.headers.get("elein-timestamp") or 
-            request.headers.get("x-timestamp") or 
-            request.headers.get("calendly-webhook-timestamp") or 
-            request.headers.get("cal-signature-timestamp")
+        calendly_sig_raw = (
+            request.headers.get("Calendly-Webhook-Signature") or
+            request.headers.get("calendly-webhook-signature")
         )
+        if calendly_sig_raw:
+            for part in str(calendly_sig_raw).split(","):
+                part = part.strip()
+                if part.startswith("t="):
+                    timestamp_hdr = part[2:]
+                elif part.startswith("v1="):
+                    sig_hdr = part[3:]
+
+        if not timestamp_hdr:
+            timestamp_hdr = _extract_header_or_none(
+                request.headers.get("X-Webhook-Timestamp") or 
+                request.headers.get("EleIn-Timestamp") or 
+                request.headers.get("X-Timestamp") or 
+                request.headers.get("Calendly-Webhook-Timestamp") or 
+                request.headers.get("Cal-Signature-Timestamp") or
+                request.headers.get("x-webhook-timestamp") or 
+                request.headers.get("elein-timestamp") or 
+                request.headers.get("x-timestamp") or 
+                request.headers.get("calendly-webhook-timestamp") or 
+                request.headers.get("cal-signature-timestamp")
+            )
 
     if timestamp_hdr is not None:
         import time as _time
         try:
-            ts_val = int(timestamp_hdr)
+            raw_ts_str = str(timestamp_hdr).strip()
+            if "T" in raw_ts_str or "-" in raw_ts_str:
+                ts_val = int(datetime.fromisoformat(raw_ts_str.replace("Z", "+00:00")).timestamp())
+            else:
+                ts_val = int(float(raw_ts_str))
+                if ts_val > 100000000000: # Milliseconds epoch conversion
+                    ts_val = int(ts_val / 1000)
             now_ts = int(_time.time())
             if abs(now_ts - ts_val) > 300: # 5 minutes tolerance
                 raise HTTPException(status_code=401, detail="Webhook timestamp expired or out of tolerance (replay defense)")
@@ -512,12 +534,13 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
             raise HTTPException(status_code=401, detail="Invalid webhook timestamp header format")
 
     # 3. Check for signature header and secret authentication
-    sig_hdr = None
-    if hasattr(request, "headers") and hasattr(request.headers, "get"):
+    if not sig_hdr and hasattr(request, "headers") and hasattr(request.headers, "get"):
         sig_hdr = _extract_header_or_none(
             request.headers.get("X-Webhook-Signature") or 
             request.headers.get("EleIn-Signature") or 
             request.headers.get("X-Signature") or
+            request.headers.get("X-Cal-Signature-256") or
+            request.headers.get("x-cal-signature-256") or
             request.headers.get("x-webhook-signature") or 
             request.headers.get("elein-signature") or 
             request.headers.get("x-signature")

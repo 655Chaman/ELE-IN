@@ -5652,9 +5652,9 @@ def _check_workspace_tier_permission(workspace_id: str, permission_flag: str, su
             if ws_res.data and ws_res.data[0].get("tier"):
                 tier = normalize_tier(ws_res.data[0]["tier"])
             else:
-                tier = "ENTERPRISE" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
+                tier = "FREE"
         except Exception:
-            tier = "ENTERPRISE" if os.environ.get("PYTEST_CURRENT_TEST") else "FREE"
+            tier = "FREE"
 
     tier_perm = TIER_LIMITS.get(tier, {}).get(permission_flag, False)
     if not tier_perm:

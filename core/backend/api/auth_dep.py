@@ -676,8 +676,6 @@ async def get_current_workspace(request: Request, supabase: AsyncClient = Depend
         is_unsubscribe = clean_path.startswith("/api/elein/unsubscribe") or clean_path.startswith("/api/unsubscribe") or clean_path.startswith("/unsubscribe")
         if is_public_webhook or is_unsubscribe:
             return "public_webhook"
-        if clean_path.startswith("/api/workspaces/provision") or clean_path.startswith("/workspaces/provision"):
-            return "provisioning"
     except Exception:
         pass
 

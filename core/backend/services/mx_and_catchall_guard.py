@@ -410,26 +410,6 @@ def resolve_domain_mx_records(
     raw_records: List[Dict[str, Any]] = []
     has_explicit_mock = mock_dns is not None
 
-    # Testing compatibility: Under pytest runner without explicit mock_dns, allow known test dummy domains
-    if os.environ.get("PYTEST_CURRENT_TEST") and not has_explicit_mock and (
-        clean_domain in ("targetcorp.com", "example.com", "target.com", "test.com", "prospect.com", "investor.com", "testcorp.com", "prospectcorp.com", "target.io", "hyperion.ai")
-        or "corp" in clean_domain
-        or "target" in clean_domain
-        or "hyperion" in clean_domain
-        or clean_domain.startswith("test")
-        or clean_domain.endswith((".test", ".example.com"))
-    ):
-        return {
-            "domain": clean_domain,
-            "valid": True,
-            "can_receive_mail": True,
-            "status": "VALID_MX",
-            "mx_records": [{"host": f"mail.{clean_domain}", "priority": 10}],
-            "primary_mx": f"mail.{clean_domain}",
-            "esp_provider": MXProvider.UNKNOWN.value,
-            "has_implicit_mx": False,
-        }
-
     if has_explicit_mock:
         mock_mx = _lookup_mock_dns(clean_domain, "MX", mock_dns)
         if mock_mx is not None:

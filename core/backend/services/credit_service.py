@@ -541,10 +541,6 @@ def deduct_credits(
             candidate = supabase_client if hasattr(supabase_client, "rpc") else get_service_client()
             supabase = candidate if hasattr(candidate, "rpc") else None
             if supabase is None:
-                if os.environ.get("PYTEST_CURRENT_TEST"):
-                    if not ws_str.endswith("-debt") and not ws_str.endswith("-zero-credits") and not ws_str.endswith("-free") and "fail-deduction" not in ws_str and "insufficient" not in ws_str:
-                        if ws_str.startswith("ws-test") or ws_str == "test-workspace" or "-pro" in ws_str or ws_str == "00000000-0000-0000-0000-000000000002":
-                            return {"success": True, "balance": 999, "reason": "test_mock_success"}
                 return {"success": False, "balance": 0, "reason": "credit_check_failed", "error": "No database client available"}
 
             result = supabase.rpc('deduct_credits_safely', {
@@ -567,18 +563,9 @@ def deduct_credits(
                         logger.warning(f"[CreditService] Auto-recharge check failed: {recharge_err}")
                     return res_data
 
-            if os.environ.get("PYTEST_CURRENT_TEST"):
-                if not ws_str.endswith("-debt") and not ws_str.endswith("-zero-credits") and not ws_str.endswith("-free") and "fail-deduction" not in ws_str and "insufficient" not in ws_str:
-                    if ws_str.startswith("ws-test") or ws_str == "test-workspace" or "-pro" in ws_str or ws_str == "00000000-0000-0000-0000-000000000002":
-                        return {"success": True, "balance": 999, "reason": "test_mock_success"}
             return res_data or {"success": False, "balance": 0, "reason": "rpc_error"}
         except Exception as e:
             logger.error(f"Credit deduction failed: {e}", exc_info=True)
-            err_str = str(e)
-            if os.environ.get("PYTEST_CURRENT_TEST") and ("PGRST202" in err_str or "PGRST205" in err_str or "schema cache" in err_str or "does not exist" in err_str):
-                if not ws_str.endswith("-debt") and not ws_str.endswith("-zero-credits") and not ws_str.endswith("-free") and "fail-deduction" not in ws_str and "insufficient" not in ws_str:
-                    if ws_str.startswith("ws-test") or ws_str == "test-workspace" or "-pro" in ws_str or ws_str == "00000000-0000-0000-0000-000000000002":
-                        return {"success": True, "balance": 999, "reason": "test_mock_success"}
             return {"success": False, "balance": 0, "reason": "credit_check_failed", "error": str(e)}
 
 # Retain backward-compatible references for test suites
@@ -693,14 +680,8 @@ def get_credit_balance(workspace_id: str, supabase_client: Any = None) -> int:
             if c is None:
                 c = res.data[0].get('credits', 0)
             return int(c or 0)
-        import os
-        if os.environ.get("PYTEST_CURRENT_TEST") and (str(workspace_id).startswith("ws-test") or workspace_id == "test-workspace" or "-pro" in str(workspace_id)):
-            return 1000
         return 0
     except Exception:
-        import os
-        if os.environ.get("PYTEST_CURRENT_TEST") and (str(workspace_id).startswith("ws-test") or workspace_id == "test-workspace" or "-pro" in str(workspace_id)):
-            return 1000
         return 0
 
 def get_workspace_overdraft_floor(tier: Optional[str]) -> int:

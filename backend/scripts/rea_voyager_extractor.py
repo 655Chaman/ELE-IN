@@ -19,6 +19,7 @@ import os
 import json
 import logging
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 from typing import Dict, Any, List, Set, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -71,10 +72,15 @@ class REAVoyagerExtractor:
 
         try:
             with open(path, "r", encoding="utf-8") as f:
+                # First try reading line-by-line if ndjson format
                 for line in f:
                     line = line.strip()
                     if line.startswith('{"evidence_id":'):
-                        return cls(json.loads(line))
+                        try:
+                            return cls(json.loads(line))
+                        except json.JSONDecodeError:
+                            # Not a single-line JSON, break and fallback to full-file read
+                            break
                 # Fallback to entire file read
                 f.seek(0)
                 return cls(json.load(f))
@@ -82,18 +88,44 @@ class REAVoyagerExtractor:
             raise InvalidEvidenceFileError(f"Corrupted or invalid REA evidence JSON at {path}: {e}") from e
 
     def validate_integrity(self) -> Dict[str, Any]:
-        """Validates cryptographic evidence structure and seals."""
+        """
+        Validates cryptographic evidence structure, seals, and ensures no AST parse failures occurred.
+        """
         root_sha256 = self.normalized.get("root_artifact_sha256")
         manifest_id = self.normalized.get("inventory_manifest_id")
         schema = self.graph.get("schema")
-        is_valid = bool(self.evidence_id and root_sha256 and schema == "JavaScriptApplicationGraph")
+
+        # Layer 1 & 2: Check for parse failures in nodes and statistics
+        stats = self.normalized.get("statistics", {}) or {}
+        parse_failures = stats.get("parse_failures", 0)
+
+        has_failed_nodes = False
+        failed_files: List[str] = []
+        for node in self.nodes:
+            observations = node.get("observations", [])
+            for obs in observations:
+                props = obs.get("properties", {})
+                if props.get("parse_status") == "failed":
+                    has_failed_nodes = True
+                    failed_files.append(props.get("path", "unknown"))
+
+        is_valid = bool(
+            self.evidence_id
+            and root_sha256
+            and schema == "JavaScriptApplicationGraph"
+            and parse_failures == 0
+            and not has_failed_nodes
+        )
+
         return {
             "is_valid": is_valid,
             "evidence_id": self.evidence_id,
             "root_sha256": root_sha256,
             "manifest_id": manifest_id,
             "node_count": len(self.nodes),
-            "edge_count": len(self.edges)
+            "edge_count": len(self.edges),
+            "parse_failures": parse_failures,
+            "failed_files": failed_files
         }
 
     def extract_endpoints_and_calls(self) -> Dict[str, Any]:
@@ -109,7 +141,12 @@ class REAVoyagerExtractor:
             for obs in observations:
                 label = obs.get("label")
                 if kind == "endpoint" and label:
-                    discovered_endpoints.append(label)
+                    # Normalize URL and path
+                    parsed = urlsplit(label)
+                    normalized_path = parsed.path if parsed.path else label
+                    # Filter out non-path identifier strings (must begin with / or http)
+                    if normalized_path.startswith("/") or normalized_path.startswith("http"):
+                        discovered_endpoints.append(normalized_path)
 
         # Parse edges
         for edge in self.edges:
@@ -163,16 +200,20 @@ class REAVoyagerExtractor:
                 if kw in ep_lower:
                     return "CRITICAL", f"Detected anti-bot / challenge endpoint mutation: '{ep}'."
 
+        # Check for massive baseline route loss (e.g. extension AST failure or LinkedIn API rewrite)
+        if len(missing_endpoints) >= 3:
+            return "CRITICAL", f"CRITICAL: {len(missing_endpoints)} baseline Voyager routes missing from analyzed bundle! Protocol tracking may be broken."
+
         # Check for new general voyager endpoints
         voyager_new = [ep for ep in new_endpoints if "voyager" in ep.lower() or ep.startswith("/api")]
         if voyager_new:
             return "HIGH", f"Discovered {len(voyager_new)} new unmapped Voyager endpoints: {voyager_new}."
 
+        if missing_endpoints:
+            return "HIGH", f"Missing {len(missing_endpoints)} baseline Voyager routes: {missing_endpoints}."
+
         if new_endpoints:
             return "MEDIUM", f"Discovered {len(new_endpoints)} candidate non-voyager endpoints."
-
-        if missing_endpoints:
-            return "LOW", f"Baseline routes missing from current candidate bundle ({len(missing_endpoints)} missing)."
 
         return "CLEAN", "No impactful drift identified."
 
@@ -205,7 +246,8 @@ class REAVoyagerExtractor:
             f"| **Root Artifact SHA-256** | `{integrity.get('root_sha256')}` |",
             f"| **Manifest ID** | `{integrity.get('manifest_id')}` |",
             f"| **Graph Nodes / Edges** | `{integrity.get('node_count')} nodes / {integrity.get('edge_count')} edges` |",
-            f"| **Sealed Verification** | `{'VALID' if integrity.get('is_valid') else 'INVALID'}` |",
+            f"| **Sealed Verification** | `{'VALID' if integrity.get('is_valid') else 'INVALID (AST PARSE FAILURES DETECTED)'}` |",
+            f"| **Failed Parse Files** | `{integrity.get('failed_files', [])}` |",
             "",
             "## 2. Voyager Endpoint Drift Analysis",
             "| Parameter | Count | Details |",
@@ -217,13 +259,14 @@ class REAVoyagerExtractor:
             ""
         ]
 
-        if severity in ("CRITICAL", "HIGH"):
+        if severity in ("CRITICAL", "HIGH") or not integrity.get("is_valid"):
             lines.extend([
                 "## 3. Required Tactical Countermeasures",
                 "> [!IMPORTANT]",
-                "> **Schema drift detected before Friday campaign dispatch!**",
+                "> **Action required before Friday campaign dispatch!**",
                 "- Verify reverse-engineered parameters against [`integrations/backend/services/linkedin_worker.py`](file:///Users/krdeeksha/Ele-in/integrations/backend/services/linkedin_worker.py).",
                 "- Inspect whether challenge payloads require updated Patchright CDP hooks or Bezier kinematics.",
+                "- Verify extension syntax and AST parsing if `is_valid` is false.",
                 "- Update `KNOWN_VOYAGER_ROUTES` in `backend/scripts/rea_voyager_extractor.py` after testing."
             ])
         else:

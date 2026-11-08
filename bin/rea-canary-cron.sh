@@ -21,23 +21,28 @@ LOG_FILE="${STATE_DIR}/rea-canary.log"
 LATEST_JSON="${STATE_DIR}/rea-canary-latest.json"
 LATEST_MD="${STATE_DIR}/rea-canary-latest.md"
 ALERT_FILE="${STATE_DIR}/rea-drift-alert.txt"
-LOCK_FILE="/tmp/elein_rea_canary.lock"
+LOCK_DIR="/tmp/elein_rea_canary.lock.d"
+RAW_EVIDENCE="/tmp/rea_evidence_${TIMESTAMP}.json"
 
-# Layer 1: Environmental Failure Analysis — Prevent overlapping execution via flock / lockfile
-if [ -e "${LOCK_FILE}" ]; then
-    PID="$(cat "${LOCK_FILE}" 2>/dev/null || echo "")"
-    if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
-        echo "[REA-CRON] An existing REA Canary pass is currently running (PID: ${PID}). Skipping duplicate run."
+# Layer 1: Environmental Failure Analysis — Atomic directory locking preventing race conditions
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+    LOCK_PID="$(cat "${LOCK_DIR}/pid" 2>/dev/null || echo "")"
+    if [ -n "${LOCK_PID}" ] && kill -0 "${LOCK_PID}" 2>/dev/null; then
+        echo "[REA-CRON] An existing REA Canary pass is currently running (PID: ${LOCK_PID}). Skipping duplicate run."
         exit 0
+    else
+        # Stale lock cleanup
+        rm -rf "${LOCK_DIR}"
+        mkdir "${LOCK_DIR}" 2>/dev/null || { echo "[REA-CRON] Failed to acquire lock."; exit 1; }
     fi
 fi
-echo "$$" > "${LOCK_FILE}"
-trap 'rm -f "${LOCK_FILE}"' EXIT INT TERM
+echo "$$" > "${LOCK_DIR}/pid"
+
+# Guarantee cleanup of locks and temporary artifacts on exit
+trap 'rm -rf "${LOCK_DIR}" "${RAW_EVIDENCE:-}"' EXIT INT TERM
 
 echo "------------------------------------------------------------------" >> "${LOG_FILE}"
 echo "[REA-CRON] Starting Scheduled Voyager Canary Pass at $(date -u)" >> "${LOG_FILE}"
-
-RAW_EVIDENCE="/tmp/rea_evidence_${TIMESTAMP}.json"
 
 # Execute the canary pipeline
 if ./bin/rea-canary-voyager.sh "extension" "${RAW_EVIDENCE}" "${LATEST_JSON}" "${LATEST_MD}" >> "${LOG_FILE}" 2>&1; then
@@ -47,7 +52,7 @@ if ./bin/rea-canary-voyager.sh "extension" "${RAW_EVIDENCE}" "${LATEST_JSON}" "$
     SEVERITY="$(python3 -c "import json; d = json.load(open('${LATEST_JSON}')); print(d.get('schema_drift', {}).get('severity', 'UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")"
     echo "[REA-CRON] Detected Drift Severity: ${SEVERITY}" >> "${LOG_FILE}"
     
-    if [ "${SEVERITY}" = "CRITICAL" ] || [ "${SEVERITY}" = "HIGH" ]; then
+    if [ "${SEVERITY}" = "CRITICAL" ] || [ "${SEVERITY}" = "HIGH" ] || [ "${SEVERITY}" = "UNKNOWN" ]; then
         echo "🚨 [ALERT] Schema Drift Detected! Severity: ${SEVERITY} at $(date -u)" > "${ALERT_FILE}"
         echo "Inspect report: ${LATEST_MD}" >> "${ALERT_FILE}"
         
@@ -57,7 +62,7 @@ if ./bin/rea-canary-voyager.sh "extension" "${RAW_EVIDENCE}" "${LATEST_JSON}" "$
         fi
         echo "[REA-CRON] Raised local desktop and alert file alarm." >> "${LOG_FILE}"
     else
-        # Clear previous alert if clean
+        # Clear previous alert if clean or medium non-breaking
         rm -f "${ALERT_FILE}"
         echo "[REA-CRON] Baseline clean. No alert active." >> "${LOG_FILE}"
     fi
@@ -66,5 +71,4 @@ else
     exit 1
 fi
 
-rm -f "${RAW_EVIDENCE}"
 echo "[REA-CRON] Finished pass at $(date -u)" >> "${LOG_FILE}"

@@ -14,6 +14,17 @@ _crm_sync_lock = threading.Lock()
 _MAX_SYNC_LOGS = 500
 
 
+PUBLIC_CONSUMER_DOMAINS = {
+    "gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", 
+    "live.com", "icloud.com", "me.com", "aol.com", "protonmail.com", "proton.me", "mail.com"
+}
+
+
+def _is_test_or_default_workspace(ws_id: str) -> bool:
+    """Helper to distinguish synthetic unit-test workspaces from production tenant UUIDs."""
+    return ws_id in ("ws-default", "ws-test-crm", "test-workspace") or str(ws_id).startswith("ws-test")
+
+
 def sanitize_text(val: Optional[str]) -> str:
     """Neutralizes spreadsheet formula injection (=, +, -, @, \t, \r)."""
     if not val:
@@ -223,7 +234,8 @@ def calculate_deal_attribution(
         primary_chan = touchpoints[primary_idx].get("channel", f"step_{primary_idx+1}")
         weights_summary[primary_chan] = weighted_touchpoints[primary_idx]["weight"]
 
-    deterministic_id = f"attr-{uuid.uuid5(uuid.NAMESPACE_DNS, f'deal_attr:{workspace_id}:{deal_id}:{chosen_model}').hex[:12]}"
+    # Layer 0 & 1: Generate valid RFC 4122 UUID v5 for PostgreSQL UUID PRIMARY KEY schema
+    deterministic_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"deal_attr:{workspace_id}:{deal_id}:{chosen_model}"))
     attribution_record = {
         "id": deterministic_id,
         "workspace_id": workspace_id,
@@ -249,7 +261,7 @@ def calculate_deal_attribution(
 
     with _crm_sync_lock:
         for idx, existing in enumerate(_IN_MEMORY_DEAL_ATTRIBUTIONS):
-            if existing.get("deal_id") == deal_id and existing.get("workspace_id") in (workspace_id, "ws-default"):
+            if existing.get("deal_id") == deal_id and (existing.get("workspace_id") == workspace_id or (_is_test_or_default_workspace(workspace_id) and existing.get("workspace_id") == "ws-default")):
                 _IN_MEMORY_DEAL_ATTRIBUTIONS[idx] = attribution_record
                 return attribution_record
         _IN_MEMORY_DEAL_ATTRIBUTIONS.insert(0, attribution_record)
@@ -356,7 +368,7 @@ def process_inbound_crm_event(
         with _crm_sync_lock:
             if domain:
                 for acc in _IN_MEMORY_CRM_ACCOUNTS:
-                    if acc.get("domain") == domain and acc.get("workspace_id") in (workspace_id, "ws-default"):
+                    if acc.get("domain") == domain and (acc.get("workspace_id") == workspace_id or (_is_test_or_default_workspace(workspace_id) and acc.get("workspace_id") == "ws-default")):
                         acc["lifecycle_stage"] = "customer" if stage == "closed_won" else "opportunity"
                         acc["last_synced_at"] = now_utc.isoformat()
                         campaigns_halted += 1
@@ -364,8 +376,19 @@ def process_inbound_crm_event(
         # Layer 1 Paranoia: Cascade campaign outreach halting in Supabase
         if supabase and domain and workspace_id:
             try:
-                matched_leads = supabase.table("leads").select("id").eq("workspace_id", workspace_id).ilike("email", f"%@{domain}").execute()
-                lead_ids = [l["id"] for l in (matched_leads.data or []) if isinstance(l, dict) and l.get("id")]
+                # EPF Layer 2: Prevent wildcard domain halting for public consumer email providers
+                is_public_domain = domain.lower() in PUBLIC_CONSUMER_DOMAINS
+                contact_email = (data.get("email") or payload.get("email") or "").lower().strip()
+
+                if is_public_domain:
+                    if contact_email:
+                        matched_leads = supabase.table("leads").select("id").eq("workspace_id", workspace_id).eq("email", contact_email).execute()
+                    else:
+                        matched_leads = None
+                else:
+                    matched_leads = supabase.table("leads").select("id").eq("workspace_id", workspace_id).ilike("email", f"%@{domain}").execute()
+
+                lead_ids = [l["id"] for l in ((matched_leads.data or []) if matched_leads else []) if isinstance(l, dict) and l.get("id")]
                 if lead_ids:
                     enr_res = supabase.table("campaign_enrollments").select("id").in_("lead_id", lead_ids).execute()
                     enr_ids = [e["id"] for e in (enr_res.data or []) if isinstance(e, dict) and e.get("id")]
@@ -447,7 +470,7 @@ def list_synced_accounts(workspace_id: str, supabase: Optional[Any] = None) -> L
         return [
             dict(a)
             for a in _IN_MEMORY_CRM_ACCOUNTS
-            if a.get("workspace_id") in (workspace_id, "ws-default")
+            if a.get("workspace_id") == workspace_id or (_is_test_or_default_workspace(workspace_id) and a.get("workspace_id") == "ws-default")
         ]
 
 
@@ -464,7 +487,8 @@ def upsert_synced_account(
     clean_domain = normalize_domain(domain)
     clean_name = sanitize_text(company_name) or clean_domain
     now_iso = datetime.now(timezone.utc).isoformat()
-    deterministic_id = f"crm-acc-{uuid.uuid5(uuid.NAMESPACE_DNS, f'crm_acc:{workspace_id}:{clean_domain}').hex[:12]}"
+    # Layer 0 & 1: Generate valid RFC 4122 UUID v5 for PostgreSQL UUID PRIMARY KEY schema
+    deterministic_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"crm_acc:{workspace_id}:{clean_domain}"))
 
     record = {
         "id": deterministic_id,
@@ -491,7 +515,7 @@ def upsert_synced_account(
     # Layer 1 Paranoia: Deduplicate in-memory by (workspace_id, domain) under lock
     with _crm_sync_lock:
         for idx, existing in enumerate(_IN_MEMORY_CRM_ACCOUNTS):
-            if existing.get("domain") == clean_domain and existing.get("workspace_id") in (workspace_id, "ws-default"):
+            if existing.get("domain") == clean_domain and (existing.get("workspace_id") == workspace_id or (_is_test_or_default_workspace(workspace_id) and existing.get("workspace_id") == "ws-default")):
                 updated = {**existing, **record, "id": existing["id"]}
                 _IN_MEMORY_CRM_ACCOUNTS[idx] = updated
                 return updated
@@ -519,7 +543,7 @@ def delete_synced_account(
     removed = False
     with _crm_sync_lock:
         for idx, acc in enumerate(list(_IN_MEMORY_CRM_ACCOUNTS)):
-            if acc.get("id") == clean_id and acc.get("workspace_id") in (workspace_id, "ws-default"):
+            if acc.get("id") == clean_id and (acc.get("workspace_id") == workspace_id or (_is_test_or_default_workspace(workspace_id) and acc.get("workspace_id") == "ws-default")):
                 _IN_MEMORY_CRM_ACCOUNTS.pop(idx)
                 removed = True
                 break
@@ -541,7 +565,7 @@ def list_deal_attributions(workspace_id: str, supabase: Optional[Any] = None) ->
         return [
             dict(d)
             for d in _IN_MEMORY_DEAL_ATTRIBUTIONS
-            if d.get("workspace_id") in (workspace_id, "ws-default")
+            if d.get("workspace_id") == workspace_id or (_is_test_or_default_workspace(workspace_id) and d.get("workspace_id") == "ws-default")
         ]
 
 
@@ -739,7 +763,7 @@ def list_crm_dead_letters(
     with _crm_sync_lock:
         return [
             dict(item) for item in _IN_MEMORY_CRM_DLQ
-            if item.get("workspace_id") in (clean_ws, "ws-default")
+            if (item.get("workspace_id") == clean_ws or (_is_test_or_default_workspace(clean_ws) and item.get("workspace_id") == "ws-default"))
             and (not status or item.get("status") == status)
         ]
 

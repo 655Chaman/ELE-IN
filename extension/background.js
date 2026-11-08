@@ -865,7 +865,6 @@ async function configureExtensionProxy(proxyConfig) {
       console.error("[Ele-in Extension] Proxy connection error:", details.error, details.details);
     });
   }
-  });
 }
 
 // ============================================================================
