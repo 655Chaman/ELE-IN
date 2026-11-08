@@ -126,7 +126,8 @@ CREATE INDEX IF NOT EXISTS idx_action_log_y2027m01_ws_time
 CREATE OR REPLACE FUNCTION public.claim_execution_states_v3(
     p_batch_size INT DEFAULT 50,
     p_lease_seconds INT DEFAULT 180,
-    p_worker_token UUID DEFAULT gen_random_uuid()
+    p_worker_token UUID DEFAULT gen_random_uuid(),
+    p_workspace_id UUID DEFAULT NULL
 ) RETURNS SETOF public.campaign_execution_states_partitioned
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
@@ -135,6 +136,7 @@ BEGIN
         SELECT workspace_id, id
         FROM public.campaign_execution_states_partitioned
         WHERE status = 'pending'
+          AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id)
           AND (next_run_at IS NULL OR next_run_at <= NOW())
         ORDER BY next_run_at ASC NULLS FIRST
         LIMIT p_batch_size

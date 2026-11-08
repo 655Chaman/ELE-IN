@@ -50,7 +50,7 @@ class MasterKeyMissingError(Exception):
 # -----------------------------------------------------------------------------
 _dek_lock = threading.Lock()
 # workspace_id -> (dek_bytes, expiry_time)
-_DEK_CACHE: Dict[str, Tuple[bytes, float]] = {}
+_DEK_CACHE: Dict[str, Tuple[bytearray, float]] = {}
 # workspace_id -> {"wrapped_dek": str, "key_version": int, "created_at": str}
 _IN_MEMORY_WORKSPACE_DEKS: Dict[str, Dict[str, Any]] = {}
 # Audit log in-memory buffer
@@ -186,9 +186,9 @@ def get_or_provision_workspace_dek(
     if not force_rotate:
         with _dek_lock:
             if clean_ws in _DEK_CACHE:
-                cached_bytes, expire_at = _DEK_CACHE[clean_ws]
+                cached_arr, expire_at = _DEK_CACHE[clean_ws]
                 if now < expire_at:
-                    return cached_bytes
+                    return bytes(cached_arr)
                 else:
                     # Explicit memory zeroing on expiration
                     _zero_and_evict_dek(clean_ws)
@@ -214,7 +214,7 @@ def get_or_provision_workspace_dek(
     if wrapped_dek and not force_rotate:
         dek_bytes = _unwrap_dek(wrapped_dek)
         with _dek_lock:
-            _DEK_CACHE[clean_ws] = (dek_bytes, now + DEK_CACHE_TTL_SECONDS)
+            _DEK_CACHE[clean_ws] = (bytearray(dek_bytes), now + DEK_CACHE_TTL_SECONDS)
         log_encryption_audit(clean_ws, "unwrap_dek", CURRENT_KEY_VERSION, "success", supabase)
         return dek_bytes
 
@@ -240,7 +240,7 @@ def get_or_provision_workspace_dek(
 
     with _dek_lock:
         _IN_MEMORY_WORKSPACE_DEKS[clean_ws] = record
-        _DEK_CACHE[clean_ws] = (new_dek, now + DEK_CACHE_TTL_SECONDS)
+        _DEK_CACHE[clean_ws] = (bytearray(new_dek), now + DEK_CACHE_TTL_SECONDS)
 
     log_encryption_audit(
         clean_ws,
@@ -253,13 +253,12 @@ def get_or_provision_workspace_dek(
 
 
 def _zero_and_evict_dek(workspace_id: str):
-    """Securely wipes and evicts DEK from in-memory cache."""
+    """Securely wipes and evicts DEK from in-memory cache in place."""
     if workspace_id in _DEK_CACHE:
-        cached_bytes, _ = _DEK_CACHE[workspace_id]
-        # Overwrite bytearray with zeros
-        b_arr = bytearray(cached_bytes)
-        for i in range(len(b_arr)):
-            b_arr[i] = 0
+        cached_arr, _ = _DEK_CACHE[workspace_id]
+        # In-place heap memory wipe
+        if isinstance(cached_arr, (bytearray, memoryview)):
+            cached_arr[:] = b"\x00" * len(cached_arr)
         del _DEK_CACHE[workspace_id]
 
 

@@ -207,10 +207,15 @@ BEGIN
         WHERE ces.status = 'pending'
           AND (ces.next_run_at IS NULL OR ces.next_run_at <= now())
           AND UPPER(c.status::text) = 'ACTIVE'
-        FOR UPDATE OF ces SKIP LOCKED
     ),
     selected AS (
-        SELECT id FROM prioritized WHERE rank <= p_max_per_campaign LIMIT p_batch_size
+        SELECT ces.id
+        FROM public.campaign_execution_states ces
+        JOIN prioritized p ON p.id = ces.id
+        WHERE p.rank <= p_max_per_campaign
+        ORDER BY p.rank ASC
+        LIMIT p_batch_size
+        FOR UPDATE OF ces SKIP LOCKED
     )
     UPDATE public.campaign_execution_states u
     SET status = 'running',

@@ -1533,31 +1533,44 @@ class EleInOrchestrator:
         global _DEQUEUE_RPC_AVAILABLE
         if _DEQUEUE_RPC_AVAILABLE:
             try:
+                # 0. 64-way hash partitioned queue (Migration 120 claim_execution_states_v3)
                 try:
-                    # High-throughput v2 fair multi-tenant dispatcher
-                    dequeue_res = self.supabase.rpc("dequeue_due_leads_v2", {
+                    dequeue_res = self.supabase.rpc("claim_execution_states_v3", {
                         "p_batch_size": 250,
-                        "p_max_per_campaign": 10,
                         "p_lease_seconds": 300
                     }).execute()
                     raw_data = getattr(dequeue_res, "data", None)
-                    if isinstance(raw_data, list):
+                    if isinstance(raw_data, list) and len(raw_data) > 0:
                         states = raw_data
-                    else:
-                        raise ValueError("dequeue_due_leads_v2 returned non-list data")
                 except Exception:
-                    # Fallback to v1 RPC signature with round-robin fair sampling across active campaigns
-                    if active_campaign_ids and len(active_campaign_ids) > 200:
-                        bounded_ids = random.sample(active_campaign_ids, 200)
-                    else:
-                        bounded_ids = active_campaign_ids if active_campaign_ids else None
-                    dequeue_res = self.supabase.rpc("dequeue_due_leads", {
-                        "p_batch_size": 100,
-                        "p_campaign_ids": bounded_ids,
-                        "p_lease_seconds": 300
-                    }).execute()
-                    raw_data = getattr(dequeue_res, "data", None)
-                    states = raw_data if isinstance(raw_data, list) else []
+                    pass
+
+                if not states:
+                    try:
+                        # High-throughput v2 fair multi-tenant dispatcher
+                        dequeue_res = self.supabase.rpc("dequeue_due_leads_v2", {
+                            "p_batch_size": 250,
+                            "p_max_per_campaign": 10,
+                            "p_lease_seconds": 300
+                        }).execute()
+                        raw_data = getattr(dequeue_res, "data", None)
+                        if isinstance(raw_data, list):
+                            states = raw_data
+                        else:
+                            raise ValueError("dequeue_due_leads_v2 returned non-list data")
+                    except Exception:
+                        # Fallback to v1 RPC signature with round-robin fair sampling across active campaigns
+                        if active_campaign_ids and len(active_campaign_ids) > 200:
+                            bounded_ids = random.sample(active_campaign_ids, 200)
+                        else:
+                            bounded_ids = active_campaign_ids if active_campaign_ids else None
+                        dequeue_res = self.supabase.rpc("dequeue_due_leads", {
+                            "p_batch_size": 100,
+                            "p_campaign_ids": bounded_ids,
+                            "p_lease_seconds": 300
+                        }).execute()
+                        raw_data = getattr(dequeue_res, "data", None)
+                        states = raw_data if isinstance(raw_data, list) else []
             except Exception as rpc_e:
                 # Catch 0A000 (outer join for update) or PGRST202/400 (function signature/schema mismatch)
                 _DEQUEUE_RPC_AVAILABLE = False
@@ -1618,19 +1631,19 @@ class EleInOrchestrator:
                             if len(candidate_states) >= 50:
                                 break
 
-                for c_state in candidate_states[:50]:
-                    c_id = c_state["id"]
-                    token = uuid.uuid4().hex
+                # Paranoia Layer 0 & 1: Atomic batch claim replaces serial 50-step N+1 HTTP loop
+                candidate_ids = [c["id"] for c in candidate_states[:50] if isinstance(c, dict) and c.get("id")]
+                if candidate_ids:
+                    claim_token = uuid.uuid4().hex
                     claim_res = self.supabase.table("campaign_execution_states").update({
                         "status": "running",
-                        "lease_token": token,
+                        "lease_token": claim_token,
                         "lease_expires_at": lease_expiry,
                         "updated_at": now_iso
-                    }).eq("id", c_id).eq("status", "pending").execute()
+                    }).in_("id", candidate_ids).eq("status", "pending").execute()
 
                     if claim_res.data:
-                        claimed_row = claim_res.data[0]
-                        states.append(claimed_row)
+                        states = claim_res.data if isinstance(claim_res.data, list) else []
             except Exception as fb_e:
                 logger.error(f"[Orchestrator] Direct table dequeue fallback failed: {fb_e}")
                 capture_error(fb_e, context={"service": "elein_orchestrator", "stage": "dequeue_fallback"})

@@ -1,16 +1,52 @@
 import json
 import os
+import threading
+from typing import Optional, Dict
 
 import structlog
 from dotenv import set_key
 
 logger = structlog.get_logger()
 
-# Storing API keys in a local JSON to survive restarts
+# Storing API keys in a local JSON to survive restarts (global/system scope)
 KEYS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api_keys.json")
 ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 
-def get_current_keys() -> dict[str, str]:
+_tenant_keys_lock = threading.Lock()
+_TENANT_KEYS: Dict[str, Dict[str, str]] = {}
+
+
+def get_current_keys(workspace_id: Optional[str] = None) -> dict[str, str]:
+    """
+    Paranoia Layer 0, 1 & 2: Tenant-scoped API key retrieval with global fallback.
+    Prevents cross-tenant key leakage or overwrites.
+    """
+    if workspace_id:
+        clean_ws = str(workspace_id).strip()
+        with _tenant_keys_lock:
+            if clean_ws in _TENANT_KEYS and _TENANT_KEYS[clean_ws]:
+                return dict(_TENANT_KEYS[clean_ws])
+
+        # Try database system_api_keys table
+        try:
+            from core.backend.api.auth_dep import get_service_client
+            client = get_service_client()
+            if client and hasattr(client, "table"):
+                res = client.table("system_api_keys").select("provider, api_key, service").eq("workspace_id", clean_ws).eq("status", "active").execute()
+                if getattr(res, "data", None):
+                    ws_keys: dict[str, str] = {}
+                    for row in res.data:
+                        prov = row.get("provider", "openai")
+                        key_val = row.get("api_key")
+                        if key_val:
+                            ws_keys[f"api_key_{prov}"] = key_val
+                    if ws_keys:
+                        with _tenant_keys_lock:
+                            _TENANT_KEYS[clean_ws] = ws_keys
+                        return dict(ws_keys)
+        except Exception as e:
+            logger.debug(f"[KeyService] Notice querying system_api_keys for workspace {clean_ws}: {e}")
+
     keys: dict[str, str] = {}
     if os.path.exists(KEYS_FILE):
         try:
@@ -58,7 +94,34 @@ def get_current_keys() -> dict[str, str]:
 
     return keys
 
-def update_keys(keys_data: dict[str, str]) -> bool:
+
+def update_keys(keys_data: dict[str, str], workspace_id: Optional[str] = None) -> bool:
+    """
+    Paranoia Layer 1 & 2: Updates keys scoped by workspace_id.
+    Never overwrites global .env with a specific tenant's private API keys.
+    """
+    if workspace_id:
+        clean_ws = str(workspace_id).strip()
+        with _tenant_keys_lock:
+            _TENANT_KEYS[clean_ws] = dict(keys_data)
+        try:
+            from core.backend.api.auth_dep import get_service_client
+            client = get_service_client()
+            if client and hasattr(client, "table"):
+                for k, v in keys_data.items():
+                    if k.startswith("api_key_") and v:
+                        prov = k.replace("api_key_", "")
+                        client.table("system_api_keys").upsert({
+                            "workspace_id": clean_ws,
+                            "provider": prov,
+                            "api_key": v,
+                            "service": "ai",
+                            "status": "active"
+                        }).execute()
+        except Exception as e:
+            logger.warning(f"[KeyService] Notice upserting tenant keys to system_api_keys for {clean_ws}: {e}")
+        return True
+
     try:
         with open(KEYS_FILE, "w") as f:
             json.dump(keys_data, f, indent=2)

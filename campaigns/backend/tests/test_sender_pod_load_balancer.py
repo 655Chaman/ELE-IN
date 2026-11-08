@@ -189,8 +189,8 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
             elif tbl_name == "accounts":
                 t.select.return_value.in_.return_value.execute.return_value = MagicMock(
                     data=[
-                        {"id": "acc_low_cap", "name": "Low Cap", "status": "ACTIVE", "daily_connection_limit": 40},
-                        {"id": "acc_high_cap", "name": "High Cap", "status": "ACTIVE", "daily_connection_limit": 50}
+                        {"id": "acc_low_cap", "name": "Low Cap", "status": "ACTIVE", "daily_connection_limit": 40, "workspace_id": self.workspace_id},
+                        {"id": "acc_high_cap", "name": "High Cap", "status": "ACTIVE", "daily_connection_limit": 50, "workspace_id": self.workspace_id}
                     ]
                 )
             elif tbl_name == "account_daily_action_counts":
@@ -244,8 +244,8 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
             elif tbl_name == "accounts":
                 t.select.return_value.in_.return_value.execute.return_value = MagicMock(
                     data=[
-                        {"id": "acc_busy", "name": "Busy", "status": "ACTIVE", "daily_connection_limit": 50},
-                        {"id": "acc_idle", "name": "Idle", "status": "ACTIVE", "daily_connection_limit": 50}
+                        {"id": "acc_busy", "name": "Busy", "status": "ACTIVE", "daily_connection_limit": 50, "workspace_id": self.workspace_id},
+                        {"id": "acc_idle", "name": "Idle", "status": "ACTIVE", "daily_connection_limit": 50, "workspace_id": self.workspace_id}
                     ]
                 )
             elif tbl_name == "sender_pod_audit_logs":
@@ -395,7 +395,7 @@ class TestSenderPodLoadBalancer(unittest.TestCase):
                 )
             elif tbl_name == "accounts":
                 t.select.return_value.in_.return_value.execute.return_value = MagicMock(
-                    data=[{"id": "acc_1", "status": "ACTIVE"}]
+                    data=[{"id": "acc_1", "status": "ACTIVE", "workspace_id": self.workspace_id}]
                 )
             return t
 

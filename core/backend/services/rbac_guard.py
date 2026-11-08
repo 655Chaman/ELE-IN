@@ -194,7 +194,11 @@ class RBACGuard:
         except HTTPException:
             raise
         except Exception as e:
-            logger.warning(f"Error checking last admin lockout: {e}")
+            logger.error(f"Error checking last admin lockout: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database check failed during admin verification: {str(e)}"
+            )
 
     @staticmethod
     def log_rbac_audit_event(

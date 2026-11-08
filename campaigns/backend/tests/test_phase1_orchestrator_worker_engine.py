@@ -189,9 +189,9 @@ class TestPhase1OrchestratorWorkerEngine(unittest.TestCase):
                 }])
                 t.select.return_value = st_sel
 
-                # Atomic claim update
+                # Atomic claim update (supports both batch in_ and single eq)
                 st_upd = MagicMock()
-                st_upd.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{
+                mock_claimed_data = MagicMock(data=[{
                     "id": self.state_id,
                     "enrollment_id": self.enrollment_id,
                     "current_node_id": "node_1",
@@ -203,6 +203,8 @@ class TestPhase1OrchestratorWorkerEngine(unittest.TestCase):
                     "variables": {},
                     "lease_token": "fallback_token_123"
                 }])
+                st_upd.eq.return_value.eq.return_value.execute.return_value = mock_claimed_data
+                st_upd.in_.return_value.eq.return_value.execute.return_value = mock_claimed_data
                 t.update.return_value = st_upd
             elif name == "leads":
                 t.select.return_value.in_.return_value.execute.return_value = MagicMock(data=[{

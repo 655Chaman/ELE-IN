@@ -523,7 +523,10 @@ def deduct_credits(
     ws_str = str(workspace_id)
 
     # Paranoia Layer 0 & 1: Distributed concurrency lock serializes parallel deductions per workspace
-    with distributed_workspace_lock(f"credit_deduction_{ws_str}", ttl_seconds=15, blocking=True):
+    with distributed_workspace_lock(f"credit_deduction_{ws_str}", ttl_seconds=15, blocking=True) as lock_acquired:
+        if not lock_acquired:
+            logger.warning(f"[CreditService] Distributed workspace lock timeout for workspace {ws_str}")
+            return {"success": False, "balance": 0, "reason": "lock_timeout", "error": "Could not acquire distributed workspace lock"}
         # Paranoia Layer 1: Check in-memory mock balance if explicitly registered for deterministic concurrency/unit tests
         with _in_memory_locks_guard:
             if ws_str in _MOCK_WORKSPACE_BALANCES:
