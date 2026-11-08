@@ -378,7 +378,6 @@ def process_inbound_crm_event(
                         }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
                         supabase.table("campaign_enrollments").update({
                             "status": "completed",
-                            "completed_at": now_iso,
                             "updated_at": now_iso
                         }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
                         campaigns_halted += len(lead_ids)

@@ -677,6 +677,7 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
     if not isinstance(meta, dict):
         meta = {}
     meta["meeting_booked"] = True
+    meta["meeting_booked_at"] = datetime.utcnow().isoformat()
     tags = meta.get("tags") or []
     if not isinstance(tags, list):
         tags = [str(tags)]
@@ -687,10 +688,16 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
     try:
         supabase.table("leads").update({
             "metadata": meta,
-            "status": "Meeting Booked"
+            "status": "replied"
         }).eq("id", lead_id).execute()
     except Exception as e:
-        logger.error(f"Failed to update lead {lead_id}: {e}")
+        logger.warning(f"Failed to update lead status to replied for {lead_id}: {e}. Retrying metadata update only.")
+        try:
+            supabase.table("leads").update({
+                "metadata": meta
+            }).eq("id", lead_id).execute()
+        except Exception as e2:
+            logger.error(f"Failed to update lead {lead_id}: {e2}")
 
     # 3. Halt active outreach for this lead across all in-flight statuses
     try:
@@ -708,7 +715,6 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
                 }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
                 supabase.table("campaign_enrollments").update({
                     "status": "completed",
-                    "completed_at": now_iso,
                     "updated_at": now_iso
                 }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
         elif enr_res.data and not isinstance(enr_res.data, list):
@@ -722,7 +728,6 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
             }).in_("enrollment_id", enr_ids).in_("status", ["pending", "waiting_for_reply", "running", "awaiting_approval"]).execute()
             supabase.table("campaign_enrollments").update({
                 "status": "completed",
-                "completed_at": now_iso,
                 "updated_at": now_iso
             }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
     except Exception as e:

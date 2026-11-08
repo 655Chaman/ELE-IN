@@ -22,11 +22,20 @@ def require_tier(feature_flag: str, min_tier: str = "PRO") -> Callable:
             raise HTTPException(status_code=401, detail="Workspace context required")
             
         clean_ws = str(workspace_id).strip()
-        try:
-            ws_res = supabase.table("workspaces").select("tier").eq("id", clean_ws).execute()
-            tier_raw = ws_res.data[0].get("tier") if ws_res.data else "FREE"
-        except Exception:
-            tier_raw = "FREE"
+        tier_raw = "FREE"
+        for attempt in range(2):
+            try:
+                ws_res = supabase.table("workspaces").select("tier").eq("id", clean_ws).execute()
+                tier_raw = ws_res.data[0].get("tier") if ws_res.data else "FREE"
+                break
+            except Exception as e:
+                if attempt == 1:
+                    import logging
+                    logging.getLogger(__name__).warning(f"[TierGuard] Error fetching workspace tier for {clean_ws}: {e}")
+                    tier_raw = "FREE"
+                else:
+                    import time
+                    time.sleep(0.05)
             
         tier = normalize_tier(tier_raw)
         tier_cfg = TIER_LIMITS.get(tier, TIER_LIMITS.get("FREE", {}))
