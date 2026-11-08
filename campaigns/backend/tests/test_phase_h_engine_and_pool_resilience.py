@@ -173,6 +173,7 @@ class TestSendGridSocketTimeoutIdempotency:
         }
 
         with patch.dict(os.environ, {"SENDGRID_API_KEY": "SG.test-mock-api-key"}), \
+             patch("core.backend.services.mx_and_catchall_guard.MXAndCatchAllGuard.resolve_domain_mx_records", return_value={"can_receive_mail": True, "domain": "example.com"}), \
              patch.object(executor, "_refund_credits") as mock_refund, \
              patch("campaigns.backend.services.elein_executor.urllib.request.urlopen", side_effect=socket.timeout("The read operation timed out")):
 
@@ -205,6 +206,7 @@ class TestSendGridSocketTimeoutIdempotency:
 
         wrapped_err = urllib.error.URLError(reason=TimeoutError("Connection timed out"))
         with patch.dict(os.environ, {"SENDGRID_API_KEY": "SG.test-mock-api-key"}), \
+             patch("core.backend.services.mx_and_catchall_guard.MXAndCatchAllGuard.resolve_domain_mx_records", return_value={"can_receive_mail": True, "domain": "targetcorp.com"}), \
              patch.object(executor, "_refund_credits") as mock_refund, \
              patch("campaigns.backend.services.elein_executor.urllib.request.urlopen", side_effect=wrapped_err):
 
@@ -234,6 +236,7 @@ class TestSendGridSocketTimeoutIdempotency:
         }
 
         with patch.dict(os.environ, {"SENDGRID_API_KEY": "SG.test-mock-api-key"}), \
+             patch("core.backend.services.mx_and_catchall_guard.MXAndCatchAllGuard.resolve_domain_mx_records", return_value={"can_receive_mail": True, "domain": "target.com"}), \
              patch("campaigns.backend.services.elein_executor.urllib.request.urlopen") as mock_urlopen:
             result = executor.handle_send_email(node_data, "https://linkedin.com/in/vp")
 

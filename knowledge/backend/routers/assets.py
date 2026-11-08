@@ -166,6 +166,95 @@ async def add_knowledge_pdf(
 
     return {"status": "success", "asset": asset}
     
+@router.post("/knowledge/upload/code", response_model=Optional[Dict])
+async def add_knowledge_code(
+    file: UploadFile = File(...),
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """Endpoint for reverse-engineering and vectorizing code bundles, Wasm binaries, and Chrome extensions."""
+    # Paranoia Layer 1: Enforce Tier Knowledge Asset Limits
+    ws_res = supabase.table("workspaces").select("tier").eq("id", workspace_id).execute()
+    ws_tier = ws_res.data[0].get("tier", "FREE") if ws_res.data else "FREE"
+    from core.backend.services.credit_service import TIER_LIMITS
+    limits = TIER_LIMITS.get(ws_tier, TIER_LIMITS["FREE"])
+    max_assets = limits.get("max_knowledge_assets", 3)
+    
+    count_res = supabase.table("knowledge_assets").select("id", count="exact").eq("workspace_id", workspace_id).neq("status", "failed").execute()
+    current_count = count_res.count if isinstance(getattr(count_res, "count", None), int) else (len(count_res.data) if isinstance(getattr(count_res, "data", None), list) else 0)
+    if current_count >= max_assets:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Knowledge Base limit reached: {ws_tier.capitalize()} Tier allows up to {max_assets} document{'s' if max_assets != 1 else ''}. Upgrade to Growth Pro to upload more."
+        )
+
+    import uuid
+    import os
+    content = await file.read()
+    
+    # Paranoia Layer 1 & 0: Minimum size & Magic bytes validation
+    if len(content) < 8:
+        raise HTTPException(status_code=400, detail="Uploaded code artifact is empty or corrupt (minimum 8 bytes required).")
+    
+    # SAAS SAFETY: 25MB file size limit to prevent memory/sync blocking
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 25MB.")
+        
+    filename = file.filename or "artifact.bin"
+    ext = os.path.splitext(filename)[1].lower()
+    allowed_exts = {".js", ".mjs", ".ts", ".wasm", ".zip", ".crx", ".json"}
+    if ext not in allowed_exts:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file type '{ext}'. Allowed code intelligence artifacts: {', '.join(sorted(allowed_exts))}"
+        )
+        
+    asset_id = str(uuid.uuid4())
+    storage_path = f"{workspace_id}/{asset_id}{ext}"
+    
+    uploaded_to_storage = False
+    try:
+        supabase.storage.from_('knowledge-files').upload(storage_path, content, {'content-type': 'application/octet-stream'})
+        uploaded_to_storage = True
+    except Exception as e:
+        logger.warning(f"[CodeIntelligence] Storage upload warning: {str(e)}")
+
+    asset = {
+        "id": asset_id,
+        "workspace_id": workspace_id,
+        "name": filename, 
+        "type": "code_intelligence", 
+        "status": "queued"
+    }
+
+    try:
+        supabase.table("knowledge_assets").insert(asset).execute()
+        job = enqueue_job(
+            supabase, 
+            'code_intelligence', 
+            workspace_id, 
+            asset_id, 
+            {
+                'filename': filename, 
+                'storage_path': storage_path
+            }
+        )
+        if not job:
+            raise RuntimeError("Job queue rejected code intelligence processing task.")
+    except Exception as e:
+        if uploaded_to_storage:
+            try:
+                supabase.storage.from_('knowledge-files').remove([storage_path])
+            except Exception:
+                pass
+        try:
+            supabase.table("knowledge_assets").delete().eq("id", asset_id).execute()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to queue code intelligence job: {str(e)}")
+
+    return {"status": "success", "asset": asset}
+
 @router.post("/knowledge/upload/url", response_model=Optional[Dict])
 async def add_knowledge_url(
     payload: UrlUpload,
@@ -333,6 +422,21 @@ async def retry_knowledge_asset(
                 status_code=400,
                 detail="The original PDF file is no longer available in storage. Please upload the PDF again."
             )
+    elif asset_type in ("code_intelligence", "code", "wasm"):
+        import os
+        filename = asset.get("name", "artifact.bin")
+        ext = os.path.splitext(filename)[1].lower() or ".bin"
+        storage_path = f"{workspace_id}/{asset_id}{ext}"
+        job = enqueue_job(
+            supabase,
+            'code_intelligence',
+            workspace_id,
+            asset_id,
+            {
+                'filename': filename,
+                'storage_path': storage_path
+            }
+        )
     else:
         supabase.table("knowledge_assets").update({"status": "failed"}).eq("id", asset_id).execute()
         raise HTTPException(status_code=400, detail=f"Unsupported asset type '{asset_type}' for retry")

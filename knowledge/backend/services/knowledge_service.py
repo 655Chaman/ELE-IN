@@ -420,6 +420,42 @@ class KnowledgeService:
             raise
 
     # ───────────────────────────────────────────────────────────────────────
+    # Code intelligence processing (REA + Ghidra)
+    # ───────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def process_code_bg(
+        supabase, workspace_id: str, filename: str, file_bytes: bytes, asset_id: str
+    ):
+        """Background task: extract technical architecture, APIs, and Wasm telemetry and index into vector store."""
+        logger.info(f"[KB] Starting code intelligence processing for asset {asset_id}: {filename}")
+        try:
+            if not file_bytes or len(file_bytes) == 0:
+                raise ValueError("Code file or binary is empty (0 bytes).")
+
+            from knowledge.backend.services.code_intelligence_service import CodeIntelligenceService
+            res = CodeIntelligenceService.process_and_index_code_artifact(
+                workspace_id=workspace_id,
+                filename=filename,
+                file_bytes=file_bytes,
+                asset_id=asset_id,
+                supabase=supabase
+            )
+            KnowledgeService._finalize_asset_processing(supabase, asset_id, workspace_id, "synced", trigger_synthesis=True)
+            logger.info(f"[KB] Code intelligence asset {asset_id} synced")
+            return res
+
+        except Exception as e:
+            logger.error(f"[KB] process_code_bg failed for {asset_id}: {e}")
+            try:
+                KnowledgeService._finalize_asset_processing(
+                    supabase, asset_id, workspace_id, "failed", error_msg=str(e)
+                )
+            except Exception as fe:
+                logger.error(f"[KB] Could not mark asset as failed: {fe}")
+            raise
+
+    # ───────────────────────────────────────────────────────────────────────
     # Asset CRUD
     # ───────────────────────────────────────────────────────────────────────
 
@@ -428,8 +464,16 @@ class KnowledgeService:
         """Delete an asset from DB, vector store, and Supabase storage."""
         # Layer 1 Paranoia: Purge physical file from Supabase Storage to prevent orphan accumulation
         try:
-            storage_path = f"{workspace_id}/{asset_id}.pdf"
-            supabase.storage.from_("knowledge-files").remove([storage_path])
+            storage_candidates = [
+                f"{workspace_id}/{asset_id}.pdf",
+                f"{workspace_id}/{asset_id}.wasm",
+                f"{workspace_id}/{asset_id}.zip",
+                f"{workspace_id}/{asset_id}.crx",
+                f"{workspace_id}/{asset_id}.js",
+                f"{workspace_id}/{asset_id}.ts",
+                f"{workspace_id}/{asset_id}.json"
+            ]
+            supabase.storage.from_("knowledge-files").remove(storage_candidates)
         except Exception as se:
             logger.debug(f"[KB] Storage cleanup skipped or non-fatal for {asset_id}: {se}")
 
@@ -656,7 +700,8 @@ class KnowledgeService:
                 "core product offering, primary value proposition, solutions and features",
                 "ideal customer profile, target industries, buyer personas, pains solved",
                 "proof points, statistics, metrics, ROI, case studies, customer results",
-                "key differentiators, competitive advantages, pricing model, guarantees"
+                "key differentiators, competitive advantages, pricing model, guarantees",
+                "technical architecture, tech stack, APIs, SDKs, engineering differentiators, webassembly, performance benchmarks"
             ]
             
             vs = _get_vector_store()

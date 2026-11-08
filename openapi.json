@@ -15538,6 +15538,57 @@
         }
       }
     },
+    "/api/assets/knowledge/upload/code": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Add Knowledge Code",
+        "description": "Endpoint for reverse-engineering and vectorizing code bundles, Wasm binaries, and Chrome extensions.",
+        "operationId": "add_knowledge_code_api_assets_knowledge_upload_code_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_knowledge_code_api_assets_knowledge_upload_code_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Add Knowledge Code Api Assets Knowledge Upload Code Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assets/knowledge/upload/url": {
       "post": {
         "tags": [
@@ -23066,6 +23117,20 @@
           "list_id"
         ],
         "title": "BatchSocialScanRequest"
+      },
+      "Body_add_knowledge_code_api_assets_knowledge_upload_code_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_knowledge_code_api_assets_knowledge_upload_code_post"
       },
       "Body_add_knowledge_pdf_api_assets_knowledge_upload_pdf_post": {
         "properties": {

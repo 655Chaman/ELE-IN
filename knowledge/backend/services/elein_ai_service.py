@@ -1434,6 +1434,7 @@ async def stream_reply_draft(
     # Phase 5: Build Layered Context (Synthesis -> Retrieved -> Playbooks -> Variables)
     synthesis = _get_synthesis(workspace_id)
     synthesis_layer = ""
+    objection_playbook = ""
     if synthesis:
         synthesis_layer = f"CORE VALUE PROP:\n{synthesis.get('core_value_prop', '')}\n\n"
         diff_str = _format_list_field(synthesis.get('key_differentiators'))
@@ -1442,7 +1443,7 @@ async def stream_reply_draft(
         proof_str = _format_list_field(synthesis.get('proof_points'))
         if proof_str:
             synthesis_layer += f"PROOF POINTS:\n{proof_str}\n\n"
-        if not objection_playbook and synthesis.get('objection_playbook'):
+        if synthesis.get('objection_playbook'):
             objection_playbook = synthesis.get('objection_playbook')
 
     # Layer 0/1 Paranoia: Clean semantic query without conversational prompt pollution
@@ -2451,6 +2452,7 @@ def generate_ai_hook(profile_data: dict, workspace_id: str = "", custom_persona:
     # Phase 5: Build Layered Context (Synthesis -> Retrieved -> Playbooks -> Variables)
     synthesis = _get_synthesis(workspace_id)
     synthesis_layer = ""
+    objection_playbook = ""
     if synthesis:
         synthesis_layer = f"CORE VALUE PROP:\n{synthesis.get('core_value_prop', '')}\n\n"
         diff_str = _format_list_field(synthesis.get('key_differentiators'))
@@ -2459,7 +2461,7 @@ def generate_ai_hook(profile_data: dict, workspace_id: str = "", custom_persona:
         proof_str = _format_list_field(synthesis.get('proof_points'))
         if proof_str:
             synthesis_layer += f"PROOF POINTS:\n{proof_str}\n\n"
-        if not objection_playbook and synthesis.get('objection_playbook'):
+        if synthesis.get('objection_playbook'):
             objection_playbook = synthesis.get('objection_playbook')
 
     # Layer 0/1 Paranoia: Clean semantic query for target role and company

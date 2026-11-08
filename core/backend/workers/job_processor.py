@@ -83,6 +83,14 @@ async def process_single_job(job, sync_supabase):
                         # Fallback for old queued jobs that might still have base64 payload
                         file_bytes = base64.b64decode(payload['file_bytes'])
                     loop.run_until_complete(KnowledgeService.process_pdf_bg(sync_supabase, workspace_id, payload['filename'], file_bytes, asset_id))
+                elif job_type == 'code_intelligence':
+                    storage_path = payload.get('storage_path')
+                    if storage_path:
+                        res = sync_supabase.storage.from_('knowledge-files').download(storage_path)
+                        file_bytes = res
+                    else:
+                        file_bytes = base64.b64decode(payload['file_bytes']) if 'file_bytes' in payload else b""
+                    loop.run_until_complete(KnowledgeService.process_code_bg(sync_supabase, workspace_id, payload['filename'], file_bytes, asset_id))
                 elif job_type == 'csv':
                     from campaigns.backend.routers.elein import process_csv_background
                     process_csv_background(payload['list_id'], payload['temp_file'], payload['mapping_dict'], payload['clean_data'], workspace_id, payload.get('target_timezone'), payload.get('collision_policy', 'merge'))
@@ -227,7 +235,7 @@ async def process_single_job(job, sync_supabase):
                     
                 sync_supabase.table("processing_jobs").update({"status": "done"}).eq("id", job_id).execute()
                 
-                if job_type in ('url', 'text', 'pdf', 'synthesis'):
+                if job_type in ('url', 'text', 'pdf', 'code_intelligence', 'synthesis'):
                     # Layer 0 & 1 Paranoia (Flaw 12): Dedicated synthesis jobs default to force=True unless explicitly false.
                     # Ingestion follower synthesis defaults to False unless payload specifies force=True.
                     force_synthesis = payload.get("force", True if job_type == 'synthesis' else False) if isinstance(payload, dict) else (job_type == 'synthesis')
@@ -235,7 +243,7 @@ async def process_single_job(job, sync_supabase):
                 
                 asset_status = "synced"
             finally:
-                if asset_id and job_type in ('url', 'text', 'pdf'):
+                if asset_id and job_type in ('url', 'text', 'pdf', 'code_intelligence'):
                     # Layer 1 Paranoia: KnowledgeService._finalize_asset_processing sets 'failed' + error_msg if it errored.
                     # Only confirm 'synced' on clean completion; never overwrite 'failed' with a blank payload.
                     if asset_status == "synced":

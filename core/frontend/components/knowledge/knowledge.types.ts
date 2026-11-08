@@ -16,7 +16,7 @@ export interface Persona {
 export interface KnowledgeAsset {
   id: string;
   name: string;
-  type: "pdf" | "text" | "url";
+  type: "pdf" | "text" | "url" | "code_intelligence" | string;
   status: string;
   error_msg?: string;
   chunk_count?: number;

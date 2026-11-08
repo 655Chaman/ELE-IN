@@ -131,6 +131,21 @@ def write_copy_for_pipeline(pipeline_id: str):
         return
     deducted = True
 
+    # Fetch synthesis & code intelligence technical proof points
+    synthesis_layer = ""
+    try:
+        from knowledge.backend.services.knowledge_service import KnowledgeService
+        synthesis = KnowledgeService.get_synthesis(supabase, workspace_id) or {}
+        if synthesis.get("core_value_prop"):
+            synthesis_layer += f"Our Value Proposition:\n{synthesis['core_value_prop']}\n"
+        diffs = synthesis.get("key_differentiators")
+        if isinstance(diffs, list) and diffs:
+            synthesis_layer += f"Key Technical Differentiators & Proof Points:\n- " + "\n- ".join(str(d) for d in diffs[:4]) + "\n"
+        elif diffs:
+            synthesis_layer += f"Key Technical Differentiators:\n{diffs}\n"
+    except Exception as se:
+        logger.debug(f"[Copywriting] Synthesis context fetch skipped: {se}")
+
     logger.info(f"Generating copy for {len(leads)} vetted leads for pipeline {pipeline_id}...")
 
     successful_count = 0
@@ -156,7 +171,7 @@ def write_copy_for_pipeline(pipeline_id: str):
             Target Person: {sanitize_for_prompt(kdm_first, 'kdm_first')} (Title: {sanitize_for_prompt(job_title, 'job_title')})
             Company Name: {sanitize_for_prompt(company_name, 'company_name')}
             Context/Breach Info: {sanitize_for_prompt(description, 'company_description')}
-            
+            {synthesis_layer}
             RULES:
             1. Subject line should be under 5 words, lowercase, intriguing.
             2. Body should be under 100 words.

@@ -15,6 +15,7 @@ import { usePaywall } from "@/contexts/PaywallContext";
 
 import { AddUrlModal } from "@/components/knowledge/AddUrlModal";
 import { UploadPdfModal } from "@/components/knowledge/UploadPdfModal";
+import { UploadCodeModal } from "@/components/knowledge/UploadCodeModal";
 import { KnowledgeAssetList } from "@/components/knowledge/KnowledgeAssetList";
 import { TestDriveSimulator } from "@/components/knowledge/TestDriveSimulator";
 import { SynthesisEditor } from "@/components/knowledge/SynthesisEditor";
@@ -385,8 +386,13 @@ export default function EleInKnowledge() {
   const isAssetCapped = !isPro && assetCount >= maxAssets;
   const isPersonaCapped = !isPro && personaCount >= maxPersonas;
 
+  const codeAssetCount = Array.isArray(assets) 
+    ? assets.filter((a: any) => a.type === 'code_intelligence' || a.name?.endsWith('.wasm') || a.name?.endsWith('.js') || a.name?.endsWith('.ts') || a.name?.endsWith('.zip') || a.name?.endsWith('.crx')).length 
+    : 0;
+
   const tabs = [
     { id: 'assets', label: "Company Info", icon: <Database size={13} />, count: `${assetCount}` },
+    { id: 'code_intelligence', label: "Deep Code & Wasm", icon: <Cpu size={13} />, count: codeAssetCount > 0 ? `${codeAssetCount}` : (isPro ? "Active" : "Pro") },
     { id: 'personas', label: "Buyer Personas", icon: <Users size={13} />, count: `${personaCount}` },
     { id: 'objections', label: "Objection Playbook", icon: <ShieldAlert size={13} />, count: `${objectionCount}` },
     { id: 'bayesian_icp', label: "Lead Fit AI", icon: <Sparkles size={13} />, count: isPro ? "Active" : "Pro" },
@@ -406,6 +412,13 @@ export default function EleInKnowledge() {
       what: "Your company's single source of truth—including websites, pitch decks, case studies, and internal battlecards.",
       why: "Default AI hallucinates and sends generic sales templates that get ignored or marked as spam. Grounding the AI in your real materials ensures every message cites your actual features, customer case studies, and proven metrics.",
       roi: "Stops wasting outreach limits and credits on generic emails that get 0% reply rates. Hyper-personalized outreach citing real ROI turns more cold leads into booked meetings."
+    },
+    code_intelligence: {
+      name: "Code & Architecture Intelligence",
+      badge: "Deep REA + Ghidra Engine",
+      what: "Ground-truth technical architecture extracted directly from web application bundles, Chrome extensions, and WebAssembly binaries.",
+      why: "Generic outreach talking about 'saving time' gets ignored by technical leaders. Grounding your AI in their actual frontend frameworks, API routes, SDK integrations, and anti-bot heuristics creates instant technical credibility.",
+      roi: "Technical buyers reply when you prove you understand their stack. Dramatically reduces objection rates and elevates reply rates across engineering and founder personas."
     },
     personas: {
       name: "Buyer Personas",
@@ -736,6 +749,49 @@ export default function EleInKnowledge() {
 
                 <SynthesisEditor synthesis={synthesis} mutateSynthesis={mutateSynthesis} />
 
+              </div>
+            )}
+
+            {activeTab === 'code_intelligence' && (
+              <div className="space-y-6">
+                <UploadCodeModal mutateAssets={mutateAssets} />
+
+                <div className="bg-card/40 border border-border/50 rounded-xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
+                        <Cpu size={14} className="text-cyan-500" />
+                        <span>Decompiled Technical Artifacts & Binaries</span>
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Technical architecture, REST/GraphQL endpoints, and WebAssembly signatures vectorized in AI memory.
+                      </p>
+                    </div>
+                  </div>
+
+                  {isAssetsLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2].map((i) => (
+                        <div key={i} className="h-12 bg-muted/40 rounded-lg animate-pulse" />
+                      ))}
+                    </div>
+                  ) : (
+                    <KnowledgeAssetList
+                      assets={(assets || []).filter((a: any) => 
+                        a.type === 'code_intelligence' || 
+                        a.name?.endsWith('.wasm') || 
+                        a.name?.endsWith('.js') || 
+                        a.name?.endsWith('.ts') || 
+                        a.name?.endsWith('.zip') || 
+                        a.name?.endsWith('.crx')
+                      )}
+                      onDelete={handleDeleteAsset}
+                      onRetry={handleRetryAsset}
+                      mutateAssets={mutateAssets}
+                      mutateSynthesis={mutateSynthesis}
+                    />
+                  )}
+                </div>
               </div>
             )}
 

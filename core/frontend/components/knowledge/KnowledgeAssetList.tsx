@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { 
   FileText, LinkIcon, RefreshCw, Trash2, 
-  Sparkles, CheckCircle2, AlertTriangle, ArrowRight
+  Sparkles, CheckCircle2, AlertTriangle, ArrowRight, Cpu
 } from "lucide-react"
 import type { KnowledgeAsset } from "./knowledge.types"
 import { SYNTHESIS_STARTER_PRESETS } from "./SynthesisEditor"
@@ -135,6 +135,8 @@ ${preset.objectionPlaybook}
             <div className="w-7 h-7 rounded-md bg-muted/60 border border-border/40 text-foreground/70 flex items-center justify-center shrink-0">
               {asset.type === 'pdf' ? (
                 <FileText size={14} />
+              ) : asset.type === 'code_intelligence' ? (
+                <Cpu size={14} className="text-cyan-500" />
               ) : asset.type === 'text' ? (
                 <FileText size={14} />
               ) : (
@@ -146,7 +148,7 @@ ${preset.objectionPlaybook}
               <p className="text-xs font-medium text-foreground truncate">{asset.name}</p>
               
               <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                <span>{asset.type === 'url' ? 'Website' : asset.type === 'pdf' ? 'PDF' : 'Notes'}</span>
+                <span>{asset.type === 'url' ? 'Website' : asset.type === 'pdf' ? 'PDF' : asset.type === 'code_intelligence' ? 'Deep Code / Wasm' : 'Notes'}</span>
                 <span>·</span>
                 {asset.status === 'processing' ? (
                   <StatusPill status="verifying" label="Indexing..." size="xs" pulse />
