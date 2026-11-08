@@ -162,19 +162,27 @@ class REAGhidraDecompiler:
             # Decode LEB128 section length (capped at 35 bits for u32 per Wasm spec)
             length = 0
             shift = 0
+            leb_terminated = False
             while offset < total_len:
                 byte = binary_bytes[offset]
                 offset += 1
                 length |= (byte & 0x7F) << shift
                 if not (byte & 0x80):
+                    leb_terminated = True
                     break
                 shift += 7
                 if shift > 35:
                     raise InvalidWasmBinaryError("LEB128 integer overflow in section length (> 35 bits)")
 
+            if not leb_terminated:
+                raise InvalidWasmBinaryError("Unexpected EOF in LEB128 stream: incomplete integer encoding")
+
             sec_name = SECTION_IDS.get(section_id, f"Unknown_{section_id}")
+            if offset + length > total_len:
+                raise InvalidWasmBinaryError(f"Section '{sec_name}' extends past end of binary (expected {length} bytes, available {total_len - offset})")
+
             payload_start = offset
-            payload_end = min(offset + length, total_len)
+            payload_end = offset + length
             sections.append({
                 "section_id": section_id,
                 "name": sec_name,

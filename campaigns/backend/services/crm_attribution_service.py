@@ -1,4 +1,5 @@
 import logging
+import math
 import uuid
 import re
 import json
@@ -161,12 +162,38 @@ def calculate_deal_attribution(
     Supports First-Touch, Last-Touch, Linear, and W-Shaped attribution models.
     """
     clean_name = sanitize_text(deal_name) or "New Deal"
-    amount = max(0.0, float(deal_amount or 0.0))
+    try:
+        raw_float = float(deal_amount or 0.0)
+        if not math.isfinite(raw_float):
+            amount = 0.0
+        else:
+            amount = max(0.0, raw_float)
+    except (ValueError, TypeError):
+        amount = 0.0
+
     chosen_model = model if model in ('first_touch', 'last_touch', 'linear', 'w_shaped') else 'w_shaped'
     
     if not touchpoints or len(touchpoints) == 0:
         # Default single organic touchpoint if none recorded
         touchpoints = [{"channel": "outbound_campaign", "campaign": "Direct Inbound", "step": 1}]
+
+    # Paranoia Layer 1: Chronological ordering of touchpoints prior to attribution allocation
+    def _parse_tp_time(tp):
+        if not isinstance(tp, dict):
+            return 0.0
+        val = tp.get("timestamp") or tp.get("created_at") or tp.get("date")
+        if not val:
+            return 0.0
+        if isinstance(val, (int, float)):
+            return float(val)
+        try:
+            return datetime.fromisoformat(str(val).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return 0.0
+
+    has_timestamps = any(isinstance(tp, dict) and (tp.get("timestamp") or tp.get("created_at") or tp.get("date")) for tp in touchpoints)
+    if has_timestamps:
+        touchpoints = sorted(touchpoints, key=_parse_tp_time)
 
     n = len(touchpoints)
     weighted_touchpoints = []
@@ -179,7 +206,8 @@ def calculate_deal_attribution(
             tp_copy["weight"] = round(w, 4)
             tp_copy["attributed_amount"] = round(w * amount, 2)
             weighted_touchpoints.append(tp_copy)
-            weights_summary[tp.get("channel", f"step_{i+1}")] = round(w, 4)
+            chan = tp.get("channel", f"step_{i+1}")
+            weights_summary[chan] = round(weights_summary.get(chan, 0.0) + round(w, 4), 4)
 
     elif chosen_model == "last_touch":
         for i, tp in enumerate(touchpoints):
@@ -188,7 +216,8 @@ def calculate_deal_attribution(
             tp_copy["weight"] = round(w, 4)
             tp_copy["attributed_amount"] = round(w * amount, 2)
             weighted_touchpoints.append(tp_copy)
-            weights_summary[tp.get("channel", f"step_{i+1}")] = round(w, 4)
+            chan = tp.get("channel", f"step_{i+1}")
+            weights_summary[chan] = round(weights_summary.get(chan, 0.0) + round(w, 4), 4)
 
     elif chosen_model == "linear":
         raw_w = 1.0 / n
@@ -198,13 +227,16 @@ def calculate_deal_attribution(
             tp_copy["weight"] = w
             tp_copy["attributed_amount"] = round(raw_w * amount, 2)
             weighted_touchpoints.append(tp_copy)
-            weights_summary[tp.get("channel", f"step_{i+1}")] = w
+            chan = tp.get("channel", f"step_{i+1}")
+            weights_summary[chan] = round(weights_summary.get(chan, 0.0) + w, 4)
 
     else:  # w_shaped (Default for Enterprise Account attribution)
         if n == 1:
             w_list = [1.0]
         elif n == 2:
             w_list = [0.5, 0.5]
+        elif n == 3:
+            w_list = [0.3333, 0.3333, 0.3334]
         else:
             # 40% First Touch, 40% Key Opportunity Conversion Touch, 20% Middle Nurture Touches
             mid_count = n - 2
@@ -218,7 +250,8 @@ def calculate_deal_attribution(
             tp_copy["weight"] = w
             tp_copy["attributed_amount"] = round(raw_w * amount, 2)
             weighted_touchpoints.append(tp_copy)
-            weights_summary[tp.get("channel", f"step_{i+1}")] = w
+            chan = tp.get("channel", f"step_{i+1}")
+            weights_summary[chan] = round(weights_summary.get(chan, 0.0) + w, 4)
 
     # Paranoia Layer 1: Strict 100.0% Weight & Amount Conservation (Zero Fractional Leakage)
     if weighted_touchpoints:
@@ -232,7 +265,7 @@ def calculate_deal_attribution(
         weighted_touchpoints[primary_idx]["weight"] = round(weighted_touchpoints[primary_idx]["weight"] + delta_w, 4)
         weighted_touchpoints[primary_idx]["attributed_amount"] = round(weighted_touchpoints[primary_idx]["attributed_amount"] + delta_amt, 2)
         primary_chan = touchpoints[primary_idx].get("channel", f"step_{primary_idx+1}")
-        weights_summary[primary_chan] = weighted_touchpoints[primary_idx]["weight"]
+        weights_summary[primary_chan] = round(weights_summary.get(primary_chan, 0.0) + delta_w, 4)
 
     # Layer 0 & 1: Generate valid RFC 4122 UUID v5 for PostgreSQL UUID PRIMARY KEY schema
     deterministic_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"deal_attr:{workspace_id}:{deal_id}:{chosen_model}"))

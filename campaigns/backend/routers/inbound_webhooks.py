@@ -672,7 +672,7 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
     is_first_booking = not bool(isinstance(meta, dict) and meta.get("meeting_booked") is True)
     if not is_first_booking:
         try:
-            enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+            enr_res = supabase.table("campaign_enrollments").select("id").eq("workspace_id", workspace_id).eq("lead_id", lead_id).execute()
             if isinstance(enr_res.data, list):
                 if not enr_res.data:
                     res_already = {"status": "already_processed", "lead_id": lead_id, "email": email, "reason": "Meeting already recorded and outreach halted"}
@@ -712,20 +712,20 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
         supabase.table("leads").update({
             "metadata": meta,
             "status": "replied"
-        }).eq("id", lead_id).execute()
+        }).eq("workspace_id", workspace_id).eq("id", lead_id).execute()
     except Exception as e:
         logger.warning(f"Failed to update lead status to replied for {lead_id}: {e}. Retrying metadata update only.")
         try:
             supabase.table("leads").update({
                 "metadata": meta
-            }).eq("id", lead_id).execute()
+            }).eq("workspace_id", workspace_id).eq("id", lead_id).execute()
         except Exception as e2:
             logger.error(f"Failed to update lead {lead_id}: {e2}")
 
     # 3. Halt active outreach for this lead across all in-flight statuses
     try:
         now_iso = datetime.utcnow().isoformat()
-        enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+        enr_res = supabase.table("campaign_enrollments").select("id").eq("workspace_id", workspace_id).eq("lead_id", lead_id).execute()
         if enr_res.data and isinstance(enr_res.data, list):
             enr_ids = [r["id"] for r in enr_res.data if isinstance(r, dict) and "id" in r]
             if enr_ids:
@@ -739,7 +739,7 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
                 supabase.table("campaign_enrollments").update({
                     "status": "completed",
                     "updated_at": now_iso
-                }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
+                }).eq("workspace_id", workspace_id).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
         elif enr_res.data and not isinstance(enr_res.data, list):
             enr_ids = [r["id"] for r in enr_res.data]
             supabase.table("campaign_execution_states").update({
@@ -752,7 +752,7 @@ async def calendar_booking_webhook(workspace_id: str, request: Request):
             supabase.table("campaign_enrollments").update({
                 "status": "completed",
                 "updated_at": now_iso
-            }).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
+            }).eq("workspace_id", workspace_id).in_("id", enr_ids).in_("status", ["pending", "active", "running"]).execute()
     except Exception as e:
         logger.warning(f"Failed to complete campaign states on meeting booked: {e}")
 
@@ -1376,7 +1376,7 @@ async def smartlead_inbound_webhook(workspace_id: str, request: Request):
 
     if already_replied or already_unsub:
         try:
-            enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+            enr_res = supabase.table("campaign_enrollments").select("id").eq("workspace_id", workspace_id).eq("lead_id", lead_id).execute()
             if isinstance(enr_res.data, list):
                 if not enr_res.data:
                     return {"status": "already_processed"}
@@ -1747,7 +1747,7 @@ async def instantly_inbound_webhook(workspace_id: str, request: Request):
 
     if already_replied or already_unsub:
         try:
-            enr_res = supabase.table("campaign_enrollments").select("id").eq("lead_id", lead_id).execute()
+            enr_res = supabase.table("campaign_enrollments").select("id").eq("workspace_id", workspace_id).eq("lead_id", lead_id).execute()
             if isinstance(enr_res.data, list):
                 if not enr_res.data:
                     return {"status": "already_processed"}
