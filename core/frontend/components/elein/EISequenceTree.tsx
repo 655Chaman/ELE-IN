@@ -24,7 +24,7 @@ import {
   AtSign, Zap, CheckCircle2, Shield, StopCircle, AlertCircle,
   Phone, CalendarCheck, Star, Mic2, Tag, Bell, Database, Info, ZoomIn, ZoomOut, Maximize, Undo, Redo, FileText, Save,
   Lock, Sparkles, ShieldCheck, AlertTriangle, Layers, Flame, Search, ArrowRight, StickyNote, Download, Upload,
-  ChevronDown, Copy, FileCode
+  ChevronDown, Copy, FileCode, BookOpen
 } from "lucide-react"
 import useSWR, { useSWRConfig } from "swr"
 import { fetcher, fetchWithAuth } from "@/lib/apiClient"
@@ -820,6 +820,32 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                     style={{ width: `${Math.min(100, (charCount / 300) * 100)}%` }}
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Visual AI Knowledge Pipeline Wiring Indicators */}
+            {needsMessage && (node.data?.body?.includes("ai_brain_response") || node.data?.message?.includes("ai_brain_response")) && (
+              <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center gap-1.5 text-[10px] text-cyan-600 dark:text-cyan-400 font-mono">
+                <Sparkles size={11} className="text-cyan-500" />
+                <span>Piped: {"{{ai_brain_response}}"}</span>
+              </div>
+            )}
+            {needsMessage && (node.data?.body?.includes("ai_hook") || node.data?.message?.includes("ai_hook")) && (
+              <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center gap-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
+                <Sparkles size={11} className="text-indigo-500" />
+                <span>Piped: {"{{ai_hook}}"}</span>
+              </div>
+            )}
+            {isAiNode && (node.type === "ai_query_knowledge_base" || (node.type as string) === "ai_query_brain") && (
+              <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                <span className="text-orange-500 flex items-center gap-1"><BookOpen size={10} /> Outputs:</span>
+                <span className="text-cyan-600 dark:text-cyan-400 font-bold">{"{{ai_brain_response}}"}</span>
+              </div>
+            )}
+            {isAiNode && node.type === "ai_personalize" && (
+              <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                <span className="text-indigo-500 flex items-center gap-1"><Sparkles size={10} /> Outputs:</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-bold">{"{{ai_hook}}"}</span>
               </div>
             )}
 

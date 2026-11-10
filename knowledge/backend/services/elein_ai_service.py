@@ -2037,9 +2037,9 @@ def query_knowledge_base(reply_text: str, profile_data: dict, playbook: str, ai_
     kb_context = _truncate_to_tokens(_get_knowledge_context(
         workspace_id,
         clean_query,
-        top_k=2,
-        max_tokens=800
-    ) if workspace_id else "", 800)
+        top_k=4,
+        max_tokens=1500
+    ) if workspace_id else "", 1500)
 
     # Layer 1 Paranoia (Flaw 26): Pull Workspace Constitution
     synthesis = _get_synthesis(workspace_id) if workspace_id else {}

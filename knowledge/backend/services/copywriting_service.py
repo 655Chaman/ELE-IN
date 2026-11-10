@@ -146,6 +146,16 @@ def write_copy_for_pipeline(pipeline_id: str):
     except Exception as se:
         logger.debug(f"[Copywriting] Synthesis context fetch skipped: {se}")
 
+    # Dynamic vector RAG retrieval from uploaded assets
+    rag_layer = ""
+    try:
+        from knowledge.backend.services.elein_ai_service import _get_knowledge_context
+        chunks = _get_knowledge_context(workspace_id, "case studies, proof points, ROI metrics", top_k=2, max_tokens=600)
+        if chunks:
+            rag_layer = f"Relevant Case Studies & Proof Points:\n{chunks}\n"
+    except Exception as re_err:
+        logger.debug(f"[Copywriting] Vector context retrieval skipped: {re_err}")
+
     logger.info(f"Generating copy for {len(leads)} vetted leads for pipeline {pipeline_id}...")
 
     successful_count = 0
@@ -172,6 +182,7 @@ def write_copy_for_pipeline(pipeline_id: str):
             Company Name: {sanitize_for_prompt(company_name, 'company_name')}
             Context/Breach Info: {sanitize_for_prompt(description, 'company_description')}
             {synthesis_layer}
+            {rag_layer}
             RULES:
             1. Subject line should be under 5 words, lowercase, intriguing.
             2. Body should be under 100 words.

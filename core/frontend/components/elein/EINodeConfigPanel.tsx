@@ -85,6 +85,10 @@ const VARIABLES = [
   { label: "Location", value: "{{location | fallback: your area}}", fallback: "your area" },
   { label: "Last name", value: "{{last_name | fallback: there}}", fallback: "there" },
   { label: "Mutual connections", value: "{{mutual_connections | fallback: mutual colleagues}}", fallback: "mutual colleagues" },
+  { label: "AI Knowledge Brain Response", value: "{{ai_brain_response}}", fallback: "our specialized enterprise architecture", isAi: true },
+  { label: "AI Objection Rebuttal", value: "{{ai_objection_handler}}", fallback: "Understood, here is how our infrastructure addresses that", isAi: true },
+  { label: "AI Personalized Hook", value: "{{ai_hook}}", fallback: "I noticed your impressive background on LinkedIn", isAi: true },
+  { label: "AI Icebreaker", value: "{{icebreaker}}", fallback: "Hope you're having a productive week", isAi: true },
 ]
 
 export const PREVIEW_PERSONAS = [
@@ -98,6 +102,10 @@ export const PREVIEW_PERSONAS = [
     location: "San Francisco, CA",
     industry: "Enterprise Cloud",
     mutual_connections: "Sarah Miller and 4 others",
+    ai_brain_response: "Ele-in runs pure WebAssembly client-side execution with zero DOM tampering, bypassing Arkose and WebGL canvas detection.",
+    ai_objection_handler: "Understood—many high-growth teams have custom workflows. Ele-in integrates directly with your existing APIs and webhooks without code refactors.",
+    ai_hook: "Saw your recent engineering post on scaling distributed WebSocket gateways.",
+    icebreaker: "Hope you're having a great quarter at Acme.",
   },
   {
     id: "sarah",
@@ -109,6 +117,10 @@ export const PREVIEW_PERSONAS = [
     location: "Austin, TX",
     industry: "Artificial Intelligence",
     mutual_connections: "2 mutual colleagues",
+    ai_brain_response: "Our autonomous engine scales outbound pipeline by 4x without risking your personal LinkedIn sender reputation.",
+    ai_objection_handler: "That is precisely why traditional extensions get flagged—they inject noisy DOM mutations. Ele-in uses native proxy subnet pinning and kinematic jerk smoothing.",
+    ai_hook: "Incredible growth trajectory with ScaleUp AI's recent funding announcement.",
+    icebreaker: "Excited to see what you're building next.",
   },
   {
     id: "empty",
@@ -120,6 +132,10 @@ export const PREVIEW_PERSONAS = [
     location: "",
     industry: "",
     mutual_connections: "",
+    ai_brain_response: "",
+    ai_objection_handler: "",
+    ai_hook: "",
+    icebreaker: "",
   },
 ]
 
@@ -643,6 +659,20 @@ function MessageEditor({
               + {v.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => insertVar("{{ai_brain_response}}")}
+            className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400 transition-colors flex items-center gap-1"
+          >
+            <Sparkles size={10} /> + AI Brain
+          </button>
+          <button
+            type="button"
+            onClick={() => insertVar("{{ai_hook}}")}
+            className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 transition-colors flex items-center gap-1"
+          >
+            <Sparkles size={10} /> + AI Hook
+          </button>
         </div>
       )}
 
@@ -7126,6 +7156,12 @@ interface AIQueryKnowledgeBaseConfigProps {
 export function AIQueryKnowledgeBaseConfig({ data, onChange }: AIQueryKnowledgeBaseConfigProps) {
   const aiModel = data.ai_model || "Auto-Route (Recommended)";
   const fallbackMsg = data.fallback_message || "";
+  const queryMode = data.query_mode || "outbound_pitch";
+  const customQuery = data.custom_query || "";
+  const selectedAssetId = data.knowledge_asset_id || "all";
+
+  const { data: assets } = useSWR<any[]>('/api/assets/knowledge/assets', fetcher);
+  const assetList = Array.isArray(assets) ? assets : [];
 
   const AI_MODELS = [
     "Auto-Route (Recommended)",
@@ -7149,7 +7185,7 @@ export function AIQueryKnowledgeBaseConfig({ data, onChange }: AIQueryKnowledgeB
           </span>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Queries your uploaded company documents, pricing FAQs, and objection handling playbooks to generate a hyper-accurate, fact-checked response.
+          Queries your uploaded company documents, decompiled target bundles, pricing FAQs, and objection handling playbooks to generate a hyper-accurate, fact-checked response.
         </p>
         <div className="grid grid-cols-2 gap-2 pt-1">
           <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
@@ -7161,6 +7197,91 @@ export function AIQueryKnowledgeBaseConfig({ data, onChange }: AIQueryKnowledgeB
             <span className="text-[10px] text-muted-foreground">No matching knowledge</span>
           </div>
         </div>
+      </div>
+
+      {/* Execution Mode (Outbound Pitch vs Inbound Objection) */}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-semibold text-foreground">
+          Execution Mode
+        </label>
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
+          <button
+            type="button"
+            onClick={() => onChange("query_mode", "outbound_pitch")}
+            className={cn(
+              "px-3 py-2 rounded-lg text-xs font-medium transition-all text-left flex flex-col gap-0.5",
+              queryMode === "outbound_pitch"
+                ? "bg-card border border-border shadow-xs text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles size={12} className="text-cyan-500" />
+              <span>Outbound Pitching</span>
+            </span>
+            <span className="text-[10px] text-muted-foreground font-normal">
+              Formulate value prop & case study for this lead
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onChange("query_mode", "inbound_objection")}
+            className={cn(
+              "px-3 py-2 rounded-lg text-xs font-medium transition-all text-left flex flex-col gap-0.5",
+              queryMode === "inbound_objection"
+                ? "bg-card border border-border shadow-xs text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <span className="flex items-center gap-1.5">
+              <ShieldCheck size={12} className="text-orange-500" />
+              <span>Inbound Objection</span>
+            </span>
+            <span className="text-[10px] text-muted-foreground font-normal">
+              Handle prospect objection from incoming message
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Knowledge Scope / Asset Target */}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-semibold text-foreground">
+          Knowledge Document Target
+        </label>
+        <select
+          value={selectedAssetId}
+          onChange={(e) => onChange("knowledge_asset_id", e.target.value)}
+          className="w-full rounded-lg bg-card border border-border p-2.5 text-xs text-foreground focus:outline-none focus:border-cyan-500"
+        >
+          <option value="all">All Knowledge Documents & Playbooks (Default)</option>
+          {assetList.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              {asset.name} ({asset.type || "doc"})
+            </option>
+          ))}
+        </select>
+        <span className="text-[10px] text-muted-foreground block">
+          Scope retrieval to a specific technical dossier, whitepaper, or search across all workspace intelligence.
+        </span>
+      </div>
+
+      {/* Custom Query Focus / Directive */}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-semibold text-foreground">
+          Custom Query Focus & Directives (Optional)
+        </label>
+        <textarea
+          value={customQuery}
+          onChange={(e) => onChange("custom_query", e.target.value)}
+          rows={3}
+          placeholder="e.g., Focus on our 4x outbound pipeline increase, SOC2 compliance, and WebAssembly zero-DOM anti-bot architecture."
+          className="w-full rounded-lg bg-card border border-border p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-cyan-500 resize-none"
+        />
+        <span className="text-[10px] text-muted-foreground block">
+          Guides SemanticBrain RAG vector scoring towards the exact proof points or differentiators needed for this step.
+        </span>
       </div>
 
       <AIModelSelector
@@ -7186,14 +7307,40 @@ export function AIQueryKnowledgeBaseConfig({ data, onChange }: AIQueryKnowledgeB
         </span>
       </div>
 
-      <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-1">
-        <span className="text-xs font-semibold text-foreground block">
-          Output Variable Mapping
-        </span>
-        <div className="flex gap-2 font-mono text-[11px] text-orange-600 dark:text-orange-400 pt-1">
-          <span className="bg-orange-500/10 px-2 py-0.5 rounded">{"{{ai_objection_handler}}"}</span>
-          <span className="bg-orange-500/10 px-2 py-0.5 rounded">{"{{ai_brain_response}}"}</span>
+      <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-foreground block">
+            Generated Output Variables (Downstream Auto-Binding)
+          </span>
+          <span className="text-[10px] text-muted-foreground">Available in next steps</span>
         </div>
+        <div className="flex gap-2 font-mono text-[11px] pt-0.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText("{{ai_brain_response}}");
+              toast.success("Copied {{ai_brain_response}} to clipboard!");
+            }}
+            className="bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+            title="Click to copy"
+          >
+            <Copy size={11} /> {"{{ai_brain_response}}"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText("{{ai_objection_handler}}");
+              toast.success("Copied {{ai_objection_handler}} to clipboard!");
+            }}
+            className="bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-600 dark:text-orange-400 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+            title="Click to copy"
+          >
+            <Copy size={11} /> {"{{ai_objection_handler}}"}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground pt-1">
+          Insert these variables into any downstream message or email node to deliver the synthesized knowledge output.
+        </p>
       </div>
     </div>
   );
