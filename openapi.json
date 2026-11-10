@@ -16349,6 +16349,46 @@
         }
       }
     },
+    "/api/assets/knowledge/test-node-sample": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Test Node Sample",
+        "description": "On-canvas real-time simulation for AI campaign nodes.\nGenerates a live sample output against real company knowledge for sample prospects.",
+        "operationId": "test_node_sample_api_assets_knowledge_test_node_sample_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestNodeSampleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/health": {
       "get": {
         "tags": [
@@ -31735,6 +31775,77 @@
           "api_key"
         ],
         "title": "TestKeyRequest"
+      },
+      "TestNodeSampleRequest": {
+        "properties": {
+          "node_type": {
+            "type": "string",
+            "title": "Node Type",
+            "default": "send_ai_message"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt",
+            "default": ""
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone",
+            "default": "Professional & Direct"
+          },
+          "custom_query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Query",
+            "default": ""
+          },
+          "knowledge_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Asset Id",
+            "default": "all"
+          },
+          "sample_lead": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Lead"
+          }
+        },
+        "type": "object",
+        "title": "TestNodeSampleRequest"
       },
       "TestNotificationRequest": {
         "properties": {

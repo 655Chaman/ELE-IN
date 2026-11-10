@@ -128,6 +128,42 @@ class TestUnifiedKnowledgeCampaignPipeline(unittest.TestCase):
         self.assertNotIn("{{ai_brain_response}}", resolved)
         self.assertNotIn("{{ai_hook}}", resolved)
 
+    @patch("knowledge.backend.services.elein_ai_service._run_llm_with_failover")
+    @patch("knowledge.backend.services.elein_ai_service._get_knowledge_context")
+    @patch("knowledge.backend.services.knowledge_service.KnowledgeService.get_synthesis")
+    def test_node_sample_endpoint_generates_grounded_preview(
+        self,
+        mock_get_synthesis,
+        mock_get_kb_context,
+        mock_run_llm
+    ):
+        """
+        Layer 0 & 1: Verifies that POST /api/assets/knowledge/test-node-sample
+        generates an on-canvas simulation preview against company knowledge for sample leads.
+        """
+        import asyncio
+        from knowledge.backend.routers.assets import test_node_sample, TestNodeSampleRequest
+
+        mock_get_synthesis.return_value = {
+            "core_value_prop": "Ele-in automates outreach with WebAssembly sandboxing."
+        }
+        mock_get_kb_context.return_value = "Chunk from Enterprise_Security.pdf"
+        mock_run_llm.return_value = "Hi Alex, noticed your engineering leadership at Acme Cloud Technologies. Wanted to share our WebAssembly sandbox."
+
+        req = TestNodeSampleRequest(
+            node_type="send_ai_message",
+            prompt="Pitch our WebAssembly sandbox",
+            tone="Professional & Direct"
+        )
+
+        mock_supabase = MagicMock()
+        res = asyncio.run(test_node_sample(req, supabase=mock_supabase, workspace_id=self.workspace_id))
+
+        self.assertEqual(res.get("status"), "success")
+        self.assertIn("WebAssembly sandbox", res.get("generated_text", ""))
+        self.assertEqual(res.get("lead", {}).get("first_name"), "Alex")
+        self.assertGreater(res.get("word_count", 0), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

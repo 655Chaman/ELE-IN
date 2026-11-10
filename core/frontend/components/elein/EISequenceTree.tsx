@@ -848,6 +848,17 @@ function NodeCard({ node, onSelect, onDelete, isSelected, draggable, onDragStart
                 <span className="text-indigo-600 dark:text-indigo-400 font-bold">{"{{ai_hook}}"}</span>
               </div>
             )}
+            {node.type === "send_ai_message" && (
+              <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center justify-between text-[10px]">
+                <span className="text-cyan-600 dark:text-cyan-400 flex items-center gap-1 font-medium">
+                  <BookOpen size={10} />
+                  <span>{node.data?.knowledge_asset_id && node.data?.knowledge_asset_id !== "all" ? "Target Dossier" : "KB Grounded"}</span>
+                </span>
+                <span className="text-muted-foreground font-mono text-[9px] bg-muted/60 px-1.5 py-0.5 rounded">
+                  {node.data?.tone || "Professional"}
+                </span>
+              </div>
+            )}
 
             {analytics && (
               <div className="mt-3 flex items-center gap-4 pt-3 border-t border-border/40">

@@ -982,3 +982,87 @@ async def test_objection(
     except Exception as e:
         logger.error(f"[TestObjection] Test drive simulation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class TestNodeSampleRequest(BaseModel):
+    node_type: str = "send_ai_message"
+    prompt: Optional[str] = ""
+    tone: Optional[str] = "Professional & Direct"
+    custom_query: Optional[str] = ""
+    knowledge_asset_id: Optional[str] = "all"
+    sample_lead: Optional[Dict[str, Any]] = None
+
+class _DummySampleWorker:
+    def __init__(self):
+        self.sent_message = ""
+    def send_message(self, url, msg):
+        self.sent_message = msg
+        return {"status": "success"}
+    def send_connection_request(self, url, note=None, fallback=None):
+        self.sent_message = note or ""
+        return {"status": "success"}
+
+@router.post("/knowledge/test-node-sample")
+async def test_node_sample(
+    req: TestNodeSampleRequest,
+    supabase: Client = Depends(get_supabase_client),
+    workspace_id: str = Depends(get_current_workspace)
+):
+    """
+    On-canvas real-time simulation for AI campaign nodes.
+    Generates a live sample output against real company knowledge for sample prospects.
+    """
+    lead_profile = req.sample_lead or {
+        "first_name": "Alex",
+        "last_name": "Johnson",
+        "title": "VP of Engineering",
+        "company": "Acme Cloud Technologies",
+        "industry": "Enterprise Cloud Infrastructure",
+        "about": "Scaling distributed microservices, WebAssembly sandboxes, and cloud security."
+    }
+
+    try:
+        from campaigns.backend.services.elein_executor import EleInNodeExecutor
+        executor = EleInNodeExecutor(supabase, workspace_id=workspace_id)
+        dummy_worker = _DummySampleWorker()
+        executor.worker = dummy_worker
+        executor._check_message_safety_guards = lambda *args, **kwargs: None
+        executor._require_worker = lambda *args, **kwargs: None
+
+        if req.node_type in ("ai_query_knowledge_base", "ai_query_brain"):
+            node_data = {
+                "custom_query": req.custom_query or req.prompt,
+                "lead_profile": lead_profile,
+                "workspace_id": workspace_id,
+                "knowledge_asset_id": req.knowledge_asset_id
+            }
+            res = executor.handle_ai_query_brain(node_data, "https://linkedin.com/in/alex-sample")
+            generated = res.get("response", "")
+            return {
+                "status": "success",
+                "generated_text": generated,
+                "variables": res.get("variables", {}),
+                "lead": lead_profile,
+                "char_count": len(generated),
+                "word_count": len(generated.split())
+            }
+        else:
+            # Default: send_ai_message
+            node_data = {
+                "prompt": req.prompt or "Introduce our product and highlight our key differentiators",
+                "tone": req.tone or "Professional & Direct",
+                "lead_profile": lead_profile,
+                "workspace_id": workspace_id,
+                "knowledge_asset_id": req.knowledge_asset_id
+            }
+            res = executor.handle_send_ai_message(node_data, "https://linkedin.com/in/alex-sample")
+            generated = dummy_worker.sent_message or res.get("note") or res.get("message") or ""
+            return {
+                "status": "success",
+                "generated_text": generated,
+                "lead": lead_profile,
+                "char_count": len(generated),
+                "word_count": len(generated.split())
+            }
+    except Exception as e:
+        logger.error(f"[TestNodeSample] Simulation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

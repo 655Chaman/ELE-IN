@@ -1119,9 +1119,236 @@ function AIModelSelector({
   );
 }
 
+export const SAMPLE_TEST_LEADS = [
+  {
+    id: "alex",
+    label: "Alex Johnson (VP of Engineering @ Acme Cloud)",
+    first_name: "Alex",
+    last_name: "Johnson",
+    title: "VP of Engineering",
+    company: "Acme Cloud Technologies",
+    industry: "Enterprise Cloud Infrastructure",
+    about: "Scaling distributed microservices, WebAssembly sandboxes, and cloud security."
+  },
+  {
+    id: "sarah",
+    label: "Sarah Lin (Head of Growth @ SaaSify)",
+    first_name: "Sarah",
+    last_name: "Lin",
+    title: "Head of Growth & RevOps",
+    company: "SaaSify AI",
+    industry: "B2B SaaS Automation",
+    about: "Leading outbound revenue pipeline, SDR tooling, and LinkedIn engagement automation."
+  },
+  {
+    id: "david",
+    label: "David Chen (CTO @ FinTech Global)",
+    first_name: "David",
+    last_name: "Chen",
+    title: "CTO & Co-Founder",
+    company: "FinTech Global",
+    industry: "Financial Infrastructure",
+    about: "Architecting high-frequency transaction systems, SOC2 Type II compliance, and zero-trust security."
+  }
+];
+
+export function LiveSampleTestDrive({
+  nodeType = "send_ai_message",
+  prompt,
+  tone,
+  customQuery,
+  knowledgeAssetId,
+  selectedAssetName,
+  onApplyAsFallback
+}: {
+  nodeType?: string;
+  prompt?: string;
+  tone?: string;
+  customQuery?: string;
+  knowledgeAssetId?: string;
+  selectedAssetName?: string;
+  onApplyAsFallback?: (text: string) => void;
+}) {
+  const [selectedLeadId, setSelectedLeadId] = useState<string>("alex");
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationResult, setSimulationResult] = useState<{
+    text: string;
+    lead: any;
+    charCount: number;
+    wordCount: number;
+  } | null>(null);
+
+  const selectedLead = SAMPLE_TEST_LEADS.find(l => l.id === selectedLeadId) || SAMPLE_TEST_LEADS[0];
+
+  const handleRunSimulation = async () => {
+    setIsSimulating(true);
+    try {
+      const res = await fetchWithAuth("/api/assets/knowledge/test-node-sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          node_type: nodeType,
+          prompt: prompt || "Introduce our product and highlight our key differentiators",
+          tone: tone || "Professional & Direct",
+          custom_query: customQuery || "",
+          knowledge_asset_id: knowledgeAssetId || "all",
+          sample_lead: selectedLead
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Simulation run failed");
+      }
+
+      const data = await res.json();
+      setSimulationResult({
+        text: data.generated_text || "",
+        lead: data.lead || selectedLead,
+        charCount: data.char_count || (data.generated_text || "").length,
+        wordCount: data.word_count || (data.generated_text || "").split(/\s+/).filter(Boolean).length
+      });
+      toast.success("Live preview generated from Knowledge Base!");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to simulate AI pitch");
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  return (
+    <div className="p-4 rounded-xl bg-card border border-border space-y-3.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Zap size={15} className="text-amber-500" />
+          <span className="text-xs font-bold text-foreground">Interactive Test-Drive Studio</span>
+        </div>
+        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+          Live Grounding Simulation
+        </span>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Test this node in real-time against your real Knowledge Base and target dossiers before launching. Zero LinkedIn credentials or active browser instances needed.
+      </p>
+
+      {/* Target Prospect Selector */}
+      <div className="space-y-1.5">
+        <label className="block text-[11px] font-semibold text-foreground">
+          Simulated Lead Persona
+        </label>
+        <select
+          value={selectedLeadId}
+          onChange={(e) => setSelectedLeadId(e.target.value)}
+          className="w-full rounded-lg bg-card border border-border p-2 text-xs text-foreground focus:outline-none focus:border-amber-500"
+        >
+          {SAMPLE_TEST_LEADS.map(lead => (
+            <option key={lead.id} value={lead.id}>
+              {lead.label}
+            </option>
+          ))}
+        </select>
+        <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+          <span>Role: <strong className="text-foreground">{selectedLead.title}</strong></span>
+          <span>•</span>
+          <span>Company: <strong className="text-foreground">{selectedLead.company}</strong></span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleRunSimulation}
+        disabled={isSimulating}
+        className={cn(
+          "w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer",
+          isSimulating
+            ? "bg-amber-600/60 cursor-not-allowed"
+            : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 active:scale-[0.99]"
+        )}
+      >
+        {isSimulating ? (
+          <>
+            <Loader2 size={13} className="animate-spin" />
+            <span>Simulating SemanticBrain RAG Synthesis...</span>
+          </>
+        ) : (
+          <>
+            <Zap size={13} />
+            <span>⚡ Test Run AI Pitch on {selectedLead.first_name}</span>
+          </>
+        )}
+      </button>
+
+      {/* Live Preview Result Box */}
+      {simulationResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-3 p-3.5 rounded-xl bg-muted/40 border border-border space-y-2.5"
+        >
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-foreground flex items-center gap-1.5">
+              <Sparkles size={12} className="text-amber-500" />
+              Generated Outreach Message
+            </span>
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span>{simulationResult.wordCount} words</span>
+              <span>•</span>
+              <span>{simulationResult.charCount} chars</span>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-lg bg-card border border-border text-xs text-foreground whitespace-pre-wrap leading-relaxed select-text font-normal shadow-xs">
+            {simulationResult.text}
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 flex items-center gap-1 font-medium">
+              <BookOpen size={11} />
+              Grounded in: {selectedAssetName || "Workspace Knowledge Base"}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(simulationResult.text);
+                  toast.success("Generated pitch copied to clipboard!");
+                }}
+                className="px-2.5 py-1 rounded-md text-[10px] font-medium bg-card border border-border hover:bg-muted text-foreground flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Copy size={10} /> Copy
+              </button>
+              {onApplyAsFallback && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onApplyAsFallback(simulationResult.text);
+                    toast.success("Applied as fallback message!");
+                  }}
+                  className="px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Check size={10} /> Use as Fallback
+                </button>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 function SendAiMessageConfig({ data, onChange }: { data: any; onChange: (k: string, v: any) => void }) {
   const tones = ["Friendly & Casual", "Professional & Direct", "Short & Punchy", "Funny & Witty"];
   const models = ["Auto-Route (Recommended)", "DeepSeek V4 Pro", "GPT-OS", "Kimi k3", "Llama-3.2 11B", "Nemotron 120B"];
+
+  const { data: assets } = useSWR<any[]>('/api/assets/knowledge/assets', fetcher);
+  const assetList = Array.isArray(assets) ? assets : [];
+
+  const selectedAsset = assetList.find(a => a.id === data.knowledge_asset_id);
+  const selectedAssetName = data.knowledge_asset_id === "all" || !data.knowledge_asset_id
+    ? "All Knowledge Documents & Playbooks"
+    : selectedAsset ? selectedAsset.name : "Selected Dossier";
 
   return (
     <div className="space-y-6">
@@ -1160,6 +1387,44 @@ function SendAiMessageConfig({ data, onChange }: { data: any; onChange: (k: stri
         </label>
       </div>
 
+      {/* Knowledge Base Grounding & Targeting */}
+      <div className="p-4 rounded-xl bg-card border border-border space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen size={15} className="text-cyan-500" />
+            <span className="text-xs font-bold text-foreground">Knowledge Base Grounding</span>
+          </div>
+          <span className="text-[10px] font-semibold text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+            SemanticBrain Active
+          </span>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Grounds this outreach message in your indexed company value propositions, pricing FAQs, technical dossiers, and objection playbooks.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-semibold text-foreground">
+            Knowledge Document Scope
+          </label>
+          <select
+            value={data.knowledge_asset_id || "all"}
+            onChange={(e) => onChange("knowledge_asset_id", e.target.value)}
+            className="w-full rounded-lg bg-card border border-border p-2.5 text-xs text-foreground focus:outline-none focus:border-cyan-500"
+          >
+            <option value="all">All Knowledge Documents & Playbooks (Default)</option>
+            {assetList.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.name} ({asset.type || "doc"})
+              </option>
+            ))}
+          </select>
+          <span className="text-[10px] text-muted-foreground block">
+            Scope retrieval to a specific battlecard, URL dossier, or search across all workspace intelligence.
+          </span>
+        </div>
+      </div>
+
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2">Delay</label>
         <DelaySelector value={data.delay} unit={data.delayUnit || "days"} onChange={(v, u) => { onChange("delay", v); onChange("delayUnit", u); }} />
@@ -1181,11 +1446,11 @@ function SendAiMessageConfig({ data, onChange }: { data: any; onChange: (k: stri
             onChange("pitch", e.target.value);
             onChange("prompt", e.target.value);
           }}
-          placeholder="Talk directly to the AI: e.g. See if they are hiring SDRs. If yes, pitch our recruitment platform and propose a 10-minute demo call."
+          placeholder="Talk directly to the AI: e.g. Introduce our WebAssembly anti-bot architecture and propose a 10-minute engineering sync."
           className="w-full rounded-xl bg-card border border-border px-3.5 py-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-600 resize-none leading-relaxed"
         />
         <p className="text-[10px] text-muted-foreground mt-1">
-          The AI will blend this goal with each prospect's live LinkedIn headline, bio, and recent posts.
+          The AI will blend this goal with the selected Knowledge Base documents and each prospect's live LinkedIn headline, bio, and recent posts.
         </p>
       </div>
 
@@ -1213,6 +1478,16 @@ function SendAiMessageConfig({ data, onChange }: { data: any; onChange: (k: stri
           />
         </div>
       </div>
+
+      {/* Interactive Test-Drive Studio */}
+      <LiveSampleTestDrive
+        nodeType="send_ai_message"
+        prompt={data.pitch || data.prompt}
+        tone={data.tone || tones[1]}
+        knowledgeAssetId={data.knowledge_asset_id || "all"}
+        selectedAssetName={selectedAssetName}
+        onApplyAsFallback={(text) => onChange("fallback", text)}
+      />
 
       <FallbackEditor data={data} onChange={onChange} maxChars={8000} />
     </div>
@@ -7306,6 +7581,16 @@ export function AIQueryKnowledgeBaseConfig({ data, onChange }: AIQueryKnowledgeB
           If provided, routes to "Response Generated" using this text instead of failing the branch.
         </span>
       </div>
+
+      {/* Interactive Test-Drive Studio */}
+      <LiveSampleTestDrive
+        nodeType="ai_query_knowledge_base"
+        prompt={customQuery || "Synthesize key value propositions and proof points"}
+        customQuery={customQuery}
+        knowledgeAssetId={selectedAssetId}
+        selectedAssetName={selectedAssetId === "all" ? "All Knowledge Documents" : assetList.find(a => a.id === selectedAssetId)?.name}
+        onApplyAsFallback={(text) => onChange("fallback_message", text)}
+      />
 
       <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-2">
         <div className="flex items-center justify-between">
