@@ -2351,3 +2351,61 @@ CREATE POLICY campaign_execution_states_all ON public.campaign_execution_states
 -- ============================================================================
 -- END OF MIGRATION 104
 -- ============================================================================
+
+
+-- ============================================================================
+-- MIGRATION 105: Waitlist Schema for Ele-in Public Launch
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    full_name TEXT NOT NULL,
+    company TEXT,
+    role TEXT,
+    linkedin_url TEXT,
+    team_size TEXT,
+    monthly_outbound_volume TEXT,
+    primary_channel TEXT,
+    referral_code TEXT UNIQUE NOT NULL,
+    referred_by_code TEXT,
+    referrals_count INTEGER NOT NULL DEFAULT 0,
+    priority_score INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
+    ip_hash TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_email ON public.waitlist(email);
+CREATE INDEX IF NOT EXISTS idx_waitlist_referral_code ON public.waitlist(referral_code);
+CREATE INDEX IF NOT EXISTS idx_waitlist_referred_by ON public.waitlist(referred_by_code);
+CREATE INDEX IF NOT EXISTS idx_waitlist_priority_ranking ON public.waitlist(priority_score DESC, created_at ASC);
+
+ALTER TABLE public.waitlist ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies WHERE tablename = 'waitlist' AND policyname = 'Allow public insert into waitlist'
+    ) THEN
+        CREATE POLICY "Allow public insert into waitlist"
+        ON public.waitlist FOR INSERT
+        TO anon, authenticated
+        WITH CHECK (true);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies WHERE tablename = 'waitlist' AND policyname = 'Allow public read own waitlist entry'
+    ) THEN
+        CREATE POLICY "Allow public read own waitlist entry"
+        ON public.waitlist FOR SELECT
+        TO anon, authenticated
+        USING (true);
+    END IF;
+END $$;

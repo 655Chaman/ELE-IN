@@ -9,7 +9,7 @@ import {
   LayoutTemplate, CheckCircle, CheckCircle2, XCircle, Clock, Key, Plus, 
   Trash2, RefreshCw, AlertCircle, AlertTriangle, Activity, Cpu, 
   ShieldCheck, ShieldAlert, Server, Zap, Database, Eye, X, Loader2, 
-  Sparkles, Radio, Layers, ArrowRight
+  Sparkles, Radio, Layers, ArrowRight, Users, Download, UserCheck, Search, ExternalLink
 } from "lucide-react"
 
 interface Template {
@@ -53,7 +53,52 @@ interface ProxyInfo {
 }
 
 export function EleInAdmin() {
-  const [activeTab, setActiveTab] = useState<"infrastructure" | "keys" | "proxies" | "templates">("infrastructure")
+  const [activeTab, setActiveTab] = useState<"infrastructure" | "keys" | "proxies" | "templates" | "waitlist">("infrastructure")
+
+  // ─── Waitlist Management State ───
+  const [waitlistSearch, setWaitlistSearch] = useState("")
+  const [waitlistStatusFilter, setWaitlistStatusFilter] = useState("all")
+  const { data: waitlistData, mutate: mutateWaitlist, isLoading: waitlistLoading } = useSWR<{
+    total: number
+    entries: any[]
+  }>(
+    `/api/waitlist/admin/leads?search=${encodeURIComponent(waitlistSearch)}&status=${waitlistStatusFilter}`,
+    fetcher
+  )
+
+  const handleUpdateWaitlistStatus = async (leadId: string, status: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/waitlist/admin/leads/${leadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      })
+      if (!res.ok) throw new Error("Status update failed")
+      toast.success(`Applicant marked as ${status}`)
+      mutateWaitlist()
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update waitlist lead status")
+    }
+  }
+
+  const handleExportWaitlistCsv = async () => {
+    try {
+      const res = await fetchWithAuth("/api/waitlist/admin/export.csv")
+      if (!res.ok) throw new Error("Export failed")
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `elein_waitlist_${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success("Waitlist CSV downloaded successfully")
+    } catch (err: any) {
+      toast.error(err.message || "Failed to export waitlist")
+    }
+  }
   
   // ─── Template State ───
   const { data: pendingTemplates, mutate: mutateTemplates, isLoading: templatesLoading } = useSWR<Template[]>(
@@ -341,6 +386,7 @@ export function EleInAdmin() {
           { id: "keys", label: `AI Key Pool (${safeKeys.length})`, icon: Key },
           { id: "proxies", label: `Proxy Health (${safeProxies.length})`, icon: ShieldCheck },
           { id: "templates", label: `Community Playbooks (${safeTemplates.length})`, icon: LayoutTemplate },
+          { id: "waitlist", label: `Waitlist Queue (${waitlistData?.total || 0})`, icon: Users },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -688,6 +734,200 @@ export function EleInAdmin() {
                 </p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── TAB 5: WAITLIST QUEUE MANAGEMENT ───────────────────────────────── */}
+      {activeTab === "waitlist" && (
+        <div className="space-y-6">
+          {/* Header & Metric Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-xl bg-card border border-border">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-base font-bold text-foreground">Priority Waitlist Queue</h2>
+                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold border border-primary/20">
+                  {waitlistData?.total ?? 0} Total Signups
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Manage prospective enterprise leads, review GTM firmographics, and deploy private beta access waves.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => mutateWaitlist()}
+                disabled={waitlistLoading}
+                className="flex items-center gap-1.5 px-3 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw size={13} className={waitlistLoading ? "animate-spin" : ""} />
+                <span>Refresh</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportWaitlistCsv}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+              >
+                <Download size={13} />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground size-3.5" />
+              <input
+                type="text"
+                placeholder="Search by name, email, company, or referral code..."
+                value={waitlistSearch}
+                onChange={(e) => setWaitlistSearch(e.target.value)}
+                className="w-full bg-card border border-border rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border border-border/60">
+              {["all", "pending", "approved", "invited", "rejected"].map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setWaitlistStatusFilter(st)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
+                    waitlistStatusFilter === st
+                      ? "bg-card text-foreground shadow-xs font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Waitlist Data Table */}
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/50 border-b border-border/80 text-muted-foreground font-semibold">
+                  <tr>
+                    <th className="py-3 px-4">Rank</th>
+                    <th className="py-3 px-4">Applicant</th>
+                    <th className="py-3 px-4">Company & Role</th>
+                    <th className="py-3 px-4">Team & Volume</th>
+                    <th className="py-3 px-4">Channel</th>
+                    <th className="py-3 px-4">Referrals</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {waitlistData?.entries && waitlistData.entries.length > 0 ? (
+                    waitlistData.entries.map((lead: any) => (
+                      <tr key={lead.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="py-3.5 px-4 font-mono font-bold text-foreground">
+                          #{lead.computed_rank}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-foreground">{lead.full_name}</div>
+                          <div className="text-[11px] text-muted-foreground font-mono">{lead.email}</div>
+                          {lead.linkedin_url && (
+                            <a
+                              href={lead.linkedin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-0.5"
+                            >
+                              <span>LinkedIn</span>
+                              <ExternalLink size={10} />
+                            </a>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-medium text-foreground">{lead.company || "Not specified"}</div>
+                          <div className="text-[11px] text-muted-foreground">{lead.role || "Individual"}</div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="text-foreground">{lead.team_size ? `${lead.team_size} reps` : "-"}</div>
+                          <div className="text-[11px] text-muted-foreground">{lead.monthly_outbound_volume || "-"}</div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-[11px] font-medium border border-border/50">
+                            {lead.primary_channel || "Multi-channel"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-mono text-foreground font-medium">{lead.referral_code}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {lead.referrals_count} referred (+{lead.priority_score} pts)
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                              lead.status === "approved"
+                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                : lead.status === "invited"
+                                ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                : lead.status === "rejected"
+                                ? "bg-destructive/10 text-destructive border-destructive/20"
+                                : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                            }`}
+                          >
+                            {lead.status}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {lead.status !== "approved" && lead.status !== "invited" && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateWaitlistStatus(lead.id, "approved")}
+                                className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 rounded-md text-[11px] font-semibold transition-colors"
+                              >
+                                Approve
+                              </button>
+                            )}
+                            {lead.status !== "invited" && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateWaitlistStatus(lead.id, "invited")}
+                                className="px-2.5 py-1 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-[11px] font-semibold transition-colors"
+                              >
+                                Invite
+                              </button>
+                            )}
+                            {lead.status !== "rejected" && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateWaitlistStatus(lead.id, "rejected")}
+                                className="px-2 py-1 bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-md text-[11px] font-semibold transition-colors"
+                              >
+                                Reject
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                        <Users className="size-8 mx-auto mb-2 opacity-40" />
+                        <p className="font-semibold text-foreground">No waitlist entries found</p>
+                        <p className="text-[11px] mt-0.5">
+                          {waitlistSearch
+                            ? "Try adjusting your search terms or status filter."
+                            : "New signups to ele-in.com will appear here in real-time."}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

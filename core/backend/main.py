@@ -153,6 +153,11 @@ app.include_router(notifications.router, prefix="/api/elein")
 from core.backend.api.routers import billing
 app.include_router(billing.router, prefix="/api/elein/billing")
 
+# Ele-in Priority Waitlist Router (Public & Admin)
+from core.backend.api.routers import waitlist
+app.include_router(waitlist.router, prefix="/api")
+app.include_router(waitlist.router, prefix="/api/elein")
+
 from core.backend.api.rate_limit import enforce_ai_rate_limit
 app.include_router(ai_routes.router, prefix="/api/elein/inbox", dependencies=[Depends(get_current_workspace), Depends(enforce_ai_rate_limit)])
 

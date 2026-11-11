@@ -8,6 +8,7 @@ import { WorkspaceProvider } from "./contexts/WorkspaceContext"
 import { PaywallProvider } from "./contexts/PaywallContext"
 
 // Lazy-loaded route components for high-performance code splitting
+const EleInWaitlist = lazy(() => import("./pages/EleInWaitlist").then(m => ({ default: m.EleInWaitlist })))
 const Login = lazy(() => import("@admin/Login").then(m => ({ default: m.Login })))
 const AcceptInvite = lazy(() => import("@admin/AcceptInvite").then(m => ({ default: m.AcceptInvite })))
 const MFASetupPage = lazy(() => import("@admin/MFASetupPage").then(m => ({ default: m.MFASetupPage })))
@@ -100,11 +101,14 @@ export default function App() {
           <PaywallProvider>
             <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
+                {/* Public Waitlist Landing Page for the ele-in domain */}
+                <Route path="/" element={<EleInWaitlist />} />
+                <Route path="/waitlist" element={<EleInWaitlist />} />
+
                 <Route path="/login" element={<Login />} />
                 <Route path="/accept-invite" element={<AcceptInvite />} />
                 
                 <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                  <Route path="/" element={<Navigate to="/elein" replace />} />
                   <Route path="/dashboard" element={<Navigate to="/elein" replace />} />
                   <Route path="/elein/dashboard" element={<Navigate to="/elein" replace />} />
                   <Route path="/chat" element={<ChatInterface />} />

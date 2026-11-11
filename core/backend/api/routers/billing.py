@@ -198,10 +198,45 @@ PACKAGES = {
 
 from core.backend.services.credit_service import is_mock_billing_allowed
 
+VALID_PROMO_COUPONS = {
+    "EARLY30": {"percent": 30, "duration": "12 Months (1st Year)", "name": "Waitlist Founder 30% Off First Year"},
+    "WAITLIST30": {"percent": 30, "duration": "12 Months (1st Year)", "name": "Waitlist Founder 30% Off First Year"},
+}
+
+class ValidateCouponRequest(BaseModel):
+    coupon_code: str
+    package_id: Optional[str] = None
+
 class CheckoutRequest(BaseModel):
     package_id: str
     provider: str
     action: Optional[str] = "upgrade"
+    coupon_code: Optional[str] = None
+
+@router.post("/coupons/validate")
+async def validate_coupon(req: ValidateCouponRequest):
+    code_upper = req.coupon_code.strip().upper()
+    if code_upper in VALID_PROMO_COUPONS:
+        info = VALID_PROMO_COUPONS[code_upper]
+        resp = {
+            "valid": True,
+            "coupon_code": code_upper,
+            "discount_percent": info["percent"],
+            "duration": info["duration"],
+            "name": info["name"],
+        }
+        if req.package_id and req.package_id in PACKAGES:
+            pkg = PACKAGES[req.package_id]
+            orig_inr = pkg.get("inr_paise", 0)
+            orig_usd = pkg.get("usd_cents", 0)
+            resp["pricing"] = {
+                "original_inr_paise": orig_inr,
+                "discounted_inr_paise": max(100, int(round(orig_inr * (1 - info["percent"] / 100)))),
+                "original_usd_cents": orig_usd,
+                "discounted_usd_cents": int(round(orig_usd * (1 - info["percent"] / 100))),
+            }
+        return resp
+    raise HTTPException(status_code=404, detail="Invalid or expired discount code.")
 
 @router.post("/checkout")
 async def checkout(request: CheckoutRequest, workspace_id: str = Depends(get_current_workspace), supabase: Client = Depends(get_supabase_client)):
@@ -231,6 +266,15 @@ async def checkout(request: CheckoutRequest, workspace_id: str = Depends(get_cur
 
     package = PACKAGES[request.package_id]
     
+    # Paranoia Layer 0: Waitlist / Founder Discount Application (e.g. EARLY30 = 30% off for 1st year)
+    applied_discount_percent = 0
+    applied_coupon_code = None
+    if request.coupon_code:
+        code_clean = request.coupon_code.strip().upper()
+        if code_clean in VALID_PROMO_COUPONS:
+            applied_discount_percent = VALID_PROMO_COUPONS[code_clean]["percent"]
+            applied_coupon_code = code_clean
+    
     if request.provider == "razorpay":
         try:
             import razorpay
@@ -244,6 +288,9 @@ async def checkout(request: CheckoutRequest, workspace_id: str = Depends(get_cur
             if is_mock_billing_allowed():
                 mock_order_id = f"order_mock_{uuid.uuid4().hex[:8]}"
                 session_id = str(uuid.uuid4())
+                mock_amount = package.get("inr_paise", 0)
+                if applied_discount_percent > 0:
+                    mock_amount = max(100, int(round(mock_amount * (1 - applied_discount_percent / 100))))
                 try:
                     supabase.table("billing_transactions").insert({
                         "id": session_id,
@@ -255,12 +302,21 @@ async def checkout(request: CheckoutRequest, workspace_id: str = Depends(get_cur
                     }).execute()
                 except Exception as db_e:
                     print(f"Mock checkout error: {db_e}")
-                return {"order_id": mock_order_id, "session_id": str(session_id), "amount": package.get("inr_paise", 0), "key_id": "mock_rzp_key"}
+                return {
+                    "order_id": mock_order_id, 
+                    "session_id": str(session_id), 
+                    "amount": mock_amount, 
+                    "key_id": "mock_rzp_key",
+                    "discount_applied": applied_discount_percent,
+                    "coupon_code": applied_coupon_code
+                }
             raise HTTPException(status_code=501, detail="Razorpay keys not configured. Cannot process real checkout.")
             
         try:
             client = razorpay.Client(auth=(rzp_key_id, rzp_key_secret))
             amount_paise = package.get("inr_paise", 0)
+            if applied_discount_percent > 0:
+                amount_paise = max(100, int(round(amount_paise * (1 - applied_discount_percent / 100))))
             
             # Layer 1 Paranoia: Create a secure, trackable session in the database.
             session_id = str(uuid.uuid4())
