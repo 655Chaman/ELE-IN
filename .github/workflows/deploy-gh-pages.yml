@@ -28,7 +28,7 @@ jobs:
           cache: "npm"
 
       - name: Install Dependencies
-        run: npm ci || npm install
+        run: npm ci || npm install --legacy-peer-deps
 
       - name: Build Production Vite Bundle
         env:
