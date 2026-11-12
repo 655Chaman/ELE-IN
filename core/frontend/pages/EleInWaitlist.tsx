@@ -20,7 +20,6 @@ export function EleInWaitlist() {
   const [hasCopied, setHasCopied] = useState(false)
   const [totalCount, setTotalCount] = useState<number>(385)
 
-  // Auto-detect ?ref= referral parameter from URL or localStorage
   useEffect(() => {
     const refParam = searchParams.get("ref")
     if (refParam) {
@@ -49,7 +48,7 @@ export function EleInWaitlist() {
     const cleanEmail = email.trim().toLowerCase()
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      toast.error("Please provide a valid email address.")
+      toast.error("Please enter a valid work email.")
       return
     }
 
@@ -90,7 +89,7 @@ export function EleInWaitlist() {
       .writeText(link)
       .then(() => {
         setHasCopied(true)
-        toast.success("Invite link copied to clipboard.")
+        toast.success("Link copied to clipboard.")
         setTimeout(() => setHasCopied(false), 2000)
       })
       .catch(() => {
@@ -104,46 +103,42 @@ export function EleInWaitlist() {
   const formattedPositionNumber = String(activeEntry?.position || totalCount || 385).padStart(6, "0")
 
   return (
-    <div className="min-h-screen bg-[#070809] text-[#f4f4f5] flex flex-col justify-between font-sans selection:bg-[#27272a] selection:text-white">
-      {/* Symmetrical Brand Spine: Text on Top, Logo Below */}
-      <header className="w-full px-6 pt-12 sm:pt-16 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2.5">
-          <span className="text-xs font-semibold tracking-widest text-zinc-400 uppercase font-mono">
-            Ele-in
-          </span>
-          <div className="w-11 h-11 rounded-xl overflow-hidden bg-[#001507] border border-[#1b3d22] flex items-center justify-center shadow-sm">
-            <img
-              src="/logo-icon.png"
-              alt="Ele-in"
-              className="w-full h-full object-cover"
-            />
-          </div>
+    <div className="min-h-screen bg-[#060708] text-zinc-100 flex flex-col justify-between font-sans selection:bg-zinc-800 selection:text-white antialiased">
+      {/* Symmetrical Brand Header: Wordmark on top, Logo below */}
+      <header className="w-full px-6 pt-14 sm:pt-20 flex flex-col items-center justify-center">
+        <span className="text-[11px] font-mono tracking-[0.28em] text-zinc-500 uppercase mb-3 select-none">
+          Ele-in
+        </span>
+        <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#001507] border border-[#1b3d22] flex items-center justify-center shadow-xs">
+          <img
+            src="/logo-icon.png"
+            alt="Ele-in"
+            className="w-full h-full object-cover"
+          />
         </div>
       </header>
 
-      {/* Main Focus */}
-      <main className="w-full max-w-xl mx-auto px-6 py-10 sm:py-16 text-center my-auto">
-        {/* Direct, Non-Generic Headline */}
-        <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight text-white font-heading leading-tight text-balance">
+      {/* Central Hero Form */}
+      <main className="w-full max-w-2xl mx-auto px-6 py-12 sm:py-20 text-center my-auto">
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-medium tracking-tight text-white font-heading leading-[1.12] text-balance">
           LinkedIn outreach, automated.
         </h1>
 
-        <p className="mt-4 sm:mt-5 text-sm sm:text-base text-zinc-400 max-w-md mx-auto leading-relaxed text-balance">
+        <p className="mt-5 text-sm sm:text-base text-zinc-400 max-w-md mx-auto leading-relaxed text-balance font-normal">
           Stop sending manual messages. Ele-in finds leads, initiates conversations, and books qualified meetings on autopilot.
         </p>
 
-        {/* State 1: Focused Direct Form */}
         {!activeEntry ? (
-          <div className="mt-8 max-w-md mx-auto">
+          <div className="mt-10 max-w-md mx-auto">
             <form onSubmit={handleJoinSubmit} className="space-y-4">
-              <div className="p-1.5 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col sm:flex-row gap-1.5 shadow-sm">
+              <div className="p-1 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700/80 focus-within:border-zinc-600 transition-colors flex flex-col sm:flex-row gap-1">
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your work email"
                   required
-                  className="flex-1 bg-transparent px-3.5 py-2.5 text-white placeholder-zinc-500 text-sm focus:outline-none rounded-lg"
+                  className="flex-1 bg-transparent px-4 py-3 text-white placeholder-zinc-500 text-sm focus:outline-none"
                 />
                 <input
                   type="text"
@@ -157,19 +152,21 @@ export function EleInWaitlist() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm px-6 py-3 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   {isSubmitting ? "Securing spot..." : "Get early access"}
                 </button>
               </div>
 
-              {/* Scarcity / Cohort Bar */}
-              <div className="pt-2 px-1">
-                <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5 font-mono">
+              {/* Minimal Scarcity Meter */}
+              <div className="pt-2 px-1 text-center">
+                <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-1.5">
                   <span>Cohort 1</span>
-                  <span className="text-emerald-400 font-semibold">{claimedInCurrentCohort} / {cohortCapacity} Seats</span>
+                  <span className="text-emerald-400 font-medium">
+                    {claimedInCurrentCohort} / {cohortCapacity} Seats
+                  </span>
                 </div>
-                <div className="w-full bg-zinc-900 border border-zinc-800/80 h-1.5 rounded-full overflow-hidden">
+                <div className="w-full bg-zinc-900 border border-zinc-800/80 h-1 rounded-full overflow-hidden">
                   <div
                     className="bg-emerald-500 h-full rounded-full transition-all duration-500"
                     style={{ width: `${cohortPercent}%` }}
@@ -179,83 +176,66 @@ export function EleInWaitlist() {
             </form>
           </div>
         ) : (
-          /* State 2: Personal Access Pass */
-          <div className="mt-8 max-w-md mx-auto">
-            <div className="p-6 sm:p-7 rounded-2xl bg-zinc-900/90 border border-zinc-700/80 text-center shadow-xl relative overflow-hidden">
-              {/* Pass Header */}
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-4 text-left">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md overflow-hidden bg-[#001507] border border-[#1b3d22] flex items-center justify-center">
-                    <img src="/logo-icon.png" alt="Ele-in" className="w-full h-full object-cover" />
-                  </div>
-                  <span className="text-xs font-bold tracking-wider text-white font-mono uppercase">
-                    Early Access Pass
-                  </span>
-                </div>
-                <span className="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 font-medium">
-                  Cohort 1
-                </span>
+          /* Post-Join State: Clean Minimalist Pass */
+          <div className="mt-10 max-w-md mx-auto p-7 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 text-center shadow-xs">
+            <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono mb-1">
+              Early Access Confirmed
+            </div>
+
+            <div className="text-3xl sm:text-4xl font-light tracking-tight text-white font-mono my-2">
+              #{formattedPositionNumber}
+            </div>
+
+            <p className="text-xs text-zinc-400 font-mono mt-1">
+              Reserved for {activeEntry.email}
+            </p>
+
+            <div className="mt-6 pt-5 border-t border-zinc-800/80">
+              <div className="text-xs text-zinc-400 mb-2.5">
+                Skip 5 spots for each teammate you invite:
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`https://ele-in.com?ref=${activeEntry.referral_code}`}
+                  className="flex-1 bg-black/60 border border-zinc-800/80 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono text-center select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer shrink-0"
+                >
+                  {hasCopied ? "Copied" : "Copy"}
+                </button>
               </div>
 
-              {/* Pass Number */}
-              <div className="my-6 py-4 px-4 bg-black/70 border border-zinc-800 rounded-xl">
-                <div className="text-[11px] uppercase tracking-widest text-zinc-400 font-mono">
-                  Priority Pass Number
-                </div>
-                <div className="text-3xl sm:text-4xl font-bold text-emerald-400 font-mono mt-1 tracking-tight">
-                  #{formattedPositionNumber}
-                </div>
-              </div>
-
-              {/* Referral Action */}
-              <div className="pt-3 border-t border-zinc-800 text-center">
-                <div className="flex items-center justify-between text-xs text-zinc-300 mb-2">
-                  <span className="font-medium">Skip 5 spots per team invite</span>
-                  <span className="text-emerald-400 font-mono text-[11px]">Instant Access</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={`https://ele-in.com?ref=${activeEntry.referral_code}`}
-                    className="flex-1 bg-black/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono text-center select-all focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer shrink-0"
-                  >
-                    {hasCopied ? "Copied" : "Copy link"}
-                  </button>
-                </div>
-
-                <div className="mt-3 flex items-center justify-center gap-3">
-                  <a
-                    href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-zinc-400 hover:text-white transition-colors underline"
-                  >
-                    Share on LinkedIn
-                  </a>
-                  <span className="text-zinc-600">·</span>
-                  <a
-                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just claimed Pass #${formattedPositionNumber} for @Ele_in. Automated LinkedIn outreach: https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-zinc-400 hover:text-white transition-colors underline"
-                  >
-                    Share on X
-                  </a>
-                </div>
+              <div className="mt-3.5 flex items-center justify-center gap-3 text-xs text-zinc-500">
+                <a
+                  href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-zinc-300 transition-colors underline"
+                >
+                  Share on LinkedIn
+                </a>
+                <span>·</span>
+                <a
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just claimed Pass #${formattedPositionNumber} for @Ele_in. Automated LinkedIn outreach: https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-zinc-300 transition-colors underline"
+                >
+                  Share on X
+                </a>
               </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* Symmetrical Minimal Footer: No domain emails, just clean copyright */}
-      <footer className="w-full max-w-md mx-auto px-6 pb-10 pt-4 text-center text-xs text-zinc-500">
+      {/* Symmetrical Minimal Footer */}
+      <footer className="w-full max-w-md mx-auto px-6 pb-12 pt-4 text-center text-[11px] font-mono text-zinc-600">
         <div>© 2026 Ele-in · All rights reserved</div>
       </footer>
     </div>
