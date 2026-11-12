@@ -104,22 +104,28 @@ export function EleInWaitlist() {
 
   return (
     <div className="min-h-screen bg-[#060708] text-zinc-100 flex flex-col justify-between font-sans selection:bg-zinc-800 selection:text-white antialiased">
-      {/* Symmetrical Brand Header: Wordmark on top, Logo below */}
-      <header className="w-full px-6 pt-14 sm:pt-20 flex flex-col items-center justify-center">
-        <span className="text-[11px] font-mono tracking-[0.28em] text-zinc-500 uppercase mb-3 select-none">
+      {/* Central Symmetrical Hero */}
+      <main className="w-full max-w-2xl mx-auto px-6 py-12 sm:py-16 text-center my-auto flex flex-col items-center">
+        {/* Wordmark */}
+        <span className="text-[11px] font-mono tracking-[0.32em] text-zinc-500 uppercase mb-4 select-none">
           Ele-in
         </span>
-        <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#001507] border border-[#1b3d22] flex items-center justify-center shadow-xs">
-          <img
-            src="/logo-icon.png"
-            alt="Ele-in"
-            className="w-full h-full object-cover"
-          />
-        </div>
-      </header>
 
-      {/* Central Hero Form */}
-      <main className="w-full max-w-2xl mx-auto px-6 py-12 sm:py-20 text-center my-auto">
+        {/* Enlarged Visually Appealing Brand Mark */}
+        <div className="relative mb-8 sm:mb-10 flex items-center justify-center">
+          {/* Subtle deep ambient glow behind the logo */}
+          <div className="absolute inset-0 rounded-3xl bg-emerald-500/10 blur-xl -z-10" />
+
+          {/* Squircle logo container with emerald accent stroke */}
+          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl p-1 bg-[#001507] border border-emerald-500/25 shadow-2xl shadow-emerald-950/80 flex items-center justify-center overflow-hidden">
+            <img
+              src="/logo-icon.png"
+              alt="Ele-in"
+              className="w-full h-full object-cover rounded-xl sm:rounded-2xl"
+            />
+          </div>
+        </div>
+
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-medium tracking-tight text-white font-heading leading-[1.12] text-balance">
           LinkedIn outreach, automated.
         </h1>
