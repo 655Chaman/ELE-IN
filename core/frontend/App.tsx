@@ -7,29 +7,52 @@ import { AuthProvider, useAuth } from "./lib/AuthContext"
 import { WorkspaceProvider } from "./contexts/WorkspaceContext"
 import { PaywallProvider } from "./contexts/PaywallContext"
 
-// Lazy-loaded route components for high-performance code splitting
-const EleInWaitlist = lazy(() => import("./pages/EleInWaitlist").then(m => ({ default: m.EleInWaitlist })))
-const Login = lazy(() => import("@admin/Login").then(m => ({ default: m.Login })))
-const AcceptInvite = lazy(() => import("@admin/AcceptInvite").then(m => ({ default: m.AcceptInvite })))
-const MFASetupPage = lazy(() => import("@admin/MFASetupPage").then(m => ({ default: m.MFASetupPage })))
-const OnboardingWizard = lazy(() => import("./pages/onboarding/OnboardingWizard").then(m => ({ default: m.OnboardingWizard })))
+// PERF-12: Auto-recovering lazy loader that self-heals from deployment chunk hash mismatches
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    const pageHasBeenRefreshed = Boolean(
+      window.sessionStorage.getItem('retry-chunk-refreshed')
+    );
+    try {
+      const component = await factory();
+      window.sessionStorage.removeItem('retry-chunk-refreshed');
+      return component;
+    } catch (error) {
+      if (!pageHasBeenRefreshed) {
+        window.sessionStorage.setItem('retry-chunk-refreshed', 'true');
+        window.location.reload();
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw error;
+    }
+  });
+}
 
-const ChatInterface = lazy(() => import("./core/layout/ChatInterface").then(m => ({ default: m.ChatInterface })))
-const EleInDashboard = lazy(() => import("@dashboard/EleInDashboard").then(m => ({ default: m.EleInDashboard })))
-const EleInAccounts = lazy(() => import("@accounts/EleInAccounts").then(m => ({ default: m.EleInAccounts })))
-const EleInLeads = lazy(() => import("@leads/EleInLeads").then(m => ({ default: m.EleInLeads })))
-const EleInCampaigns = lazy(() => import("@campaigns/EleInCampaigns").then(m => ({ default: m.EleInCampaigns })))
-const EleInCreateCampaign = lazy(() => import("@campaigns/EleInCreateCampaign").then(m => ({ default: m.default || m.EleInCreateCampaign })))
-const EleInCampaignDetail = lazy(() => import("@campaigns/EleInCampaignDetail").then(m => ({ default: m.EleInCampaignDetail })))
-const EleInInbox = lazy(() => import("@inbox/EleInInbox").then(m => ({ default: m.EleInInbox })))
-const EleInTemplates = lazy(() => import("./core/layout/EleInTemplates").then(m => ({ default: m.EleInTemplates })))
-const EleInKnowledge = lazy(() => import("@knowledge/EleInKnowledge"))
-const EleInEngagementStudio = lazy(() => import("./components/engagement/EleInEngagementStudio").then(m => ({ default: m.EleInEngagementStudio })))
-const EleInAdmin = lazy(() => import("@admin/EleInAdmin").then(m => ({ default: m.EleInAdmin })))
-const EleInIntegrations = lazy(() => import("@integrations/EleInIntegrations").then(m => ({ default: m.EleInIntegrations })))
-const EleInSettings = lazy(() => import("@admin/EleInSettings").then(m => ({ default: m.EleInSettings })))
-const EleInAgencySettings = lazy(() => import("@admin/EleInAgencySettings").then(m => ({ default: m.EleInAgencySettings })))
-const EleInBilling = lazy(() => import("@admin/EleInBilling").then(m => ({ default: m.EleInBilling })))
+// Lazy-loaded route components with automatic ChunkLoadError recovery
+const EleInWaitlist = lazyWithRetry(() => import("./pages/EleInWaitlist").then(m => ({ default: m.EleInWaitlist })))
+const Login = lazyWithRetry(() => import("@admin/Login").then(m => ({ default: m.Login })))
+const AcceptInvite = lazyWithRetry(() => import("@admin/AcceptInvite").then(m => ({ default: m.AcceptInvite })))
+const MFASetupPage = lazyWithRetry(() => import("@admin/MFASetupPage").then(m => ({ default: m.MFASetupPage })))
+const OnboardingWizard = lazyWithRetry(() => import("./pages/onboarding/OnboardingWizard").then(m => ({ default: m.OnboardingWizard })))
+
+const ChatInterface = lazyWithRetry(() => import("./core/layout/ChatInterface").then(m => ({ default: m.ChatInterface })))
+const EleInDashboard = lazyWithRetry(() => import("@dashboard/EleInDashboard").then(m => ({ default: m.EleInDashboard })))
+const EleInAccounts = lazyWithRetry(() => import("@accounts/EleInAccounts").then(m => ({ default: m.EleInAccounts })))
+const EleInLeads = lazyWithRetry(() => import("@leads/EleInLeads").then(m => ({ default: m.EleInLeads })))
+const EleInCampaigns = lazyWithRetry(() => import("@campaigns/EleInCampaigns").then(m => ({ default: m.EleInCampaigns })))
+const EleInCreateCampaign = lazyWithRetry(() => import("@campaigns/EleInCreateCampaign").then(m => ({ default: m.default || m.EleInCreateCampaign })))
+const EleInCampaignDetail = lazyWithRetry(() => import("@campaigns/EleInCampaignDetail").then(m => ({ default: m.EleInCampaignDetail })))
+const EleInInbox = lazyWithRetry(() => import("@inbox/EleInInbox").then(m => ({ default: m.EleInInbox })))
+const EleInTemplates = lazyWithRetry(() => import("./core/layout/EleInTemplates").then(m => ({ default: m.EleInTemplates })))
+const EleInKnowledge = lazyWithRetry(() => import("@knowledge/EleInKnowledge"))
+const EleInEngagementStudio = lazyWithRetry(() => import("./components/engagement/EleInEngagementStudio").then(m => ({ default: m.EleInEngagementStudio })))
+const EleInAdmin = lazyWithRetry(() => import("@admin/EleInAdmin").then(m => ({ default: m.EleInAdmin })))
+const EleInIntegrations = lazyWithRetry(() => import("@integrations/EleInIntegrations").then(m => ({ default: m.EleInIntegrations })))
+const EleInSettings = lazyWithRetry(() => import("@admin/EleInSettings").then(m => ({ default: m.EleInSettings })))
+const EleInAgencySettings = lazyWithRetry(() => import("@admin/EleInAgencySettings").then(m => ({ default: m.EleInAgencySettings })))
+const EleInBilling = lazyWithRetry(() => import("@admin/EleInBilling").then(m => ({ default: m.EleInBilling })))
 
 function RouteLoadingFallback() {
   return (

@@ -13,8 +13,11 @@ import { supabase, isSupabaseConfigured } from "./supabase"
 export interface WaitlistPayload {
   email: string
   full_name: string
+  first_name?: string
+  last_name?: string
   company?: string
   role?: string
+  linkedin_url?: string
   team_size?: string
   monthly_outbound_volume?: string
   primary_channel?: string
@@ -39,7 +42,11 @@ export interface WaitlistEntry {
   message?: string
   email: string
   full_name: string
+  first_name?: string
+  last_name?: string
   company?: string
+  role?: string
+  linkedin_url?: string
   position: number
   referral_code: string
   referrals_count: number
@@ -173,6 +180,7 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
         full_name: cleanName,
         company: payload.company || null,
         role: payload.role || null,
+        linkedin_url: payload.linkedin_url || null,
         team_size: payload.team_size || null,
         monthly_outbound_volume: payload.monthly_outbound_volume || null,
         primary_channel: payload.primary_channel || null,
@@ -209,6 +217,11 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
       id: inserted?.id,
       email: cleanEmail,
       full_name: cleanName,
+      first_name: payload.first_name,
+      last_name: payload.last_name,
+      company: payload.company,
+      role: payload.role,
+      linkedin_url: payload.linkedin_url,
       position: pos,
       referral_code: inserted?.referral_code || newRefCode,
       referrals_count: 0,
@@ -293,6 +306,8 @@ export async function lookupWaitlistStatus(identifier: string): Promise<Waitlist
           email: data.email,
           full_name: data.full_name,
           company: data.company,
+          role: data.role,
+          linkedin_url: data.linkedin_url,
           position: pos,
           referral_code: data.referral_code,
           referrals_count: data.referrals_count || 0,
