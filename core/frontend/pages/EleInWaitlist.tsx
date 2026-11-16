@@ -182,7 +182,7 @@ export function EleInWaitlist() {
                 disabled={isSubmitting}
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm py-3 px-6 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
               >
-                {isSubmitting ? "Securing spot..." : "Get early access"}
+                {isSubmitting ? "Joining waitlist..." : "Join the waitlist"}
               </button>
             </form>
           </div>
