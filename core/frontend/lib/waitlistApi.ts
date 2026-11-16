@@ -10,6 +10,30 @@
 
 import { supabase, isSupabaseConfigured } from "./supabase"
 
+const FREE_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'yahoo.co.in',
+  'hotmail.com', 'hotmail.co.uk', 'outlook.com', 'live.com', 'msn.com',
+  'icloud.com', 'me.com', 'mac.com', 'proton.me', 'protonmail.com',
+  'mail.com', 'aol.com', 'zoho.com', 'yandex.com', 'gmx.com', 'gmx.net',
+  'fastmail.com', 'tutanota.com', 'inbox.com'
+])
+
+export function isBusinessEmail(email: string): boolean {
+  const parts = email.trim().toLowerCase().split('@')
+  if (parts.length !== 2 || !parts[1]) return false
+  return !FREE_EMAIL_DOMAINS.has(parts[1])
+}
+
+export function extractCompanyFromEmail(email: string): string | null {
+  const parts = email.trim().toLowerCase().split('@')
+  if (parts.length !== 2 || !parts[1]) return null
+  const domain = parts[1]
+  if (FREE_EMAIL_DOMAINS.has(domain)) return null
+  const base = domain.split('.')[0]
+  if (!base) return null
+  return base.charAt(0).toUpperCase() + base.slice(1)
+}
+
 export interface WaitlistPayload {
   email: string
   full_name: string
@@ -47,6 +71,7 @@ export interface WaitlistEntry {
   company?: string
   role?: string
   linkedin_url?: string
+  is_business_customer?: boolean
   position: number
   referral_code: string
   referrals_count: number
@@ -149,13 +174,23 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
       .maybeSingle()
 
     if (!fetchErr && existing) {
+      const isWork = isBusinessEmail(existing.email)
+      const inferredCompany = existing.company || (isWork ? extractCompanyFromEmail(existing.email) : undefined)
       const pos = await computeSupabasePosition(existing.priority_score || 0, existing.created_at)
       return {
         status: "already_registered",
-        message: "Welcome back! You are already on the priority waitlist.",
+        message: isWork
+          ? "Welcome back! You are on the Essential Customer priority queue."
+          : "Welcome back! You are already on the priority waitlist.",
         id: existing.id,
         email: existing.email,
         full_name: existing.full_name,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        company: inferredCompany,
+        role: existing.role,
+        linkedin_url: existing.linkedin_url,
+        is_business_customer: isWork,
         position: pos,
         referral_code: existing.referral_code,
         referrals_count: existing.referrals_count || 0,
@@ -172,18 +207,21 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
     // 2. Insert new waitlist entrant directly into Supabase
     const newRefCode = generateLocalReferralCode()
     const nowIso = new Date().toISOString()
+    const isWork = isBusinessEmail(cleanEmail)
+    const inferredCompany = payload.company || (isWork ? extractCompanyFromEmail(cleanEmail) : null)
+    const customerTier = isWork ? "essential_customer_prospect" : "standard_waitlist"
 
     const { data: inserted, error: insertErr } = await supabase
       .from("waitlist")
       .insert({
         email: cleanEmail,
         full_name: cleanName,
-        company: payload.company || null,
+        company: inferredCompany,
         role: payload.role || null,
         linkedin_url: payload.linkedin_url || null,
         team_size: payload.team_size || null,
         monthly_outbound_volume: payload.monthly_outbound_volume || null,
-        primary_channel: payload.primary_channel || null,
+        primary_channel: customerTier,
         referral_code: newRefCode,
         referred_by_code: cleanRefBy,
         status: "pending",
@@ -191,7 +229,7 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
         discount_percent: 30,
         discount_duration: "first_year",
         utm_source: payload.utm_source || "website",
-        utm_medium: payload.utm_medium || null,
+        utm_medium: isWork ? "work_email_essential" : "personal_email",
         utm_campaign: payload.utm_campaign || null,
       })
       .select()
@@ -210,22 +248,25 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
       }
     }
 
-    const pos = await computeSupabasePosition(0, inserted?.created_at || nowIso)
+    const pos = await computeSupabasePosition(isWork ? 5 : 0, inserted?.created_at || nowIso)
     return {
       status: "success",
-      message: "Welcome to the Ele-in waitlist! Your spot has been secured.",
+      message: isWork 
+        ? "Essential Customer Priority: Your spot on the early access queue has been secured."
+        : "Welcome to the Ele-in waitlist! Your spot has been secured.",
       id: inserted?.id,
       email: cleanEmail,
       full_name: cleanName,
       first_name: payload.first_name,
       last_name: payload.last_name,
-      company: payload.company,
+      company: inferredCompany || undefined,
       role: payload.role,
       linkedin_url: payload.linkedin_url,
+      is_business_customer: isWork,
       position: pos,
       referral_code: inserted?.referral_code || newRefCode,
       referrals_count: 0,
-      priority_score: 0,
+      priority_score: isWork ? 5 : 0,
       discount: DEFAULT_DISCOUNT,
       is_new: true,
     }
@@ -242,15 +283,20 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
     if (cache[cleanEmail]) {
       return { ...cache[cleanEmail], is_new: false, status: "already_registered" }
     }
+    const isWork = isBusinessEmail(cleanEmail)
+    const inferredCompany = payload.company || (isWork ? extractCompanyFromEmail(cleanEmail) || undefined : undefined)
     const localEntry: WaitlistEntry = {
       status: "success",
       email: cleanEmail,
       full_name: cleanName,
-      company: payload.company,
-      position: QUEUE_BASELINE_OFFSET + Object.keys(cache).length + 1,
+      first_name: payload.first_name,
+      last_name: payload.last_name,
+      company: inferredCompany,
+      is_business_customer: isWork,
+      position: isWork ? QUEUE_BASELINE_OFFSET - 50 : QUEUE_BASELINE_OFFSET + Object.keys(cache).length + 1,
       referral_code: generateLocalReferralCode(),
       referrals_count: 0,
-      priority_score: 0,
+      priority_score: isWork ? 5 : 0,
       discount: DEFAULT_DISCOUNT,
       is_new: true,
     }
@@ -300,14 +346,16 @@ export async function lookupWaitlistStatus(identifier: string): Promise<Waitlist
 
       const { data, error } = await query
       if (!error && data) {
+        const isWork = isBusinessEmail(data.email)
         const pos = await computeSupabasePosition(data.priority_score || 0, data.created_at)
         return {
           id: data.id,
           email: data.email,
           full_name: data.full_name,
-          company: data.company,
+          company: data.company || (isWork ? extractCompanyFromEmail(data.email) || undefined : undefined),
           role: data.role,
           linkedin_url: data.linkedin_url,
+          is_business_customer: isWork,
           position: pos,
           referral_code: data.referral_code,
           referrals_count: data.referrals_count || 0,

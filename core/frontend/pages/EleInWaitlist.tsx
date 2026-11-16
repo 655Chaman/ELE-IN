@@ -4,6 +4,8 @@ import { toast } from "sonner"
 import {
   submitWaitlistSignup,
   fetchWaitlistStats,
+  isBusinessEmail,
+  extractCompanyFromEmail,
   type WaitlistEntry,
 } from "@/lib/waitlistApi"
 
@@ -43,6 +45,11 @@ export function EleInWaitlist() {
       .catch(() => {})
   }, [searchParams])
 
+  const emailTrimmed = email.trim().toLowerCase()
+  const hasValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)
+  const isWorkEmail = hasValidEmailFormat ? isBusinessEmail(emailTrimmed) : false
+  const detectedCompany = isWorkEmail ? extractCompanyFromEmail(emailTrimmed) : null
+
   const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -53,10 +60,10 @@ export function EleInWaitlist() {
       return
     }
 
-    const cleanEmail = email.trim().toLowerCase()
+    const cleanEmail = emailTrimmed
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      toast.error("Please enter a valid work email.")
+      toast.error("Please enter a valid email address.")
       return
     }
 
@@ -77,7 +84,7 @@ export function EleInWaitlist() {
       if (entry.status === "already_registered") {
         toast.info("Welcome back. Here is your access pass.")
       } else {
-        toast.success("Spot reserved. Access pass generated.")
+        toast.success(entry.is_business_customer ? "Priority B2B pass secured!" : "Spot reserved on the waitlist!")
         setTotalCount((prev) => prev + 1)
       }
     } catch (err: any) {
@@ -100,6 +107,56 @@ export function EleInWaitlist() {
       .catch(() => {
         toast.error("Failed to copy link.")
       })
+  }
+
+  const shareUrl = activeEntry?.referral_code
+    ? `https://ele-in.com?ref=${activeEntry.referral_code}`
+    : "https://ele-in.com"
+
+  const isEssential = Boolean(activeEntry?.is_business_customer)
+  const companyName = activeEntry?.company
+
+  const xPostText = isEssential
+    ? `Automating our LinkedIn outbound without the manual copy-paste grind.
+
+Just joined the priority access queue for @ele_in — autonomous lead discovery, context-aware personalized messaging, and meeting booking.
+
+Early access waitlist: ${shareUrl}`
+    : `Outbound on LinkedIn is either 10 hours a week of manual copy-paste or spam.
+
+Excited to see how @ele_in solves this — autonomous prospecting, personalized messaging, and meeting booking on autopilot.
+
+Grab a spot on the waitlist: ${shareUrl}`
+
+  const linkedInPostText = isEssential
+    ? `Outbound prospecting on LinkedIn shouldn't require 15+ hours a week of manual lead searching and repetitive messages.
+
+I just claimed priority early access to Ele-in${companyName ? ` for ${companyName}` : ""}.
+
+It's built as an autonomous LinkedIn outbound engine:
+• Discovers and verifies high-intent ICP leads
+• Initiates personalized, context-aware conversations (no generic templates)
+• Books qualified meetings directly into your calendar
+
+If you're looking to scale your B2B pipeline on autopilot, grab an early access spot here:
+${shareUrl}`
+    : `Outbound prospecting on LinkedIn shouldn't be a manual full-time grind.
+
+Excited to join the waitlist for Ele-in — an autonomous LinkedIn outreach engine that finds qualified leads, initiates personalized conversations, and books meetings on autopilot.
+
+Key capabilities that caught my eye:
+• Multi-source intent lead discovery
+• Hyper-personalized conversation openers (not generic templates)
+• Automated meeting scheduling directly to calendar
+
+If you're exploring modern sales automation and AI pipeline generation, check it out here:
+${shareUrl}`
+
+  const handleShareLinkedIn = () => {
+    navigator.clipboard?.writeText(linkedInPostText).then(() => {
+      toast.success("Post text copied to clipboard! Paste it into your LinkedIn post.")
+    }).catch(() => {})
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, "_blank", "noopener,noreferrer")
   }
 
   const formattedPositionNumber = String(activeEntry?.position || totalCount || 385).padStart(6, "0")
@@ -158,14 +215,31 @@ export function EleInWaitlist() {
                 />
               </div>
 
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your work email"
-                required
-                className="w-full bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700/80 focus:border-zinc-500 rounded-xl px-4 py-3 text-white placeholder-zinc-500 text-sm focus:outline-none transition-colors"
-              />
+              <div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your work email"
+                  required
+                  className="w-full bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700/80 focus:border-zinc-500 rounded-xl px-4 py-3 text-white placeholder-zinc-500 text-sm focus:outline-none transition-colors"
+                />
+                {hasValidEmailFormat && (
+                  <div className="mt-2 text-left px-1">
+                    {isWorkEmail ? (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+                        <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Essential Customer recognized {detectedCompany ? `(${detectedCompany})` : ""} · Priority queue unlocked</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-mono">
+                        <span className="size-1.5 rounded-full bg-zinc-500" />
+                        <span>Personal email · Tip: Use your work email to unlock Essential Customer priority</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <input
                 type="text"
@@ -180,7 +254,7 @@ export function EleInWaitlist() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm py-3 px-6 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm py-3 px-6 rounded-xl transition-colors cursor-pointer disabled:opacity-50 mt-1"
               >
                 {isSubmitting ? "Joining waitlist..." : "Join the waitlist"}
               </button>
@@ -188,28 +262,59 @@ export function EleInWaitlist() {
           </div>
         ) : (
           /* Post-Join State: Clean Minimalist Pass */
-          <div className="mt-10 max-w-md mx-auto p-7 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 text-center shadow-xs">
-            <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono mb-1">
-              Early Access Confirmed
-            </div>
+          <div className="mt-10 max-w-md mx-auto p-7 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 text-center shadow-xl">
+            {isEssential ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-[11px] uppercase tracking-wider text-emerald-400 font-mono mb-2">
+                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Essential Customer · Priority Cohort</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800/80 border border-zinc-700/60 text-[11px] uppercase tracking-wider text-zinc-400 font-mono mb-2">
+                <span className="size-1.5 rounded-full bg-zinc-400" />
+                <span>Standard Waitlist Pass</span>
+              </div>
+            )}
 
-            <div className="text-3xl sm:text-4xl font-light tracking-tight text-white font-mono my-2">
+            <div className={`text-3xl sm:text-4xl font-light tracking-tight font-mono my-2 ${isEssential ? "text-white text-emerald-50 drop-shadow-[0_0_12px_rgba(16,185,129,0.25)]" : "text-zinc-200"}`}>
               #{formattedPositionNumber}
             </div>
 
             <p className="text-xs text-zinc-400 font-mono mt-1">
-              Reserved for {activeEntry.full_name || activeEntry.email}
+              {isEssential ? (
+                <>
+                  Priority B2B Access for <span className="text-white font-medium">{activeEntry.full_name || activeEntry.email}</span>
+                  {activeEntry.company && (
+                    <span className="text-emerald-400 font-medium"> · {activeEntry.company}</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  Reserved for <span className="text-zinc-300">{activeEntry.full_name || activeEntry.email}</span>
+                </>
+              )}
             </p>
+
+            {isEssential ? (
+              <div className="mt-3 flex items-center justify-center gap-2.5 text-[11px] text-zinc-400 font-mono">
+                <span className="text-emerald-400">✓ Priority onboarding</span>
+                <span className="text-zinc-600">·</span>
+                <span className="text-emerald-400">✓ 30% Founder lock</span>
+              </div>
+            ) : (
+              <div className="mt-3 text-[11px] text-zinc-500 font-mono">
+                Have a work email? Sign up with your company domain to get Essential Customer priority.
+              </div>
+            )}
 
             <div className="mt-6 pt-5 border-t border-zinc-800/80">
               <div className="text-xs text-zinc-400 mb-2.5">
-                Skip 5 spots for each teammate you invite:
+                {isEssential ? "Invite teammates to skip ahead in priority onboarding:" : "Skip 5 spots for each referral:"}
               </div>
               <div className="flex gap-2">
                 <input
                   type="text"
                   readOnly
-                  value={`https://ele-in.com?ref=${activeEntry.referral_code}`}
+                  value={shareUrl}
                   className="flex-1 bg-black/60 border border-zinc-800/80 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono text-center select-all focus:outline-none"
                 />
                 <button
@@ -221,23 +326,29 @@ export function EleInWaitlist() {
                 </button>
               </div>
 
-              <div className="mt-3.5 flex items-center justify-center gap-3 text-xs text-zinc-500">
+              <div className="mt-4 flex items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleShareLinkedIn}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0077b5]/15 hover:bg-[#0077b5]/25 border border-[#0077b5]/30 text-xs font-medium text-sky-300 hover:text-white transition-all cursor-pointer shadow-xs"
+                  title="Copies post copy and opens LinkedIn"
+                >
+                  <svg className="size-3.5 fill-current text-sky-400 shrink-0" viewBox="0 0 24 24">
+                    <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45c-.95 0-1.72.78-1.72 1.73s.77 1.73 1.72 1.73 1.73-.78 1.73-1.73-.78-1.73-1.73-1.73Z"/>
+                  </svg>
+                  <span>Share on LinkedIn</span>
+                </button>
+
                 <a
-                  href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(xPostText)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="hover:text-zinc-300 transition-colors underline"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-white transition-all shadow-xs"
                 >
-                  Share on LinkedIn
-                </a>
-                <span>·</span>
-                <a
-                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just claimed Pass #${formattedPositionNumber} for @Ele_in. Automated LinkedIn outreach: https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:text-zinc-300 transition-colors underline"
-                >
-                  Share on X
+                  <svg className="size-3.5 fill-current text-zinc-100 shrink-0" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                  <span>Share on X</span>
                 </a>
               </div>
             </div>
