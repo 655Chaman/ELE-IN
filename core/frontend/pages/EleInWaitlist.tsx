@@ -102,9 +102,6 @@ export function EleInWaitlist() {
       })
   }
 
-  const cohortCapacity = 500
-  const claimedInCurrentCohort = Math.min(totalCount % cohortCapacity || 385, cohortCapacity)
-  const cohortPercent = Math.min(Math.round((claimedInCurrentCohort / cohortCapacity) * 100), 100)
   const formattedPositionNumber = String(activeEntry?.position || totalCount || 385).padStart(6, "0")
 
   return (
@@ -187,22 +184,6 @@ export function EleInWaitlist() {
               >
                 {isSubmitting ? "Securing spot..." : "Get early access"}
               </button>
-
-              {/* Minimal Scarcity Meter */}
-              <div className="pt-2 px-1 text-center">
-                <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-1.5">
-                  <span>Cohort 1</span>
-                  <span className="text-emerald-400 font-medium">
-                    {claimedInCurrentCohort} / {cohortCapacity} Seats
-                  </span>
-                </div>
-                <div className="w-full bg-zinc-900 border border-zinc-800/80 h-1 rounded-full overflow-hidden">
-                  <div
-                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${cohortPercent}%` }}
-                  />
-                </div>
-              </div>
             </form>
           </div>
         ) : (
