@@ -10,19 +10,12 @@ import {
 export function EleInWaitlist() {
   const [searchParams] = useSearchParams()
 
-  // Primary Applicant State
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
-  const [company, setCompany] = useState("")
-  const [role, setRole] = useState("")
-  const [linkedinUrl, setLinkedinUrl] = useState("")
-  const [outboundVolume, setOutboundVolume] = useState("")
   const [referralCode, setReferralCode] = useState("")
   const [honeypot, setHoneypot] = useState("")
 
-  // UI Control State
-  const [showBooster, setShowBooster] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeEntry, setActiveEntry] = useState<WaitlistEntry | null>(null)
   const [hasCopied, setHasCopied] = useState(false)
@@ -76,10 +69,6 @@ export function EleInWaitlist() {
         full_name: combinedFullName,
         first_name: cleanFirst,
         last_name: cleanLast,
-        company: company.trim() || undefined,
-        role: role.trim() || undefined,
-        linkedin_url: linkedinUrl.trim() || undefined,
-        monthly_outbound_volume: outboundVolume || undefined,
         referred_by_code: referralCode || undefined,
         hp_website_security: honeypot || undefined,
       })
@@ -88,7 +77,7 @@ export function EleInWaitlist() {
       if (entry.status === "already_registered") {
         toast.info("Welcome back. Here is your access pass.")
       } else {
-        toast.success("VIP Spot reserved! Access pass generated.")
+        toast.success("Spot reserved. Access pass generated.")
         setTotalCount((prev) => prev + 1)
       }
     } catch (err: any) {
@@ -105,7 +94,7 @@ export function EleInWaitlist() {
       .writeText(link)
       .then(() => {
         setHasCopied(true)
-        toast.success("Referral link copied to clipboard.")
+        toast.success("Link copied to clipboard.")
         setTimeout(() => setHasCopied(false), 2000)
       })
       .catch(() => {
@@ -151,281 +140,126 @@ export function EleInWaitlist() {
         </p>
 
         {!activeEntry ? (
-          <div className="mt-10 w-full max-w-lg mx-auto">
-            <div className="p-6 sm:p-8 rounded-2xl bg-zinc-900/50 backdrop-blur-xl border border-zinc-800/80 shadow-2xl text-left">
-              <form onSubmit={handleJoinSubmit} className="space-y-4">
-                {/* 1. First & Last Name */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1.5">
-                      First name <span className="text-emerald-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="Alex"
-                      required
-                      className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 transition-all outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1.5">
-                      Last name <span className="text-emerald-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="Mercer"
-                      required
-                      className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 2. Work Email */}
-                <div>
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1.5">
-                    Work email <span className="text-emerald-400">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="alex@company.com"
-                    required
-                    className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 transition-all outline-none"
-                  />
-                </div>
-
-                {/* 3. Company & Role */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1.5">
-                      Company <span className="text-zinc-600 lowercase">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={company}
-                      onChange={(e) => setCompany(e.target.value)}
-                      placeholder="Acme Inc"
-                      className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 transition-all outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1.5">
-                      Role / Title <span className="text-zinc-600 lowercase">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      placeholder="Head of Growth"
-                      className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* 4. Priority Booster (Accordion / Fast-track) */}
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowBooster(!showBooster)}
-                    className="text-xs font-mono text-zinc-400 hover:text-emerald-400 flex items-center gap-1.5 transition-colors cursor-pointer select-none"
-                  >
-                    <span>{showBooster ? "▾" : "▸"}</span>
-                    <span>Fast-track access: LinkedIn & Outreach scale</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      Skip queue
-                    </span>
-                  </button>
-
-                  {showBooster && (
-                    <div className="mt-3 p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
-                          LinkedIn Profile URL
-                        </label>
-                        <input
-                          type="url"
-                          value={linkedinUrl}
-                          onChange={(e) => setLinkedinUrl(e.target.value)}
-                          placeholder="https://linkedin.com/in/alex-mercer"
-                          className="w-full bg-zinc-900/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 transition-all outline-none font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
-                          Target Monthly Outbound Volume
-                        </label>
-                        <select
-                          value={outboundVolume}
-                          onChange={(e) => setOutboundVolume(e.target.value)}
-                          className="w-full bg-zinc-900/80 border border-zinc-800 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 rounded-lg px-3 py-2 text-xs text-zinc-200 transition-all outline-none"
-                        >
-                          <option value="">Select outbound volume...</option>
-                          <option value="under_1k">Under 1,000 messages / month</option>
-                          <option value="1k_5k">1,000 – 5,000 messages / month</option>
-                          <option value="5k_20k">5,000 – 20,000 messages / month</option>
-                          <option value="20k_plus">20,000+ messages / month (Enterprise)</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Honeypot Trap (Hidden for bots) */}
+          <div className="mt-8 max-w-md mx-auto w-full">
+            <form onSubmit={handleJoinSubmit} className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
-                  name="hp_website_security"
-                  value={honeypot}
-                  onChange={(e) => setHoneypot(e.target.value)}
-                  tabIndex={-1}
-                  autoComplete="off"
-                  className="hidden"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First name"
+                  required
+                  className="w-full bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700/80 focus:border-zinc-500 rounded-xl px-4 py-3 text-white placeholder-zinc-500 text-sm focus:outline-none transition-colors"
                 />
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last name"
+                  required
+                  className="w-full bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700/80 focus:border-zinc-500 rounded-xl px-4 py-3 text-white placeholder-zinc-500 text-sm focus:outline-none transition-colors"
+                />
+              </div>
 
-                {/* 5. Submit CTA */}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-sm py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 active:scale-[0.99] cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="size-4 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
-                      <span>Securing VIP Access Pass...</span>
-                    </>
-                  ) : (
-                    <span>Claim VIP Early Access</span>
-                  )}
-                </button>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your work email"
+                required
+                className="w-full bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700/80 focus:border-zinc-500 rounded-xl px-4 py-3 text-white placeholder-zinc-500 text-sm focus:outline-none transition-colors"
+              />
 
-                {/* Scarcity Meter */}
-                <div className="pt-2">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-1.5">
-                    <span>Cohort 1 Priority Queue</span>
-                    <span className="text-emerald-400 font-medium">
-                      {claimedInCurrentCohort} / {cohortCapacity} Seats Claimed
-                    </span>
-                  </div>
-                  <div className="w-full bg-zinc-950 border border-zinc-800/80 h-1.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${cohortPercent}%` }}
-                    />
-                  </div>
-                </div>
+              <input
+                type="text"
+                name="hp_website_security"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                className="hidden"
+              />
 
-                {/* Guarantees & Perks */}
-                <div className="pt-2 border-t border-zinc-800/60 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-zinc-500">
-                  <span className="text-emerald-400/90 flex items-center gap-1">
-                    ✓ 30% Founder Discount (EARLY30) Locked
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm py-3 px-6 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? "Securing spot..." : "Get early access"}
+              </button>
+
+              {/* Minimal Scarcity Meter */}
+              <div className="pt-2 px-1 text-center">
+                <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 mb-1.5">
+                  <span>Cohort 1</span>
+                  <span className="text-emerald-400 font-medium">
+                    {claimedInCurrentCohort} / {cohortCapacity} Seats
                   </span>
-                  <span>Zero spam, ever</span>
                 </div>
-              </form>
-            </div>
+                <div className="w-full bg-zinc-900 border border-zinc-800/80 h-1 rounded-full overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${cohortPercent}%` }}
+                  />
+                </div>
+              </div>
+            </form>
           </div>
         ) : (
-          /* Post-Join State: Stunning VIP Access Pass */
-          <div className="mt-8 w-full max-w-lg mx-auto p-6 sm:p-8 rounded-2xl bg-zinc-900/50 backdrop-blur-xl border border-zinc-800/80 text-center shadow-2xl relative overflow-hidden">
-            {/* Top glowing ambient highlight */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent" />
-
-            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 mb-4 border-b border-zinc-800/80 pb-3">
-              <span className="text-zinc-500 uppercase tracking-widest">Early Access Confirmed</span>
-              <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[10px]">
-                Cohort 1 VIP Priority
-              </span>
+          /* Post-Join State: Clean Minimalist Pass */
+          <div className="mt-10 max-w-md mx-auto p-7 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 text-center shadow-xs">
+            <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono mb-1">
+              Early Access Confirmed
             </div>
 
-            <div className="text-4xl sm:text-5xl font-mono font-light tracking-tight text-white my-3">
+            <div className="text-3xl sm:text-4xl font-light tracking-tight text-white font-mono my-2">
               #{formattedPositionNumber}
             </div>
 
-            <div className="space-y-1 mb-5">
-              <div className="text-base font-medium text-white">
-                {activeEntry.full_name}
-              </div>
-              <div className="text-xs text-zinc-400 font-mono">
-                {activeEntry.email} {activeEntry.company ? `· ${activeEntry.company}` : ""}
-              </div>
-            </div>
+            <p className="text-xs text-zinc-400 font-mono mt-1">
+              Reserved for {activeEntry.full_name || activeEntry.email}
+            </p>
 
-            {/* Locked Early Adopter Perks */}
-            <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-left space-y-2 mb-6">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold">
-                VIP Early Adopter Perks Locked:
+            <div className="mt-6 pt-5 border-t border-zinc-800/80">
+              <div className="text-xs text-zinc-400 mb-2.5">
+                Skip 5 spots for each teammate you invite:
               </div>
-              <div className="flex items-center gap-2 text-xs text-zinc-300">
-                <div className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
-                <span>30% off all plans for your first 12 months (<span className="font-mono text-emerald-400">EARLY30</span>)</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-zinc-300">
-                <div className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
-                <span>Priority multi-account LinkedIn sender pod allocation</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-zinc-300">
-                <div className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
-                <span>Stealth anti-fingerprinting automation pipeline</span>
-              </div>
-            </div>
-
-            {/* Viral Referral Skip */}
-            <div className="pt-4 border-t border-zinc-800/80">
-              <div className="text-xs font-medium text-zinc-300 mb-1">
-                Want to skip ahead in line?
-              </div>
-              <div className="text-xs text-zinc-400 mb-3">
-                Skip 5 spots for each teammate or colleague who joins with your link:
-              </div>
-
               <div className="flex gap-2">
                 <input
                   type="text"
                   readOnly
                   value={`https://ele-in.com?ref=${activeEntry.referral_code}`}
-                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-zinc-200 font-mono text-center select-all focus:outline-none"
+                  className="flex-1 bg-black/60 border border-zinc-800/80 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono text-center select-all focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-xl transition-colors cursor-pointer shrink-0"
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer shrink-0"
                 >
                   {hasCopied ? "Copied" : "Copy"}
                 </button>
               </div>
 
-              <div className="mt-4 flex items-center justify-center gap-4 text-xs font-mono text-zinc-400">
+              <div className="mt-3.5 flex items-center justify-center gap-3 text-xs text-zinc-500">
                 <a
                   href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="hover:text-emerald-400 transition-colors underline"
+                  className="hover:text-zinc-300 transition-colors underline"
                 >
                   Share on LinkedIn
                 </a>
                 <span>·</span>
                 <a
-                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just claimed VIP Pass #${formattedPositionNumber} for @Ele_in. Automated LinkedIn outreach: https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just claimed Pass #${formattedPositionNumber} for @Ele_in. Automated LinkedIn outreach: https://ele-in.com?ref=${activeEntry.referral_code}`)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="hover:text-emerald-400 transition-colors underline"
+                  className="hover:text-zinc-300 transition-colors underline"
                 >
                   Share on X
                 </a>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setActiveEntry(null)}
-              className="mt-6 text-[11px] font-mono text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
-            >
-              ← Register another colleague
-            </button>
           </div>
         )}
       </main>
