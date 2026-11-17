@@ -294,14 +294,6 @@ ${shareUrl}`
                 )}
               </button>
             </form>
-
-            {/* Subtle Founder Discount & Cohort Release Note */}
-            <div className="mt-5 flex items-center justify-center gap-2 text-[12px] text-zinc-400 font-sans">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-mono text-[11px] font-medium border border-emerald-500/20">
-                EARLY30
-              </span>
-              <span>Locks 30% founder pricing for early cohorts</span>
-            </div>
           </>
         ) : (
           /* ========================================================================= */
