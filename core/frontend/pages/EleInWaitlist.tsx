@@ -146,31 +146,31 @@ export function EleInWaitlist() {
   const displayName = getDisplayName(activeEntry)
 
   const xPostText = isEssential
-    ? `Automating our LinkedIn outbound without the manual grind.
+    ? `Automating our outbound prospecting without the manual grind.
 
-Just joined priority access for @ele_in — autonomous prospecting and personalized outreach on autopilot.
+Just joined priority access for @ele_in — autonomous LinkedIn prospecting and personalized conversations on autopilot.
 
 Waitlist: ${shareUrl}`
-    : `Scaling LinkedIn outreach without the manual grind.
+    : `Scaling outbound prospecting without the manual grind.
 
-Just joined the waitlist for @ele_in — autonomous prospecting and messaging on autopilot.
+Just joined the waitlist for @ele_in — autonomous LinkedIn prospecting and messaging on autopilot.
 
 Waitlist: ${shareUrl}`
 
   const linkedInPostText = isEssential
-    ? `Outbound prospecting on LinkedIn shouldn't be a manual full-time grind.
+    ? `Outbound prospecting on LinkedIn shouldn't take 20 hours a week of manual copy-pasting.
 
-I just claimed priority early access to Ele-in${companyName ? ` for ${companyName}` : ""}.
+I just secured priority early access to Ele-in${companyName ? ` for ${companyName}` : ""}.
 
-It's an autonomous LinkedIn outreach engine that discovers qualified leads, initiates personalized conversations, and books meetings on autopilot.
+Ele-in runs LinkedIn prospecting on autopilot: finding ICP leads, initiating warm conversations, and booking meetings directly into your calendar.
 
-Early access waitlist:
+If you run B2B outbound, check it out here:
 ${shareUrl}`
-    : `Outbound prospecting on LinkedIn shouldn't be a manual full-time grind.
+    : `Outbound prospecting on LinkedIn shouldn't take 20 hours a week of manual copy-pasting.
 
-I just joined the waitlist for Ele-in — an autonomous LinkedIn outreach engine that discovers qualified leads, initiates personalized conversations, and books meetings on autopilot.
+I just joined the waitlist for Ele-in — an autonomous engine that finds ICP leads, initiates personalized conversations, and books qualified meetings on autopilot.
 
-Early access waitlist:
+Check out the early access waitlist:
 ${shareUrl}`
 
   const handleShareLinkedIn = () => {
@@ -183,140 +183,134 @@ ${shareUrl}`
   const formattedPositionNumber = String(activeEntry?.position || totalCount || 385).padStart(6, "0")
 
   return (
-    <div className="min-h-screen bg-[#060708] text-zinc-100 flex flex-col justify-between font-sans selection:bg-zinc-800 selection:text-white antialiased overflow-x-hidden">
-      <main className="w-full max-w-sm sm:max-w-md mx-auto px-4 py-8 sm:py-14 text-center my-auto flex flex-col items-center">
-        {/* Wordmark */}
-        <span className="text-[11px] tracking-[0.28em] text-zinc-500 uppercase mb-3 select-none font-sans">
-          {activeEntry ? "Access Confirmed" : "Ele-in"}
-        </span>
-
-        {/* Brand Mark */}
-        <div className="relative mb-5 sm:mb-7 flex items-center justify-center">
-          <div className="absolute inset-0 rounded-2xl bg-emerald-500/10 blur-lg -z-10" />
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl p-1 bg-[#001507] border border-emerald-500/25 shadow-xl shadow-emerald-950/60 flex items-center justify-center overflow-hidden">
+    <div className="min-h-screen bg-[#212121] text-white flex flex-col justify-between font-sans selection:bg-zinc-700 selection:text-white antialiased overflow-x-hidden">
+      <main className="w-full max-w-[360px] sm:max-w-[370px] mx-auto px-4 py-12 sm:py-20 text-center my-auto flex flex-col items-center">
+        {/* Subtle Brand Mark */}
+        <div className="mb-6 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl p-0.5 bg-[#171717] border border-[#383838] flex items-center justify-center overflow-hidden shadow-sm">
             <img
               src="/logo-icon.png"
               alt="Ele-in"
-              className="w-full h-full object-cover rounded-xl"
+              className="w-full h-full object-cover rounded-[8px]"
             />
           </div>
         </div>
 
         {!activeEntry ? (
           /* ========================================================================= */
-          /* 1. PRE-SIGNUP VIEW (Clean, Concise, Responsive)                          */
+          /* 1. PRE-SIGNUP VIEW (Exact OpenAI Verification Minimal UI)                 */
           /* ========================================================================= */
           <>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-medium tracking-tight text-white leading-tight font-sans">
-              LinkedIn outreach, automated.
+            <h1 className="text-[28px] sm:text-[30px] font-medium tracking-tight text-white leading-tight font-sans">
+              LinkedIn outreach, automated
             </h1>
 
-            <p className="mt-3 text-sm text-zinc-400 max-w-sm mx-auto leading-relaxed font-sans">
-              Find leads, start conversations, and book qualified meetings on autopilot.
+            <p className="mt-2.5 text-[14px] text-[#b4b4b4] max-w-[320px] mx-auto leading-normal font-sans">
+              Stop sending manual messages. Ele-in finds leads and books qualified meetings on autopilot.
             </p>
 
-            <div className="mt-6 w-full">
-              <form onSubmit={handleJoinSubmit} className="space-y-2.5">
-                <div className="grid grid-cols-2 gap-2">
+            <form onSubmit={handleJoinSubmit} className="mt-8 w-full space-y-3 text-left">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
                   <input
                     type="text"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="First name"
                     required
-                    className="w-full bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 focus:border-zinc-500 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-500 text-base sm:text-sm focus:outline-none transition-colors font-sans"
+                    className="w-full h-[52px] bg-[#212121] border border-[#424242] hover:border-[#525252] focus:border-white focus:outline-none rounded-2xl px-4 text-white placeholder-[#737373] text-base sm:text-[14px] transition-colors font-sans"
                   />
+                </div>
+                <div>
                   <input
                     type="text"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     placeholder="Last name"
                     required
-                    className="w-full bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 focus:border-zinc-500 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-500 text-base sm:text-sm focus:outline-none transition-colors font-sans"
+                    className="w-full h-[52px] bg-[#212121] border border-[#424242] hover:border-[#525252] focus:border-white focus:outline-none rounded-2xl px-4 text-white placeholder-[#737373] text-base sm:text-[14px] transition-colors font-sans"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your work email"
-                    required
-                    className="w-full bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 focus:border-zinc-500 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-500 text-base sm:text-sm focus:outline-none transition-colors font-sans"
-                  />
-                  {hasValidEmailFormat && (
-                    <div className="mt-1.5 text-left px-1">
-                      {isWorkEmail ? (
-                        <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-sans">
-                          <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
-                          <span>Priority B2B Access unlocked {detectedCompany ? `(${detectedCompany})` : ""}</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-sans">
-                          <span className="size-1.5 rounded-full bg-zinc-500 shrink-0" />
-                          <span>Personal email · Use work email for priority access</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
+              <div>
                 <input
-                  type="text"
-                  name="hp_website_security"
-                  value={honeypot}
-                  onChange={(e) => setHoneypot(e.target.value)}
-                  tabIndex={-1}
-                  autoComplete="off"
-                  className="hidden"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your work email"
+                  required
+                  className="w-full h-[52px] bg-[#212121] border border-[#424242] hover:border-[#525252] focus:border-white focus:outline-none rounded-2xl px-4 text-white placeholder-[#737373] text-base sm:text-[14px] transition-colors font-sans"
                 />
+                {hasValidEmailFormat && (
+                  <div className="mt-2 text-left px-1">
+                    {isWorkEmail ? (
+                      <div className="flex items-center gap-1.5 text-[12px] text-emerald-400 font-sans">
+                        <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span>Priority B2B Access unlocked {detectedCompany ? `(${detectedCompany})` : ""}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[12px] text-[#8e8e8e] font-sans">
+                        <span className="size-1.5 rounded-full bg-[#8e8e8e] shrink-0" />
+                        <span>Personal email · Use work email for priority queue</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm py-3 px-5 rounded-xl transition-colors cursor-pointer disabled:opacity-50 mt-1 font-sans"
-                >
-                  {isSubmitting ? "Securing spot..." : "Join the waitlist"}
-                </button>
-              </form>
-            </div>
+              <input
+                type="text"
+                name="hp_website_security"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                className="hidden"
+              />
+
+              {/* The Signature OpenAI White Pill Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full h-[52px] mt-4 rounded-full bg-white text-black font-medium text-[15px] hover:bg-[#e3e3e3] active:bg-[#d4d4d4] transition-colors cursor-pointer disabled:opacity-50 font-sans shadow-sm flex items-center justify-center"
+              >
+                {isSubmitting ? "Submitting..." : "Continue"}
+              </button>
+            </form>
+
+            {/* Subtle Legal / Disclaimer Text */}
+            <p className="mt-6 text-[12px] text-[#8e8e8e] leading-relaxed max-w-[320px] font-sans">
+              By continuing, you lock <span className="text-[#b4b4b4]">30% founder pricing</span> (EARLY30). Early access invitations are dispatched in cohorts to ensure high deliverability.
+            </p>
           </>
         ) : (
           /* ========================================================================= */
-          /* 2. POST-SIGNUP VIEW (Minimal, Professional VIP Card, Mobile-first)        */
+          /* 2. POST-SIGNUP VIEW (Clean OpenAI Verification Confirmation Style)       */
           /* ========================================================================= */
-          <div className="w-full flex flex-col items-center">
-            {/* Minimal Status Pill */}
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-medium mb-3 font-sans">
-              <span className="size-1.5 rounded-full bg-emerald-400" />
-              <span>{isEssential ? "Priority B2B Queue" : "Early Access Reserved"}</span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-medium tracking-tight text-white font-sans">
-              Spot #{formattedPositionNumber} Secured
+          <div className="w-full flex flex-col items-center text-center">
+            <h1 className="text-[28px] sm:text-[30px] font-medium tracking-tight text-white leading-tight font-sans">
+              Spot #{formattedPositionNumber} reserved
             </h1>
 
-            <p className="mt-1.5 text-xs sm:text-sm text-zinc-400 font-sans">
+            <p className="mt-2.5 text-[14px] text-[#b4b4b4] max-w-[320px] mx-auto leading-normal font-sans">
               Reserved for {displayName}
-              {companyName ? ` · ${companyName}` : ""}
+              {companyName ? ` · ${companyName}` : ""}. We'll notify you as soon as your cohort opens.
             </p>
 
-            {/* Clean Minimalist Pass Card */}
-            <div className="w-full mt-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 p-4 sm:p-5 text-left shadow-xl">
-              {/* Card Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
-                <span className="text-[11px] tracking-wider text-zinc-400 uppercase font-medium font-sans">
+            {/* Clean Ticket Card */}
+            <div className="w-full mt-6 rounded-2xl bg-[#262626] border border-[#383838] p-5 text-left shadow-md">
+              <div className="flex items-center justify-between pb-3 border-b border-[#383838]">
+                <span className="text-[11px] uppercase tracking-wider text-[#8e8e8e] font-sans">
                   Access Pass
                 </span>
                 <span className="text-[11px] font-mono text-emerald-400">
-                  Cohort 1
+                  {isEssential ? "Priority B2B" : "Cohort 1"}
                 </span>
               </div>
 
-              {/* Number Display */}
               <div className="py-4 text-center">
-                <span className="text-[10px] text-zinc-500 uppercase tracking-widest block mb-0.5 font-sans">
+                <span className="text-[10px] text-[#8e8e8e] uppercase tracking-widest block mb-1 font-sans">
                   Queue Position
                 </span>
                 <div className="text-4xl sm:text-5xl font-mono text-white tracking-tight">
@@ -324,25 +318,23 @@ ${shareUrl}`
                 </div>
               </div>
 
-              {/* Compact 2-column info */}
-              <div className="grid grid-cols-2 gap-2 text-xs border-t border-zinc-800/80 pt-3">
-                <div className="bg-black/40 rounded-lg p-2.5 border border-zinc-800/60">
-                  <span className="text-[10px] text-zinc-500 uppercase block font-sans">Tier</span>
-                  <span className="font-medium text-zinc-200 truncate block mt-0.5 font-sans">
+              <div className="grid grid-cols-2 gap-2 text-[12px] border-t border-[#383838] pt-3">
+                <div className="bg-[#212121] rounded-xl p-2.5 border border-[#383838]">
+                  <span className="text-[10px] text-[#8e8e8e] uppercase block font-sans">Tier</span>
+                  <span className="font-medium text-white truncate block mt-0.5 font-sans">
                     {isEssential ? "Priority B2B" : "Standard"}
                   </span>
                 </div>
-                <div className="bg-black/40 rounded-lg p-2.5 border border-zinc-800/60">
-                  <span className="text-[10px] text-zinc-500 uppercase block font-sans">Benefit</span>
+                <div className="bg-[#212121] rounded-xl p-2.5 border border-[#383838]">
+                  <span className="text-[10px] text-[#8e8e8e] uppercase block font-sans">Discount</span>
                   <span className="font-medium text-emerald-400 truncate block mt-0.5 font-sans">
                     30% off (EARLY30)
                   </span>
                 </div>
               </div>
 
-              {/* Referral Station */}
-              <div className="mt-4 pt-3.5 border-t border-zinc-800/80">
-                <div className="text-xs text-zinc-400 mb-2 font-sans">
+              <div className="mt-4 pt-3.5 border-t border-[#383838]">
+                <div className="text-[12px] text-[#b4b4b4] mb-2 font-sans">
                   Move up 5 spots for each teammate you invite:
                 </div>
                 <div className="flex gap-2">
@@ -350,12 +342,12 @@ ${shareUrl}`
                     type="text"
                     readOnly
                     value={shareUrl}
-                    className="flex-1 bg-black/50 border border-zinc-800 rounded-lg px-3 py-2 text-base sm:text-xs text-zinc-300 font-mono select-all focus:outline-none"
+                    className="flex-1 bg-[#212121] border border-[#383838] rounded-xl px-3 py-2 text-base sm:text-xs text-zinc-300 font-mono select-all focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleCopyLink}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors shrink-0 cursor-pointer font-sans"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#383838] hover:bg-[#424242] text-white text-xs font-medium rounded-xl transition-colors shrink-0 cursor-pointer font-sans"
                   >
                     {hasCopied ? (
                       <>
@@ -364,22 +356,22 @@ ${shareUrl}`
                       </>
                     ) : (
                       <>
-                        <Copy className="size-3.5 text-zinc-400" />
+                        <Copy className="size-3.5 text-[#8e8e8e]" />
                         <span>Copy</span>
                       </>
                     )}
                   </button>
                 </div>
 
-                {/* Minimalist Monochrome Social Buttons */}
+                {/* Social Share Buttons */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={handleShareLinkedIn}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-200 hover:text-white transition-colors cursor-pointer font-sans"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-[#212121] hover:bg-[#2e2e2e] border border-[#383838] text-[13px] font-medium text-white transition-colors cursor-pointer font-sans"
                   >
-                    <svg className="size-3.5 fill-current text-zinc-300 shrink-0" viewBox="0 0 24 24">
-                      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45c-.95 0-1.72.78-1.72 1.73s.77 1.73 1.72 1.73 1.73-.78 1.73-1.73-.78-1.73-1.73Z"/>
+                    <svg className="size-3.5 fill-current text-[#b4b4b4] shrink-0" viewBox="0 0 24 24">
+                      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45c-.95 0-1.72.78-1.72 1.73s.77 1.73 1.72 1.73s.77 1.73 1.72 1.73-.78 1.73-1.73-.78-1.73-1.73Z"/>
                     </svg>
                     <span>LinkedIn</span>
                   </button>
@@ -388,9 +380,9 @@ ${shareUrl}`
                     href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(xPostText)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-200 hover:text-white transition-colors font-sans"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-[#212121] hover:bg-[#2e2e2e] border border-[#383838] text-[13px] font-medium text-white transition-colors font-sans"
                   >
-                    <svg className="size-3.5 fill-current text-zinc-300 shrink-0" viewBox="0 0 24 24">
+                    <svg className="size-3.5 fill-current text-[#b4b4b4] shrink-0" viewBox="0 0 24 24">
                       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
                     </svg>
                     <span>Post on X</span>
@@ -399,12 +391,11 @@ ${shareUrl}`
               </div>
             </div>
 
-            {/* Back action */}
-            <div className="mt-4 text-center">
+            <div className="mt-5 text-center">
               <button
                 type="button"
                 onClick={handleReset}
-                className="py-2 px-3 text-xs text-zinc-500 hover:text-zinc-400 transition-colors cursor-pointer font-sans inline-block"
+                className="py-2 px-3 text-[12px] text-[#8e8e8e] hover:text-[#b4b4b4] transition-colors cursor-pointer font-sans inline-block"
               >
                 Register another email
               </button>
@@ -413,8 +404,8 @@ ${shareUrl}`
         )}
       </main>
 
-      {/* Symmetrical Minimal Footer */}
-      <footer className="w-full max-w-sm sm:max-w-md mx-auto px-4 pb-8 pt-2 text-center text-xs text-zinc-600 font-sans">
+      {/* Minimal Footer */}
+      <footer className="w-full max-w-[360px] sm:max-w-[370px] mx-auto px-4 pb-8 pt-2 text-center text-[12px] text-[#8e8e8e] font-sans">
         <div>© 2026 Ele-in · All rights reserved</div>
       </footer>
     </div>
