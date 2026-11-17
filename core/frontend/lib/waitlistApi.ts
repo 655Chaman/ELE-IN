@@ -29,8 +29,9 @@ export function extractCompanyFromEmail(email: string): string | null {
   if (parts.length !== 2 || !parts[1]) return null
   const domain = parts[1]
   if (FREE_EMAIL_DOMAINS.has(domain)) return null
-  const base = domain.split('.')[0]
-  if (!base) return null
+  const domainParts = domain.split('.')
+  const base = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0]
+  if (!base || base.length <= 1) return null
   return base.charAt(0).toUpperCase() + base.slice(1)
 }
 
@@ -231,6 +232,7 @@ export async function submitWaitlistSignup(payload: WaitlistPayload): Promise<Wa
         utm_source: payload.utm_source || "website",
         utm_medium: isWork ? "work_email_essential" : "personal_email",
         utm_campaign: payload.utm_campaign || null,
+        priority_score: isWork ? 5 : 0,
       })
       .select()
       .single()

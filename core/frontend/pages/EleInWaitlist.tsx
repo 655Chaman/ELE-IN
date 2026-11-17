@@ -98,16 +98,29 @@ export function EleInWaitlist() {
   const handleCopyLink = () => {
     if (!activeEntry?.referral_code) return
     const link = `https://ele-in.com?ref=${activeEntry.referral_code}`
-    navigator.clipboard
-      .writeText(link)
-      .then(() => {
-        setHasCopied(true)
-        toast.success("Link copied to clipboard.")
-        setTimeout(() => setHasCopied(false), 2000)
-      })
-      .catch(() => {
-        toast.error("Failed to copy link.")
-      })
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(link)
+        .then(() => {
+          setHasCopied(true)
+          toast.success("Link copied to clipboard.")
+          setTimeout(() => setHasCopied(false), 2000)
+        })
+        .catch(() => {
+          toast.error("Failed to copy link.")
+        })
+    } else {
+      setHasCopied(true)
+      toast.success("Link: " + link)
+      setTimeout(() => setHasCopied(false), 2000)
+    }
+  }
+
+  const handleReset = () => {
+    setActiveEntry(null)
+    setFirstName("")
+    setLastName("")
+    setEmail("")
   }
 
   const shareUrl = activeEntry?.referral_code
@@ -236,12 +249,12 @@ ${shareUrl}`
                     <div className="mt-1.5 text-left px-1">
                       {isWorkEmail ? (
                         <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-sans">
-                          <span className="size-1.5 rounded-full bg-emerald-400" />
+                          <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
                           <span>Priority B2B Access unlocked {detectedCompany ? `(${detectedCompany})` : ""}</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-sans">
-                          <span className="size-1.5 rounded-full bg-zinc-500" />
+                          <span className="size-1.5 rounded-full bg-zinc-500 shrink-0" />
                           <span>Personal email · Use work email for priority access</span>
                         </div>
                       )}
@@ -337,12 +350,12 @@ ${shareUrl}`
                     type="text"
                     readOnly
                     value={shareUrl}
-                    className="flex-1 bg-black/50 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono select-all focus:outline-none"
+                    className="flex-1 bg-black/50 border border-zinc-800 rounded-lg px-3 py-2 text-base sm:text-xs text-zinc-300 font-mono select-all focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleCopyLink}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors shrink-0 cursor-pointer font-sans"
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors shrink-0 cursor-pointer font-sans"
                   >
                     {hasCopied ? (
                       <>
@@ -374,7 +387,7 @@ ${shareUrl}`
                   <a
                     href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(xPostText)}`}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-200 hover:text-white transition-colors font-sans"
                   >
                     <svg className="size-3.5 fill-current text-zinc-300 shrink-0" viewBox="0 0 24 24">
@@ -390,8 +403,8 @@ ${shareUrl}`
             <div className="mt-4 text-center">
               <button
                 type="button"
-                onClick={() => setActiveEntry(null)}
-                className="text-xs text-zinc-500 hover:text-zinc-400 transition-colors cursor-pointer font-sans"
+                onClick={handleReset}
+                className="py-2 px-3 text-xs text-zinc-500 hover:text-zinc-400 transition-colors cursor-pointer font-sans inline-block"
               >
                 Register another email
               </button>
